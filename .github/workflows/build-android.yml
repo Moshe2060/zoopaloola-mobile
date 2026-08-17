@@ -22,8 +22,10 @@ jobs:
       - name: Extract Godot project
         run: unzip -q Zoopaloola-Godot-Mobile.zip
 
-      - name: Apply mobile visual upgrade
-        run: cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
+      - name: Apply approved landscape board
+        run: |
+          cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
+          cp board-modern.webp zoopaloola_godot_mobile/assets/board-modern.webp
 
       - name: Configure Android exporter
         run: |
