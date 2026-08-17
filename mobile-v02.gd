@@ -39,7 +39,7 @@ var ai_pending := false
 var ai_timer := 0.0
 
 func _ready() -> void:
-	board_texture = load("res://assets/board-faithful-hd.png") as Texture2D
+	board_texture = load("res://assets/board-faithful-landscape.webp") as Texture2D
 	if board_texture == null:
 		push_error("Faithful HD board texture could not be loaded; using original board.")
 		board_texture = load("res://assets/board.png") as Texture2D
@@ -275,14 +275,9 @@ func _draw() -> void:
 	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
 	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(29, 35), "משחק חדש", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 
-	# Rotate and stretch the faithful portrait texture into the full landscape area.
-	var board_texture_scale := Vector2(
-		board_rect.size.y / board_texture.get_width(),
-		board_rect.size.x / board_texture.get_height()
-	)
-	draw_set_transform(board_rect.position + Vector2(board_rect.size.x, 0.0), PI / 2.0, board_texture_scale)
-	draw_texture(board_texture, Vector2.ZERO)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# The asset is already rotated. Draw it directly into the same rectangle
+	# used by balls, touch input, walls and scoring coordinates.
+	draw_texture_rect(board_texture, board_rect, false)
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
