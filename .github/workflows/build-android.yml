@@ -30,7 +30,7 @@ jobs:
           keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Zoopaloola,C=IL" -keyalg RSA -validity 10000
           JAVA_SDK="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
           ANDROID_SDK="${ANDROID_HOME:-/root/.local/share/godot/export/android/android-sdk}"
-          printf '[gd_resource format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s/.android/debug.keystore"\nexport/android/debug_keystore_user = "androiddebugkey"\nexport/android/debug_keystore_pass = "android"\n' "$ANDROID_SDK" "$JAVA_SDK" "$HOME" > "$HOME/.config/godot/editor_settings-4.tres"
+          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s/.android/debug.keystore"\nexport/android/debug_keystore_user = "androiddebugkey"\nexport/android/debug_keystore_pass = "android"\n' "$ANDROID_SDK" "$JAVA_SDK" "$HOME" > "$HOME/.config/godot/editor_settings-4.tres"
 
       - name: Import project assets
         working-directory: zoopaloola_godot_mobile
