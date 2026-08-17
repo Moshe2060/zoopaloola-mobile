@@ -1,0 +1,42 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Godot project
+        run: unzip -q Zoopaloola-Godot-Mobile.zip
+
+      - name: Import project assets
+        working-directory: zoopaloola_godot_mobile
+        run: godot --headless --editor --path . --quit-after 8
+
+      - name: Build debug APK
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          mkdir -p build
+          godot --headless --path . --export-debug "Android" build/Zoopaloola-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zoopaloola-Android-APK
+          path: zoopaloola_godot_mobile/build/Zoopaloola-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
