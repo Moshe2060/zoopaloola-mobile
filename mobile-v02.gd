@@ -39,9 +39,9 @@ var ai_pending := false
 var ai_timer := 0.0
 
 func _ready() -> void:
-	board_texture = load("res://assets/board-modern.webp") as Texture2D
+	board_texture = load("res://assets/board-faithful-hd.png") as Texture2D
 	if board_texture == null:
-		push_error("Modern board texture could not be loaded; using original board.")
+		push_error("Faithful HD board texture could not be loaded; using original board.")
 		board_texture = load("res://assets/board.png") as Texture2D
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
@@ -249,17 +249,16 @@ func any_ball_moving() -> bool:
 	return false
 
 func board_to_screen(p: Vector2) -> Vector2:
-	# The physics board is portrait-oriented; map it clockwise onto the landscape artwork.
 	return board_rect.position + Vector2(
-		(BOARD_H - p.y) / BOARD_H * board_rect.size.x,
-		p.x / BOARD_W * board_rect.size.y
+		p.x / BOARD_W * board_rect.size.x,
+		p.y / BOARD_H * board_rect.size.y
 	)
 
 func screen_to_board(p: Vector2) -> Vector2:
 	var local: Vector2 = p - board_rect.position
 	return Vector2(
-		local.y / board_rect.size.y * BOARD_W,
-		BOARD_H - (local.x / board_rect.size.x * BOARD_H)
+		local.x / board_rect.size.x * BOARD_W,
+		local.y / board_rect.size.y * BOARD_H
 	)
 
 func _draw() -> void:
@@ -272,7 +271,7 @@ func _draw() -> void:
 	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
 	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(29, 35), "משחק חדש", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 
-	# The approved board is already a landscape texture.
+	# Faithful portrait board: visual coordinates match the original physics exactly.
 	draw_texture_rect(board_texture, board_rect, false)
 
 	for i in balls.size():
@@ -292,8 +291,8 @@ func _draw() -> void:
 		var texture: Texture2D = effects[hole][effect.frame]
 		# Effect frames are board patches, not centered sprites. Draw each patch
 		# at its original top-left board coordinate using the board transform.
-		var effect_scale: Vector2 = Vector2(board_rect.size.y / BOARD_W, board_rect.size.x / BOARD_H)
-		draw_set_transform(board_rect.position + Vector2(board_rect.size.x, 0.0), PI / 2.0, effect_scale)
+		var effect_scale: Vector2 = Vector2(board_rect.size.x / BOARD_W, board_rect.size.y / BOARD_H)
+		draw_set_transform(board_rect.position, 0.0, effect_scale)
 		draw_texture(texture, HOLE_POSITIONS[hole])
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
