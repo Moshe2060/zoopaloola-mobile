@@ -36,6 +36,10 @@ jobs:
         working-directory: zoopaloola_godot_mobile
         run: godot --headless --editor --path . --quit-after 8
 
+      - name: Install Android Gradle template
+        working-directory: zoopaloola_godot_mobile
+        run: godot --headless --path . --install-android-build-template
+
       - name: Build debug APK
         working-directory: zoopaloola_godot_mobile
         run: |
