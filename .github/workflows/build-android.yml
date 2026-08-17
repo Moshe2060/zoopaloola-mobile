@@ -35,11 +35,18 @@ jobs:
           ANDROID_SDK="${ANDROID_HOME:-/usr/lib/android-sdk}"
           printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s/.android/debug.keystore"\nexport/android/debug_keystore_user = "androiddebugkey"\nexport/android/debug_keystore_pass = "android"\n' "$ANDROID_SDK" "$JAVA_SDK" "$HOME" > "$HOME/.config/godot/editor_settings-4.tres"
 
-      - name: Use built-in Android APK exporter
+      - name: Configure Android SDK target
         working-directory: zoopaloola_godot_mobile
         run: |
           sed -i 's|gradle_build/use_gradle_build=true|gradle_build/use_gradle_build=false|' export_presets.cfg
           sed -i '/gradle_build\/min_sdk=/d; /gradle_build\/target_sdk=/d' export_presets.cfg
+          printf '\ngradle_build/min_sdk=24\ngradle_build/target_sdk=33\n' >> export_presets.cfg
+          echo "Installed Android platforms:"
+          find "${ANDROID_HOME:-/usr/lib/android-sdk}/platforms" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort || true
+          echo "Installed Android build tools:"
+          find "${ANDROID_HOME:-/usr/lib/android-sdk}/build-tools" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort || true
+          echo "Effective Android preset values:"
+          grep -E 'gradle_build/(use_gradle_build|min_sdk|target_sdk)' export_presets.cfg
 
       - name: Import project assets
         working-directory: zoopaloola_godot_mobile
@@ -53,7 +60,13 @@ jobs:
         working-directory: zoopaloola_godot_mobile
         run: |
           mkdir -p build
-          godot --headless --verbose --path . --export-debug "Android" build/Zoopaloola-debug.apk || {\n            echo "Initial export raced the filesystem scan; retrying..."\n            sleep 3\n            godot --headless --verbose --path . --export-debug "Android" build/Zoopaloola-debug.apk\n          }
+          if ! godot --headless --verbose --path . --export-debug "Android" build/Zoopaloola-debug.apk; then
+            echo "Initial export failed; retrying after the filesystem scan settles..."
+            sleep 3
+            godot --headless --verbose --path . --export-debug "Android" build/Zoopaloola-debug.apk
+          fi
+          test -s build/Zoopaloola-debug.apk
+          ls -lh build/Zoopaloola-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
