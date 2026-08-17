@@ -1,0 +1,119 @@
+name: Build and publish Web game
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Godot project
+        run: unzip -q Zoopaloola-Godot-Mobile.zip
+
+      - name: Apply current landscape game files
+        run: |
+          cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
+          cp board-faithful-landscape.webp zoopaloola_godot_mobile/assets/board-faithful-landscape.webp
+
+      - name: Add Web export preset
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          cat >> export_presets.cfg <<'EOF'
+
+          [preset.1]
+
+          name="Web"
+          platform="Web"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path="build/web/index.html"
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.1.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          variant/extensions_support=false
+          variant/thread_support=false
+          vram_texture_compression/for_desktop=true
+          vram_texture_compression/for_mobile=false
+          html/export_icon=true
+          html/custom_html_shell=""
+          html/head_include=""
+          html/canvas_resize_policy=2
+          html/focus_canvas_on_start=true
+          html/experimental_virtual_keyboard=true
+          progressive_web_app/enabled=false
+          EOF
+
+      - name: Import and validate project
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          godot --headless --editor --path . --quit-after 20 > /tmp/godot-import.log 2>&1
+          cat /tmp/godot-import.log
+          if grep -Eq 'Error loading image|Error importing|Failed loading resource' /tmp/godot-import.log; then
+            exit 1
+          fi
+          godot --headless --path . --quit-after 3 > /tmp/godot-validation.log 2>&1
+          cat /tmp/godot-validation.log
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource|could not be loaded' /tmp/godot-validation.log; then
+            exit 1
+          fi
+
+      - name: Export Web game
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          mkdir -p build/web
+          godot --headless --verbose --path . --export-release "Web" build/web/index.html
+          test -s build/web/index.html
+          test -s build/web/index.wasm
+          test -s build/web/index.pck
+          touch build/web/.nojekyll
+          ls -lh build/web
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: zoopaloola_godot_mobile/build/web
+
+  deploy:
+    needs: build-web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
