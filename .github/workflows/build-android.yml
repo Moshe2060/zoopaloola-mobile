@@ -43,7 +43,7 @@ jobs:
 
       - name: Import project assets
         working-directory: zoopaloola_godot_mobile
-        run: godot --headless --editor --path . --quit-after 8
+        run: godot --headless --editor --path . --quit-after 20
 
       - name: Validate game scene
         working-directory: zoopaloola_godot_mobile
