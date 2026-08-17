@@ -8,6 +8,11 @@ const STEP_TIME := 0.005
 const EFFECT_FRAME_TIME := 0.28
 
 const HOLE_POSITIONS := [Vector2(32,165), Vector2(21,77), Vector2(6,-10), Vector2(147,17), Vector2(165,86), Vector2(128,143)]
+const SCORING_HOLE_CENTERS := [
+	Vector2(32, 177), Vector2(32, 104), Vector2(32, 30),
+	Vector2(174, 30), Vector2(174, 104), Vector2(174, 177)
+]
+const EFFECT_DURATION := 1.15
 const EFFECT_PATHS := [
 	["39_id_051.png", "40_id_052.png", "41_id_053.png", "40_id_052.png"],
 	["42_id_055.png"],
@@ -59,10 +64,17 @@ func _on_resize() -> void:
 	# Fill almost the entire landscape play area. Every visual and physics
 	# coordinate uses this same rectangle, so stretching cannot misalign holes.
 	var play_position := Vector2(12.0, 82.0)
-	var play_size := Vector2(
+	var available := Vector2(
 		maxf(300.0, viewport_size.x - 24.0),
 		maxf(220.0, viewport_size.y - 94.0)
 	)
+	var target_aspect := 2.05
+	var play_size := available
+	if play_size.x / play_size.y > target_aspect:
+		play_size.x = play_size.y * target_aspect
+	else:
+		play_size.y = play_size.x / target_aspect
+	play_position += (available - play_size) * 0.5
 	view_origin = play_position
 	board_rect = Rect2(play_position, play_size)
 	board_scale = minf(board_rect.size.x / BOARD_H, board_rect.size.y / BOARD_W)
@@ -172,20 +184,14 @@ func resolve_collision(a_index: int, b_index: int) -> void:
 func score_ball(index: int, hole: int) -> void:
 	balls[index].alive = false
 	balls[index].v = Vector2.ZERO
-	active_effects.append({"hole":hole, "elapsed":0.0, "frame":0, "loops":0})
+	active_effects.append({"hole":hole, "age":0.0})
 	status = "Ball scored!"
 
 func update_effects(delta: float) -> void:
 	for effect in active_effects:
-		effect.elapsed += delta
-		if effect.elapsed >= EFFECT_FRAME_TIME:
-			effect.elapsed -= EFFECT_FRAME_TIME
-			effect.frame += 1
-			if effect.frame >= effects[effect.hole].size():
-				effect.frame = 0
-				effect.loops += 1
+		effect.age += delta
 	for i in range(active_effects.size() - 1, -1, -1):
-		if active_effects[i].loops >= EFFECT_LOOPS[active_effects[i].hole]:
+		if float(active_effects[i].age) >= EFFECT_DURATION:
 			active_effects.remove_at(i)
 
 func _input(event: InputEvent) -> void:
@@ -298,16 +304,20 @@ func _draw() -> void:
 		var size := texture.get_size() * board_scale * 1.45
 		draw_texture_rect(texture, Rect2(sp - size * 0.5, size), false, Color(1,1,1,0.7))
 
-	# Temporary clean procedural effect. The legacy animation frames are board
-	# patches and produced huge misplaced rectangles after rotation/stretching.
-	# This effect uses exactly the same board coordinate as the scoring hole.
+	# Clear scoring burst at the exact physics gate.
 	for effect in active_effects:
 		var hole: int = effect.hole
-		var pos := board_to_screen(HOLE_POSITIONS[hole] + EFFECT_OFFSETS[hole])
-		var phase: float = fmod(float(effect.elapsed) / EFFECT_FRAME_TIME + float(effect.frame), 1.0)
-		var radius: float = (10.0 + phase * 24.0) * board_scale
-		draw_circle(pos, radius, Color(1.0, 0.80, 0.15, 0.28 * (1.0 - phase)), false, maxf(3.0, board_scale * 1.5), true)
-		draw_circle(pos, maxf(5.0, radius * 0.48), Color(1.0, 0.35, 0.08, 0.75 * (1.0 - phase)), false, maxf(2.0, board_scale), true)
+		var t: float = clampf(float(effect.age) / EFFECT_DURATION, 0.0, 1.0)
+		var pos := board_to_screen(SCORING_HOLE_CENTERS[hole])
+		var ring_radius: float = lerpf(7.0, 27.0, t) * board_scale
+		var alpha: float = 1.0 - t
+		draw_circle(pos, ring_radius, Color(1.0, 0.82, 0.10, 0.85 * alpha), false, maxf(4.0, board_scale * 1.8), true)
+		draw_circle(pos, maxf(6.0, ring_radius * 0.52), Color(1.0, 0.28, 0.05, 0.72 * alpha), false, maxf(3.0, board_scale * 1.3), true)
+		for ray in 8:
+			var angle := float(ray) * TAU / 8.0
+			var inner := pos + Vector2.from_angle(angle) * ring_radius * 0.62
+			var outer := pos + Vector2.from_angle(angle) * ring_radius * 1.18
+			draw_line(inner, outer, Color(1.0, 0.92, 0.35, alpha), maxf(3.0, board_scale), true)
 
 	if dragging and selected >= 0:
 		var start := board_to_screen(balls[selected].p)
