@@ -22,6 +22,16 @@ jobs:
       - name: Extract Godot project
         run: unzip -q Zoopaloola-Godot-Mobile.zip
 
+      - name: Configure Android exporter
+        run: |
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.stable"
+          cp -R /root/.local/share/godot/export_templates/4.4.stable/. "$HOME/.local/share/godot/export_templates/4.4.stable/"
+          mkdir -p "$HOME/.android" "$HOME/.config/godot"
+          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Zoopaloola,C=IL" -keyalg RSA -validity 10000
+          JAVA_SDK="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
+          ANDROID_SDK="${ANDROID_HOME:-/root/.local/share/godot/export/android/android-sdk}"
+          printf '[gd_resource format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s/.android/debug.keystore"\nexport/android/debug_keystore_user = "androiddebugkey"\nexport/android/debug_keystore_pass = "android"\n' "$ANDROID_SDK" "$JAVA_SDK" "$HOME" > "$HOME/.config/godot/editor_settings-4.tres"
+
       - name: Import project assets
         working-directory: zoopaloola_godot_mobile
         run: godot --headless --editor --path . --quit-after 8
@@ -39,4 +49,3 @@ jobs:
           path: zoopaloola_godot_mobile/build/Zoopaloola-debug.apk
           if-no-files-found: error
           retention-days: 30
-
