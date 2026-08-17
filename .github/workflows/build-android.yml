@@ -38,7 +38,9 @@ jobs:
 
       - name: Install Android Gradle template
         working-directory: zoopaloola_godot_mobile
-        run: godot --headless --editor --path . --install-android-build-template --quit-after 10
+        run: |
+          mkdir -p android/build
+          unzip -q "$HOME/.local/share/godot/export_templates/4.4.stable/android_source.zip" -d android/build
 
       - name: Build debug APK
         working-directory: zoopaloola_godot_mobile
