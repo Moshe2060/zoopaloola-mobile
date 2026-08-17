@@ -34,7 +34,7 @@ var selected := -1
 var dragging := false
 var drag_point := Vector2.ZERO
 var accumulator := 0.0
-var status := "התור שלך — גע בכדור אדום, משוך לאחור ושחרר"
+var status := "Your turn - touch a red ball, pull back and release"
 var ai_pending := false
 var ai_timer := 0.0
 
@@ -82,7 +82,7 @@ func new_game() -> void:
 		balls.append({"p":p, "v":Vector2.ZERO, "team":0, "alive":true})
 	for p in blue_positions:
 		balls.append({"p":p, "v":Vector2.ZERO, "team":1, "alive":true})
-	status = "התור שלך — גע בכדור אדום, משוך לאחור ושחרר"
+	status = "Your turn - touch a red ball, pull back and release"
 	queue_redraw()
 
 func _process(delta: float) -> void:
@@ -173,7 +173,7 @@ func score_ball(index: int, hole: int) -> void:
 	balls[index].alive = false
 	balls[index].v = Vector2.ZERO
 	active_effects.append({"hole":hole, "elapsed":0.0, "frame":0, "loops":0})
-	status = "פגיעה בחור!"
+	status = "Ball scored!"
 
 func update_effects(delta: float) -> void:
 	for effect in active_effects:
@@ -189,6 +189,9 @@ func update_effects(delta: float) -> void:
 			active_effects.remove_at(i)
 
 func _input(event: InputEvent) -> void:
+	# The game is landscape-only. Ignore touches until the device is rotated.
+	if get_viewport_rect().size.y > get_viewport_rect().size.x:
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed: pointer_down(event.position)
 		else: pointer_up(event.position)
@@ -210,7 +213,7 @@ func pointer_down(screen_pos: Vector2) -> void:
 			selected = i
 			dragging = true
 			drag_point = board_pos
-			status = "משוך לאחור ושחרר"
+			status = "Pull back and release"
 			return
 
 func pointer_move(screen_pos: Vector2) -> void:
@@ -227,7 +230,7 @@ func pointer_up(screen_pos: Vector2) -> void:
 		turn = 1
 		ai_pending = true
 		ai_timer = 0.75
-		status = "התור של הכחול"
+		status = "Blue player's turn"
 	dragging = false
 	selected = -1
 
@@ -240,11 +243,11 @@ func ai_shot() -> void:
 	var target := Vector2(38.0, [25.0, 104.0, 183.0][randi() % 3])
 	var direction: Vector2 = target - balls[shooter].p
 	balls[shooter].v = direction.normalized() * randf_range(1.5, 2.7)
-	status = "הכחול ירה..."
+	status = "Blue player shot..."
 
 func finish_ai_turn() -> void:
 	turn = 0
-	status = "התור שלך — גע בכדור אדום, משוך לאחור ושחרר"
+	status = "Your turn - touch a red ball, pull back and release"
 
 func any_ball_moving() -> bool:
 	for ball in balls:
@@ -268,12 +271,16 @@ func screen_to_board(p: Vector2) -> Vector2:
 func _draw() -> void:
 	var viewport_size := get_viewport_rect().size
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color("101a28"))
+	if viewport_size.y > viewport_size.x:
+		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.44), "ROTATE YOUR PHONE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color("f6d365"))
+		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.50), "Zoopaloola is designed for landscape mode", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color.WHITE)
+		return
 	draw_rect(Rect2(0, 0, viewport_size.x, 78), Color("17263a"))
 	draw_string(ThemeDB.fallback_font, Vector2(28, 42), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color("f6d365"))
 	draw_string(ThemeDB.fallback_font, Vector2(28, 75), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 260, 20, Color.WHITE)
 	var button_rect := Rect2(viewport_size.x - 190.0, 24.0, 160.0, 54.0)
 	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
-	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(29, 35), "משחק חדש", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(29, 35), "NEW GAME", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 
 	# The asset is already rotated. Draw it directly into the same rectangle
 	# used by balls, touch input, walls and scoring coordinates.
@@ -291,15 +298,16 @@ func _draw() -> void:
 		var size := texture.get_size() * board_scale * 1.45
 		draw_texture_rect(texture, Rect2(sp - size * 0.5, size), false, Color(1,1,1,0.7))
 
+	# Temporary clean procedural effect. The legacy animation frames are board
+	# patches and produced huge misplaced rectangles after rotation/stretching.
+	# This effect uses exactly the same board coordinate as the scoring hole.
 	for effect in active_effects:
 		var hole: int = effect.hole
-		var texture: Texture2D = effects[hole][effect.frame]
-		# Effect frames are board patches, not centered sprites. Draw each patch
-		# at its original top-left board coordinate using the board transform.
-		var effect_scale: Vector2 = Vector2(board_rect.size.y / BOARD_W, board_rect.size.x / BOARD_H)
-		draw_set_transform(board_rect.position + Vector2(board_rect.size.x, 0.0), PI / 2.0, effect_scale)
-		draw_texture(texture, HOLE_POSITIONS[hole])
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var pos := board_to_screen(HOLE_POSITIONS[hole] + EFFECT_OFFSETS[hole])
+		var phase: float = fmod(float(effect.elapsed) / EFFECT_FRAME_TIME + float(effect.frame), 1.0)
+		var radius: float = (10.0 + phase * 24.0) * board_scale
+		draw_circle(pos, radius, Color(1.0, 0.80, 0.15, 0.28 * (1.0 - phase)), false, maxf(3.0, board_scale * 1.5), true)
+		draw_circle(pos, maxf(5.0, radius * 0.48), Color(1.0, 0.35, 0.08, 0.75 * (1.0 - phase)), false, maxf(2.0, board_scale), true)
 
 	if dragging and selected >= 0:
 		var start := board_to_screen(balls[selected].p)
