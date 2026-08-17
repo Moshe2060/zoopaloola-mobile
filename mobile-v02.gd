@@ -2,7 +2,6 @@ extends Node2D
 
 const BOARD_W := 207.0
 const BOARD_H := 208.0
-const ASSET_SCALE := 4.0
 const RADIUS := 6.0
 const SUBSTEPS := 10
 const STEP_TIME := 0.005
@@ -261,7 +260,7 @@ func _draw() -> void:
 
 	# Rotate the authentic 207x208 board clockwise into landscape.
 	draw_set_transform(view_origin + Vector2(BOARD_H * board_scale, 0), PI / 2.0, Vector2(board_scale, board_scale))
-	draw_texture_rect(board_texture, Rect2(Vector2.ZERO, Vector2(BOARD_W, BOARD_H)), false)
+	draw_texture(board_texture, Vector2.ZERO)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	for i in balls.size():
@@ -273,7 +272,7 @@ func _draw() -> void:
 		draw_circle(sp, RADIUS * board_scale * 1.52, color)
 		draw_circle(sp - Vector2(2,2) * board_scale, RADIUS * board_scale * 0.40, Color(1,1,1,0.62))
 		var texture := piece_textures[i % piece_textures.size()]
-		var size := (texture.get_size() / ASSET_SCALE) * board_scale * 1.45
+		var size := texture.get_size() * board_scale * 1.45
 		draw_texture_rect(texture, Rect2(sp - size * 0.5, size), false, Color(1,1,1,0.7))
 
 	for effect in active_effects:
@@ -282,8 +281,7 @@ func _draw() -> void:
 		# Effect frames are board patches, not centered sprites. Draw each patch
 		# at its original top-left board coordinate using the board transform.
 		draw_set_transform(view_origin + Vector2(BOARD_H * board_scale, 0), PI / 2.0, Vector2(board_scale, board_scale))
-		var logical_size := texture.get_size() / ASSET_SCALE
-		draw_texture_rect(texture, Rect2(HOLE_POSITIONS[hole], logical_size), false)
+		draw_texture(texture, HOLE_POSITIONS[hole])
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	if dragging and selected >= 0:
