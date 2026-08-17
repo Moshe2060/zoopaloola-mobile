@@ -28,6 +28,7 @@ var contacts := {}
 
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
+var board_rect := Rect2()
 var turn := 0
 var selected := -1
 var dragging := false
@@ -38,7 +39,7 @@ var ai_pending := false
 var ai_timer := 0.0
 
 func _ready() -> void:
-	board_texture = load("res://assets/board.png")
+	board_texture = load("res://assets/board-modern.webp")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
 	for sequence in EFFECT_PATHS:
@@ -52,10 +53,13 @@ func _ready() -> void:
 
 func _on_resize() -> void:
 	var viewport_size := get_viewport_rect().size
-	var available := Vector2(max(300.0, viewport_size.x - 32.0), max(220.0, viewport_size.y - 92.0))
-	board_scale = min(available.x / BOARD_H, available.y / BOARD_W)
-	var drawn_size := Vector2(BOARD_H, BOARD_W) * board_scale
+	var available := Vector2(max(300.0, viewport_size.x - 24.0), max(220.0, viewport_size.y - 88.0))
+	var texture_size := board_texture.get_size()
+	var fit_scale := min(available.x / texture_size.x, available.y / texture_size.y)
+	var drawn_size := texture_size * fit_scale
 	view_origin = Vector2((viewport_size.x - drawn_size.x) * 0.5, 82.0 + max(0.0, (available.y - drawn_size.y) * 0.5))
+	board_rect = Rect2(view_origin, drawn_size)
+	board_scale = min(board_rect.size.x / BOARD_W, board_rect.size.y / BOARD_H)
 	queue_redraw()
 
 func new_game() -> void:
@@ -242,11 +246,11 @@ func any_ball_moving() -> bool:
 	return false
 
 func board_to_screen(p: Vector2) -> Vector2:
-	return view_origin + Vector2(BOARD_H - p.y, p.x) * board_scale
+	return board_rect.position + Vector2(p.x / BOARD_W * board_rect.size.x, p.y / BOARD_H * board_rect.size.y)
 
 func screen_to_board(p: Vector2) -> Vector2:
-	var local := (p - view_origin) / board_scale
-	return Vector2(local.y, BOARD_H - local.x)
+	var local := p - board_rect.position
+	return Vector2(local.x / board_rect.size.x * BOARD_W, local.y / board_rect.size.y * BOARD_H)
 
 func _draw() -> void:
 	var viewport_size := get_viewport_rect().size
@@ -258,10 +262,8 @@ func _draw() -> void:
 	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
 	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(29, 35), "משחק חדש", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 
-	# Rotate the authentic 207x208 board clockwise into landscape.
-	draw_set_transform(view_origin + Vector2(BOARD_H * board_scale, 0), PI / 2.0, Vector2(board_scale, board_scale))
-	draw_texture(board_texture, Vector2.ZERO)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# The approved board is already a landscape texture.
+	draw_texture_rect(board_texture, board_rect, false)
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -280,7 +282,8 @@ func _draw() -> void:
 		var texture: Texture2D = effects[hole][effect.frame]
 		# Effect frames are board patches, not centered sprites. Draw each patch
 		# at its original top-left board coordinate using the board transform.
-		draw_set_transform(view_origin + Vector2(BOARD_H * board_scale, 0), PI / 2.0, Vector2(board_scale, board_scale))
+		var effect_scale := Vector2(board_rect.size.x / BOARD_W, board_rect.size.y / BOARD_H)
+		draw_set_transform(board_rect.position, 0.0, effect_scale)
 		draw_texture(texture, HOLE_POSITIONS[hole])
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
