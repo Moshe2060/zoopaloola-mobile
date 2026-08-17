@@ -249,11 +249,18 @@ func any_ball_moving() -> bool:
 	return false
 
 func board_to_screen(p: Vector2) -> Vector2:
-	return board_rect.position + Vector2(p.x / BOARD_W * board_rect.size.x, p.y / BOARD_H * board_rect.size.y)
+	# The physics board is portrait-oriented; map it clockwise onto the landscape artwork.
+	return board_rect.position + Vector2(
+		(BOARD_H - p.y) / BOARD_H * board_rect.size.x,
+		p.x / BOARD_W * board_rect.size.y
+	)
 
 func screen_to_board(p: Vector2) -> Vector2:
-	var local := p - board_rect.position
-	return Vector2(local.x / board_rect.size.x * BOARD_W, local.y / board_rect.size.y * BOARD_H)
+	var local: Vector2 = p - board_rect.position
+	return Vector2(
+		local.y / board_rect.size.y * BOARD_W,
+		BOARD_H - (local.x / board_rect.size.x * BOARD_H)
+	)
 
 func _draw() -> void:
 	var viewport_size := get_viewport_rect().size
@@ -285,8 +292,8 @@ func _draw() -> void:
 		var texture: Texture2D = effects[hole][effect.frame]
 		# Effect frames are board patches, not centered sprites. Draw each patch
 		# at its original top-left board coordinate using the board transform.
-		var effect_scale: Vector2 = Vector2(board_rect.size.x / BOARD_W, board_rect.size.y / BOARD_H)
-		draw_set_transform(board_rect.position, 0.0, effect_scale)
+		var effect_scale: Vector2 = Vector2(board_rect.size.y / BOARD_W, board_rect.size.x / BOARD_H)
+		draw_set_transform(board_rect.position + Vector2(board_rect.size.x, 0.0), PI / 2.0, effect_scale)
 		draw_texture(texture, HOLE_POSITIONS[hole])
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
