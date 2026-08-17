@@ -36,6 +36,7 @@ jobs:
         working-directory: zoopaloola_godot_mobile
         run: |
           sed -i 's|gradle_build/use_gradle_build=true|gradle_build/use_gradle_build=false|' export_presets.cfg
+          sed -i '/gradle_build\/min_sdk=/d; /gradle_build\/target_sdk=/d' export_presets.cfg
 
       - name: Import project assets
         working-directory: zoopaloola_godot_mobile
