@@ -29,18 +29,17 @@ jobs:
           mkdir -p "$HOME/.android" "$HOME/.config/godot"
           keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Zoopaloola,C=IL" -keyalg RSA -validity 10000
           JAVA_SDK="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
-          ANDROID_SDK="${ANDROID_HOME:-/root/.local/share/godot/export/android/android-sdk}"
+          ANDROID_SDK="${ANDROID_HOME:-/usr/lib/android-sdk}"
           printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s/.android/debug.keystore"\nexport/android/debug_keystore_user = "androiddebugkey"\nexport/android/debug_keystore_pass = "android"\n' "$ANDROID_SDK" "$JAVA_SDK" "$HOME" > "$HOME/.config/godot/editor_settings-4.tres"
+
+      - name: Use built-in Android APK exporter
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          sed -i 's|gradle_build/use_gradle_build=true|gradle_build/use_gradle_build=false|' export_presets.cfg
 
       - name: Import project assets
         working-directory: zoopaloola_godot_mobile
         run: godot --headless --editor --path . --quit-after 8
-
-      - name: Install Android Gradle template
-        working-directory: zoopaloola_godot_mobile
-        run: |
-          mkdir -p android/build
-          unzip -q "$HOME/.local/share/godot/export_templates/4.4.stable/android_source.zip" -d android/build
 
       - name: Build debug APK
         working-directory: zoopaloola_godot_mobile
