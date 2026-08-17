@@ -22,10 +22,8 @@ jobs:
       - name: Extract Godot project
         run: unzip -q Zoopaloola-Godot-Mobile.zip
 
-      - name: Apply high-resolution mobile upgrade
-        run: |
-          cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
-          unzip -q -o Zoopaloola-HD-Assets.zip -d zoopaloola_godot_mobile
+      - name: Apply mobile visual upgrade
+        run: cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
 
       - name: Configure Android exporter
         run: |
