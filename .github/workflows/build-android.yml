@@ -35,18 +35,25 @@ jobs:
           ANDROID_SDK="${ANDROID_HOME:-/usr/lib/android-sdk}"
           printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s/.android/debug.keystore"\nexport/android/debug_keystore_user = "androiddebugkey"\nexport/android/debug_keystore_pass = "android"\n' "$ANDROID_SDK" "$JAVA_SDK" "$HOME" > "$HOME/.config/godot/editor_settings-4.tres"
 
-      - name: Configure Android SDK target
+      - name: Install Godot Android SDK requirements
+        run: |
+          ANDROID_SDK="${ANDROID_HOME:-/usr/lib/android-sdk}"
+          SDKMANAGER="$(find "$ANDROID_SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_SDK" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_SDK" "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+
+      - name: Configure built-in Android exporter
         working-directory: zoopaloola_godot_mobile
         run: |
           sed -i 's|gradle_build/use_gradle_build=true|gradle_build/use_gradle_build=false|' export_presets.cfg
-          sed -i '/gradle_build\/min_sdk=/d; /gradle_build\/target_sdk=/d' export_presets.cfg
-          printf '\ngradle_build/min_sdk=24\ngradle_build/target_sdk=33\n' >> export_presets.cfg
+          sed -i '/gradle_build\\/min_sdk=/d; /gradle_build\\/target_sdk=/d' export_presets.cfg
           echo "Installed Android platforms:"
-          find "${ANDROID_HOME:-/usr/lib/android-sdk}/platforms" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort || true
+          find "${ANDROID_HOME:-/usr/lib/android-sdk}/platforms" -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | sort
           echo "Installed Android build tools:"
-          find "${ANDROID_HOME:-/usr/lib/android-sdk}/build-tools" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort || true
+          find "${ANDROID_HOME:-/usr/lib/android-sdk}/build-tools" -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | sort
           echo "Effective Android preset values:"
-          grep -E 'gradle_build/(use_gradle_build|min_sdk|target_sdk)' export_presets.cfg
+          grep -E 'gradle_build/(use_gradle_build|min_sdk|target_sdk)' export_presets.cfg || true
 
       - name: Import project assets
         working-directory: zoopaloola_godot_mobile
