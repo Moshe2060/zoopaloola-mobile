@@ -26,7 +26,7 @@ jobs:
       - name: Apply faithful portrait board
         run: |
           cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
-          cp board-faithful-hd.png zoopaloola_godot_mobile/assets/board-faithful-hd.png
+          cp board-faithful-landscape.webp zoopaloola_godot_mobile/assets/board-faithful-landscape.webp
 
       - name: Configure Android exporter
         run: |
@@ -64,14 +64,20 @@ jobs:
 
       - name: Import project assets
         working-directory: zoopaloola_godot_mobile
-        run: godot --headless --editor --path . --quit-after 20
+        run: |
+          godot --headless --editor --path . --quit-after 20 > /tmp/godot-import.log 2>&1
+          cat /tmp/godot-import.log
+          if grep -Eq 'Error loading image|Error importing|Failed loading resource' /tmp/godot-import.log; then
+            echo "Godot asset import failed."
+            exit 1
+          fi
 
       - name: Validate game scene
         working-directory: zoopaloola_godot_mobile
         run: |
           godot --headless --path . --quit-after 3 > /tmp/godot-validation.log 2>&1
           cat /tmp/godot-validation.log
-          if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script' /tmp/godot-validation.log; then
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource|could not be loaded' /tmp/godot-validation.log; then
             echo "Godot script validation failed."
             exit 1
           fi
