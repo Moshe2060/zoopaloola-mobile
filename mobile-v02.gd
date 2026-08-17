@@ -283,7 +283,7 @@ func _draw() -> void:
 		var size := texture.get_size() * board_scale * 1.8 * pulse
 		draw_circle(pos, 32.0 * pulse, Color(1.0, 0.78, 0.20, 0.16))
 		draw_circle(pos, 24.0 * pulse, Color(1.0, 0.92, 0.45, 0.28), false, 5.0, true)
-		draw_texture_rect(texture, Rect2(pos - size * 0.5, size), false, Color(1,1,1,0.96))
+		# Match the clockwise 90-degree rotation used by the landscape board.\n		draw_set_transform(pos, PI / 2.0, Vector2.ONE)\n		draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1,1,1,0.96))\n		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	if dragging and selected >= 0:
 		var start := board_to_screen(balls[selected].p)
