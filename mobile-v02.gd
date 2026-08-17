@@ -332,7 +332,7 @@ func draw_portal(center: Vector2, hole: int) -> void:
 	# A different emblem for every hole; no shared or misplaced patch image.
 	match hole:
 		0: # fire
-			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius*0.48), center+Vector2(radius*0.35,radius*0.35), center,center+Vector2(radius*0.55), center+Vector2(-radius*0.35,radius*0.35)]), color)
+			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius*0.48), center+Vector2(radius*0.35,radius*0.35), center, center+Vector2(0,radius*0.55), center+Vector2(-radius*0.35,radius*0.35)]), color)
 		1: # cross
 			draw_line(center-Vector2(radius*0.42,0), center+Vector2(radius*0.42,0), color, radius*0.22, true)
 			draw_line(center-Vector2(0,radius*0.42), center+Vector2(0,radius*0.42), color, radius*0.22, true)
