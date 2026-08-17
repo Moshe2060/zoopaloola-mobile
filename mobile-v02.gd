@@ -27,7 +27,7 @@ var active_effects: Array = []
 var contacts := {}
 
 var view_origin := Vector2.ZERO
-var board_scale := Vector2.ONE
+var board_scale := 1.0
 var turn := 0
 var selected := -1
 var dragging := false
@@ -38,7 +38,6 @@ var ai_pending := false
 var ai_timer := 0.0
 
 func _ready() -> void:
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	board_texture = load("res://assets/board.png")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
@@ -53,11 +52,10 @@ func _ready() -> void:
 
 func _on_resize() -> void:
 	var viewport_size := get_viewport_rect().size
-	# Fill the phone in landscape instead of preserving the tiny desktop-sized square.
-	var available := Vector2(max(640.0, viewport_size.x - 32.0), max(360.0, viewport_size.y - 94.0))
-	board_scale = Vector2(available.x / BOARD_H, available.y / BOARD_W)
-	var drawn_size := Vector2(BOARD_H * board_scale.x, BOARD_W * board_scale.y)
-	view_origin = Vector2((viewport_size.x - drawn_size.x) * 0.5, 82.0)
+	var available := Vector2(max(300.0, viewport_size.x - 32.0), max(220.0, viewport_size.y - 92.0))
+	board_scale = min(available.x / BOARD_H, available.y / BOARD_W)
+	var drawn_size := Vector2(BOARD_H, BOARD_W) * board_scale
+	view_origin = Vector2((viewport_size.x - drawn_size.x) * 0.5, 82.0 + max(0.0, (available.y - drawn_size.y) * 0.5))
 	queue_redraw()
 
 func new_game() -> void:
@@ -193,7 +191,7 @@ func _input(event: InputEvent) -> void:
 		pointer_move(event.position)
 
 func pointer_down(screen_pos: Vector2) -> void:
-	if Rect2(get_viewport_rect().size.x - 174.0, 13.0, 150.0, 52.0).has_point(screen_pos):
+	if Rect2(get_viewport_rect().size.x - 190.0, 24.0, 160.0, 54.0).has_point(screen_pos):
 		new_game(); return
 	if turn != 0 or any_ball_moving(): return
 	var board_pos := screen_to_board(screen_pos)
@@ -244,7 +242,7 @@ func any_ball_moving() -> bool:
 	return false
 
 func board_to_screen(p: Vector2) -> Vector2:
-	return view_origin + Vector2((BOARD_H - p.y) * board_scale.x, p.x * board_scale.y)
+	return view_origin + Vector2(BOARD_H - p.y, p.x) * board_scale
 
 func screen_to_board(p: Vector2) -> Vector2:
 	var local := (p - view_origin) / board_scale
@@ -254,14 +252,14 @@ func _draw() -> void:
 	var viewport_size := get_viewport_rect().size
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color("101a28"))
 	draw_rect(Rect2(0, 0, viewport_size.x, 78), Color("17263a"))
-	draw_string(ThemeDB.fallback_font, Vector2(24, 35), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_LEFT, -1, 25, Color("f6d365"))
-	draw_string(ThemeDB.fallback_font, Vector2(24, 65), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 240, 18, Color.WHITE)
-	var button_rect := Rect2(viewport_size.x - 174.0, 13.0, 150.0, 52.0)
+	draw_string(ThemeDB.fallback_font, Vector2(28, 42), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color("f6d365"))
+	draw_string(ThemeDB.fallback_font, Vector2(28, 75), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 260, 20, Color.WHITE)
+	var button_rect := Rect2(viewport_size.x - 190.0, 24.0, 160.0, 54.0)
 	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
 	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(29, 35), "משחק חדש", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 
 	# Rotate the authentic 207x208 board clockwise into landscape.
-	draw_set_transform(view_origin + Vector2(BOARD_H * board_scale.x, 0), PI / 2.0, Vector2(board_scale.y, board_scale.x))
+	draw_set_transform(view_origin + Vector2(BOARD_H * board_scale, 0), PI / 2.0, Vector2(board_scale, board_scale))
 	draw_texture(board_texture, Vector2.ZERO)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -270,23 +268,21 @@ func _draw() -> void:
 		if not ball.alive: continue
 		var sp := board_to_screen(ball.p)
 		var color := Color("ff5b55") if ball.team == 0 else Color("49a7ff")
-		var visual_radius: float = RADIUS * min(board_scale.x, board_scale.y) * 1.55
-		draw_circle(sp + Vector2(0, 4), visual_radius * 1.08, Color(0,0,0,0.38))
-		draw_circle(sp, visual_radius, color)
-		draw_circle(sp - Vector2(visual_radius * 0.28, visual_radius * 0.28), visual_radius * 0.30, Color(1,1,1,0.62))
+		draw_circle(sp + Vector2(0, 4), RADIUS * board_scale * 1.62, Color(0,0,0,0.38))
+		draw_circle(sp, RADIUS * board_scale * 1.52, color)
+		draw_circle(sp - Vector2(2,2) * board_scale, RADIUS * board_scale * 0.40, Color(1,1,1,0.62))
 		var texture := piece_textures[i % piece_textures.size()]
-		var size := Vector2.ONE * visual_radius * 1.7
+		var size := texture.get_size() * board_scale * 1.45
 		draw_texture_rect(texture, Rect2(sp - size * 0.5, size), false, Color(1,1,1,0.7))
 
 	for effect in active_effects:
 		var hole: int = effect.hole
 		var texture: Texture2D = effects[hole][effect.frame]
 		var pos := board_to_screen(HOLE_POSITIONS[hole] + EFFECT_OFFSETS[hole])
-		var pulse: float = 1.0 + sin(effect.elapsed / EFFECT_FRAME_TIME * PI) * 0.18
-		var effect_scale: float = min(board_scale.x, board_scale.y) * 1.8 * pulse
-		var size := texture.get_size() * effect_scale
-		draw_circle(pos, 34.0 * pulse, Color(1.0, 0.78, 0.20, 0.16))
-		draw_circle(pos, 25.0 * pulse, Color(1.0, 0.92, 0.45, 0.24), false, 5.0, true)
+		var pulse := 1.0 + sin(effect.elapsed / EFFECT_FRAME_TIME * PI) * 0.16
+		var size := texture.get_size() * board_scale * 1.8 * pulse
+		draw_circle(pos, 32.0 * pulse, Color(1.0, 0.78, 0.20, 0.16))
+		draw_circle(pos, 24.0 * pulse, Color(1.0, 0.92, 0.45, 0.28), false, 5.0, true)
 		draw_texture_rect(texture, Rect2(pos - size * 0.5, size), false, Color(1,1,1,0.96))
 
 	if dragging and selected >= 0:
