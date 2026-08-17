@@ -23,10 +23,12 @@ jobs:
       - name: Extract Godot project
         run: unzip -q Zoopaloola-Godot-Mobile.zip
 
-      - name: Apply faithful portrait board
+      - name: Apply approved remastered assets
         run: |
           cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
-          cp board-faithful-landscape.webp zoopaloola_godot_mobile/assets/board-faithful-landscape.webp
+          cp board-faithful-remastered.png zoopaloola_godot_mobile/assets/board-faithful-remastered.png
+          mkdir -p zoopaloola_godot_mobile/assets/remastered_effects
+          cp effect-*.png zoopaloola_godot_mobile/assets/remastered_effects/
 
       - name: Configure Android exporter
         run: |
