@@ -10,12 +10,9 @@ const SCORING_HOLE_CENTERS := [
 	Vector2(174, 30), Vector2(174, 104), Vector2(174, 177)
 ]
 const EFFECT_DURATION := 1.35
-const PORTAL_COLORS := [
-	Color("ff9f1c"), Color("ff4f87"), Color("9b5de5"),
-	Color("00d4ff"), Color("36d399"), Color("ffd166")
-]
-
+var board_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
+var effect_textures: Array[Texture2D] = []
 var balls: Array = []
 var active_effects: Array = []
 var contacts := {}
@@ -33,8 +30,13 @@ var ai_pending := false
 var ai_timer := 0.0
 
 func _ready() -> void:
+	board_texture = load("res://assets/board-faithful-remastered.png") as Texture2D
+	if board_texture == null:
+		push_error("Remastered board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
+	for i in 6:
+		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -268,9 +270,8 @@ func _draw() -> void:
 	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
 	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(29, 35), "NEW GAME", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 
-	# Native landscape board. The board, portals, balls, touch input and
-	# physics all share board_rect and SCORING_HOLE_CENTERS.
-	draw_modern_board()
+	# Approved faithful remaster, created natively in landscape.
+	draw_texture_rect(board_texture, board_rect, false)
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -295,86 +296,23 @@ func _draw() -> void:
 		var launch := start + (start - end).limit_length(150.0)
 		draw_line(start, launch, Color(1,1,1,0.7), 3.0, true)
 
-func draw_modern_board() -> void:
-	var shadow := board_rect.grow(-3.0)
-	shadow.position += Vector2(0, 8)
-	draw_style_box(make_box(Color(0, 0, 0, 0.42), board_rect.size.y * 0.15), shadow)
-	draw_style_box(make_box(Color("293746"), board_rect.size.y * 0.15), board_rect)
-	var rim := board_rect.grow(-board_rect.size.y * 0.035)
-	draw_style_box(make_box(Color("7d8d91"), board_rect.size.y * 0.12), rim)
-	var rim_light := rim.grow(-board_rect.size.y * 0.018)
-	draw_style_box(make_box(Color("b8c3bd"), board_rect.size.y * 0.10), rim_light)
-	var field := board_rect.grow(-board_rect.size.y * 0.105)
-	draw_style_box(make_box(Color("67b928"), board_rect.size.y * 0.075), field)
-	var inner := field.grow(-board_rect.size.y * 0.025)
-	draw_style_box(make_box(Color("5ca921"), board_rect.size.y * 0.055), inner)
-
-	# Subtle arena markings remain crisp at every resolution.
-	var line_color := Color(0.82, 1.0, 0.55, 0.18)
-	draw_style_box(make_outline_box(line_color, board_rect.size.y * 0.045, 3.0), inner.grow(-board_rect.size.y * 0.06))
-	var center := board_rect.get_center()
-	draw_arc(center, board_rect.size.y * 0.22, 0.0, TAU, 64, line_color, 3.0, true)
-	draw_line(center - Vector2(0, board_rect.size.y * 0.19), center + Vector2(0, board_rect.size.y * 0.19), line_color, 3.0, true)
-	draw_string(ThemeDB.fallback_font, center + Vector2(-board_rect.size.x * 0.12, 11), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, board_rect.size.x * 0.24, int(board_rect.size.y * 0.055), Color(0.85,1.0,0.6,0.24))
-
-	# The visible portal center is the exact physics scoring center.
-	for hole in SCORING_HOLE_CENTERS.size():
-		draw_portal(board_to_screen(SCORING_HOLE_CENTERS[hole]), hole)
-
-func draw_portal(center: Vector2, hole: int) -> void:
-	var radius := maxf(13.0, board_rect.size.y * 0.043)
-	var color: Color = PORTAL_COLORS[hole]
-	draw_circle(center + Vector2(0, 4), radius * 1.24, Color(0,0,0,0.35))
-	draw_circle(center, radius * 1.22, Color("26323d"))
-	draw_circle(center, radius, color.darkened(0.28))
-	draw_circle(center, radius * 0.67, Color("111923"))
-	draw_arc(center, radius * 0.84, -2.5, -0.25, 18, color.lightened(0.35), maxf(2.0, radius * 0.12), true)
-	# A different emblem for every hole; no shared or misplaced patch image.
-	match hole:
-		0: # fire
-			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius*0.48), center+Vector2(radius*0.35,radius*0.35), center, center+Vector2(0,radius*0.55), center+Vector2(-radius*0.35,radius*0.35)]), color)
-		1: # cross
-			draw_line(center-Vector2(radius*0.42,0), center+Vector2(radius*0.42,0), color, radius*0.22, true)
-			draw_line(center-Vector2(0,radius*0.42), center+Vector2(0,radius*0.42), color, radius*0.22, true)
-		2: # diamond
-			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-radius*0.48),center+Vector2(radius*0.48,0),center+Vector2(0,radius*0.48),center+Vector2(-radius*0.48,0)]), color)
-		3: # energy core
-			draw_circle(center, radius*0.34, color)
-			draw_arc(center, radius*0.48, 0, TAU, 20, Color.WHITE, 2.0, true)
-		4: # leaf
-			draw_colored_polygon(PackedVector2Array([center+Vector2(-radius*0.42,radius*0.28),center+Vector2(radius*0.42,-radius*0.38),center+Vector2(radius*0.25,radius*0.34)]), color)
-		5: # star
-			var points := PackedVector2Array()
-			for i in 10:
-				var r := radius * (0.48 if i % 2 == 0 else 0.22)
-				points.append(center + Vector2.UP.rotated(i * PI / 5.0) * r)
-			draw_colored_polygon(points, color)
-
 func draw_hole_effect(hole: int, progress: float) -> void:
 	var center := board_to_screen(SCORING_HOLE_CENTERS[hole])
-	var color: Color = PORTAL_COLORS[hole]
-	var fade := 1.0 - progress
-	var base := maxf(18.0, board_rect.size.y * 0.052)
-	# Transparent, centered particles and rings. Each hole gets its own motion.
-	for ring in 3:
-		var phase := fmod(progress * (1.5 + hole * 0.08) + ring * 0.24, 1.0)
-		var ring_color := Color(color.r, color.g, color.b, (1.0-phase) * fade * 0.8)
-		draw_arc(center, base * (0.8 + phase * 2.4), 0, TAU, 40, ring_color, maxf(2.0, base * 0.10), true)
-	var particles := 5 + hole
-	for i in particles:
-		var angle := i * TAU / particles + progress * (2.0 + hole * 0.35)
-		var distance := base * (0.5 + progress * (1.6 + (i % 3) * 0.25))
-		var particle := center + Vector2.RIGHT.rotated(angle) * distance
-		draw_circle(particle, base * 0.12 * fade + 1.0, Color(color.r,color.g,color.b,fade))
-
-func make_outline_box(color: Color, radius: float, width: float) -> StyleBoxFlat:
-	var box := make_box(Color(0,0,0,0), radius)
-	box.border_color = color
-	box.border_width_left = int(width)
-	box.border_width_top = int(width)
-	box.border_width_right = int(width)
-	box.border_width_bottom = int(width)
-	return box
+	var texture: Texture2D = effect_textures[hole]
+	if texture == null:
+		return
+	var appear := clampf(progress / 0.16, 0.0, 1.0)
+	var disappear := clampf((1.0 - progress) / 0.22, 0.0, 1.0)
+	var alpha := minf(appear, disappear)
+	var pulse := 0.82 + sin(progress * PI) * 0.28
+	var max_size := board_rect.size.y * (0.31 if hole in [0, 3, 4] else 0.24)
+	var source_size := texture.get_size()
+	var scale_factor := max_size / maxf(source_size.x, source_size.y) * pulse
+	var size := source_size * scale_factor
+	var rotation := sin(progress * TAU * 1.4) * 0.035
+	draw_set_transform(center, rotation, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1,1,1,alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
