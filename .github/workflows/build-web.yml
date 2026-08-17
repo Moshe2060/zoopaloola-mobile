@@ -72,6 +72,12 @@ jobs:
           progressive_web_app/enabled=false
           EOF
 
+      - name: Configure Web export templates
+        run: |
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.stable"
+          cp -R /root/.local/share/godot/export_templates/4.4.stable/. "$HOME/.local/share/godot/export_templates/4.4.stable/"
+          test -s "$HOME/.local/share/godot/export_templates/4.4.stable/web_nothreads_release.zip"
+
       - name: Import and validate project
         working-directory: zoopaloola_godot_mobile
         run: |
