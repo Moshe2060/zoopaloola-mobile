@@ -184,14 +184,20 @@ func resolve_collision(a_index: int, b_index: int) -> void:
 func score_ball(index: int, hole: int) -> void:
 	balls[index].alive = false
 	balls[index].v = Vector2.ZERO
-	active_effects.append({"hole":hole, "age":0.0})
+	active_effects.append({"hole":hole, "elapsed":0.0, "frame":0, "loops":0})
 	status = "Ball scored!"
 
 func update_effects(delta: float) -> void:
 	for effect in active_effects:
-		effect.age += delta
+		effect.elapsed += delta
+		if effect.elapsed >= EFFECT_FRAME_TIME:
+			effect.elapsed -= EFFECT_FRAME_TIME
+			effect.frame += 1
+			if effect.frame >= effects[effect.hole].size():
+				effect.frame = 0
+				effect.loops += 1
 	for i in range(active_effects.size() - 1, -1, -1):
-		if float(active_effects[i].age) >= EFFECT_DURATION:
+		if active_effects[i].loops >= EFFECT_LOOPS[active_effects[i].hole]:
 			active_effects.remove_at(i)
 
 func _input(event: InputEvent) -> void:
@@ -304,20 +310,23 @@ func _draw() -> void:
 		var size := texture.get_size() * board_scale * 1.45
 		draw_texture_rect(texture, Rect2(sp - size * 0.5, size), false, Color(1,1,1,0.7))
 
-	# Clear scoring burst at the exact physics gate.
+	# Each legacy effect frame is a board patch, not a centered sprite.
+	# Apply the exact original-board-to-landscape affine transform so the
+	# patch background and its unique animation align with the board image.
 	for effect in active_effects:
 		var hole: int = effect.hole
-		var t: float = clampf(float(effect.age) / EFFECT_DURATION, 0.0, 1.0)
-		var pos := board_to_screen(SCORING_HOLE_CENTERS[hole])
-		var ring_radius: float = lerpf(7.0, 27.0, t) * board_scale
-		var alpha: float = 1.0 - t
-		draw_circle(pos, ring_radius, Color(1.0, 0.82, 0.10, 0.85 * alpha), false, maxf(4.0, board_scale * 1.8), true)
-		draw_circle(pos, maxf(6.0, ring_radius * 0.52), Color(1.0, 0.28, 0.05, 0.72 * alpha), false, maxf(3.0, board_scale * 1.3), true)
-		for ray in 8:
-			var angle := float(ray) * TAU / 8.0
-			var inner := pos + Vector2.from_angle(angle) * ring_radius * 0.62
-			var outer := pos + Vector2.from_angle(angle) * ring_radius * 1.18
-			draw_line(inner, outer, Color(1.0, 0.92, 0.35, alpha), maxf(3.0, board_scale), true)
+		var texture: Texture2D = effects[hole][effect.frame]
+		var patch_scale := Vector2(
+			board_rect.size.y / BOARD_W,
+			board_rect.size.x / BOARD_H
+		)
+		draw_set_transform(
+			board_rect.position + Vector2(board_rect.size.x, 0.0),
+			PI / 2.0,
+			patch_scale
+		)
+		draw_texture(texture, HOLE_POSITIONS[hole] + EFFECT_OFFSETS[hole])
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	if dragging and selected >= 0:
 		var start := board_to_screen(balls[selected].p)
