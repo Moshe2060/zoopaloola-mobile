@@ -48,6 +48,41 @@ jobs:
         run: |
           sed -i 's|gradle_build/use_gradle_build=true|gradle_build/use_gradle_build=false|' export_presets.cfg
           sed -i '/gradle_build.min_sdk=/d; /gradle_build.target_sdk=/d' export_presets.cfg
+          grep -q '^textures/vram_compression/import_etc2_astc=true          echo "Installed Android platforms:"
+          find "${ANDROID_HOME:-/usr/lib/android-sdk}/platforms" -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | sort
+          echo "Installed Android build tools:"
+          find "${ANDROID_HOME:-/usr/lib/android-sdk}/build-tools" -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | sort
+          echo "Effective Android preset values:"
+          grep -E 'gradle_build/(use_gradle_build|min_sdk|target_sdk)' export_presets.cfg || true
+
+      - name: Import project assets
+        working-directory: zoopaloola_godot_mobile
+        run: godot --headless --editor --path . --quit-after 20
+
+      - name: Validate game scene
+        working-directory: zoopaloola_godot_mobile
+        run: godot --headless --path . --quit-after 1
+
+      - name: Build debug APK
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          mkdir -p build
+          if ! godot --headless --verbose --path . --export-debug "Android" build/Zoopaloola-debug.apk; then
+            echo "Initial export failed; retrying after the filesystem scan settles..."
+            sleep 3
+            godot --headless --verbose --path . --export-debug "Android" build/Zoopaloola-debug.apk
+          fi
+          test -s build/Zoopaloola-debug.apk
+          ls -lh build/Zoopaloola-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zoopaloola-Android-APK
+          path: zoopaloola_godot_mobile/build/Zoopaloola-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+ project.godot || sed -i '/^\[rendering\]$/a textures/vram_compression/import_etc2_astc=true' project.godot
           echo "Installed Android platforms:"
           find "${ANDROID_HOME:-/usr/lib/android-sdk}/platforms" -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | sort
           echo "Installed Android build tools:"
