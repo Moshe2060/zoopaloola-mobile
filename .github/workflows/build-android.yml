@@ -42,6 +42,10 @@ jobs:
         working-directory: zoopaloola_godot_mobile
         run: godot --headless --editor --path . --quit-after 8
 
+      - name: Validate game scene
+        working-directory: zoopaloola_godot_mobile
+        run: godot --headless --path . --quit-after 1
+
       - name: Build debug APK
         working-directory: zoopaloola_godot_mobile
         run: |
