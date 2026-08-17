@@ -1,5 +1,5 @@
 name: Build Android APK
-# Modern landscape board integration v2
+# Faithful transparent portrait board
 
 on:
   workflow_dispatch:
@@ -23,10 +23,10 @@ jobs:
       - name: Extract Godot project
         run: unzip -q Zoopaloola-Godot-Mobile.zip
 
-      - name: Apply approved landscape board
+      - name: Apply faithful portrait board
         run: |
           cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
-          cp board-modern.webp zoopaloola_godot_mobile/assets/board-modern.webp
+          cp board-faithful-hd.png zoopaloola_godot_mobile/assets/board-faithful-hd.png
 
       - name: Configure Android exporter
         run: |
