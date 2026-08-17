@@ -68,7 +68,13 @@ jobs:
 
       - name: Validate game scene
         working-directory: zoopaloola_godot_mobile
-        run: godot --headless --path . --quit-after 1
+        run: |
+          godot --headless --path . --quit-after 3 > /tmp/godot-validation.log 2>&1
+          cat /tmp/godot-validation.log
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script' /tmp/godot-validation.log; then
+            echo "Godot script validation failed."
+            exit 1
+          fi
 
       - name: Build debug APK
         working-directory: zoopaloola_godot_mobile
