@@ -46,7 +46,7 @@ jobs:
         working-directory: zoopaloola_godot_mobile
         run: |
           mkdir -p build
-          godot --headless --path . --export-debug "Android" build/Zoopaloola-debug.apk
+          godot --headless --verbose --path . --export-debug "Android" build/Zoopaloola-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
