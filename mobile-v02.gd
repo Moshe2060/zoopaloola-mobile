@@ -39,7 +39,10 @@ var ai_pending := false
 var ai_timer := 0.0
 
 func _ready() -> void:
-	board_texture = load("res://assets/board-modern.webp")
+	board_texture = load("res://assets/board-modern.webp") as Texture2D
+	if board_texture == null:
+		push_error("Modern board texture could not be loaded; using original board.")
+		board_texture = load("res://assets/board.png") as Texture2D
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
 	for sequence in EFFECT_PATHS:
@@ -52,11 +55,11 @@ func _ready() -> void:
 	_on_resize()
 
 func _on_resize() -> void:
-	var viewport_size := get_viewport_rect().size
-	var available := Vector2(max(300.0, viewport_size.x - 24.0), max(220.0, viewport_size.y - 88.0))
-	var texture_size := board_texture.get_size()
-	var fit_scale := min(available.x / texture_size.x, available.y / texture_size.y)
-	var drawn_size := texture_size * fit_scale
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var available := Vector2(maxf(300.0, viewport_size.x - 24.0), maxf(220.0, viewport_size.y - 88.0))
+	var texture_size: Vector2 = board_texture.get_size()
+	var fit_scale: float = minf(available.x / texture_size.x, available.y / texture_size.y)
+	var drawn_size: Vector2 = texture_size * fit_scale
 	view_origin = Vector2((viewport_size.x - drawn_size.x) * 0.5, 82.0 + max(0.0, (available.y - drawn_size.y) * 0.5))
 	board_rect = Rect2(view_origin, drawn_size)
 	board_scale = min(board_rect.size.x / BOARD_W, board_rect.size.y / BOARD_H)
@@ -282,7 +285,7 @@ func _draw() -> void:
 		var texture: Texture2D = effects[hole][effect.frame]
 		# Effect frames are board patches, not centered sprites. Draw each patch
 		# at its original top-left board coordinate using the board transform.
-		var effect_scale := Vector2(board_rect.size.x / BOARD_W, board_rect.size.y / BOARD_H)
+		var effect_scale: Vector2 = Vector2(board_rect.size.x / BOARD_W, board_rect.size.y / BOARD_H)
 		draw_set_transform(board_rect.position, 0.0, effect_scale)
 		draw_texture(texture, HOLE_POSITIONS[hole])
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
