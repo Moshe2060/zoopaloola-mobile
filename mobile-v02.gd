@@ -15,12 +15,14 @@ const PRESS_TRAP_HOLE := 1
 const ICE_TRAP_HOLE := 4
 const FIRE_TRAP_HOLE := 5
 const ELECTRIC_TRAP_HOLE := 2
+const HAMMER_TRAP_HOLE := 3
 const TRAP_CAPTURE_TIME := 2.35
 const TRAP_FALL_TIME := 2.85
 const PRESS_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const ICE_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const FIRE_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const ELECTRIC_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
+const HAMMER_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const RUBBER_CAPTURE_TIME := TRAP_CAPTURE_TIME
 const RUBBER_FALL_TIME := TRAP_FALL_TIME
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
@@ -225,6 +227,8 @@ func update_effects(delta: float) -> void:
 			duration = FIRE_EFFECT_DURATION
 		elif active_effects[i].hole == ELECTRIC_TRAP_HOLE:
 			duration = ELECTRIC_EFFECT_DURATION
+		elif active_effects[i].hole == HAMMER_TRAP_HOLE:
+			duration = HAMMER_EFFECT_DURATION
 		if active_effects[i].elapsed >= duration:
 			active_effects.remove_at(i)
 
@@ -345,6 +349,8 @@ func _draw() -> void:
 			draw_fire_trap(effect)
 		elif effect.hole == ELECTRIC_TRAP_HOLE:
 			draw_electric_trap(effect)
+		elif effect.hole == HAMMER_TRAP_HOLE:
+			draw_hammer_trap(effect)
 		else:
 			draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
 
@@ -458,6 +464,83 @@ func draw_press_trap(effect: Dictionary) -> void:
 		draw_press_rod(695.0, cy, right_tip, false, squeeze)
 	var radius_screen := radius * board_rect.size.y / 600.0
 	draw_press_ball(press_point(cx, ball_y), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
+
+func hammer_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func hammer_strike_amount(seconds: float, offset: float) -> float:
+	var local := fmod(maxf(0.0, seconds - offset), 0.72) / 0.72
+	if seconds < offset:
+		return 0.0
+	if local < 0.34:
+		return smooth_step(local / 0.34)
+	return 1.0 - smooth_step((local - 0.34) / 0.66)
+
+func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, amount: float, scale_y: float) -> void:
+	if amount <= 0.01:
+		return
+	var direction := hit_point - anchor
+	var tip := anchor.lerp(hit_point, amount)
+	var angle := direction.angle()
+	var handle_end := tip - direction.normalized() * 12.0 * scale_y
+	draw_line(anchor, handle_end, Color("38464d"), 12.0 * scale_y, true)
+	draw_line(anchor, handle_end, Color("a8b2b5"), 5.0 * scale_y, true)
+	var head_size := Vector2(42.0, 24.0) * scale_y
+	draw_set_transform(tip, angle, Vector2.ONE)
+	draw_style_box(make_box(Color("d96513"), 5.0 * scale_y), Rect2(-head_size * 0.5, head_size))
+	draw_rect(Rect2(Vector2(-head_size.x * 0.34, -head_size.y * 0.36), Vector2(head_size.x * 0.68, head_size.y * 0.24)), Color("ffab32"))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_hammer_trap(effect: Dictionary) -> void:
+	var seconds: float = effect.elapsed
+	var scale_y := board_rect.size.y / 600.0
+	var right_weapon := hammer_point(1128.0, 455.0)
+	var bottom_weapon := hammer_point(1010.0, 565.0)
+	var hit_point := hammer_point(1072.0, 522.0)
+	var radius := 27.0 * scale_y
+	var hammering := 1.0 - smooth_step((seconds - 1.82) / 0.30)
+	var right_amount := hammer_strike_amount(seconds, 0.04) * hammering
+	var bottom_amount := hammer_strike_amount(seconds, 0.39) * hammering
+	var impact := maxf(
+		smooth_step((right_amount - 0.74) / 0.24),
+		smooth_step((bottom_amount - 0.74) / 0.24)
+	)
+	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
+	var center := hit_point
+	var ball_radius := radius
+	var alpha := 1.0
+	if release > 0.0:
+		var fall := release * release
+		center = hit_point.lerp(hammer_point(1198.0, 598.0), fall)
+		center.y -= sin(release * PI) * 5.0 * scale_y
+		ball_radius *= 1.0 - release * 0.32
+		alpha = 1.0 - release * 0.10
+
+	if release <= 0.0:
+		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.48, 0.0), right_amount, scale_y)
+		draw_trap_hammer(bottom_weapon, hit_point + Vector2(0.0, radius * 0.48), bottom_amount, scale_y)
+
+	var squash_x := 1.0
+	var squash_y := 1.0
+	var ball_rotation := 0.0
+	if release <= 0.0 and impact > 0.01:
+		if right_amount >= bottom_amount:
+			squash_x = lerpf(1.0, 0.68, impact)
+			squash_y = lerpf(1.0, 1.18, impact)
+			ball_rotation = -0.08 * impact
+		else:
+			squash_x = lerpf(1.0, 1.18, impact)
+			squash_y = lerpf(1.0, 0.68, impact)
+			ball_rotation = 0.08 * impact
+	draw_press_ball(center, ball_radius, squash_x, squash_y, ball_rotation, effect.team, effect.piece, alpha)
+
+	if impact > 0.05 and release <= 0.0:
+		draw_circle(center, ball_radius * (1.32 + impact * 0.18), Color(1.0, 0.77, 0.25, 0.28 * impact), false, maxf(2.0, 4.0 * scale_y))
+		for i in 6:
+			var a := TAU * float(i) / 6.0
+			var p1 := center + Vector2(cos(a), sin(a)) * ball_radius * 1.10
+			var p2 := center + Vector2(cos(a), sin(a)) * ball_radius * (1.35 + impact * 0.28)
+			draw_line(p1, p2, Color(1.0, 0.90, 0.50, 0.82 * impact), maxf(1.0, 2.0 * scale_y), true)
 
 func electric_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
