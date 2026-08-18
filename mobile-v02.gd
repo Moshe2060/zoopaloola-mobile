@@ -340,7 +340,9 @@ func draw_hole_effect(hole: int, progress: float) -> void:
 	var scale_factor := max_size / maxf(source_size.x, source_size.y) * pulse
 	var size := source_size * scale_factor
 	var rotation := sin(progress * TAU * 1.4) * 0.035
-	draw_set_transform(center, rotation, Vector2.ONE)
+	# Hole 2 received the trap from the opposite side, so mirror its artwork.
+	var effect_scale := Vector2(-1.0, 1.0) if hole == 2 else Vector2.ONE
+	draw_set_transform(center, rotation, effect_scale)
 	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1,1,1,alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
