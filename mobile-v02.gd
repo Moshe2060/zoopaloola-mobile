@@ -486,57 +486,50 @@ func draw_electric_probe(anchor: Vector2, tip: Vector2, power: float, scale_y: f
 func draw_electric_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	# Keep the probe horizontal and attached to the right-side electric weapon.
-	var weapon := electric_point(1162.0, 108.0)
-	var shock_point := electric_point(1072.0, 108.0)
+	# The two fixed weapons surrounding the upper-right opening.
+	var top_weapon := electric_point(965.0, 63.0)
+	var right_weapon := electric_point(1125.0, 145.0)
+	var shock_point := electric_point(1072.0, 104.0)
 	var radius := 27.0 * scale_y
-	var extend := smooth_step(seconds / 0.68)
+	var charge := smooth_step(seconds / 0.62)
+	var charge_fade := 1.0 - smooth_step((seconds - 1.55) / 0.36)
+	var beam_power := charge * charge_fade
+	var electrified := smooth_step((seconds - 0.18) / 0.68)
 	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
-	var retract := smooth_step((seconds - 4.38) / 0.64)
-	var probe_amount := extend * (1.0 - retract)
-	var probe_tip := weapon.lerp(shock_point + Vector2(radius * 0.76, 0.0), probe_amount)
-	if probe_amount > 0.01:
-		draw_electric_probe(weapon, probe_tip, extend, scale_y)
-
-	var shock_in := smooth_step((seconds - 0.30) / 0.55)
-	var shock_out := 1.0 - smooth_step((seconds - 2.12) / 0.23)
-	var shock_alpha := shock_in * shock_out
-	var ball_center := shock_point
+	var center := shock_point
 	var ball_radius := radius
-	var ball_alpha := 1.0
+	var alpha := 1.0
 
 	if release > 0.0:
-		# The shocked ball exits through its own upper-right opening. Do not
-		# create a second ball or launch it across the play field.
+		# Fall out through the nearby upper-right opening while remaining charged.
 		var fall := release * release
-		ball_center += Vector2(118.0, -108.0) * scale_y * fall
-		ball_center.y += sin(release * PI) * 8.0 * scale_y
+		center = shock_point.lerp(electric_point(1198.0, 22.0), fall)
+		center.y -= sin(release * PI) * 7.0 * scale_y
 		ball_radius *= 1.0 - release * 0.34
-		ball_alpha = 1.0 - release * 0.12
-		if release < 0.82:
-			for i in 3:
-				var trail_start := shock_point + Vector2(5.0, (-10.0 + float(i) * 10.0)) * scale_y
-				var trail_end := ball_center.lerp(shock_point, 0.12 + float(i) * 0.12)
-				draw_electric_arc(trail_start, trail_end, seconds + float(i), (1.0 - release) * (0.82 - float(i) * 0.16), maxf(1.2, 2.0 * scale_y))
+		alpha = 1.0 - release * 0.10
 
-	draw_rubber_game_ball(ball_center, ball_radius, effect.team, effect.piece, ball_alpha)
-
-	if shock_alpha > 0.01 and release <= 0.0:
-		# Three broad discharge branches reproduce the original pale energy
-		# spreading leftward while the ball remains fixed at the probe.
-		var branch_targets := [
-			shock_point + Vector2(-305.0, -72.0) * scale_y,
-			shock_point + Vector2(-365.0, 0.0) * scale_y,
-			shock_point + Vector2(-292.0, 76.0) * scale_y
-		]
+	# Both weapons fire only short local bolts directly into the ball.
+	if beam_power > 0.01 and release <= 0.0:
 		for i in 3:
-			draw_electric_arc(shock_point - Vector2(radius * 0.65, 0.0), branch_targets[i], seconds * (1.0 + float(i) * 0.13), shock_alpha * (0.58 - float(i) * 0.08), maxf(2.0, 3.2 * scale_y))
-		draw_circle(shock_point, radius * (1.26 + sin(seconds * 20.0) * 0.06), Color(0.78, 0.96, 1.0, 0.18 * shock_alpha))
-		for i in 5:
-			var a := TAU * float(i) / 5.0 + seconds * 2.0
-			var inner := shock_point + Vector2(cos(a), sin(a)) * radius * 0.78
-			var outer := shock_point + Vector2(cos(a + 0.13), sin(a + 0.13)) * radius * 1.30
-			draw_electric_arc(inner, outer, seconds + float(i), shock_alpha * 0.72, maxf(1.0, 1.6 * scale_y))
+			draw_electric_arc(top_weapon, shock_point + Vector2((-8.0 + i * 8.0), -radius * 0.45) , seconds * 1.7 + float(i) * 0.33, beam_power * (0.82 - float(i) * 0.16), maxf(1.2, (3.0 - float(i) * 0.55) * scale_y))
+			draw_electric_arc(right_weapon, shock_point + Vector2(radius * 0.46, (-8.0 + i * 8.0)), seconds * 1.9 + float(i) * 0.41, beam_power * (0.82 - float(i) * 0.16), maxf(1.2, (3.0 - float(i) * 0.55) * scale_y))
+
+	# Keep the real character ball visible under the electric glow.
+	var shake := Vector2.ZERO
+	if electrified > 0.05 and release <= 0.0:
+		shake = Vector2(sin(seconds * 43.0), cos(seconds * 37.0)) * 2.5 * scale_y * electrified
+	draw_rubber_game_ball(center + shake, ball_radius, effect.team, effect.piece, alpha)
+
+	# Compact lightning remains wrapped around the ball, including during its fall.
+	var local_power := electrified * (1.0 - release * 0.18)
+	if local_power > 0.01:
+		draw_circle(center + shake, ball_radius * (1.30 + sin(seconds * 24.0) * 0.07), Color(0.58, 0.90, 1.0, 0.20 * local_power * alpha))
+		for i in 8:
+			var a := TAU * float(i) / 8.0 + seconds * (2.1 + float(i % 3) * 0.2)
+			var inner := center + shake + Vector2(cos(a), sin(a)) * ball_radius * 0.72
+			var outer_angle := a + sin(seconds * 17.0 + float(i)) * 0.28
+			var outer := center + shake + Vector2(cos(outer_angle), sin(outer_angle)) * ball_radius * (1.22 + 0.18 * sin(seconds * 21.0 + float(i)))
+			draw_electric_arc(inner, outer, seconds * 1.4 + float(i), local_power * alpha * 0.82, maxf(1.0, 1.7 * scale_y))
 
 
 func fire_point(x: float, y: float) -> Vector2:
