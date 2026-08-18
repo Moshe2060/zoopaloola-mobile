@@ -378,10 +378,13 @@ func draw_press_trap(effect: Dictionary) -> void:
 	var rx_scale := 1.0
 	var ry_scale := 1.0
 	var rotation := 0.0
-	var alpha := 1.0
+	# Do not show a duplicate effect ball while the pistons approach. It appears
+	# only at the fixed crushing point, eliminating any perceived pull from the grass.
+	var alpha := 0.0
 	var extend := 0.0
 	var retract := 0.0
 	extend = smooth_step(seconds / 0.78)
+	alpha = smooth_step((extend - 0.52) / 0.12)
 	if seconds >= 1.17:
 		retract = smooth_step((seconds - 1.17) / 0.62)
 	var squeeze := clampf((extend - 0.57) / 0.43, 0.0, 1.0)
