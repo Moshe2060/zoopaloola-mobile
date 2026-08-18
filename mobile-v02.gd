@@ -477,7 +477,9 @@ func draw_ice_shell(center: Vector2, radius: float, amount: float, alpha: float 
 		var jag := 1.0 + (0.10 if i % 2 == 0 else -0.04) * amount
 		points.append(center + Vector2(cos(angle), sin(angle)) * shell_radius * jag)
 	draw_colored_polygon(points, Color(0.64, 0.91, 1.0, (0.18 + amount * 0.46) * alpha))
-	draw_polyline(PackedVector2Array(Array(points) + [points[0]]), Color(0.88, 0.98, 1.0, 0.92 * alpha), maxf(2.0, radius * 0.09), true)
+	var outline := points.duplicate()
+	outline.append(points[0])
+	draw_polyline(outline, Color(0.88, 0.98, 1.0, 0.92 * alpha), maxf(2.0, radius * 0.09), true)
 	for i in 7:
 		var a := float(i) * 2.21 + amount
 		var inner := center + Vector2(cos(a), sin(a)) * shell_radius * 0.28
