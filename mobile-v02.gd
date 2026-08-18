@@ -70,11 +70,13 @@ func _on_resize() -> void:
 	# coordinate uses this same rectangle, so stretching cannot misalign holes.
 	# Let the board extend slightly beyond the top and bottom edges. This keeps
 	# its real 2:1 proportions while making it fill modern wide phone screens.
-	var oversized_height := viewport_size.y * 1.08
-	var play_position := Vector2(4.0, -viewport_size.y * 0.04)
+	# Keep a small safe margin around the board so edge weapons remain visible
+	# and touchable on phones with browser/system controls.
+	var safe_margin := Vector2(22.0, 18.0)
+	var play_position := safe_margin
 	var available := Vector2(
-		maxf(300.0, viewport_size.x - 8.0),
-		maxf(220.0, oversized_height)
+		maxf(300.0, viewport_size.x - safe_margin.x * 2.0),
+		maxf(220.0, viewport_size.y - safe_margin.y * 2.0)
 	)
 	# Match the clean original board exactly (1829 x 860).
 	var target_aspect := 1829.0 / 860.0
@@ -530,12 +532,13 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func editor_panel_rect(viewport_size: Vector2) -> Rect2:
-	return Rect2(12.0, viewport_size.y - 154.0, minf(860.0, viewport_size.x - 24.0), 142.0)
+	# Keep controls below the HUD and away from browser/Android edge controls.
+	return Rect2(12.0, 62.0, minf(980.0, viewport_size.x - 24.0), 150.0)
 
 func editor_button(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := editor_panel_rect(viewport_size)
 	var button_w := (panel.size.x - 22.0) / 11.0
-	return Rect2(panel.position + Vector2(6.0 + index * button_w, 70.0), Vector2(button_w - 4.0, 58.0))
+	return Rect2(panel.position + Vector2(6.0 + index * button_w, 82.0), Vector2(button_w - 4.0, 56.0))
 
 func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 	var viewport_size := get_viewport_rect().size
@@ -621,7 +624,8 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(285, 37), "RUBBER HAND EDITOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("f6d365"))
 	var selected_name := "TOP HAND" if editor_selected_hand == 0 else "SIDE HAND"
 	var values := editor_settings_text()
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(285, 58), selected_name + "  |  " + values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 295, 12, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(285, 58), selected_name, HORIZONTAL_ALIGNMENT_LEFT, 150, 15, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(440, 58), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 450, 11, Color("dbe7f3"))
 	draw_editor_button(Rect2(panel.position + Vector2(6, 8), Vector2(112, 46)), "REPLAY")
 	draw_editor_button(Rect2(panel.position + Vector2(126, 8), Vector2(142, 46)), "COPY SETTINGS")
 	var labels := ["TOP", "SIDE", "LEFT", "RIGHT", "UP", "DOWN", "SIZE-", "SIZE+", "ROT-", "ROT+", "MIRROR"]
