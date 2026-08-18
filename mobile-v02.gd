@@ -54,10 +54,13 @@ func _on_resize() -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
 	# Fill almost the entire landscape play area. Every visual and physics
 	# coordinate uses this same rectangle, so stretching cannot misalign holes.
-	var play_position := Vector2(6.0, 64.0)
+	# Let the board extend slightly beyond the top and bottom edges. This keeps
+	# its real 2:1 proportions while making it fill modern wide phone screens.
+	var oversized_height := viewport_size.y * 1.08
+	var play_position := Vector2(4.0, -viewport_size.y * 0.04)
 	var available := Vector2(
-		maxf(300.0, viewport_size.x - 12.0),
-		maxf(220.0, viewport_size.y - 70.0)
+		maxf(300.0, viewport_size.x - 8.0),
+		maxf(220.0, oversized_height)
 	)
 	# Match the approved board texture exactly (1774 x 887 = 2:1).
 	var target_aspect := 2.0
@@ -204,7 +207,7 @@ func _input(event: InputEvent) -> void:
 		pointer_move(event.position)
 
 func pointer_down(screen_pos: Vector2) -> void:
-	if Rect2(get_viewport_rect().size.x - 174.0, 10.0, 150.0, 44.0).has_point(screen_pos):
+	if Rect2(get_viewport_rect().size.x - 174.0, 6.0, 150.0, 42.0).has_point(screen_pos):
 		new_game(); return
 	if turn != 0 or any_ball_moving(): return
 	var board_pos := screen_to_board(screen_pos)
@@ -275,13 +278,6 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.44), "ROTATE YOUR PHONE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color("f6d365"))
 		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.50), "Zoopaloola is designed for landscape mode", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color.WHITE)
 		return
-	draw_rect(Rect2(0, 0, viewport_size.x, 62), Color("17263a"))
-	draw_string(ThemeDB.fallback_font, Vector2(20, 35), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_LEFT, -1, 25, Color("f6d365"))
-	draw_string(ThemeDB.fallback_font, Vector2(210, 36), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 410, 17, Color.WHITE)
-	var button_rect := Rect2(viewport_size.x - 174.0, 10.0, 150.0, 44.0)
-	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
-	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(25, 29), "NEW GAME", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
-
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
 
@@ -300,6 +296,11 @@ func _draw() -> void:
 	for effect in active_effects:
 		if effect.hole == RUBBER_TRAP_HOLE:
 			draw_rubber_trap(effect)
+		elif effect.hole == 1:
+			# The legacy top-middle image contains the machine itself and draws a
+			# stretched duplicate over the board. Hide it until its real animation
+			# is rebuilt from separate moving parts.
+			pass
 		else:
 			draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
 
@@ -310,6 +311,17 @@ func _draw() -> void:
 		draw_circle(end, 10.0, Color("f6d365"), false, 3.0)
 		var launch := start + (start - end).limit_length(150.0)
 		draw_line(start, launch, Color(1,1,1,0.7), 3.0, true)
+
+	draw_hud(viewport_size)
+
+func draw_hud(viewport_size: Vector2) -> void:
+	# Overlay the compact HUD so it no longer reserves valuable board height.
+	draw_rect(Rect2(0, 0, viewport_size.x, 54), Color(0.09, 0.15, 0.23, 0.78))
+	draw_string(ThemeDB.fallback_font, Vector2(18, 33), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color("f6d365"))
+	draw_string(ThemeDB.fallback_font, Vector2(200, 34), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 390, 17, Color.WHITE)
+	var button_rect := Rect2(viewport_size.x - 174.0, 6.0, 150.0, 42.0)
+	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
+	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(25, 28), "NEW GAME", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
 
 func draw_hole_effect(hole: int, progress: float) -> void:
 	var center := board_to_screen(SCORING_HOLE_CENTERS[hole])
