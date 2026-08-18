@@ -36,6 +36,9 @@ var rubber_top_rotation := 0.0
 var rubber_side_rotation := 0.0
 var rubber_top_mirror := false
 var rubber_side_mirror := false
+# Mobile browsers may emit a synthetic mouse click after every touch.
+# Once real touch input is seen, ignore those duplicate mouse events.
+var touchscreen_input_seen := false
 
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
@@ -216,14 +219,16 @@ func _input(event: InputEvent) -> void:
 	if get_viewport_rect().size.y > get_viewport_rect().size.x:
 		return
 	if event is InputEventScreenTouch:
+		touchscreen_input_seen = true
 		if event.pressed: pointer_down(event.position)
 		else: pointer_up(event.position)
 	elif event is InputEventScreenDrag:
+		touchscreen_input_seen = true
 		pointer_move(event.position)
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not touchscreen_input_seen:
 		if event.pressed: pointer_down(event.position)
 		else: pointer_up(event.position)
-	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+	elif event is InputEventMouseMotion and not touchscreen_input_seen and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		pointer_move(event.position)
 
 func pointer_down(screen_pos: Vector2) -> void:
