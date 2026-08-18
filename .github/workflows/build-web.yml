@@ -31,7 +31,7 @@ jobs:
           apt-get update -qq
           apt-get install -y -qq curl
           cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
-          curl -fsSL https://zoopaloola-v4-playtest.osadon2070.chatgpt.site/playtest/reference-board-clean-v1.png -o zoopaloola_godot_mobile/assets/board-original-clean.png
+          curl -fsSL https://zoopaloola-v4-playtest.osadon2070.chatgpt.site/playtest/reference-board-clean-cropped-v1.png -o zoopaloola_godot_mobile/assets/board-original-clean.png
           mkdir -p zoopaloola_godot_mobile/assets/remastered_effects
           cp effect-*.png zoopaloola_godot_mobile/assets/remastered_effects/
           mkdir -p zoopaloola_godot_mobile/assets/rubber_trap/hands
