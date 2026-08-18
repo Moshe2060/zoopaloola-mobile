@@ -369,7 +369,7 @@ func draw_press_ball(center: Vector2, radius: float, rx_scale: float, ry_scale: 
 
 func draw_press_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
-	var cx := 608.0
+	var cx := 621.0
 	var cy := 55.0
 	var radius := 26.0
 	var ball_y := lerpf(148.0, cy, smooth_step(seconds / 0.62))
@@ -386,8 +386,8 @@ func draw_press_trap(effect: Dictionary) -> void:
 	var squeeze := clampf((extend - 0.57) / 0.43, 0.0, 1.0)
 	var arm_amount := extend * (1.0 - retract)
 	var compressed_rx := lerpf(radius, radius * 0.16, squeeze)
-	var left_tip := lerpf(561.0, cx - compressed_rx - 9.0, arm_amount)
-	var right_tip := lerpf(655.0, cx + compressed_rx + 9.0, arm_amount)
+	var left_tip := lerpf(546.0, cx - compressed_rx - 9.0, arm_amount)
+	var right_tip := lerpf(695.0, cx + compressed_rx + 9.0, arm_amount)
 	if seconds >= 0.62:
 		ball_y = cy
 		rx_scale = lerpf(1.0, 0.16, squeeze)
@@ -405,8 +405,8 @@ func draw_press_trap(effect: Dictionary) -> void:
 		rx_scale *= shrink
 		ry_scale *= shrink
 	if arm_amount > 0.01:
-		draw_press_rod(561.0, cy, left_tip, true, squeeze)
-		draw_press_rod(655.0, cy, right_tip, false, squeeze)
+		draw_press_rod(546.0, cy, left_tip, true, squeeze)
+		draw_press_rod(695.0, cy, right_tip, false, squeeze)
 	var radius_screen := radius * board_rect.size.y / 600.0
 	draw_press_ball(press_point(cx, ball_y), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
 
