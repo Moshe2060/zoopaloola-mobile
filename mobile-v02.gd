@@ -372,7 +372,9 @@ func draw_press_trap(effect: Dictionary) -> void:
 	var cx := 621.0
 	var cy := 55.0
 	var radius := 26.0
-	var ball_y := lerpf(148.0, cy, smooth_step(seconds / 0.62))
+	# The physics ball has already crossed the scoring boundary. Start the
+	# animated press ball directly in the opening; never replay a pull from the grass.
+	var ball_y := cy
 	var rx_scale := 1.0
 	var ry_scale := 1.0
 	var rotation := 0.0
@@ -388,10 +390,8 @@ func draw_press_trap(effect: Dictionary) -> void:
 	var compressed_rx := lerpf(radius, radius * 0.16, squeeze)
 	var left_tip := lerpf(546.0, cx - compressed_rx - 9.0, arm_amount)
 	var right_tip := lerpf(695.0, cx + compressed_rx + 9.0, arm_amount)
-	if seconds >= 0.62:
-		ball_y = cy
-		rx_scale = lerpf(1.0, 0.16, squeeze)
-		ry_scale = lerpf(1.0, 1.10, squeeze)
+	rx_scale = lerpf(1.0, 0.16, squeeze)
+	ry_scale = lerpf(1.0, 1.10, squeeze)
 	if seconds >= 2.34:
 		rx_scale = 0.16
 		ry_scale = 1.10
