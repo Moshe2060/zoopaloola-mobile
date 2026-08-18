@@ -483,9 +483,9 @@ func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, amount: float, scale_
 	var tip := anchor.lerp(hit_point, amount)
 	var angle := direction.angle()
 	var handle_end := tip - direction.normalized() * 12.0 * scale_y
-	draw_line(anchor, handle_end, Color("38464d"), 12.0 * scale_y, true)
-	draw_line(anchor, handle_end, Color("a8b2b5"), 5.0 * scale_y, true)
-	var head_size := Vector2(42.0, 24.0) * scale_y
+	draw_line(anchor, handle_end, Color("38464d"), 17.0 * scale_y, true)
+	draw_line(anchor, handle_end, Color("a8b2b5"), 7.0 * scale_y, true)
+	var head_size := Vector2(66.0, 38.0) * scale_y
 	draw_set_transform(tip, angle, Vector2.ONE)
 	draw_style_box(make_box(Color("d96513"), 5.0 * scale_y), Rect2(-head_size * 0.5, head_size))
 	draw_rect(Rect2(Vector2(-head_size.x * 0.34, -head_size.y * 0.36), Vector2(head_size.x * 0.68, head_size.y * 0.24)), Color("ffab32"))
@@ -502,8 +502,8 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	var right_amount := hammer_strike_amount(seconds, 0.04) * hammering
 	var bottom_amount := hammer_strike_amount(seconds, 0.39) * hammering
 	var impact := maxf(
-		smooth_step((right_amount - 0.74) / 0.24),
-		smooth_step((bottom_amount - 0.74) / 0.24)
+		smooth_step((right_amount - 0.52) / 0.44),
+		smooth_step((bottom_amount - 0.52) / 0.44)
 	)
 	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
 	var center := hit_point
@@ -516,23 +516,26 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 		ball_radius *= 1.0 - release * 0.32
 		alpha = 1.0 - release * 0.10
 
-	if release <= 0.0:
-		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.48, 0.0), right_amount, scale_y)
-		draw_trap_hammer(bottom_weapon, hit_point + Vector2(0.0, radius * 0.48), bottom_amount, scale_y)
-
 	var squash_x := 1.0
 	var squash_y := 1.0
 	var ball_rotation := 0.0
 	if release <= 0.0 and impact > 0.01:
+		# Make every strike visibly compress and briefly shrink the ball.
+		ball_radius *= lerpf(1.0, 0.76, impact)
 		if right_amount >= bottom_amount:
-			squash_x = lerpf(1.0, 0.68, impact)
-			squash_y = lerpf(1.0, 1.18, impact)
-			ball_rotation = -0.08 * impact
+			squash_x = lerpf(1.0, 0.44, impact)
+			squash_y = lerpf(1.0, 1.34, impact)
+			ball_rotation = -0.13 * impact
 		else:
-			squash_x = lerpf(1.0, 1.18, impact)
-			squash_y = lerpf(1.0, 0.68, impact)
-			ball_rotation = 0.08 * impact
+			squash_x = lerpf(1.0, 1.34, impact)
+			squash_y = lerpf(1.0, 0.44, impact)
+			ball_rotation = 0.13 * impact
+
+	# Draw the ball first, then the hammers, so their heads visibly land on top.
 	draw_press_ball(center, ball_radius, squash_x, squash_y, ball_rotation, effect.team, effect.piece, alpha)
+	if release <= 0.0:
+		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.28, 0.0), right_amount, scale_y)
+		draw_trap_hammer(bottom_weapon, hit_point + Vector2(0.0, radius * 0.28), bottom_amount, scale_y)
 
 	if impact > 0.05 and release <= 0.0:
 		draw_circle(center, ball_radius * (1.32 + impact * 0.18), Color(1.0, 0.77, 0.25, 0.28 * impact), false, maxf(2.0, 4.0 * scale_y))
