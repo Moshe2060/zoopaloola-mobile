@@ -105,15 +105,14 @@ jobs:
         working-directory: zoopaloola_godot_mobile
         run: |
           mkdir -p build/web
-          godot --headless --verbose --path . --export-release "Web" build/web/index.html
-          test -s build/web/index.html
-          test -s build/web/index.wasm
-          test -s build/web/index.pck
-          # Force mobile browsers to fetch the newly exported Godot bundle.
-          # GitHub Pages may otherwise keep index.pck/index.wasm cached between deploys.
-          sed -i "s/index\\.pck/index.pck?v=${GITHUB_SHA}/g; s/index\\.wasm/index.wasm?v=${GITHUB_SHA}/g" build/web/index.html
-          grep -q "index.pck?v=${GITHUB_SHA}" build/web/index.html
-          grep -q "index.wasm?v=${GITHUB_SHA}" build/web/index.html
+          EXPORT_NAME="game-${GITHUB_SHA}"
+          godot --headless --verbose --path . --export-release "Web" "build/web/${EXPORT_NAME}.html"
+          test -s "build/web/${EXPORT_NAME}.html"
+          test -s "build/web/${EXPORT_NAME}.wasm"
+          test -s "build/web/${EXPORT_NAME}.pck"
+          # Keep the public entry point stable while giving every Godot bundle
+          # a unique filename, so mobile browsers cannot reuse an older game.
+          mv "build/web/${EXPORT_NAME}.html" build/web/index.html
           touch build/web/.nojekyll
           ls -lh build/web
 
