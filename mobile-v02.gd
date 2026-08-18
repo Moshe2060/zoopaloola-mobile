@@ -10,9 +10,15 @@ const SCORING_HOLE_CENTERS := [
 	Vector2(174, 30), Vector2(174, 104), Vector2(174, 177)
 ]
 const EFFECT_DURATION := 1.35
+const RUBBER_TRAP_HOLE := 2
+const RUBBER_CAPTURE_TIME := 2.535
+const RUBBER_FALL_TIME := 2.4
+const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
 var board_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
+var rubber_ball_texture: Texture2D
+var rubber_hand_textures: Array[Texture2D] = []
 var balls: Array = []
 var active_effects: Array = []
 var contacts := {}
@@ -37,6 +43,9 @@ func _ready() -> void:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
+	rubber_ball_texture = load("res://assets/rubber_trap/rubber-ball.png") as Texture2D
+	for i in 5:
+		rubber_hand_textures.append(load("res://assets/rubber_trap/hands/pose-%d.png" % i))
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -164,16 +173,18 @@ func resolve_collision(a_index: int, b_index: int) -> void:
 		b.v -= normal * speed
 
 func score_ball(index: int, hole: int) -> void:
+	var scored_team: int = balls[index].team
 	balls[index].alive = false
 	balls[index].v = Vector2.ZERO
-	active_effects.append({"hole":hole, "elapsed":0.0})
+	active_effects.append({"hole":hole, "elapsed":0.0, "team":scored_team, "piece":index})
 	status = "Ball scored!"
 
 func update_effects(delta: float) -> void:
 	for effect in active_effects:
 		effect.elapsed += delta
 	for i in range(active_effects.size() - 1, -1, -1):
-		if active_effects[i].elapsed >= EFFECT_DURATION:
+		var duration := RUBBER_EFFECT_DURATION if active_effects[i].hole == RUBBER_TRAP_HOLE else EFFECT_DURATION
+		if active_effects[i].elapsed >= duration:
 			active_effects.remove_at(i)
 
 func _input(event: InputEvent) -> void:
@@ -286,7 +297,10 @@ func _draw() -> void:
 		draw_texture_rect(texture, Rect2(sp - size * 0.5, size), false, Color(1,1,1,0.7))
 
 	for effect in active_effects:
-		draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
+		if effect.hole == RUBBER_TRAP_HOLE:
+			draw_rubber_trap(effect)
+		else:
+			draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
 
 	if dragging and selected >= 0:
 		var start := board_to_screen(balls[selected].p)
@@ -313,6 +327,96 @@ func draw_hole_effect(hole: int, progress: float) -> void:
 	draw_set_transform(center, rotation, Vector2.ONE)
 	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1,1,1,alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func rubber_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func smooth_step(value: float) -> float:
+	var v := clampf(value, 0.0, 1.0)
+	return v * v * (3.0 - 2.0 * v)
+
+func rubber_hand_pose(value: float) -> int:
+	if value < 0.25: return 0
+	if value < 0.48: return 1
+	if value < 0.68: return 2
+	if value < 0.86: return 3
+	return 4
+
+func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: int, alpha: float) -> void:
+	var color := Color("ff5b55") if team == 0 else Color("49a7ff")
+	draw_circle(position + Vector2(radius * 0.09, radius * 0.15), radius * 1.08, Color(0, 0, 0, 0.32 * alpha))
+	draw_circle(position, radius, Color(color, alpha))
+	draw_arc(position, radius, 0.0, TAU, 48, Color(0.43, 0.07, 0.15, alpha), maxf(1.0, radius * 0.13), true)
+	if not piece_textures.is_empty():
+		var texture := piece_textures[piece % piece_textures.size()]
+		var size := Vector2.ONE * radius * 1.58
+		draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, alpha * 0.76))
+
+func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0) -> void:
+	if texture == null: return
+	var delta := target - anchor
+	var height := maxf(width * 1.45, delta.length() * 1.22)
+	var angle := delta.angle() + PI * 0.5
+	draw_set_transform(anchor, angle, Vector2(-1.0 if mirror else 1.0, 1.0))
+	draw_texture_rect(texture, Rect2(-width * 0.5, -height, width, height), false, Color(1, 1, 1, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: float) -> void:
+	var count := int(floor(amount * 12.0))
+	for i in count:
+		var points := PackedVector2Array()
+		var ellipse_angle := i * 0.91 + spin
+		var rx := radius * (0.55 + (i % 3) * 0.12)
+		var ry := radius * (0.28 + (i % 4) * 0.08)
+		for step in 33:
+			var a := TAU * step / 32.0
+			var local := Vector2(cos(a) * rx, sin(a) * ry).rotated(ellipse_angle)
+			points.append(position + local)
+		draw_polyline(points, Color("f7f5ed"), maxf(3.0, radius * 0.13), true)
+
+func draw_rubber_trap(effect: Dictionary) -> void:
+	if rubber_ball_texture == null or rubber_hand_textures.size() < 5: return
+	var elapsed: float = effect.elapsed
+	var t := elapsed / 3.25
+	var anchor_top := rubber_point(965, 63)
+	var anchor_right := rubber_point(1125, 145)
+	var capture := rubber_point(1072, 104)
+	var ball_start := rubber_point(936, 174)
+	var scale_y := board_rect.size.y / 600.0
+	var ball_radius := 34.0 * scale_y
+	var ball := ball_start.lerp(capture, smooth_step(t / 0.22))
+	var reach := smooth_step((t - 0.10) / 0.28)
+	var hold := clampf((t - 0.32) / 0.38, 0.0, 1.0)
+	var wrap := clampf((t - 0.40) / 0.34, 0.0, 1.0)
+	var team: int = effect.team
+	var piece: int = effect.piece
+	if elapsed < RUBBER_CAPTURE_TIME:
+		var target_1 := ball + Vector2((-15.0 + sin(t * 36.0) * 5.0 * hold) * scale_y, (-7.0 + cos(t * 31.0) * 5.0 * hold) * scale_y)
+		var target_2 := ball + Vector2((15.0 - sin(t * 34.0) * 5.0 * hold) * scale_y, (10.0 - cos(t * 29.0) * 5.0 * hold) * scale_y)
+		var point_1 := anchor_top.lerp(target_1, reach)
+		var point_2 := anchor_right.lerp(target_2, reach)
+		var focus := wrap * (1.0 - wrap * 0.45)
+		draw_circle(ball, ball_radius * (1.45 + sin(t * 45.0) * 0.08), Color(1.0, 0.965, 0.72, 0.28 * focus))
+		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap * 0.72)
+		if wrap > 0.0: draw_rubber_wrap(ball, ball_radius * 1.05, wrap, t * 20.0)
+		var pose := rubber_hand_pose(hold)
+		draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, 72.0 * scale_y, false)
+		draw_rubber_hand(rubber_hand_textures[pose], anchor_right, point_2, 72.0 * scale_y, true)
+	else:
+		var release := clampf((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME, 0.0, 1.0)
+		var fall := release * release * (2.0 - release)
+		var out := rubber_point(1198, 22)
+		ball = capture.lerp(out, fall)
+		ball_radius *= 1.0 - release * 0.42
+		var retract := 1.0 - clampf(release / 0.32, 0.0, 1.0)
+		var point_1 := anchor_top.lerp(capture + Vector2(-15, -7) * scale_y, retract)
+		var point_2 := anchor_right.lerp(capture + Vector2(15, 10) * scale_y, retract)
+		if retract > 0.08:
+			draw_rubber_hand(rubber_hand_textures[4], anchor_top, point_1, 72.0 * scale_y, false, retract)
+			draw_rubber_hand(rubber_hand_textures[4], anchor_right, point_2, 72.0 * scale_y, true, retract)
+		draw_set_transform(ball, fall * 3.2, Vector2.ONE)
+		draw_texture_rect(rubber_ball_texture, Rect2(-Vector2.ONE * ball_radius, Vector2.ONE * ball_radius * 2.0), false, Color(1, 1, 1, 1.0 - release * 0.05))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
