@@ -28,6 +28,8 @@ jobs:
 
       - name: Apply current landscape game files
         run: |
+          apt-get update -qq
+          apt-get install -y -qq curl
           cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
           curl -fsSL https://zoopaloola-v4-playtest.osadon2070.chatgpt.site/playtest/reference-board-clean-v1.png -o zoopaloola_godot_mobile/assets/board-original-clean.png
           mkdir -p zoopaloola_godot_mobile/assets/remastered_effects
