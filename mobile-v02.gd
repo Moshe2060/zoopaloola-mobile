@@ -518,8 +518,12 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap * 0.72)
 		if wrap > 0.0: draw_rubber_wrap(ball, ball_radius * 1.05, wrap, t * 20.0)
 		var pose := rubber_hand_pose(hold)
-		draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, rubber_top_width * scale_y, rubber_top_mirror, 1.0, rubber_top_rotation)
-		draw_rubber_hand(rubber_hand_textures[pose], anchor_left, point_2, rubber_side_width * scale_y, rubber_side_mirror, 1.0, rubber_side_rotation)
+		# Reveal the hands from inside their weapons. Drawing the full-width sprite
+		# at reach=0 made a complete hand appear before it started extending.
+		var hand_emerge := smooth_step(reach / 0.42)
+		if hand_emerge > 0.02:
+			draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, rubber_top_width * scale_y * hand_emerge, rubber_top_mirror, hand_emerge, rubber_top_rotation)
+			draw_rubber_hand(rubber_hand_textures[pose], anchor_left, point_2, rubber_side_width * scale_y * hand_emerge, rubber_side_mirror, hand_emerge, rubber_side_rotation)
 	else:
 		var release := clampf((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME, 0.0, 1.0)
 		var fall := release * release * (2.0 - release)
