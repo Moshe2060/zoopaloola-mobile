@@ -11,6 +11,8 @@ const SCORING_HOLE_CENTERS := [
 ]
 const EFFECT_DURATION := 1.35
 const RUBBER_TRAP_HOLE := 2
+const PRESS_TRAP_HOLE := 1
+const PRESS_EFFECT_DURATION := 7.2
 const RUBBER_CAPTURE_TIME := 2.535
 const RUBBER_FALL_TIME := 2.4
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
@@ -36,9 +38,9 @@ var ai_pending := false
 var ai_timer := 0.0
 
 func _ready() -> void:
-	board_texture = load("res://assets/board-faithful-remastered.png") as Texture2D
+	board_texture = load("res://assets/board-original-clean.png") as Texture2D
 	if board_texture == null:
-		push_error("Remastered board could not be loaded.")
+		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
 	for i in 6:
@@ -62,8 +64,8 @@ func _on_resize() -> void:
 		maxf(300.0, viewport_size.x - 8.0),
 		maxf(220.0, oversized_height)
 	)
-	# Match the approved board texture exactly (1774 x 887 = 2:1).
-	var target_aspect := 2.0
+	# Match the clean original board exactly (1829 x 860).
+	var target_aspect := 1829.0 / 860.0
 	var play_size := available
 	if play_size.x / play_size.y > target_aspect:
 		play_size.x = play_size.y * target_aspect
@@ -98,7 +100,7 @@ func _process(delta: float) -> void:
 		physics_step()
 		accumulator -= STEP_TIME
 	update_effects(delta)
-	if ai_pending:
+	if ai_pending and active_effects.is_empty():
 		ai_timer -= delta
 		if ai_timer <= 0.0 and not any_ball_moving():
 			ai_pending = false
@@ -187,7 +189,11 @@ func update_effects(delta: float) -> void:
 	for effect in active_effects:
 		effect.elapsed += delta
 	for i in range(active_effects.size() - 1, -1, -1):
-		var duration := RUBBER_EFFECT_DURATION if active_effects[i].hole == RUBBER_TRAP_HOLE else EFFECT_DURATION
+		var duration := EFFECT_DURATION
+		if active_effects[i].hole == RUBBER_TRAP_HOLE:
+			duration = RUBBER_EFFECT_DURATION
+		elif active_effects[i].hole == PRESS_TRAP_HOLE:
+			duration = PRESS_EFFECT_DURATION
 		if active_effects[i].elapsed >= duration:
 			active_effects.remove_at(i)
 
@@ -209,7 +215,7 @@ func _input(event: InputEvent) -> void:
 func pointer_down(screen_pos: Vector2) -> void:
 	if Rect2(get_viewport_rect().size.x - 174.0, 6.0, 150.0, 42.0).has_point(screen_pos):
 		new_game(); return
-	if turn != 0 or any_ball_moving(): return
+	if turn != 0 or any_ball_moving() or not active_effects.is_empty(): return
 	var board_pos := screen_to_board(screen_pos)
 	for i in balls.size():
 		if balls[i].alive and balls[i].team == 0 and balls[i].p.distance_to(board_pos) <= 16.0:
@@ -296,11 +302,8 @@ func _draw() -> void:
 	for effect in active_effects:
 		if effect.hole == RUBBER_TRAP_HOLE:
 			draw_rubber_trap(effect)
-		elif effect.hole == 1:
-			# The legacy top-middle image contains the machine itself and draws a
-			# stretched duplicate over the board. Hide it until its real animation
-			# is rebuilt from separate moving parts.
-			pass
+		elif effect.hole == PRESS_TRAP_HOLE:
+			draw_press_trap(effect)
 		else:
 			draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
 
@@ -340,6 +343,72 @@ func draw_hole_effect(hole: int, progress: float) -> void:
 	draw_set_transform(center, rotation, Vector2.ONE)
 	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1,1,1,alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func press_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1276.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, compression: float) -> void:
+	var anchor := press_point(anchor_x, y)
+	var tip := press_point(tip_x, y)
+	var direction := 1.0 if left_side else -1.0
+	var unit_x := board_rect.size.x / 1276.0
+	var unit_y := board_rect.size.y / 600.0
+	var rod_end := tip - Vector2(direction * 8.0 * unit_x, 0.0)
+	draw_line(anchor, rod_end, Color("374957"), 14.0 * unit_y, true)
+	draw_line(anchor - Vector2(0, 1.5 * unit_y), rod_end - Vector2(0, 1.5 * unit_y), Color("a9bdc6"), 7.0 * unit_y, true)
+	var plate_size := Vector2(16.0 * unit_x, 46.0 * unit_y)
+	draw_style_box(make_box(Color("384b57"), 4.0 * unit_y), Rect2(tip - plate_size * 0.5, plate_size))
+	var glow_width := 6.0 * unit_x
+	var glow_rect := Rect2(tip.x - glow_width * 0.5, tip.y - 19.0 * unit_y, glow_width, 38.0 * unit_y)
+	draw_rect(glow_rect, Color(1.0, 0.36, 0.59, 0.34 * compression))
+
+func draw_press_ball(center: Vector2, radius: float, rx_scale: float, ry_scale: float, rotation: float, team: int, piece: int, alpha: float) -> void:
+	draw_set_transform(center, rotation, Vector2(rx_scale, ry_scale))
+	draw_rubber_game_ball(Vector2.ZERO, radius, team, piece, alpha)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_press_trap(effect: Dictionary) -> void:
+	var seconds: float = effect.elapsed
+	var cx := 608.0
+	var cy := 55.0
+	var radius := 26.0
+	var ball_y := lerpf(148.0, cy, smooth_step(seconds / 0.62))
+	var rx_scale := 1.0
+	var ry_scale := 1.0
+	var rotation := 0.0
+	var alpha := 1.0
+	var extend := 0.0
+	var retract := 0.0
+	if seconds >= 0.55:
+		extend = smooth_step((seconds - 0.55) / 0.78)
+	if seconds >= 1.72:
+		retract = smooth_step((seconds - 1.72) / 0.62)
+	var squeeze := clampf((extend - 0.57) / 0.43, 0.0, 1.0)
+	var arm_amount := extend * (1.0 - retract)
+	var compressed_rx := lerpf(radius, radius * 0.16, squeeze)
+	var left_tip := lerpf(561.0, cx - compressed_rx - 9.0, arm_amount)
+	var right_tip := lerpf(655.0, cx + compressed_rx + 9.0, arm_amount)
+	if seconds >= 0.62:
+		ball_y = cy
+		rx_scale = lerpf(1.0, 0.16, squeeze)
+		ry_scale = lerpf(1.0, 1.10, squeeze)
+	if seconds >= 2.34:
+		rx_scale = 0.16
+		ry_scale = 1.10
+		var wait := clampf((seconds - 2.34) / 1.35, 0.0, 1.0)
+		var release := clampf((seconds - 3.69) / 3.51, 0.0, 1.0)
+		var motion := release * release * (2.0 - release)
+		rotation = sin(wait * PI) * 0.045 - motion * 0.34
+		ball_y = cy - lerpf(0.0, 176.0, motion)
+		alpha = 1.0 - release * 0.08
+		var shrink := 1.0 - release * 0.30
+		rx_scale *= shrink
+		ry_scale *= shrink
+	if arm_amount > 0.01:
+		draw_press_rod(561.0, cy, left_tip, true, squeeze)
+		draw_press_rod(655.0, cy, right_tip, false, squeeze)
+	var radius_screen := radius * board_rect.size.y / 600.0
+	draw_press_ball(press_point(cx, ball_y), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
 
 func rubber_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
