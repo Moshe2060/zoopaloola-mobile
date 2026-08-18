@@ -381,10 +381,11 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	var anchor_top := rubber_point(965, 63)
 	var anchor_right := rubber_point(1125, 145)
 	var capture := rubber_point(1072, 104)
-	var ball_start := rubber_point(936, 174)
 	var scale_y := board_rect.size.y / 600.0
 	var ball_radius := 34.0 * scale_y
-	var ball := ball_start.lerp(capture, smooth_step(t / 0.22))
+	# The real gameplay ball has already entered this hole. Start the trap at
+	# the capture point so the V4 preview's staged entry is not replayed.
+	var ball := capture
 	var reach := smooth_step((t - 0.10) / 0.28)
 	var hold := clampf((t - 0.32) / 0.38, 0.0, 1.0)
 	var wrap := clampf((t - 0.40) / 0.34, 0.0, 1.0)
