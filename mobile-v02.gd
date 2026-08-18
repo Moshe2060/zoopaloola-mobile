@@ -486,45 +486,58 @@ func draw_electric_probe(anchor: Vector2, tip: Vector2, power: float, scale_y: f
 func draw_electric_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	var weapon := electric_point(1128.0, 145.0)
-	var shock_point := electric_point(1072.0, 104.0)
+	# Keep the probe horizontal and attached to the right-side electric weapon.
+	var weapon := electric_point(1162.0, 108.0)
+	var shock_point := electric_point(1072.0, 108.0)
 	var radius := 27.0 * scale_y
-	var extend := smooth_step(seconds / 0.72)
+	var extend := smooth_step(seconds / 0.68)
 	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
-	var retract := smooth_step((seconds - 4.30) / 0.70)
+	var retract := smooth_step((seconds - 4.38) / 0.64)
 	var probe_amount := extend * (1.0 - retract)
-	var probe_tip := weapon.lerp(shock_point + Vector2(20.0, 0.0) * scale_y, probe_amount)
+	var probe_tip := weapon.lerp(shock_point + Vector2(radius * 0.76, 0.0), probe_amount)
 	if probe_amount > 0.01:
 		draw_electric_probe(weapon, probe_tip, extend, scale_y)
-	var shock := smooth_step((seconds - 0.34) / 0.64)
-	var shock_fade := 1.0 - smooth_step((seconds - 2.20) / 0.25)
-	var shock_alpha := shock * shock_fade
-	if release <= 0.0:
-		draw_rubber_game_ball(shock_point, radius, effect.team, effect.piece, 1.0)
-		if shock_alpha > 0.01:
-			for i in 7:
-				var a := TAU * float(i) / 7.0 + seconds * (1.5 + float(i % 2))
-				var inner := shock_point + Vector2(cos(a), sin(a)) * radius * 0.72
-				var outer := shock_point + Vector2(cos(a + sin(seconds * 13.0 + i) * 0.22), sin(a + sin(seconds * 13.0 + i) * 0.22)) * radius * (1.35 + 0.22 * sin(seconds * 17.0 + i))
-				draw_electric_arc(inner, outer, seconds + float(i), shock_alpha, maxf(1.3, 2.0 * scale_y))
-			draw_circle(shock_point, radius * (1.35 + sin(seconds * 22.0) * 0.08), Color(0.66, 0.93, 1.0, 0.18 * shock_alpha))
-	else:
-		var travel := release * release
-		var soul_center := shock_point + Vector2(-390.0 * travel, -48.0 * sin(release * PI)) * scale_y
-		var soul_radius := radius * (1.0 - release * 0.30)
-		var soul_alpha := 1.0 - release * 0.12
-		# A fading shell remains at the probe while the electrified ball is expelled.
-		draw_rubber_game_ball(shock_point, radius, effect.team, effect.piece, 1.0 - release)
+
+	var shock_in := smooth_step((seconds - 0.30) / 0.55)
+	var shock_out := 1.0 - smooth_step((seconds - 2.12) / 0.23)
+	var shock_alpha := shock_in * shock_out
+	var ball_center := shock_point
+	var ball_radius := radius
+	var ball_alpha := 1.0
+
+	if release > 0.0:
+		# The shocked ball exits through its own upper-right opening. Do not
+		# create a second ball or launch it across the play field.
+		var fall := release * release
+		ball_center += Vector2(118.0, -108.0) * scale_y * fall
+		ball_center.y += sin(release * PI) * 8.0 * scale_y
+		ball_radius *= 1.0 - release * 0.34
+		ball_alpha = 1.0 - release * 0.12
+		if release < 0.82:
+			for i in 3:
+				var trail_start := shock_point + Vector2(5.0, (-10.0 + float(i) * 10.0)) * scale_y
+				var trail_end := ball_center.lerp(shock_point, 0.12 + float(i) * 0.12)
+				draw_electric_arc(trail_start, trail_end, seconds + float(i), (1.0 - release) * (0.82 - float(i) * 0.16), maxf(1.2, 2.0 * scale_y))
+
+	draw_rubber_game_ball(ball_center, ball_radius, effect.team, effect.piece, ball_alpha)
+
+	if shock_alpha > 0.01 and release <= 0.0:
+		# Three broad discharge branches reproduce the original pale energy
+		# spreading leftward while the ball remains fixed at the probe.
+		var branch_targets := [
+			shock_point + Vector2(-305.0, -72.0) * scale_y,
+			shock_point + Vector2(-365.0, 0.0) * scale_y,
+			shock_point + Vector2(-292.0, 76.0) * scale_y
+		]
 		for i in 3:
-			var trail_end := shock_point.lerp(soul_center, clampf(0.30 + float(i) * 0.18, 0.0, 1.0))
-			var trail_start := soul_center + Vector2(18.0 + float(i) * 20.0, (-14.0 + float(i) * 14.0)) * scale_y
-			draw_electric_arc(trail_start, trail_end, seconds + float(i) * 0.4, (1.0 - release * 0.35) * (0.66 - float(i) * 0.13), maxf(1.2, 2.2 * scale_y))
-		draw_rubber_game_ball(soul_center, soul_radius, effect.team, effect.piece, soul_alpha)
+			draw_electric_arc(shock_point - Vector2(radius * 0.65, 0.0), branch_targets[i], seconds * (1.0 + float(i) * 0.13), shock_alpha * (0.58 - float(i) * 0.08), maxf(2.0, 3.2 * scale_y))
+		draw_circle(shock_point, radius * (1.26 + sin(seconds * 20.0) * 0.06), Color(0.78, 0.96, 1.0, 0.18 * shock_alpha))
 		for i in 5:
-			var a := TAU * float(i) / 5.0 + seconds * 2.4
-			var inner := soul_center + Vector2(cos(a), sin(a)) * soul_radius * 0.72
-			var outer := soul_center + Vector2(cos(a + 0.18), sin(a + 0.18)) * soul_radius * 1.38
-			draw_electric_arc(inner, outer, seconds + float(i), soul_alpha, maxf(1.0, 1.7 * scale_y))
+			var a := TAU * float(i) / 5.0 + seconds * 2.0
+			var inner := shock_point + Vector2(cos(a), sin(a)) * radius * 0.78
+			var outer := shock_point + Vector2(cos(a + 0.13), sin(a + 0.13)) * radius * 1.30
+			draw_electric_arc(inner, outer, seconds + float(i), shock_alpha * 0.72, maxf(1.0, 1.6 * scale_y))
+
 
 func fire_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
