@@ -28,12 +28,12 @@ var contacts := {}
 # Touch-friendly rubber effect editor. Values are stored in board-image units.
 var effect_editor_enabled := false
 var editor_selected_hand := 0
-var rubber_top_offset := Vector2.ZERO
-var rubber_side_offset := Vector2.ZERO
-var rubber_top_width := 48.0
-var rubber_side_width := 48.0
-var rubber_top_rotation := 0.0
-var rubber_side_rotation := 0.0
+var rubber_top_offset := Vector2(-60.0, -10.0)
+var rubber_side_offset := Vector2(20.0, 20.0)
+var rubber_top_width := 72.0
+var rubber_side_width := 72.0
+var rubber_top_rotation := deg_to_rad(-20.0)
+var rubber_side_rotation := deg_to_rad(-5.0)
 var rubber_top_mirror := false
 var rubber_side_mirror := false
 # Mobile browsers may emit a synthetic mouse click after every touch.
