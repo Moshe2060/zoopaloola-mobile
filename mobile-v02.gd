@@ -25,6 +25,18 @@ var balls: Array = []
 var active_effects: Array = []
 var contacts := {}
 
+# Touch-friendly rubber effect editor. Values are stored in board-image units.
+var effect_editor_enabled := false
+var editor_selected_hand := 0
+var rubber_top_offset := Vector2.ZERO
+var rubber_side_offset := Vector2.ZERO
+var rubber_top_width := 48.0
+var rubber_side_width := 48.0
+var rubber_top_rotation := 0.0
+var rubber_side_rotation := 0.0
+var rubber_top_mirror := false
+var rubber_side_mirror := false
+
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
 var board_rect := Rect2()
@@ -213,6 +225,8 @@ func _input(event: InputEvent) -> void:
 		pointer_move(event.position)
 
 func pointer_down(screen_pos: Vector2) -> void:
+	if handle_effect_editor_touch(screen_pos):
+		return
 	if Rect2(get_viewport_rect().size.x - 174.0, 6.0, 150.0, 42.0).has_point(screen_pos):
 		new_game(); return
 	if turn != 0 or any_ball_moving() or not active_effects.is_empty(): return
@@ -316,12 +330,16 @@ func _draw() -> void:
 		draw_line(start, launch, Color(1,1,1,0.7), 3.0, true)
 
 	draw_hud(viewport_size)
+	draw_effect_editor(viewport_size)
 
 func draw_hud(viewport_size: Vector2) -> void:
 	# Overlay the compact HUD so it no longer reserves valuable board height.
 	draw_rect(Rect2(0, 0, viewport_size.x, 54), Color(0.09, 0.15, 0.23, 0.78))
 	draw_string(ThemeDB.fallback_font, Vector2(18, 33), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color("f6d365"))
 	draw_string(ThemeDB.fallback_font, Vector2(200, 34), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 390, 17, Color.WHITE)
+	var edit_rect := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
+	draw_style_box(make_box(Color("7256d8") if effect_editor_enabled else Color("34495e"), 14.0), edit_rect)
+	draw_string(ThemeDB.fallback_font, edit_rect.position + Vector2(19, 28), "EDIT EFFECT", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
 	var button_rect := Rect2(viewport_size.x - 174.0, 6.0, 150.0, 42.0)
 	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
 	draw_string(ThemeDB.fallback_font, button_rect.position + Vector2(25, 28), "NEW GAME", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
@@ -438,13 +456,13 @@ func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: i
 		var size := Vector2.ONE * radius * 1.58
 		draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, alpha * 0.76))
 
-func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0) -> void:
+func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
 	if texture == null: return
 	var delta := target - anchor
 	# Fit the arm to the actual weapon-to-ball distance. The former large
 	# minimum made short upper-left arms overshoot the hole and leave the board.
 	var height := maxf(width * 1.02, delta.length() * 1.04)
-	var angle := delta.angle() + PI * 0.5
+	var angle := delta.angle() + PI * 0.5 + rotation_offset
 	draw_set_transform(anchor, angle, Vector2(-1.0 if mirror else 1.0, 1.0))
 	draw_texture_rect(texture, Rect2(-width * 0.5, -height, width, height), false, Color(1, 1, 1, alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -468,8 +486,8 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	var t := elapsed / 3.25
 	# The rubber-hand weapon is at the upper-left opening on the clean board.
 	# These points mirror the former upper-right placement across the board.
-	var anchor_top := rubber_point(235, 63)
-	var anchor_left := rubber_point(75, 145)
+	var anchor_top := rubber_point(235, 63) + rubber_top_offset * scale_y
+	var anchor_left := rubber_point(75, 145) + rubber_side_offset * scale_y
 	var capture := rubber_point(128, 104)
 	var scale_y := board_rect.size.y / 600.0
 	var ball_radius := 34.0 * scale_y
@@ -493,9 +511,8 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap * 0.72)
 		if wrap > 0.0: draw_rubber_wrap(ball, ball_radius * 1.05, wrap, t * 20.0)
 		var pose := rubber_hand_pose(hold)
-		draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, 48.0 * scale_y, false)
-		# Mirror only the side hand so it faces into the board.
-		draw_rubber_hand(rubber_hand_textures[pose], anchor_left, point_2, 48.0 * scale_y, false)
+		draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, rubber_top_width * scale_y, rubber_top_mirror, 1.0, rubber_top_rotation)
+		draw_rubber_hand(rubber_hand_textures[pose], anchor_left, point_2, rubber_side_width * scale_y, rubber_side_mirror, 1.0, rubber_side_rotation)
 	else:
 		var release := clampf((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME, 0.0, 1.0)
 		var fall := release * release * (2.0 - release)
@@ -506,11 +523,110 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 		var point_1 := anchor_top.lerp(capture + Vector2(15, -7) * scale_y, retract)
 		var point_2 := anchor_left.lerp(capture + Vector2(-15, 10) * scale_y, retract)
 		if retract > 0.08:
-			draw_rubber_hand(rubber_hand_textures[4], anchor_top, point_1, 48.0 * scale_y, false, retract)
-			draw_rubber_hand(rubber_hand_textures[4], anchor_left, point_2, 48.0 * scale_y, false, retract)
+			draw_rubber_hand(rubber_hand_textures[4], anchor_top, point_1, rubber_top_width * scale_y, rubber_top_mirror, retract, rubber_top_rotation)
+			draw_rubber_hand(rubber_hand_textures[4], anchor_left, point_2, rubber_side_width * scale_y, rubber_side_mirror, retract, rubber_side_rotation)
 		draw_set_transform(ball, fall * 3.2, Vector2.ONE)
 		draw_texture_rect(rubber_ball_texture, Rect2(-Vector2.ONE * ball_radius, Vector2.ONE * ball_radius * 2.0), false, Color(1, 1, 1, 1.0 - release * 0.05))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func editor_panel_rect(viewport_size: Vector2) -> Rect2:
+	return Rect2(12.0, viewport_size.y - 154.0, minf(860.0, viewport_size.x - 24.0), 142.0)
+
+func editor_button(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := editor_panel_rect(viewport_size)
+	var button_w := (panel.size.x - 22.0) / 11.0
+	return Rect2(panel.position + Vector2(6.0 + index * button_w, 70.0), Vector2(button_w - 4.0, 58.0))
+
+func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
+	var viewport_size := get_viewport_rect().size
+	var toggle := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
+	if toggle.has_point(screen_pos):
+		effect_editor_enabled = not effect_editor_enabled
+		if effect_editor_enabled:
+			replay_rubber_editor()
+		queue_redraw()
+		return true
+	if not effect_editor_enabled:
+		return false
+	for i in 11:
+		if not editor_button(i, viewport_size).has_point(screen_pos):
+			continue
+		match i:
+			0: editor_selected_hand = 0
+			1: editor_selected_hand = 1
+			2: change_editor_offset(Vector2(-5, 0))
+			3: change_editor_offset(Vector2(5, 0))
+			4: change_editor_offset(Vector2(0, -5))
+			5: change_editor_offset(Vector2(0, 5))
+			6: change_editor_width(-4.0)
+			7: change_editor_width(4.0)
+			8: change_editor_rotation(deg_to_rad(-5.0))
+			9: change_editor_rotation(deg_to_rad(5.0))
+			10: toggle_editor_mirror()
+		replay_rubber_editor()
+		queue_redraw()
+		return true
+	var replay_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(6, 8), Vector2(112, 46))
+	var copy_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(126, 8), Vector2(142, 46))
+	if replay_rect.has_point(screen_pos):
+		replay_rubber_editor()
+		return true
+	if copy_rect.has_point(screen_pos):
+		DisplayServer.clipboard_set(editor_settings_text())
+		status = "Effect settings copied"
+		queue_redraw()
+		return true
+	return editor_panel_rect(viewport_size).has_point(screen_pos)
+
+func change_editor_offset(amount: Vector2) -> void:
+	if editor_selected_hand == 0:
+		rubber_top_offset += amount
+	else:
+		rubber_side_offset += amount
+
+func change_editor_width(amount: float) -> void:
+	if editor_selected_hand == 0:
+		rubber_top_width = clampf(rubber_top_width + amount, 20.0, 100.0)
+	else:
+		rubber_side_width = clampf(rubber_side_width + amount, 20.0, 100.0)
+
+func change_editor_rotation(amount: float) -> void:
+	if editor_selected_hand == 0:
+		rubber_top_rotation += amount
+	else:
+		rubber_side_rotation += amount
+
+func toggle_editor_mirror() -> void:
+	if editor_selected_hand == 0:
+		rubber_top_mirror = not rubber_top_mirror
+	else:
+		rubber_side_mirror = not rubber_side_mirror
+
+func replay_rubber_editor() -> void:
+	active_effects.clear()
+	active_effects.append({"hole":RUBBER_TRAP_HOLE, "elapsed":0.0, "team":0, "piece":0})
+
+func editor_settings_text() -> String:
+	return "top_offset=%s; side_offset=%s; top_width=%.1f; side_width=%.1f; top_rotation_deg=%.1f; side_rotation_deg=%.1f; top_mirror=%s; side_mirror=%s" % [rubber_top_offset, rubber_side_offset, rubber_top_width, rubber_side_width, rad_to_deg(rubber_top_rotation), rad_to_deg(rubber_side_rotation), rubber_top_mirror, rubber_side_mirror]
+
+func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
+	draw_style_box(make_box(Color("7256d8") if selected_button else Color("26384b"), 8.0), rect)
+	draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 36), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 16, Color.WHITE)
+
+func draw_effect_editor(viewport_size: Vector2) -> void:
+	if not effect_editor_enabled:
+		return
+	var panel := editor_panel_rect(viewport_size)
+	draw_style_box(make_box(Color(0.04, 0.07, 0.12, 0.94), 12.0), panel)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(285, 37), "RUBBER HAND EDITOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("f6d365"))
+	var selected_name := "TOP HAND" if editor_selected_hand == 0 else "SIDE HAND"
+	var values := editor_settings_text()
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(285, 58), selected_name + "  |  " + values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 295, 12, Color.WHITE)
+	draw_editor_button(Rect2(panel.position + Vector2(6, 8), Vector2(112, 46)), "REPLAY")
+	draw_editor_button(Rect2(panel.position + Vector2(126, 8), Vector2(142, 46)), "COPY SETTINGS")
+	var labels := ["TOP", "SIDE", "LEFT", "RIGHT", "UP", "DOWN", "SIZE-", "SIZE+", "ROT-", "ROT+", "MIRROR"]
+	for i in 11:
+		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_selected_hand and i < 2))
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
