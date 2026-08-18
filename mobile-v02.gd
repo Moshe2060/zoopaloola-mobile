@@ -822,15 +822,15 @@ func rebuild_team_piece_textures() -> void:
 func make_colored_animal_texture(animal_index: int, target_color: Color) -> Texture2D:
 	if animal_index < 0 or animal_index >= animal_textures.size():
 		return null
-	var image := animal_textures[animal_index].get_image().duplicate()
-	var mask := animal_ring_masks[animal_index].get_image()
+	var image: Image = animal_textures[animal_index].get_image().duplicate()
+	var mask: Image = animal_ring_masks[animal_index].get_image()
 	for y in image.get_height():
 		for x in image.get_width():
-			var amount := mask.get_pixel(x, y).r
+			var amount: float = mask.get_pixel(x, y).r
 			if amount <= 0.001:
 				continue
-			var original := image.get_pixel(x, y)
-			var recolored := Color.from_hsv(target_color.h, maxf(original.s, target_color.s * 0.82), original.v, original.a)
+			var original: Color = image.get_pixel(x, y)
+			var recolored: Color = Color.from_hsv(target_color.h, maxf(original.s, target_color.s * 0.82), original.v, original.a)
 			image.set_pixel(x, y, original.lerp(recolored, amount))
 	return ImageTexture.create_from_image(image)
 
