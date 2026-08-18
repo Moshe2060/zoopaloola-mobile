@@ -14,11 +14,13 @@ const RUBBER_TRAP_HOLE := 0
 const PRESS_TRAP_HOLE := 1
 const ICE_TRAP_HOLE := 4
 const FIRE_TRAP_HOLE := 5
+const ELECTRIC_TRAP_HOLE := 2
 const TRAP_CAPTURE_TIME := 2.35
 const TRAP_FALL_TIME := 2.85
 const PRESS_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const ICE_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const FIRE_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
+const ELECTRIC_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const RUBBER_CAPTURE_TIME := TRAP_CAPTURE_TIME
 const RUBBER_FALL_TIME := TRAP_FALL_TIME
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
@@ -221,6 +223,8 @@ func update_effects(delta: float) -> void:
 			duration = ICE_EFFECT_DURATION
 		elif active_effects[i].hole == FIRE_TRAP_HOLE:
 			duration = FIRE_EFFECT_DURATION
+		elif active_effects[i].hole == ELECTRIC_TRAP_HOLE:
+			duration = ELECTRIC_EFFECT_DURATION
 		if active_effects[i].elapsed >= duration:
 			active_effects.remove_at(i)
 
@@ -339,6 +343,8 @@ func _draw() -> void:
 			draw_ice_trap(effect)
 		elif effect.hole == FIRE_TRAP_HOLE:
 			draw_fire_trap(effect)
+		elif effect.hole == ELECTRIC_TRAP_HOLE:
+			draw_electric_trap(effect)
 		else:
 			draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
 
@@ -452,6 +458,73 @@ func draw_press_trap(effect: Dictionary) -> void:
 		draw_press_rod(695.0, cy, right_tip, false, squeeze)
 	var radius_screen := radius * board_rect.size.y / 600.0
 	draw_press_ball(press_point(cx, ball_y), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
+
+func electric_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func draw_electric_arc(start: Vector2, finish: Vector2, phase: float, alpha: float, width: float) -> void:
+	var points := PackedVector2Array()
+	var delta := finish - start
+	var normal := delta.normalized().orthogonal() if delta.length_squared() > 0.01 else Vector2.UP
+	for i in 11:
+		var t := float(i) / 10.0
+		var jitter := 0.0
+		if i > 0 and i < 10:
+			jitter = sin(float(i) * 12.73 + phase * 19.0) * width * 2.2
+			jitter += cos(float(i) * 7.31 + phase * 11.0) * width
+		points.append(start.lerp(finish, t) + normal * jitter)
+	draw_polyline(points, Color(0.72, 0.93, 1.0, alpha * 0.52), width * 2.4, true)
+	draw_polyline(points, Color(0.96, 1.0, 1.0, alpha), width, true)
+
+func draw_electric_probe(anchor: Vector2, tip: Vector2, power: float, scale_y: float) -> void:
+	draw_line(anchor, tip, Color("334650"), 13.0 * scale_y, true)
+	draw_line(anchor, tip, Color("a9bbc2"), 6.0 * scale_y, true)
+	var head_size := Vector2(16.0, 34.0) * scale_y
+	draw_style_box(make_box(Color("344b57"), 4.0 * scale_y), Rect2(tip - head_size * 0.5, head_size))
+	draw_circle(tip, 5.0 * scale_y, Color(0.77, 0.97, 1.0, 0.55 + power * 0.4))
+
+func draw_electric_trap(effect: Dictionary) -> void:
+	var seconds: float = effect.elapsed
+	var scale_y := board_rect.size.y / 600.0
+	var weapon := electric_point(1128.0, 145.0)
+	var shock_point := electric_point(1072.0, 104.0)
+	var radius := 27.0 * scale_y
+	var extend := smooth_step(seconds / 0.72)
+	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
+	var retract := smooth_step((seconds - 4.30) / 0.70)
+	var probe_amount := extend * (1.0 - retract)
+	var probe_tip := weapon.lerp(shock_point + Vector2(20.0, 0.0) * scale_y, probe_amount)
+	if probe_amount > 0.01:
+		draw_electric_probe(weapon, probe_tip, extend, scale_y)
+	var shock := smooth_step((seconds - 0.34) / 0.64)
+	var shock_fade := 1.0 - smooth_step((seconds - 2.20) / 0.25)
+	var shock_alpha := shock * shock_fade
+	if release <= 0.0:
+		draw_rubber_game_ball(shock_point, radius, effect.team, effect.piece, 1.0)
+		if shock_alpha > 0.01:
+			for i in 7:
+				var a := TAU * float(i) / 7.0 + seconds * (1.5 + float(i % 2))
+				var inner := shock_point + Vector2(cos(a), sin(a)) * radius * 0.72
+				var outer := shock_point + Vector2(cos(a + sin(seconds * 13.0 + i) * 0.22), sin(a + sin(seconds * 13.0 + i) * 0.22)) * radius * (1.35 + 0.22 * sin(seconds * 17.0 + i))
+				draw_electric_arc(inner, outer, seconds + float(i), shock_alpha, maxf(1.3, 2.0 * scale_y))
+			draw_circle(shock_point, radius * (1.35 + sin(seconds * 22.0) * 0.08), Color(0.66, 0.93, 1.0, 0.18 * shock_alpha))
+	else:
+		var travel := release * release
+		var soul_center := shock_point + Vector2(-390.0 * travel, -48.0 * sin(release * PI)) * scale_y
+		var soul_radius := radius * (1.0 - release * 0.30)
+		var soul_alpha := 1.0 - release * 0.12
+		# A fading shell remains at the probe while the electrified ball is expelled.
+		draw_rubber_game_ball(shock_point, radius, effect.team, effect.piece, 1.0 - release)
+		for i in 3:
+			var trail_end := shock_point.lerp(soul_center, clampf(0.30 + float(i) * 0.18, 0.0, 1.0))
+			var trail_start := soul_center + Vector2(18.0 + float(i) * 20.0, (-14.0 + float(i) * 14.0)) * scale_y
+			draw_electric_arc(trail_start, trail_end, seconds + float(i) * 0.4, (1.0 - release * 0.35) * (0.66 - float(i) * 0.13), maxf(1.2, 2.2 * scale_y))
+		draw_rubber_game_ball(soul_center, soul_radius, effect.team, effect.piece, soul_alpha)
+		for i in 5:
+			var a := TAU * float(i) / 5.0 + seconds * 2.4
+			var inner := soul_center + Vector2(cos(a), sin(a)) * soul_radius * 0.72
+			var outer := soul_center + Vector2(cos(a + 0.18), sin(a + 0.18)) * soul_radius * 1.38
+			draw_electric_arc(inner, outer, seconds + float(i), soul_alpha, maxf(1.0, 1.7 * scale_y))
 
 func fire_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
