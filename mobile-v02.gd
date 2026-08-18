@@ -63,6 +63,8 @@ var ai_pending := false
 var ai_timer := 0.0
 
 func _ready() -> void:
+	# Smooth the original character art when it is enlarged inside HD balls.
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	board_texture = load("res://assets/board-original-clean.png") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
@@ -112,8 +114,15 @@ func new_game() -> void:
 	ai_pending = false
 	selected = -1
 	dragging = false
-	var red_positions := [Vector2(72,82), Vector2(72,104), Vector2(72,126)]
-	var blue_positions := [Vector2(135,82), Vector2(135,104), Vector2(135,126)]
+	# Ten balls per rival, arranged in two balanced rows on each half.
+	var red_positions := [
+		Vector2(66, 55), Vector2(66, 79), Vector2(66, 103), Vector2(66, 127), Vector2(66, 151),
+		Vector2(86, 55), Vector2(86, 79), Vector2(86, 103), Vector2(86, 127), Vector2(86, 151)
+	]
+	var blue_positions := [
+		Vector2(121, 55), Vector2(121, 79), Vector2(121, 103), Vector2(121, 127), Vector2(121, 151),
+		Vector2(141, 55), Vector2(141, 79), Vector2(141, 103), Vector2(141, 127), Vector2(141, 151)
+	]
 	for p in red_positions:
 		balls.append({"p":p, "v":Vector2.ZERO, "team":0, "alive":true})
 	for p in blue_positions:
@@ -325,20 +334,12 @@ func _draw() -> void:
 		return
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
-	if hammer_effect_active():
-		draw_hammer_device_covers()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
 		if not ball.alive: continue
 		var sp := board_to_screen(ball.p)
-		var color := Color("ff5b55") if ball.team == 0 else Color("49a7ff")
-		draw_circle(sp + Vector2(0, 4), RADIUS * board_scale * 1.62, Color(0,0,0,0.38))
-		draw_circle(sp, RADIUS * board_scale * 1.52, color)
-		draw_circle(sp - Vector2(2,2) * board_scale, RADIUS * board_scale * 0.40, Color(1,1,1,0.62))
-		var texture := piece_textures[i % piece_textures.size()]
-		var size := texture.get_size() * board_scale * 1.45
-		draw_texture_rect(texture, Rect2(sp - size * 0.5, size), false, Color(1,1,1,0.7))
+		draw_rubber_game_ball(sp, RADIUS * board_scale * 1.62, ball.team, i, 1.0)
 
 	for effect in active_effects:
 		if effect.hole == RUBBER_TRAP_HOLE:
@@ -466,36 +467,6 @@ func draw_press_trap(effect: Dictionary) -> void:
 		draw_press_rod(695.0, cy, right_tip, false, squeeze)
 	var radius_screen := radius * board_rect.size.y / 600.0
 	draw_press_ball(press_point(cx, ball_y), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
-
-func hammer_effect_active() -> bool:
-	for effect in active_effects:
-		if effect.hole == HAMMER_TRAP_HOLE:
-			return true
-	return false
-
-func draw_hammer_device_covers() -> void:
-	# The resting orange hammers are baked into the board PNG. Cover only their
-	# two stones while the trap runs, then draw the animated hammers above.
-	var scale_x := board_rect.size.x / 1200.0
-	var scale_y := board_rect.size.y / 600.0
-	var stone_dark := Color("6f815c")
-	var stone_mid := Color("9bad7f")
-	var stone_light := Color("c0cda3")
-	var right_center := hammer_point(1122.0, 482.0)
-	var right_size := Vector2(92.0 * scale_x, 132.0 * scale_y)
-	var right_rect := Rect2(right_center - right_size * 0.5, right_size)
-	draw_style_box(make_box(stone_dark, 22.0 * scale_y), right_rect)
-	var right_inner := right_rect.grow(-7.0 * scale_y)
-	draw_style_box(make_box(stone_mid, 18.0 * scale_y), right_inner)
-	draw_arc(right_center - Vector2(5.0, 10.0) * scale_y, 27.0 * scale_y, PI * 1.05, PI * 1.78, 18, stone_light, 5.0 * scale_y, true)
-
-	var bottom_center := hammer_point(1040.0, 565.0)
-	var bottom_size := Vector2(190.0 * scale_x, 67.0 * scale_y)
-	var bottom_rect := Rect2(bottom_center - bottom_size * 0.5, bottom_size)
-	draw_style_box(make_box(stone_dark, 20.0 * scale_y), bottom_rect)
-	var bottom_inner := bottom_rect.grow(-7.0 * scale_y)
-	draw_style_box(make_box(stone_mid, 16.0 * scale_y), bottom_inner)
-	draw_arc(bottom_center - Vector2(18.0, 4.0) * scale_y, 28.0 * scale_y, PI * 1.08, PI * 1.78, 18, stone_light, 5.0 * scale_y, true)
 
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
@@ -805,14 +776,25 @@ func rubber_hand_pose(value: float) -> int:
 	return 4
 
 func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: int, alpha: float) -> void:
-	var color := Color("ff5b55") if team == 0 else Color("49a7ff")
-	draw_circle(position + Vector2(radius * 0.09, radius * 0.15), radius * 1.08, Color(0, 0, 0, 0.32 * alpha))
-	draw_circle(position, radius, Color(color, alpha))
-	draw_arc(position, radius, 0.0, TAU, 48, Color(0.43, 0.07, 0.15, alpha), maxf(1.0, radius * 0.13), true)
+	var base := Color("f04f58") if team == 0 else Color("3f9ff2")
+	var rim := Color("8f2032") if team == 0 else Color("145aa7")
+	var deep := Color("4e1020") if team == 0 else Color("0a356d")
+	# Soft lifted shadow and a crisp multi-ring spherical body.
+	draw_circle(position + Vector2(radius * 0.10, radius * 0.18), radius * 1.12, Color(0, 0, 0, 0.34 * alpha), true, -1.0, true)
+	draw_circle(position, radius * 1.08, Color(deep, alpha), true, -1.0, true)
+	draw_circle(position, radius, Color(rim, alpha), true, -1.0, true)
+	draw_circle(position - Vector2(radius * 0.02, radius * 0.04), radius * 0.86, Color(base, alpha), true, -1.0, true)
+	# Lower shade and upper glass-like highlight create depth without blur.
+	draw_arc(position + Vector2(0, radius * 0.05), radius * 0.79, 0.12, PI - 0.12, 48, Color(1, 1, 1, 0.18 * alpha), maxf(1.0, radius * 0.075), true)
+	draw_arc(position + Vector2(0, radius * 0.08), radius * 0.82, PI + 0.12, TAU - 0.12, 48, Color(deep, 0.40 * alpha), maxf(1.0, radius * 0.12), true)
+	draw_circle(position - Vector2(radius * 0.34, radius * 0.35), radius * 0.20, Color(1, 1, 1, 0.72 * alpha), true, -1.0, true)
+	draw_circle(position - Vector2(radius * 0.40, radius * 0.42), radius * 0.075, Color(1, 1, 1, 0.92 * alpha), true, -1.0, true)
 	if not piece_textures.is_empty():
 		var texture := piece_textures[piece % piece_textures.size()]
-		var size := Vector2.ONE * radius * 1.58
-		draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, alpha * 0.76))
+		var size := Vector2.ONE * radius * 1.48
+		draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, 0.90 * alpha))
+	# Final thin rim keeps the silhouette sharp at every phone resolution.
+	draw_arc(position, radius * 1.02, 0.0, TAU, 64, Color(1, 1, 1, 0.22 * alpha), maxf(1.0, radius * 0.055), true)
 
 func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
 	if texture == null: return
