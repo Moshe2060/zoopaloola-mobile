@@ -325,6 +325,8 @@ func _draw() -> void:
 		return
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
+	if hammer_effect_active():
+		draw_hammer_device_covers()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -464,6 +466,36 @@ func draw_press_trap(effect: Dictionary) -> void:
 		draw_press_rod(695.0, cy, right_tip, false, squeeze)
 	var radius_screen := radius * board_rect.size.y / 600.0
 	draw_press_ball(press_point(cx, ball_y), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
+
+func hammer_effect_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == HAMMER_TRAP_HOLE:
+			return true
+	return false
+
+func draw_hammer_device_covers() -> void:
+	# The resting orange hammers are baked into the board PNG. Cover only their
+	# two stones while the trap runs, then draw the animated hammers above.
+	var scale_x := board_rect.size.x / 1200.0
+	var scale_y := board_rect.size.y / 600.0
+	var stone_dark := Color("6f815c")
+	var stone_mid := Color("9bad7f")
+	var stone_light := Color("c0cda3")
+	var right_center := hammer_point(1122.0, 482.0)
+	var right_size := Vector2(92.0 * scale_x, 132.0 * scale_y)
+	var right_rect := Rect2(right_center - right_size * 0.5, right_size)
+	draw_style_box(make_box(stone_dark, 22.0 * scale_y), right_rect)
+	var right_inner := right_rect.grow(-7.0 * scale_y)
+	draw_style_box(make_box(stone_mid, 18.0 * scale_y), right_inner)
+	draw_arc(right_center - Vector2(5.0, 10.0) * scale_y, 27.0 * scale_y, PI * 1.05, PI * 1.78, 18, stone_light, 5.0 * scale_y, true)
+
+	var bottom_center := hammer_point(1040.0, 565.0)
+	var bottom_size := Vector2(190.0 * scale_x, 67.0 * scale_y)
+	var bottom_rect := Rect2(bottom_center - bottom_size * 0.5, bottom_size)
+	draw_style_box(make_box(stone_dark, 20.0 * scale_y), bottom_rect)
+	var bottom_inner := bottom_rect.grow(-7.0 * scale_y)
+	draw_style_box(make_box(stone_mid, 16.0 * scale_y), bottom_inner)
+	draw_arc(bottom_center - Vector2(18.0, 4.0) * scale_y, 28.0 * scale_y, PI * 1.08, PI * 1.78, 18, stone_light, 5.0 * scale_y, true)
 
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
