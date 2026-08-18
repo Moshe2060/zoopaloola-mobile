@@ -484,12 +484,12 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	if rubber_ball_texture == null or rubber_hand_textures.size() < 5: return
 	var elapsed: float = effect.elapsed
 	var t := elapsed / 3.25
+	var scale_y := board_rect.size.y / 600.0
 	# The rubber-hand weapon is at the upper-left opening on the clean board.
 	# These points mirror the former upper-right placement across the board.
 	var anchor_top := rubber_point(235, 63) + rubber_top_offset * scale_y
 	var anchor_left := rubber_point(75, 145) + rubber_side_offset * scale_y
 	var capture := rubber_point(128, 104)
-	var scale_y := board_rect.size.y / 600.0
 	var ball_radius := 34.0 * scale_y
 	# The real gameplay ball has already entered this hole. Start the trap at
 	# the capture point so the V4 preview's staged entry is not replayed.
