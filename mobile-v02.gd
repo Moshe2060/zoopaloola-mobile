@@ -537,8 +537,10 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func editor_panel_rect(viewport_size: Vector2) -> Rect2:
-	# Keep controls below the HUD and away from browser/Android edge controls.
-	return Rect2(12.0, 62.0, minf(980.0, viewport_size.x - 24.0), 150.0)
+	# Keep the upper-left trap fully visible while editing. Touch duplication is
+	# handled separately, so the bottom panel remains usable on mobile.
+	var panel_width := minf(980.0, viewport_size.x - 24.0)
+	return Rect2((viewport_size.x - panel_width) * 0.5, viewport_size.y - 162.0, panel_width, 150.0)
 
 func editor_button(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := editor_panel_rect(viewport_size)
