@@ -13,10 +13,12 @@ const EFFECT_DURATION := 1.35
 const RUBBER_TRAP_HOLE := 0
 const PRESS_TRAP_HOLE := 1
 const ICE_TRAP_HOLE := 4
-const PRESS_EFFECT_DURATION := 7.2
-const ICE_EFFECT_DURATION := 5.2
-const RUBBER_CAPTURE_TIME := 2.535
-const RUBBER_FALL_TIME := 2.4
+const TRAP_CAPTURE_TIME := 2.35
+const TRAP_FALL_TIME := 2.85
+const PRESS_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
+const ICE_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
+const RUBBER_CAPTURE_TIME := TRAP_CAPTURE_TIME
+const RUBBER_FALL_TIME := TRAP_FALL_TIME
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
 var board_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
@@ -430,9 +432,9 @@ func draw_press_trap(effect: Dictionary) -> void:
 	if seconds >= 1.79:
 		rx_scale = 0.16
 		ry_scale = 1.10
-		var wait := clampf((seconds - 1.79) / 1.35, 0.0, 1.0)
-		var release := clampf((seconds - 3.14) / 3.51, 0.0, 1.0)
-		var motion := release * release * (2.0 - release)
+		var wait := clampf((seconds - 1.79) / (TRAP_CAPTURE_TIME - 1.79), 0.0, 1.0)
+		var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
+		var motion := release * release
 		rotation = sin(wait * PI) * 0.045 - motion * 0.34
 		ball_y = cy - lerpf(0.0, 176.0, motion)
 		alpha = 1.0 - release * 0.08
@@ -495,7 +497,7 @@ func draw_ice_trap(effect: Dictionary) -> void:
 	var radius := 27.0 * scale_y
 	var spray := smooth_step(seconds / 0.82)
 	var freeze := smooth_step((seconds - 0.22) / 1.18)
-	var release := smooth_step((seconds - 2.35) / 2.85)
+	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
 	var center := freeze_point
 	var alpha := 1.0
 	if release > 0.0:
@@ -568,7 +570,7 @@ func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: flo
 func draw_rubber_trap(effect: Dictionary) -> void:
 	if rubber_ball_texture == null or rubber_hand_textures.size() < 5: return
 	var elapsed: float = effect.elapsed
-	var t := elapsed / 3.25
+	var t := elapsed / RUBBER_CAPTURE_TIME
 	var scale_y := board_rect.size.y / 600.0
 	# The rubber-hand weapon is at the upper-left opening on the clean board.
 	# These points mirror the former upper-right placement across the board.
@@ -603,8 +605,8 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 			draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, rubber_top_width * scale_y * hand_emerge, rubber_top_mirror, hand_emerge, rubber_top_rotation)
 			draw_rubber_hand(rubber_hand_textures[pose], anchor_left, point_2, rubber_side_width * scale_y * hand_emerge, rubber_side_mirror, hand_emerge, rubber_side_rotation)
 	else:
-		var release := clampf((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME, 0.0, 1.0)
-		var fall := release * release * (2.0 - release)
+		var release := smooth_step((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME)
+		var fall := release * release
 		var out := rubber_point(2, 22)
 		ball = capture.lerp(out, fall)
 		ball_radius *= 1.0 - release * 0.42
