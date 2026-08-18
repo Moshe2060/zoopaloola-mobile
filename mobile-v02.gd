@@ -26,8 +26,18 @@ const HAMMER_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const RUBBER_CAPTURE_TIME := TRAP_CAPTURE_TIME
 const RUBBER_FALL_TIME := TRAP_FALL_TIME
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
+const ANIMAL_NAMES := ["ELEPHANT", "ZEBRA", "MONKEY", "HIPPO", "RHINO", "GIRAFFE"]
+const ANIMAL_FILES := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe"]
+const RING_COLOR_NAMES := ["RED", "ORANGE", "BLUE", "GREEN", "PURPLE", "TURQUOISE"]
+const RING_COLORS := [
+	Color("ef3340"), Color("ff8a00"), Color("1677ff"),
+	Color("12c95b"), Color("8f36dc"), Color("08cbd1")
+]
 var board_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
+var animal_textures: Array[Texture2D] = []
+var animal_ring_masks: Array[Texture2D] = []
+var team_piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
 var rubber_ball_texture: Texture2D
 var rubber_hand_textures: Array[Texture2D] = []
@@ -61,6 +71,12 @@ var accumulator := 0.0
 var status := "Your turn - touch a red ball, pull back and release"
 var ai_pending := false
 var ai_timer := 0.0
+var customizer_open := true
+# Start with the combination requested during the visual review: zebra + green.
+var player_animal := 1
+var player_ring_color := 3
+var ai_animal := 0
+var ai_ring_color := 0
 
 func _ready() -> void:
 	# Smooth the original character art when it is enlarged inside HD balls.
@@ -70,6 +86,10 @@ func _ready() -> void:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
+	for animal_file in ANIMAL_FILES:
+		animal_textures.append(load("res://assets/animal_pieces/%s.png" % animal_file))
+		animal_ring_masks.append(load("res://assets/animal_pieces/%s-ring-mask.png" % animal_file))
+	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
 	rubber_ball_texture = load("res://assets/rubber_trap/rubber-ball.png") as Texture2D
@@ -259,7 +279,14 @@ func _input(event: InputEvent) -> void:
 		pointer_move(event.position)
 
 func pointer_down(screen_pos: Vector2) -> void:
+	if handle_customizer_touch(screen_pos):
+		return
 	if handle_effect_editor_touch(screen_pos):
+		return
+	if Rect2(get_viewport_rect().size.x - 454.0, 6.0, 105.0, 42.0).has_point(screen_pos):
+		if not any_ball_moving() and active_effects.is_empty():
+			customizer_open = true
+			queue_redraw()
 		return
 	if Rect2(get_viewport_rect().size.x - 174.0, 6.0, 150.0, 42.0).has_point(screen_pos):
 		new_game(); return
@@ -367,12 +394,16 @@ func _draw() -> void:
 
 	draw_hud(viewport_size)
 	draw_effect_editor(viewport_size)
+	draw_customizer(viewport_size)
 
 func draw_hud(viewport_size: Vector2) -> void:
 	# Overlay the compact HUD so it no longer reserves valuable board height.
 	draw_rect(Rect2(0, 0, viewport_size.x, 54), Color(0.09, 0.15, 0.23, 0.78))
 	draw_string(ThemeDB.fallback_font, Vector2(18, 33), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color("f6d365"))
-	draw_string(ThemeDB.fallback_font, Vector2(200, 34), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 390, 17, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, Vector2(200, 34), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 675, 17, Color.WHITE)
+	var choose_rect := Rect2(viewport_size.x - 454.0, 6.0, 105.0, 42.0)
+	draw_style_box(make_box(Color("1b91a8"), 14.0), choose_rect)
+	draw_string(ThemeDB.fallback_font, choose_rect.position + Vector2(0, 28), "CHOOSE", HORIZONTAL_ALIGNMENT_CENTER, choose_rect.size.x, 15, Color.WHITE)
 	var edit_rect := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
 	draw_style_box(make_box(Color("7256d8") if effect_editor_enabled else Color("34495e"), 14.0), edit_rect)
 	draw_string(ThemeDB.fallback_font, edit_rect.position + Vector2(19, 28), "EDIT EFFECT", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
@@ -776,25 +807,100 @@ func rubber_hand_pose(value: float) -> int:
 	return 4
 
 func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: int, alpha: float) -> void:
-	var base := Color("f04f58") if team == 0 else Color("3f9ff2")
-	var rim := Color("8f2032") if team == 0 else Color("145aa7")
-	var deep := Color("4e1020") if team == 0 else Color("0a356d")
-	# Soft lifted shadow and a crisp multi-ring spherical body.
-	draw_circle(position + Vector2(radius * 0.10, radius * 0.18), radius * 1.12, Color(0, 0, 0, 0.34 * alpha), true, -1.0, true)
-	draw_circle(position, radius * 1.08, Color(deep, alpha), true, -1.0, true)
-	draw_circle(position, radius, Color(rim, alpha), true, -1.0, true)
-	draw_circle(position - Vector2(radius * 0.02, radius * 0.04), radius * 0.86, Color(base, alpha), true, -1.0, true)
-	# Lower shade and upper glass-like highlight create depth without blur.
-	draw_arc(position + Vector2(0, radius * 0.05), radius * 0.79, 0.12, PI - 0.12, 48, Color(1, 1, 1, 0.18 * alpha), maxf(1.0, radius * 0.075), true)
-	draw_arc(position + Vector2(0, radius * 0.08), radius * 0.82, PI + 0.12, TAU - 0.12, 48, Color(deep, 0.40 * alpha), maxf(1.0, radius * 0.12), true)
-	draw_circle(position - Vector2(radius * 0.34, radius * 0.35), radius * 0.20, Color(1, 1, 1, 0.72 * alpha), true, -1.0, true)
-	draw_circle(position - Vector2(radius * 0.40, radius * 0.42), radius * 0.075, Color(1, 1, 1, 0.92 * alpha), true, -1.0, true)
-	if not piece_textures.is_empty():
-		var texture := piece_textures[piece % piece_textures.size()]
-		var size := Vector2.ONE * radius * 1.48
-		draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, 0.90 * alpha))
-	# Final thin rim keeps the silhouette sharp at every phone resolution.
-	draw_arc(position, radius * 1.02, 0.0, TAU, 64, Color(1, 1, 1, 0.22 * alpha), maxf(1.0, radius * 0.055), true)
+	if team_piece_textures.size() < 2 or team_piece_textures[team] == null:
+		return
+	var texture := team_piece_textures[team]
+	var size := Vector2.ONE * radius * 2.34
+	draw_circle(position + Vector2(radius * 0.09, radius * 0.15), radius * 1.08, Color(0, 0, 0, 0.30 * alpha), true, -1.0, true)
+	draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, alpha))
+
+func rebuild_team_piece_textures() -> void:
+	team_piece_textures.clear()
+	team_piece_textures.append(make_colored_animal_texture(player_animal, RING_COLORS[player_ring_color]))
+	team_piece_textures.append(make_colored_animal_texture(ai_animal, RING_COLORS[ai_ring_color]))
+
+func make_colored_animal_texture(animal_index: int, target_color: Color) -> Texture2D:
+	if animal_index < 0 or animal_index >= animal_textures.size():
+		return null
+	var image := animal_textures[animal_index].get_image().duplicate()
+	var mask := animal_ring_masks[animal_index].get_image()
+	for y in image.get_height():
+		for x in image.get_width():
+			var amount := mask.get_pixel(x, y).r
+			if amount <= 0.001:
+				continue
+			var original := image.get_pixel(x, y)
+			var recolored := Color.from_hsv(target_color.h, maxf(original.s, target_color.s * 0.82), original.v, original.a)
+			image.set_pixel(x, y, original.lerp(recolored, amount))
+	return ImageTexture.create_from_image(image)
+
+func customizer_panel(viewport_size: Vector2) -> Rect2:
+	var size := Vector2(minf(820.0, viewport_size.x - 36.0), minf(390.0, viewport_size.y - 34.0))
+	return Rect2((viewport_size - size) * 0.5, size)
+
+func customizer_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := customizer_panel(viewport_size)
+	var gap := 8.0
+	var width := (panel.size.x - 40.0 - gap * 5.0) / 6.0
+	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 82.0), Vector2(width, 68.0))
+
+func customizer_color_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := customizer_panel(viewport_size)
+	var gap := 8.0
+	var width := (panel.size.x - 40.0 - gap * 5.0) / 6.0
+	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 205.0), Vector2(width, 58.0))
+
+func customizer_start_rect(viewport_size: Vector2) -> Rect2:
+	var panel := customizer_panel(viewport_size)
+	return Rect2(panel.position + Vector2(panel.size.x * 0.5 - 95.0, panel.size.y - 68.0), Vector2(190.0, 48.0))
+
+func handle_customizer_touch(screen_pos: Vector2) -> bool:
+	var viewport_size := get_viewport_rect().size
+	if not customizer_open:
+		return false
+	for i in ANIMAL_NAMES.size():
+		if customizer_animal_rect(i, viewport_size).has_point(screen_pos):
+			player_animal = i
+			rebuild_team_piece_textures()
+			queue_redraw()
+			return true
+	for i in RING_COLOR_NAMES.size():
+		if customizer_color_rect(i, viewport_size).has_point(screen_pos):
+			player_ring_color = i
+			rebuild_team_piece_textures()
+			queue_redraw()
+			return true
+	if customizer_start_rect(viewport_size).has_point(screen_pos):
+		ai_animal = randi() % ANIMAL_NAMES.size()
+		ai_ring_color = randi() % RING_COLOR_NAMES.size()
+		rebuild_team_piece_textures()
+		customizer_open = false
+		new_game()
+		return true
+	return true
+
+func draw_customizer(viewport_size: Vector2) -> void:
+	if not customizer_open:
+		return
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.04, 0.08, 0.72))
+	var panel := customizer_panel(viewport_size)
+	draw_style_box(make_box(Color("122337"), 18.0), panel)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(0, 38), "CHOOSE YOUR ANIMAL AND LIFEBUOY", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 22, Color("f6d365"))
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(20, 72), "ANIMAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	for i in ANIMAL_NAMES.size():
+		var rect := customizer_animal_rect(i, viewport_size)
+		draw_style_box(make_box(Color("7256d8") if i == player_animal else Color("26384b"), 10.0), rect)
+		draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 40), ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(20, 195), "LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	for i in RING_COLOR_NAMES.size():
+		var rect := customizer_color_rect(i, viewport_size)
+		draw_style_box(make_box(RING_COLORS[i], 10.0), rect)
+		if i == player_ring_color:
+			draw_rect(rect.grow(3.0), Color.WHITE, false, 3.0)
+		draw_string(ThemeDB.fallback_font, rect.position + Vector2(0, 36), RING_COLOR_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
+	var start_rect := customizer_start_rect(viewport_size)
+	draw_style_box(make_box(Color("12a96b"), 14.0), start_rect)
+	draw_string(ThemeDB.fallback_font, start_rect.position + Vector2(0, 31), "START GAME", HORIZONTAL_ALIGNMENT_CENTER, start_rect.size.x, 17, Color.WHITE)
 
 func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
 	if texture == null: return
