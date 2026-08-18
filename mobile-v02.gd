@@ -576,8 +576,10 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 		replay_rubber_editor()
 		queue_redraw()
 		return true
-	var replay_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(6, 8), Vector2(112, 46))
-	var copy_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(126, 8), Vector2(142, 46))
+	var replay_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(6, 8), Vector2(100, 46))
+	var copy_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(114, 8), Vector2(132, 46))
+	var preset_a_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(254, 8), Vector2(112, 46))
+	var preset_b_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(374, 8), Vector2(112, 46))
 	if replay_rect.has_point(screen_pos):
 		replay_rubber_editor()
 		return true
@@ -585,6 +587,14 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 		DisplayServer.clipboard_set(editor_settings_text())
 		status = "Effect settings copied"
 		queue_redraw()
+		return true
+	if preset_a_rect.has_point(screen_pos):
+		apply_rubber_preset_a()
+		replay_rubber_editor()
+		return true
+	if preset_b_rect.has_point(screen_pos):
+		apply_rubber_preset_b()
+		replay_rubber_editor()
 		return true
 	return editor_panel_rect(viewport_size).has_point(screen_pos)
 
@@ -612,6 +622,28 @@ func toggle_editor_mirror() -> void:
 	else:
 		rubber_side_mirror = not rubber_side_mirror
 
+func apply_rubber_preset_a() -> void:
+	rubber_top_offset = Vector2(-60.0, -10.0)
+	rubber_side_offset = Vector2(20.0, 20.0)
+	rubber_top_width = 72.0
+	rubber_side_width = 72.0
+	rubber_top_rotation = deg_to_rad(-20.0)
+	rubber_side_rotation = deg_to_rad(-5.0)
+	rubber_top_mirror = false
+	rubber_side_mirror = false
+	status = "Rubber preset A"
+
+func apply_rubber_preset_b() -> void:
+	rubber_top_offset = Vector2(-40.0, 25.0)
+	rubber_side_offset = Vector2(10.0, -20.0)
+	rubber_top_width = 72.0
+	rubber_side_width = 72.0
+	rubber_top_rotation = deg_to_rad(-175.0)
+	rubber_side_rotation = deg_to_rad(-165.0)
+	rubber_top_mirror = true
+	rubber_side_mirror = true
+	status = "Rubber preset B"
+
 func replay_rubber_editor() -> void:
 	active_effects.clear()
 	active_effects.append({"hole":RUBBER_TRAP_HOLE, "elapsed":0.0, "team":0, "piece":0})
@@ -628,13 +660,15 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 		return
 	var panel := editor_panel_rect(viewport_size)
 	draw_style_box(make_box(Color(0.04, 0.07, 0.12, 0.94), 12.0), panel)
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(285, 37), "RUBBER HAND EDITOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("f6d365"))
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(505, 36), "RUBBER HAND EDITOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("f6d365"))
 	var selected_name := "TOP HAND" if editor_selected_hand == 0 else "SIDE HAND"
 	var values := editor_settings_text()
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(285, 58), selected_name, HORIZONTAL_ALIGNMENT_LEFT, 150, 15, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(440, 58), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 450, 11, Color("dbe7f3"))
-	draw_editor_button(Rect2(panel.position + Vector2(6, 8), Vector2(112, 46)), "REPLAY")
-	draw_editor_button(Rect2(panel.position + Vector2(126, 8), Vector2(142, 46)), "COPY SETTINGS")
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(505, 58), selected_name, HORIZONTAL_ALIGNMENT_LEFT, 120, 14, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(625, 58), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 635, 10, Color("dbe7f3"))
+	draw_editor_button(Rect2(panel.position + Vector2(6, 8), Vector2(100, 46)), "REPLAY")
+	draw_editor_button(Rect2(panel.position + Vector2(114, 8), Vector2(132, 46)), "COPY")
+	draw_editor_button(Rect2(panel.position + Vector2(254, 8), Vector2(112, 46)), "PRESET A")
+	draw_editor_button(Rect2(panel.position + Vector2(374, 8), Vector2(112, 46)), "PRESET B")
 	var labels := ["TOP", "SIDE", "LEFT", "RIGHT", "UP", "DOWN", "SIZE-", "SIZE+", "ROT-", "ROT+", "MIRROR"]
 	for i in 11:
 		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_selected_hand and i < 2))
