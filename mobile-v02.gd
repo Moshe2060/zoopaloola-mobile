@@ -480,8 +480,10 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	var team: int = effect.team
 	var piece: int = effect.piece
 	if elapsed < RUBBER_CAPTURE_TIME:
-		var target_1 := ball + Vector2((-15.0 + sin(t * 36.0) * 5.0 * hold) * scale_y, (-7.0 + cos(t * 31.0) * 5.0 * hold) * scale_y)
-		var target_2 := ball + Vector2((15.0 - sin(t * 34.0) * 5.0 * hold) * scale_y, (10.0 - cos(t * 29.0) * 5.0 * hold) * scale_y)
+		# Mirror the grip paths as well as the artwork: the upper hand now
+		# approaches the ball's right side and the side hand its left side.
+		var target_1 := ball + Vector2((15.0 - sin(t * 36.0) * 5.0 * hold) * scale_y, (-7.0 + cos(t * 31.0) * 5.0 * hold) * scale_y)
+		var target_2 := ball + Vector2((-15.0 + sin(t * 34.0) * 5.0 * hold) * scale_y, (10.0 - cos(t * 29.0) * 5.0 * hold) * scale_y)
 		var point_1 := anchor_top.lerp(target_1, reach)
 		var point_2 := anchor_left.lerp(target_2, reach)
 		var focus := wrap * (1.0 - wrap * 0.45)
@@ -489,9 +491,8 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap * 0.72)
 		if wrap > 0.0: draw_rubber_wrap(ball, ball_radius * 1.05, wrap, t * 20.0)
 		var pose := rubber_hand_pose(hold)
-		# Swap handedness after moving the trap to the opposite corner.
-		draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, 72.0 * scale_y, true)
-		draw_rubber_hand(rubber_hand_textures[pose], anchor_left, point_2, 72.0 * scale_y, false)
+		draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, 72.0 * scale_y, false)
+		draw_rubber_hand(rubber_hand_textures[pose], anchor_left, point_2, 72.0 * scale_y, true)
 	else:
 		var release := clampf((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME, 0.0, 1.0)
 		var fall := release * release * (2.0 - release)
@@ -499,11 +500,11 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 		ball = capture.lerp(out, fall)
 		ball_radius *= 1.0 - release * 0.42
 		var retract := 1.0 - clampf(release / 0.32, 0.0, 1.0)
-		var point_1 := anchor_top.lerp(capture + Vector2(-15, -7) * scale_y, retract)
-		var point_2 := anchor_left.lerp(capture + Vector2(15, 10) * scale_y, retract)
+		var point_1 := anchor_top.lerp(capture + Vector2(15, -7) * scale_y, retract)
+		var point_2 := anchor_left.lerp(capture + Vector2(-15, 10) * scale_y, retract)
 		if retract > 0.08:
-			draw_rubber_hand(rubber_hand_textures[4], anchor_top, point_1, 72.0 * scale_y, true, retract)
-			draw_rubber_hand(rubber_hand_textures[4], anchor_left, point_2, 72.0 * scale_y, false, retract)
+			draw_rubber_hand(rubber_hand_textures[4], anchor_top, point_1, 72.0 * scale_y, false, retract)
+			draw_rubber_hand(rubber_hand_textures[4], anchor_left, point_2, 72.0 * scale_y, true, retract)
 		draw_set_transform(ball, fall * 3.2, Vector2.ONE)
 		draw_texture_rect(rubber_ball_texture, Rect2(-Vector2.ONE * ball_radius, Vector2.ONE * ball_radius * 2.0), false, Color(1, 1, 1, 1.0 - release * 0.05))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
