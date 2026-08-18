@@ -12,7 +12,9 @@ const SCORING_HOLE_CENTERS := [
 const EFFECT_DURATION := 1.35
 const RUBBER_TRAP_HOLE := 0
 const PRESS_TRAP_HOLE := 1
+const ICE_TRAP_HOLE := 4
 const PRESS_EFFECT_DURATION := 7.2
+const ICE_EFFECT_DURATION := 5.2
 const RUBBER_CAPTURE_TIME := 2.535
 const RUBBER_FALL_TIME := 2.4
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
@@ -211,6 +213,8 @@ func update_effects(delta: float) -> void:
 			duration = RUBBER_EFFECT_DURATION
 		elif active_effects[i].hole == PRESS_TRAP_HOLE:
 			duration = PRESS_EFFECT_DURATION
+		elif active_effects[i].hole == ICE_TRAP_HOLE:
+			duration = ICE_EFFECT_DURATION
 		if active_effects[i].elapsed >= duration:
 			active_effects.remove_at(i)
 
@@ -325,6 +329,8 @@ func _draw() -> void:
 			draw_rubber_trap(effect)
 		elif effect.hole == PRESS_TRAP_HOLE:
 			draw_press_trap(effect)
+		elif effect.hole == ICE_TRAP_HOLE:
+			draw_ice_trap(effect)
 		else:
 			draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
 
@@ -438,6 +444,76 @@ func draw_press_trap(effect: Dictionary) -> void:
 		draw_press_rod(695.0, cy, right_tip, false, squeeze)
 	var radius_screen := radius * board_rect.size.y / 600.0
 	draw_press_ball(press_point(cx, ball_y), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
+
+func ice_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func draw_ice_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float) -> void:
+	if amount <= 0.01:
+		return
+	var direction := target - origin
+	var normal := direction.normalized().orthogonal()
+	var end := origin.lerp(target, amount)
+	var width := maxf(2.0, board_rect.size.y / 600.0 * 7.0)
+	draw_line(origin, end, Color(0.67, 0.93, 1.0, 0.46), width * 2.1, true)
+	draw_line(origin, end, Color(0.92, 0.99, 1.0, 0.94), width, true)
+	for i in 13:
+		var phase := fmod(float(i) / 12.0 + seed_offset + amount * 0.9, 1.0)
+		if phase > amount:
+			continue
+		var p := origin.lerp(target, phase)
+		var wobble := sin(phase * 31.0 + seed_offset * 17.0) * width * 1.3
+		p += normal * wobble
+		var particle_radius := width * (0.38 + float(i % 3) * 0.16)
+		draw_circle(p, particle_radius, Color(0.82, 0.97, 1.0, 0.88))
+
+func draw_ice_shell(center: Vector2, radius: float, amount: float, alpha: float = 1.0) -> void:
+	if amount <= 0.01:
+		return
+	var shell_radius := radius * lerpf(0.72, 1.32, amount)
+	var points := PackedVector2Array()
+	for i in 16:
+		var angle := TAU * float(i) / 16.0
+		var jag := 1.0 + (0.10 if i % 2 == 0 else -0.04) * amount
+		points.append(center + Vector2(cos(angle), sin(angle)) * shell_radius * jag)
+	draw_colored_polygon(points, Color(0.64, 0.91, 1.0, (0.18 + amount * 0.46) * alpha))
+	draw_polyline(PackedVector2Array(Array(points) + [points[0]]), Color(0.88, 0.98, 1.0, 0.92 * alpha), maxf(2.0, radius * 0.09), true)
+	for i in 7:
+		var a := float(i) * 2.21 + amount
+		var inner := center + Vector2(cos(a), sin(a)) * shell_radius * 0.28
+		var outer := center + Vector2(cos(a + 0.22), sin(a + 0.22)) * shell_radius * (0.58 + 0.28 * amount)
+		draw_line(inner, outer, Color(0.90, 0.99, 1.0, 0.72 * amount * alpha), maxf(1.0, radius * 0.055), true)
+
+func draw_ice_trap(effect: Dictionary) -> void:
+	var seconds: float = effect.elapsed
+	var scale_y := board_rect.size.y / 600.0
+	var left_weapon := ice_point(470.0, 565.0)
+	var right_weapon := ice_point(730.0, 565.0)
+	var freeze_point := ice_point(600.0, 548.0)
+	var radius := 27.0 * scale_y
+	var spray := smooth_step(seconds / 0.82)
+	var freeze := smooth_step((seconds - 0.22) / 1.18)
+	var release := smooth_step((seconds - 2.35) / 2.85)
+	var center := freeze_point
+	var alpha := 1.0
+	if release > 0.0:
+		var gravity_fall := release * release
+		center.y += gravity_fall * 190.0 * scale_y
+		center.x += sin(release * PI) * 5.0 * scale_y
+		radius *= 1.0 - release * 0.28
+		alpha = 1.0 - release * 0.12
+	if seconds < 1.65:
+		var stream_strength := spray * (1.0 - smooth_step((seconds - 1.28) / 0.37))
+		draw_ice_stream(left_weapon, freeze_point, stream_strength, 0.13)
+		draw_ice_stream(right_weapon, freeze_point, stream_strength, 0.61)
+	draw_rubber_game_ball(center, radius, effect.team, effect.piece, 1.0 - freeze * 0.58)
+	draw_ice_shell(center, radius, freeze, alpha)
+	if freeze > 0.55 and release <= 0.0:
+		var sparkle := 0.55 + sin(seconds * 18.0) * 0.35
+		for i in 6:
+			var a := TAU * float(i) / 6.0 + seconds * 0.7
+			var p := center + Vector2(cos(a), sin(a)) * radius * 1.48
+			draw_circle(p, maxf(1.5, 2.4 * scale_y), Color(0.91, 1.0, 1.0, sparkle))
 
 func rubber_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
