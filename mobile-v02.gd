@@ -1075,7 +1075,7 @@ func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: flo
 	var source := Rect2(0.0, float(frame * 210), 210.0, 210.0)
 	var size := Vector2.ONE * radius * 5.35
 	var top_left := position - Vector2(102.0, 108.0) / 210.0 * size
-	draw_texture_rect_region(Rect2(top_left, size), rubber_wrap_texture, source, Color.WHITE)
+	draw_texture_rect_region(rubber_wrap_texture, Rect2(top_left, size), source, Color.WHITE)
 
 func rubber_launcher_points() -> Dictionary:
 	return {
