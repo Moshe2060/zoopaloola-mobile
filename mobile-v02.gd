@@ -83,6 +83,16 @@ var electric_top_offset := Vector2(-74.0, -78.0)
 var electric_right_offset := Vector2(70.0, 58.0)
 var electric_top_size := 34.0
 var electric_right_size := 34.0
+var editor_hole := ELECTRIC_TRAP_HOLE
+var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball
+var trap_weapon_offsets: Array[Vector2] = [
+	Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO,
+	Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO,
+	Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO
+]
+var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+var trap_ball_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -616,19 +626,36 @@ func draw_hole_effect(hole: int, progress: float) -> void:
 	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1,1,1,alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+func trap_weapon_offset(hole: int, weapon: int) -> Vector2:
+	return trap_weapon_offsets[hole * 2 + weapon] * (board_rect.size.y / 600.0)
+
+func trap_weapon_scale(hole: int, weapon: int) -> float:
+	return trap_weapon_scales[hole * 2 + weapon]
+
+func trap_ball_position(hole: int, base: Vector2) -> Vector2:
+	return base + trap_ball_offsets[hole] * (board_rect.size.y / 600.0)
+
+func trap_ball_radius(hole: int, base: float) -> float:
+	return base * trap_ball_scales[hole]
+
 func press_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1276.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
 func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, compression: float) -> void:
 	var anchor := press_point(anchor_x, y)
 	var tip := press_point(tip_x, y)
+	var weapon_index := 0 if left_side else 1
+	var edit_offset := trap_weapon_offset(PRESS_TRAP_HOLE, weapon_index)
+	var edit_scale := trap_weapon_scale(PRESS_TRAP_HOLE, weapon_index)
+	anchor += edit_offset
+	tip += edit_offset
 	var direction := 1.0 if left_side else -1.0
 	var unit_x := board_rect.size.x / 1276.0
 	var unit_y := board_rect.size.y / 600.0
 	var rod_end := tip - Vector2(direction * 8.0 * unit_x, 0.0)
-	draw_line(anchor, rod_end, Color("374957"), 14.0 * unit_y, true)
-	draw_line(anchor - Vector2(0, 1.5 * unit_y), rod_end - Vector2(0, 1.5 * unit_y), Color("a9bdc6"), 7.0 * unit_y, true)
-	var plate_size := Vector2(16.0 * unit_x, 46.0 * unit_y)
+	draw_line(anchor, rod_end, Color("374957"), 14.0 * unit_y * edit_scale, true)
+	draw_line(anchor - Vector2(0, 1.5 * unit_y), rod_end - Vector2(0, 1.5 * unit_y), Color("a9bdc6"), 7.0 * unit_y * edit_scale, true)
+	var plate_size := Vector2(16.0 * unit_x, 46.0 * unit_y) * edit_scale
 	draw_style_box(make_box(Color("384b57"), 4.0 * unit_y), Rect2(tip - plate_size * 0.5, plate_size))
 	var glow_width := 6.0 * unit_x
 	var glow_rect := Rect2(tip.x - glow_width * 0.5, tip.y - 19.0 * unit_y, glow_width, 38.0 * unit_y)
@@ -683,8 +710,8 @@ func draw_press_trap(effect: Dictionary) -> void:
 	if arm_amount > 0.01:
 		draw_press_rod(546.0, cy, left_tip, true, squeeze)
 		draw_press_rod(695.0, cy, right_tip, false, squeeze)
-	var radius_screen := radius * board_rect.size.y / 600.0
-	draw_press_ball(press_point(cx, ball_y), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
+	var radius_screen := trap_ball_radius(PRESS_TRAP_HOLE, radius * board_rect.size.y / 600.0)
+	draw_press_ball(trap_ball_position(PRESS_TRAP_HOLE, press_point(cx, ball_y)), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
 
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
@@ -715,10 +742,10 @@ func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, amount: float, scale_
 func draw_hammer_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	var right_weapon := hammer_point(1128.0, 455.0)
-	var bottom_weapon := hammer_point(1010.0, 565.0)
-	var hit_point := hammer_point(1072.0, 522.0)
-	var radius := 27.0 * scale_y
+	var right_weapon := hammer_point(1128.0, 455.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 0)
+	var bottom_weapon := hammer_point(1010.0, 565.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 1)
+	var hit_point := trap_ball_position(HAMMER_TRAP_HOLE, hammer_point(1072.0, 522.0))
+	var radius := trap_ball_radius(HAMMER_TRAP_HOLE, 27.0 * scale_y)
 	var hammering := 1.0 - smooth_step((seconds - 1.82) / 0.30)
 	var right_amount := hammer_strike_amount(seconds, 0.04) * hammering
 	var bottom_amount := hammer_strike_amount(seconds, 0.39) * hammering
@@ -755,8 +782,8 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	# Draw the ball first, then the hammers, so their heads visibly land on top.
 	draw_press_ball(center, ball_radius, squash_x, squash_y, ball_rotation, effect.team, effect.piece, alpha)
 	if release <= 0.0:
-		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.28, 0.0), right_amount, scale_y)
-		draw_trap_hammer(bottom_weapon, hit_point + Vector2(0.0, radius * 0.28), bottom_amount, scale_y)
+		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.28, 0.0), right_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0))
+		draw_trap_hammer(bottom_weapon, hit_point + Vector2(0.0, radius * 0.28), bottom_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1))
 
 	if impact > 0.05 and release <= 0.0:
 		draw_circle(center, ball_radius * (1.32 + impact * 0.18), Color(1.0, 0.77, 0.25, 0.28 * impact), false, maxf(2.0, 4.0 * scale_y))
@@ -790,12 +817,12 @@ func electric_trap_is_active() -> bool:
 	return false
 
 func electric_weapon_points() -> Dictionary:
-	var capture := board_to_screen(SCORING_HOLE_CENTERS[ELECTRIC_TRAP_HOLE])
+	var capture := trap_ball_position(ELECTRIC_TRAP_HOLE, board_to_screen(SCORING_HOLE_CENTERS[ELECTRIC_TRAP_HOLE]))
 	var scale_y := board_rect.size.y / 600.0
 	return {
 		"capture": capture,
-		"top": capture + electric_top_offset * scale_y,
-		"right": capture + electric_right_offset * scale_y
+		"top": capture + electric_top_offset * scale_y + trap_weapon_offset(ELECTRIC_TRAP_HOLE, 0),
+		"right": capture + electric_right_offset * scale_y + trap_weapon_offset(ELECTRIC_TRAP_HOLE, 1)
 	}
 
 func draw_electric_emitter(center: Vector2, target: Vector2, size: float, power: float = 0.0) -> Vector2:
@@ -821,8 +848,8 @@ func draw_electric_weapons_idle() -> void:
 	var points := electric_weapon_points()
 	var scale_y := board_rect.size.y / 600.0
 	var pulse := (sin(float(Time.get_ticks_msec()) * 0.0045) + 1.0) * 0.5
-	draw_electric_emitter(points.top, points.capture, electric_top_size * scale_y, pulse * 0.20)
-	draw_electric_emitter(points.right, points.capture, electric_right_size * scale_y, pulse * 0.20)
+	draw_electric_emitter(points.top, points.capture, electric_top_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 0), pulse * 0.20)
+	draw_electric_emitter(points.right, points.capture, electric_right_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 1), pulse * 0.20)
 
 func draw_electric_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
@@ -831,7 +858,7 @@ func draw_electric_trap(effect: Dictionary) -> void:
 	var top_weapon: Vector2 = points.top
 	var right_weapon: Vector2 = points.right
 	var shock_point: Vector2 = points.capture
-	var radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+	var radius := trap_ball_radius(ELECTRIC_TRAP_HOLE, RADIUS * board_scale * GAME_BALL_VISUAL_SCALE)
 	var charge := smooth_step(seconds / 0.30)
 	var charge_fade := 1.0 - smooth_step((seconds - 1.12) / 0.28)
 	var beam_power := charge * charge_fade
@@ -849,8 +876,8 @@ func draw_electric_trap(effect: Dictionary) -> void:
 		ball_radius *= 1.0 - release * 0.34
 		alpha = 1.0 - release * 0.10
 
-	var top_tip := draw_electric_emitter(top_weapon, shock_point, electric_top_size * scale_y, beam_power)
-	var right_tip := draw_electric_emitter(right_weapon, shock_point, electric_right_size * scale_y, beam_power)
+	var top_tip := draw_electric_emitter(top_weapon, shock_point, electric_top_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 0), beam_power)
+	var right_tip := draw_electric_emitter(right_weapon, shock_point, electric_right_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 1), beam_power)
 
 	# One short, bright discharge from each weapon, as in the source animation.
 	if beam_power > 0.01 and release <= 0.0:
@@ -884,7 +911,7 @@ func draw_electric_trap(effect: Dictionary) -> void:
 func fire_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
-func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float) -> void:
+func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
 	if amount <= 0.01:
 		return
 	var end := origin.lerp(target, amount)
@@ -892,7 +919,7 @@ func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offs
 	if direction.length_squared() < 0.01:
 		return
 	var normal := direction.normalized().orthogonal()
-	var scale_y := board_rect.size.y / 600.0
+	var scale_y := board_rect.size.y / 600.0 * edit_scale
 	draw_line(origin, end, Color(1.0, 0.18, 0.01, 0.72), 18.0 * scale_y, true)
 	draw_line(origin, end, Color(1.0, 0.58, 0.03, 0.92), 10.0 * scale_y, true)
 	draw_line(origin, end, Color(1.0, 0.94, 0.28, 0.94), 4.0 * scale_y, true)
@@ -928,10 +955,10 @@ func draw_burning_ball(center: Vector2, radius: float, burn: float, team: int, p
 func draw_fire_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	var left_weapon := fire_point(78.0, 492.0)
-	var bottom_weapon := fire_point(188.0, 565.0)
-	var burn_point := fire_point(112.0, 536.0)
-	var radius := 27.0 * scale_y
+	var left_weapon := fire_point(78.0, 492.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 0)
+	var bottom_weapon := fire_point(188.0, 565.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 1)
+	var burn_point := trap_ball_position(FIRE_TRAP_HOLE, fire_point(112.0, 536.0))
+	var radius := trap_ball_radius(FIRE_TRAP_HOLE, 27.0 * scale_y)
 	var ignition := smooth_step(seconds / 0.72)
 	var burn := smooth_step((seconds - 0.18) / 1.22)
 	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
@@ -945,20 +972,20 @@ func draw_fire_trap(effect: Dictionary) -> void:
 		alpha = 1.0 - release * 0.10
 	if seconds < 1.72:
 		var stream_strength := ignition * (1.0 - smooth_step((seconds - 1.34) / 0.38))
-		draw_fire_stream(left_weapon, burn_point, stream_strength, 0.17)
-		draw_fire_stream(bottom_weapon, burn_point, stream_strength, 0.63)
+		draw_fire_stream(left_weapon, burn_point, stream_strength, 0.17, trap_weapon_scale(FIRE_TRAP_HOLE, 0))
+		draw_fire_stream(bottom_weapon, burn_point, stream_strength, 0.63, trap_weapon_scale(FIRE_TRAP_HOLE, 1))
 	draw_burning_ball(center, radius, burn, effect.team, effect.piece, alpha)
 
 func ice_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
-func draw_ice_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float) -> void:
+func draw_ice_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
 	if amount <= 0.01:
 		return
 	var direction := target - origin
 	var normal := direction.normalized().orthogonal()
 	var end := origin.lerp(target, amount)
-	var width := maxf(2.0, board_rect.size.y / 600.0 * 7.0)
+	var width := maxf(2.0, board_rect.size.y / 600.0 * 7.0 * edit_scale)
 	draw_line(origin, end, Color(0.67, 0.93, 1.0, 0.46), width * 2.1, true)
 	draw_line(origin, end, Color(0.92, 0.99, 1.0, 0.94), width, true)
 	for i in 13:
@@ -993,10 +1020,10 @@ func draw_ice_shell(center: Vector2, radius: float, amount: float, alpha: float 
 func draw_ice_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	var left_weapon := ice_point(470.0, 565.0)
-	var right_weapon := ice_point(730.0, 565.0)
-	var freeze_point := ice_point(600.0, 548.0)
-	var radius := 27.0 * scale_y
+	var left_weapon := ice_point(470.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 0)
+	var right_weapon := ice_point(730.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 1)
+	var freeze_point := trap_ball_position(ICE_TRAP_HOLE, ice_point(600.0, 548.0))
+	var radius := trap_ball_radius(ICE_TRAP_HOLE, 27.0 * scale_y)
 	var spray := smooth_step(seconds / 0.82)
 	var freeze := smooth_step((seconds - 0.22) / 1.18)
 	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
@@ -1012,8 +1039,8 @@ func draw_ice_trap(effect: Dictionary) -> void:
 		alpha = 1.0 - release * 0.12
 	if seconds < 1.65:
 		var stream_strength := spray * (1.0 - smooth_step((seconds - 1.28) / 0.37))
-		draw_ice_stream(left_weapon, freeze_point, stream_strength, 0.13)
-		draw_ice_stream(right_weapon, freeze_point, stream_strength, 0.61)
+		draw_ice_stream(left_weapon, freeze_point, stream_strength, 0.13, trap_weapon_scale(ICE_TRAP_HOLE, 0))
+		draw_ice_stream(right_weapon, freeze_point, stream_strength, 0.61, trap_weapon_scale(ICE_TRAP_HOLE, 1))
 	draw_rubber_game_ball(center, radius, effect.team, effect.piece, 1.0 - freeze * 0.58)
 	draw_ice_shell(center, radius, freeze, alpha)
 	if freeze > 0.55 and release <= 0.0:
@@ -1156,12 +1183,13 @@ func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: flo
 	draw_texture_rect_region(rubber_wrap_texture, Rect2(top_left, size), source, Color.WHITE)
 
 func rubber_launcher_points() -> Dictionary:
+	var capture := trap_ball_position(RUBBER_TRAP_HOLE, rubber_point(128.0, 104.0))
 	return {
-		"capture": rubber_point(128.0, 104.0),
+		"capture": capture,
 		# Measured from the source video: the launchers sit diagonally across
 		# the opening, not directly above and left of the captured ball.
-		"top": rubber_point(223.0, 33.0),
-		"side": rubber_point(54.0, 177.0)
+		"top": rubber_point(223.0, 33.0) + trap_weapon_offset(RUBBER_TRAP_HOLE, 0),
+		"side": rubber_point(54.0, 177.0) + trap_weapon_offset(RUBBER_TRAP_HOLE, 1)
 	}
 
 func rubber_trap_is_active() -> bool:
@@ -1193,8 +1221,8 @@ func draw_rubber_launchers_idle() -> void:
 	var points := rubber_launcher_points()
 	var scale_y := board_rect.size.y / 600.0
 	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
-	draw_rubber_launcher(points.top, points.capture, 44.0 * scale_y, pulse * 0.18)
-	draw_rubber_launcher(points.side, points.capture, 44.0 * scale_y, pulse * 0.18)
+	draw_rubber_launcher(points.top, points.capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 0), pulse * 0.18)
+	draw_rubber_launcher(points.side, points.capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 1), pulse * 0.18)
 
 func draw_elastic_tape(origin: Vector2, target: Vector2, amount: float, bend: float, width: float) -> void:
 	if amount <= 0.001:
@@ -1226,7 +1254,7 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	# Use exactly the same on-screen radius as the live gameplay piece. The old
 	# fixed effect radius was about 1.5x larger and caused a visible size pop on
 	# the first wrapping frame.
-	var ball_radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+	var ball_radius := trap_ball_radius(RUBBER_TRAP_HOLE, RADIUS * board_scale * GAME_BALL_VISUAL_SCALE)
 	# The real gameplay ball has already entered this hole. Start the trap at
 	# the capture point so the V4 preview's staged entry is not replayed.
 	var ball := capture
@@ -1234,8 +1262,8 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	var wrap := smooth_step((t - 0.05) / 0.72)
 	var team: int = effect.team
 	var piece: int = effect.piece
-	draw_rubber_launcher(anchor_top, capture, 44.0 * scale_y, reach)
-	draw_rubber_launcher(anchor_left, capture, 44.0 * scale_y, reach)
+	draw_rubber_launcher(anchor_top, capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 0), reach)
+	draw_rubber_launcher(anchor_left, capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 1), reach)
 	if elapsed < RUBBER_CAPTURE_TIME:
 		var focus := wrap * (1.0 - wrap * 0.45)
 		draw_circle(ball, ball_radius * (1.45 + sin(t * 45.0) * 0.08), Color(1.0, 0.965, 0.72, 0.28 * focus))
@@ -1262,6 +1290,11 @@ func editor_button(index: int, viewport_size: Vector2) -> Rect2:
 	var button_w := (panel.size.x - 22.0) / 11.0
 	return Rect2(panel.position + Vector2(6.0 + index * button_w, 82.0), Vector2(button_w - 4.0, 56.0))
 
+func editor_top_button(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := editor_panel_rect(viewport_size)
+	var button_w := (panel.size.x - 12.0) / 7.0
+	return Rect2(panel.position + Vector2(6.0 + index * button_w, 8.0), Vector2(button_w - 4.0, 46.0))
+
 func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 	var viewport_size := get_viewport_rect().size
 	var toggle := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
@@ -1273,71 +1306,59 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 		return true
 	if not effect_editor_enabled:
 		return false
+	for i in 7:
+		if not editor_top_button(i, viewport_size).has_point(screen_pos):
+			continue
+		if i == 0:
+			DisplayServer.clipboard_set(editor_settings_text())
+			status = "Effect settings copied"
+		else:
+			editor_hole = i - 1
+			editor_target = 0
+			replay_effect_editor()
+		queue_redraw()
+		return true
 	for i in 11:
 		if not editor_button(i, viewport_size).has_point(screen_pos):
 			continue
 		match i:
-			0: editor_selected_hand = 0
-			1: editor_selected_hand = 1
-			2: change_editor_offset(Vector2(-5, 0))
-			3: change_editor_offset(Vector2(5, 0))
-			4: change_editor_offset(Vector2(0, -5))
-			5: change_editor_offset(Vector2(0, 5))
-			6: change_editor_width(-4.0)
-			7: change_editor_width(4.0)
-			8: change_editor_rotation(deg_to_rad(-5.0))
-			9: change_editor_rotation(deg_to_rad(5.0))
-			10: toggle_editor_mirror()
+			0: editor_target = 0
+			1: editor_target = 1
+			2: editor_target = 2
+			3: change_editor_offset(Vector2(-5, 0))
+			4: change_editor_offset(Vector2(5, 0))
+			5: change_editor_offset(Vector2(0, -5))
+			6: change_editor_offset(Vector2(0, 5))
+			7: change_editor_width(-0.10)
+			8: change_editor_width(0.10)
+			9: reset_editor_target()
+			10: replay_effect_editor()
 		replay_effect_editor()
 		queue_redraw()
-		return true
-	var replay_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(6, 8), Vector2(100, 46))
-	var copy_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(114, 8), Vector2(132, 46))
-	var preset_a_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(254, 8), Vector2(112, 46))
-	var preset_b_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(374, 8), Vector2(112, 46))
-	if replay_rect.has_point(screen_pos):
-		replay_effect_editor()
-		return true
-	if copy_rect.has_point(screen_pos):
-		DisplayServer.clipboard_set(editor_settings_text())
-		status = "Effect settings copied"
-		queue_redraw()
-		return true
-	if preset_a_rect.has_point(screen_pos):
-		effect_editor_mode = "rubber"
-		editor_selected_hand = 0
-		replay_effect_editor()
-		return true
-	if preset_b_rect.has_point(screen_pos):
-		effect_editor_mode = "electric"
-		editor_selected_hand = 0
-		replay_effect_editor()
 		return true
 	return editor_panel_rect(viewport_size).has_point(screen_pos)
 
 func change_editor_offset(amount: Vector2) -> void:
-	if effect_editor_mode == "electric":
-		if editor_selected_hand == 0:
-			electric_top_offset += amount
-		else:
-			electric_right_offset += amount
-		return
-	if editor_selected_hand == 0:
-		rubber_top_offset += amount
+	if editor_target == 2:
+		trap_ball_offsets[editor_hole] += amount
 	else:
-		rubber_side_offset += amount
+		trap_weapon_offsets[editor_hole * 2 + editor_target] += amount
 
 func change_editor_width(amount: float) -> void:
-	if effect_editor_mode == "electric":
-		if editor_selected_hand == 0:
-			electric_top_size = clampf(electric_top_size + amount, 16.0, 80.0)
-		else:
-			electric_right_size = clampf(electric_right_size + amount, 16.0, 80.0)
-		return
-	if editor_selected_hand == 0:
-		rubber_top_width = clampf(rubber_top_width + amount, 20.0, 100.0)
+	if editor_target == 2:
+		trap_ball_scales[editor_hole] = clampf(trap_ball_scales[editor_hole] + amount, 0.4, 2.0)
 	else:
-		rubber_side_width = clampf(rubber_side_width + amount, 20.0, 100.0)
+		var index := editor_hole * 2 + editor_target
+		trap_weapon_scales[index] = clampf(trap_weapon_scales[index] + amount, 0.4, 2.0)
+
+func reset_editor_target() -> void:
+	if editor_target == 2:
+		trap_ball_offsets[editor_hole] = Vector2.ZERO
+		trap_ball_scales[editor_hole] = 1.0
+	else:
+		var index := editor_hole * 2 + editor_target
+		trap_weapon_offsets[index] = Vector2.ZERO
+		trap_weapon_scales[index] = 1.0
 
 func change_editor_rotation(amount: float) -> void:
 	if effect_editor_mode == "electric":
@@ -1383,13 +1404,12 @@ func replay_rubber_editor() -> void:
 
 func replay_effect_editor() -> void:
 	active_effects.clear()
-	var hole := ELECTRIC_TRAP_HOLE if effect_editor_mode == "electric" else RUBBER_TRAP_HOLE
-	active_effects.append({"hole":hole, "elapsed":0.0, "team":0, "piece":0})
+	active_effects.append({"hole":editor_hole, "elapsed":0.0, "team":0, "piece":0})
 
 func editor_settings_text() -> String:
-	if effect_editor_mode == "electric":
-		return "left_offset=%s; right_offset=%s; left_size=%.1f; right_size=%.1f" % [electric_top_offset, electric_right_offset, electric_top_size, electric_right_size]
-	return "top_offset=%s; side_offset=%s; top_width=%.1f; side_width=%.1f; top_rotation_deg=%.1f; side_rotation_deg=%.1f; top_mirror=%s; side_mirror=%s" % [rubber_top_offset, rubber_side_offset, rubber_top_width, rubber_side_width, rad_to_deg(rubber_top_rotation), rad_to_deg(rubber_side_rotation), rubber_top_mirror, rubber_side_mirror]
+	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
+	var first := editor_hole * 2
+	return "%s: weapon1_offset=%s scale=%.2f; weapon2_offset=%s scale=%.2f; ball_offset=%s scale=%.2f" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole]]
 
 func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
 	draw_style_box(make_box(Color("7256d8") if selected_button else Color("26384b"), 8.0), rect)
@@ -1400,19 +1420,19 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 		return
 	var panel := editor_panel_rect(viewport_size)
 	draw_style_box(make_box(Color(0.04, 0.07, 0.12, 0.94), 12.0), panel)
-	var editor_title := "ELECTRIC WEAPON EDITOR" if effect_editor_mode == "electric" else "RUBBER HAND EDITOR"
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(505, 36), editor_title, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("f6d365"))
-	var selected_name := ("LEFT WEAPON" if editor_selected_hand == 0 else "RIGHT WEAPON") if effect_editor_mode == "electric" else ("TOP HAND" if editor_selected_hand == 0 else "SIDE HAND")
+	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
+	var editor_title := "ALL WEAPONS + CAPTURE BALL EDITOR"
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(8, 76), editor_title, HORIZONTAL_ALIGNMENT_LEFT, 330, 14, Color("f6d365"))
+	var selected_name := ["WEAPON 1", "WEAPON 2", "BALL"][editor_target]
 	var values := editor_settings_text()
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(505, 58), selected_name, HORIZONTAL_ALIGNMENT_LEFT, 120, 14, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(625, 58), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 635, 10, Color("dbe7f3"))
-	draw_editor_button(Rect2(panel.position + Vector2(6, 8), Vector2(100, 46)), "REPLAY")
-	draw_editor_button(Rect2(panel.position + Vector2(114, 8), Vector2(132, 46)), "COPY")
-	draw_editor_button(Rect2(panel.position + Vector2(254, 8), Vector2(112, 46)), "RUBBER", effect_editor_mode == "rubber")
-	draw_editor_button(Rect2(panel.position + Vector2(374, 8), Vector2(112, 46)), "ELECTRIC", effect_editor_mode == "electric")
-	var labels := ["LEFT", "RIGHT", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "", "", ""] if effect_editor_mode == "electric" else ["TOP", "SIDE", "LEFT", "RIGHT", "UP", "DOWN", "SIZE-", "SIZE+", "ROT-", "ROT+", "MIRROR"]
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(345, 76), names[editor_hole] + " / " + selected_name, HORIZONTAL_ALIGNMENT_LEFT, 180, 13, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(530, 76), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 540, 9, Color("dbe7f3"))
+	draw_editor_button(editor_top_button(0, viewport_size), "COPY")
+	for i in 6:
+		draw_editor_button(editor_top_button(i + 1, viewport_size), names[i], editor_hole == i)
+	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
 	for i in 11:
-		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_selected_hand and i < 2))
+		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 3))
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
