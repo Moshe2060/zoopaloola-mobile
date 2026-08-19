@@ -159,12 +159,22 @@ func new_game() -> void:
 		Vector2(0.279, 0.397), Vector2(0.155, 0.397),
 		Vector2(0.328, 0.304), Vector2(0.406, 0.241)
 	]
+	# The four detached side pieces are indices 3, 7, 13 and 17. Assign one
+	# piece from each team on each side; assigning by i % 2 made all four blue.
+	var outside_teams := {3: 0, 7: 1, 13: 0, 17: 1}
+	var inner_index := 0
 	for i in screen_formation.size():
 		var normalized: Vector2 = screen_formation[i]
 		# Invert board_to_screen so these readable landscape coordinates continue
 		# to use the original rotated physics coordinate system.
 		var p := Vector2(normalized.y * BOARD_W, BOARD_H - normalized.x * BOARD_H)
-		balls.append({"p":p, "v":Vector2.ZERO, "team":i % 2, "alive":true})
+		var team: int
+		if outside_teams.has(i):
+			team = outside_teams[i]
+		else:
+			team = inner_index % 2
+			inner_index += 1
+		balls.append({"p":p, "v":Vector2.ZERO, "team":team, "alive":true})
 	status = "Your turn - touch a red ball, pull back and release"
 	queue_redraw()
 
