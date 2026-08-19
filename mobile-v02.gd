@@ -10,10 +10,11 @@ const STEP_TIME := 0.005
 # The previous board used 38/165 and 27/183, leaving a visible air gap before
 # the ball reached the new stones.
 const WALL_MIN_X := 33.0
-const WALL_MAX_X := 170.0
+const WALL_MAX_X := 180.0
 const WALL_MIN_Y := 22.0
 const WALL_MAX_Y := 188.0
 const SCORE_MARGIN := 5.0
+const HAMMER_OPEN_MAX_Y := 48.0
 const SCORING_HOLE_CENTERS := [
 	Vector2(32, 177), Vector2(32, 104), Vector2(32, 30),
 	Vector2(174, 30), Vector2(174, 104), Vector2(174, 177)
@@ -233,7 +234,10 @@ func resolve_walls(index: int) -> void:
 		else:
 			p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
 	elif p.x + RADIUS > WALL_MAX_X:
-		if vertical_open:
+		# The bottom-right hammer opening is visibly wider on the modular board
+		# than the legacy p.y < 41 collision gap. Widen only this one opening.
+		var bottom_open := p.y < HAMMER_OPEN_MAX_Y or (p.y > 90.0 and p.y < 119.0) or p.y > 166.0
+		if bottom_open:
 			if p.x + RADIUS >= WALL_MAX_X + SCORE_MARGIN: score_ball(index, hole_for_vertical(p.y, false)); return
 		else:
 			p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
