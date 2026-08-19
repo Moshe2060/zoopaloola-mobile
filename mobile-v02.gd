@@ -789,7 +789,9 @@ func electric_weapon_points() -> Dictionary:
 	var scale_y := board_rect.size.y / 600.0
 	return {
 		"capture": capture,
-		"top": capture + Vector2(-86.0, -48.0) * scale_y,
+		# Seat the left/top emitter on the outer stone edge instead of leaving it
+		# too far inside the grass.
+		"top": capture + Vector2(-74.0, -78.0) * scale_y,
 		"right": capture + Vector2(70.0, 58.0) * scale_y
 	}
 
