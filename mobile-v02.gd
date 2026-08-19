@@ -45,6 +45,7 @@ var effect_textures: Array[Texture2D] = []
 var rubber_ball_texture: Texture2D
 var rubber_hand_textures: Array[Texture2D] = []
 var rubber_launcher_texture: Texture2D
+var rubber_wrap_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
@@ -101,6 +102,7 @@ func _ready() -> void:
 	for i in 5:
 		rubber_hand_textures.append(load("res://assets/rubber_trap/hands/pose-%d.png" % i))
 	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
+	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -1065,26 +1067,23 @@ func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, widt
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: float) -> void:
-	var count := int(floor(amount * 18.0))
-	for i in count:
-		var points := PackedVector2Array()
-		var ellipse_angle := i * 0.69 + spin * (0.12 + float(i % 3) * 0.025)
-		var rx := radius * (0.58 + (i % 4) * 0.09)
-		var ry := radius * (0.34 + (i % 5) * 0.065)
-		for step in 33:
-			var a := TAU * step / 32.0
-			var local := Vector2(cos(a) * rx, sin(a) * ry).rotated(ellipse_angle)
-			points.append(position + local)
-		# A grey underside and bright face make the strips read like the thick,
-		# flat elastic tape in the original animation instead of thin string.
-		draw_polyline(points, Color(0.48, 0.50, 0.53, 0.88), maxf(4.0, radius * 0.16), true)
-		draw_polyline(points, Color(0.98, 0.97, 0.93, 0.98), maxf(2.4, radius * 0.105), true)
+	if rubber_wrap_texture == null or amount <= 0.001:
+		return
+	# Twelve extracted stages reproduce the original wide crossing strips,
+	# irregular outer loops and final compact cocoon instead of invented rings.
+	var frame := clampi(int(floor(amount * 11.99)), 0, 11)
+	var source := Rect2(0.0, float(frame * 210), 210.0, 210.0)
+	var size := Vector2.ONE * radius * 5.35
+	var top_left := position - Vector2(102.0, 108.0) / 210.0 * size
+	draw_texture_rect_region(Rect2(top_left, size), rubber_wrap_texture, source, Color.WHITE)
 
 func rubber_launcher_points() -> Dictionary:
 	return {
 		"capture": rubber_point(128.0, 104.0),
-		"top": rubber_point(128.0, 54.0),
-		"side": rubber_point(62.0, 104.0)
+		# Measured from the source video: the launchers sit diagonally across
+		# the opening, not directly above and left of the captured ball.
+		"top": rubber_point(223.0, 33.0),
+		"side": rubber_point(54.0, 177.0)
 	}
 
 func rubber_trap_is_active() -> bool:
@@ -1150,35 +1149,26 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	# The real gameplay ball has already entered this hole. Start the trap at
 	# the capture point so the V4 preview's staged entry is not replayed.
 	var ball := capture
-	var reach := smooth_step((t - 0.06) / 0.28)
-	var wrap := smooth_step((t - 0.26) / 0.52)
+	var reach := smooth_step((t - 0.04) / 0.18)
+	var wrap := smooth_step((t - 0.05) / 0.72)
 	var team: int = effect.team
 	var piece: int = effect.piece
-	var top_muzzle := draw_rubber_launcher(anchor_top, capture, 44.0 * scale_y, reach)
-	var side_muzzle := draw_rubber_launcher(anchor_left, capture, 44.0 * scale_y, reach)
+	draw_rubber_launcher(anchor_top, capture, 44.0 * scale_y, reach)
+	draw_rubber_launcher(anchor_left, capture, 44.0 * scale_y, reach)
 	if elapsed < RUBBER_CAPTURE_TIME:
 		var focus := wrap * (1.0 - wrap * 0.45)
 		draw_circle(ball, ball_radius * (1.45 + sin(t * 45.0) * 0.08), Color(1.0, 0.965, 0.72, 0.28 * focus))
-		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap * 0.90)
-		var target_1 := ball + Vector2(ball_radius * 0.28, -ball_radius * 0.25)
-		var target_2 := ball + Vector2(-ball_radius * 0.30, ball_radius * 0.22)
-		draw_elastic_tape(top_muzzle, target_1, reach, 10.0 * scale_y * reach, maxf(3.0, 7.0 * scale_y))
-		draw_elastic_tape(side_muzzle, target_2, reach, -10.0 * scale_y * reach, maxf(3.0, 7.0 * scale_y))
+		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap)
 		if wrap > 0.0:
-			draw_rubber_wrap(ball, ball_radius * 1.12, wrap, t * 12.0)
+			draw_rubber_wrap(ball, ball_radius, wrap, 0.0)
 	else:
 		var release := smooth_step((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME)
 		var fall := release * release
 		var out := rubber_point(2, 22)
 		ball = capture.lerp(out, fall)
 		ball_radius *= 1.0 - release * 0.42
-		var retract := 1.0 - smooth_step(release / 0.23)
-		if retract > 0.01:
-			draw_elastic_tape(top_muzzle, capture, retract, 8.0 * scale_y, maxf(3.0, 7.0 * scale_y))
-			draw_elastic_tape(side_muzzle, capture, retract, -8.0 * scale_y, maxf(3.0, 7.0 * scale_y))
 		# Keep the cocoon on the falling ball exactly like the source frames.
-		draw_rubber_game_ball(ball, ball_radius, team, piece, 0.08)
-		draw_rubber_wrap(ball, ball_radius * 1.12, 1.0, fall * 4.2)
+		draw_rubber_wrap(ball, ball_radius, 1.0, 0.0)
 
 func editor_panel_rect(viewport_size: Vector2) -> Rect2:
 	# Keep the upper-left trap fully visible while editing. Touch duplication is
