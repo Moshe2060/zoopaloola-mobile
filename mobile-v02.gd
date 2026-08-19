@@ -13,8 +13,15 @@ const WALL_MIN_X := 33.0
 const WALL_MAX_X := 180.0
 const WALL_MIN_Y := 22.0
 const WALL_MAX_Y := 188.0
-const SCORE_MARGIN := 5.0
-const HAMMER_OPEN_MAX_Y := 48.0
+# Openings are deliberately wider than on the legacy board, but scoring is a
+# separate deeper line. This prevents a near miss from triggering a weapon.
+const CORNER_OPEN_LOW := 49.0
+const CORNER_OPEN_HIGH := 158.0
+const MIDDLE_OPEN_MIN := 82.0
+const MIDDLE_OPEN_MAX := 127.0
+const SIDE_OPEN_LOW := 60.0
+const SIDE_OPEN_HIGH := 148.0
+const HOLE_CAPTURE_DEPTH := 2.0
 const SCORING_HOLE_CENTERS := [
 	Vector2(32, 177), Vector2(32, 104), Vector2(32, 30),
 	Vector2(174, 30), Vector2(174, 104), Vector2(174, 177)
@@ -226,35 +233,33 @@ func resolve_walls(index: int) -> void:
 	var ball: Dictionary = balls[index]
 	var p: Vector2 = ball.p
 	var v: Vector2 = ball.v
-	var vertical_open := p.y < 41.0 or (p.y > 90.0 and p.y < 119.0) or p.y > 166.0
-	var horizontal_open := p.x < 52.0 or p.x > 156.0
+	var vertical_open := p.y < CORNER_OPEN_LOW or (p.y > MIDDLE_OPEN_MIN and p.y < MIDDLE_OPEN_MAX) or p.y > CORNER_OPEN_HIGH
+	var horizontal_open := p.x < SIDE_OPEN_LOW or p.x > SIDE_OPEN_HIGH
 	if p.x - RADIUS < WALL_MIN_X:
 		if vertical_open:
-			if p.x - RADIUS < WALL_MIN_X - SCORE_MARGIN: score_ball(index, hole_for_vertical(p.y, true)); return
+			# Capture only after the ball center is genuinely behind the rail.
+			if p.x < WALL_MIN_X - HOLE_CAPTURE_DEPTH: score_ball(index, hole_for_vertical(p.y, true)); return
 		else:
 			p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
 	elif p.x + RADIUS > WALL_MAX_X:
-		# The bottom-right hammer opening is visibly wider on the modular board
-		# than the legacy p.y < 41 collision gap. Widen only this one opening.
-		var bottom_open := p.y < HAMMER_OPEN_MAX_Y or (p.y > 90.0 and p.y < 119.0) or p.y > 166.0
-		if bottom_open:
-			if p.x + RADIUS >= WALL_MAX_X + SCORE_MARGIN: score_ball(index, hole_for_vertical(p.y, false)); return
+		if vertical_open:
+			if p.x > WALL_MAX_X + HOLE_CAPTURE_DEPTH: score_ball(index, hole_for_vertical(p.y, false)); return
 		else:
 			p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
 	if p.y - RADIUS < WALL_MIN_Y:
 		if horizontal_open:
-			if p.y - RADIUS < WALL_MIN_Y - SCORE_MARGIN: score_ball(index, 2 if p.x < 104.0 else 3); return
+			if p.y < WALL_MIN_Y - HOLE_CAPTURE_DEPTH: score_ball(index, 2 if p.x < 104.0 else 3); return
 		else:
 			p.y = WALL_MIN_Y + RADIUS; v.y = abs(v.y) * 0.75
 	elif p.y + RADIUS > WALL_MAX_Y:
 		if horizontal_open:
-			if p.y + RADIUS >= WALL_MAX_Y + SCORE_MARGIN: score_ball(index, 0 if p.x < 104.0 else 5); return
+			if p.y > WALL_MAX_Y + HOLE_CAPTURE_DEPTH: score_ball(index, 0 if p.x < 104.0 else 5); return
 		else:
 			p.y = WALL_MAX_Y - RADIUS; v.y = -abs(v.y) * 0.75
 	ball.p = p; ball.v = v
 
 func hole_for_vertical(y: float, left: bool) -> int:
-	var k := 0 if y < 41.0 else (1 if y < 119.0 else 2)
+	var k := 0 if y < CORNER_OPEN_LOW else (1 if y < MIDDLE_OPEN_MAX else 2)
 	return 2 - k if left else 3 + k
 
 func resolve_collision(a_index: int, b_index: int) -> void:
