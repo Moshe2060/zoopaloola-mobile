@@ -15,12 +15,12 @@ const WALL_MIN_Y := 22.0
 const WALL_MAX_Y := 188.0
 # Openings are deliberately wider than on the legacy board, but scoring is a
 # separate deeper line. This prevents a near miss from triggering a weapon.
-const CORNER_OPEN_LOW := 49.0
-const CORNER_OPEN_HIGH := 158.0
-const MIDDLE_OPEN_MIN := 82.0
-const MIDDLE_OPEN_MAX := 127.0
-const SIDE_OPEN_LOW := 60.0
-const SIDE_OPEN_HIGH := 148.0
+const CORNER_OPEN_LOW := 56.0
+const CORNER_OPEN_HIGH := 151.0
+const MIDDLE_OPEN_MIN := 76.0
+const MIDDLE_OPEN_MAX := 133.0
+const SIDE_OPEN_LOW := 67.0
+const SIDE_OPEN_HIGH := 141.0
 const HOLE_CAPTURE_DEPTH := 2.0
 const SCORING_HOLE_CENTERS := [
 	Vector2(32, 177), Vector2(32, 104), Vector2(32, 30),
@@ -131,8 +131,10 @@ func _on_resize() -> void:
 	# Slightly larger than the first ocean layout while retaining a visible water
 	# frame on every side of the floating table.
 	var side_margin := maxf(56.0, viewport_size.x * 0.055)
-	var top_margin := 74.0
-	var bottom_margin := 28.0
+	# Grow the entire table uniformly by using more vertical space. Keeping the
+	# source aspect ratio avoids stretching the stones or center circle.
+	var top_margin := 60.0
+	var bottom_margin := 12.0
 	var play_position := Vector2(side_margin, top_margin)
 	var available := Vector2(
 		maxf(300.0, viewport_size.x - side_margin * 2.0),
