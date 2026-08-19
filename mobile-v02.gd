@@ -461,6 +461,7 @@ func _draw() -> void:
 	draw_texture_rect(board_texture, board_rect, false)
 	draw_scoreboards()
 	draw_rubber_launchers_idle()
+	draw_electric_weapons_idle()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -777,25 +778,59 @@ func draw_electric_arc(start: Vector2, finish: Vector2, phase: float, alpha: flo
 	draw_polyline(points, Color(0.72, 0.93, 1.0, alpha * 0.52), width * 2.4, true)
 	draw_polyline(points, Color(0.96, 1.0, 1.0, alpha), width, true)
 
-func draw_electric_probe(anchor: Vector2, tip: Vector2, power: float, scale_y: float) -> void:
-	draw_line(anchor, tip, Color("334650"), 13.0 * scale_y, true)
-	draw_line(anchor, tip, Color("a9bbc2"), 6.0 * scale_y, true)
-	var head_size := Vector2(16.0, 34.0) * scale_y
-	draw_style_box(make_box(Color("344b57"), 4.0 * scale_y), Rect2(tip - head_size * 0.5, head_size))
-	draw_circle(tip, 5.0 * scale_y, Color(0.77, 0.97, 1.0, 0.55 + power * 0.4))
+func electric_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == ELECTRIC_TRAP_HOLE:
+			return true
+	return false
+
+func electric_weapon_points() -> Dictionary:
+	var capture := board_to_screen(SCORING_HOLE_CENTERS[ELECTRIC_TRAP_HOLE])
+	var scale_y := board_rect.size.y / 600.0
+	return {
+		"capture": capture,
+		"top": capture + Vector2(-86.0, -48.0) * scale_y,
+		"right": capture + Vector2(70.0, 58.0) * scale_y
+	}
+
+func draw_electric_emitter(center: Vector2, target: Vector2, size: float, power: float = 0.0) -> Vector2:
+	var direction := (target - center).normalized()
+	var side := direction.orthogonal()
+	# Compact stone-mounted orange emitter matching the original weapon shape.
+	draw_circle(center + Vector2(0.0, size * 0.10), size * 0.56, Color(0.02, 0.04, 0.05, 0.30))
+	draw_circle(center, size * 0.54, Color("202a2f"))
+	draw_circle(center, size * 0.43, Color("53636a"))
+	var body_start := center - direction * size * 0.28
+	var body_end := center + direction * size * 0.36
+	draw_line(body_start, body_end, Color("161d21"), size * 0.50, true)
+	draw_line(body_start, body_end, Color("d56b08"), size * 0.33, true)
+	draw_line(body_start, body_end, Color("ffad16"), size * 0.17, true)
+	var tip := center + direction * size * 0.58
+	draw_line(tip - side * size * 0.22, tip + side * size * 0.22, Color("1a2328"), size * 0.16, true)
+	draw_circle(tip, size * (0.10 + power * 0.035), Color(0.94, 1.0, 1.0, 0.65 + power * 0.35))
+	return tip
+
+func draw_electric_weapons_idle() -> void:
+	if customizer_open or electric_trap_is_active():
+		return
+	var points := electric_weapon_points()
+	var scale_y := board_rect.size.y / 600.0
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.0045) + 1.0) * 0.5
+	draw_electric_emitter(points.top, points.capture, 34.0 * scale_y, pulse * 0.20)
+	draw_electric_emitter(points.right, points.capture, 34.0 * scale_y, pulse * 0.20)
 
 func draw_electric_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	# The two fixed weapons surrounding the upper-right opening.
-	var top_weapon := electric_point(965.0, 63.0)
-	var right_weapon := electric_point(1125.0, 145.0)
-	var shock_point := electric_point(1072.0, 104.0)
-	var radius := 27.0 * scale_y
-	var charge := smooth_step(seconds / 0.62)
-	var charge_fade := 1.0 - smooth_step((seconds - 1.55) / 0.36)
+	var points := electric_weapon_points()
+	var top_weapon: Vector2 = points.top
+	var right_weapon: Vector2 = points.right
+	var shock_point: Vector2 = points.capture
+	var radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+	var charge := smooth_step(seconds / 0.30)
+	var charge_fade := 1.0 - smooth_step((seconds - 1.12) / 0.28)
 	var beam_power := charge * charge_fade
-	var electrified := smooth_step((seconds - 0.18) / 0.68)
+	var electrified := smooth_step((seconds - 0.10) / 0.38)
 	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
 	var center := shock_point
 	var ball_radius := radius
@@ -809,28 +844,36 @@ func draw_electric_trap(effect: Dictionary) -> void:
 		ball_radius *= 1.0 - release * 0.34
 		alpha = 1.0 - release * 0.10
 
-	# Both weapons fire only short local bolts directly into the ball.
+	var top_tip := draw_electric_emitter(top_weapon, shock_point, 34.0 * scale_y, beam_power)
+	var right_tip := draw_electric_emitter(right_weapon, shock_point, 34.0 * scale_y, beam_power)
+
+	# One short, bright discharge from each weapon, as in the source animation.
 	if beam_power > 0.01 and release <= 0.0:
-		for i in 3:
-			draw_electric_arc(top_weapon, shock_point + Vector2((-8.0 + i * 8.0), -radius * 0.45) , seconds * 1.7 + float(i) * 0.33, beam_power * (0.82 - float(i) * 0.16), maxf(1.2, (3.0 - float(i) * 0.55) * scale_y))
-			draw_electric_arc(right_weapon, shock_point + Vector2(radius * 0.46, (-8.0 + i * 8.0)), seconds * 1.9 + float(i) * 0.41, beam_power * (0.82 - float(i) * 0.16), maxf(1.2, (3.0 - float(i) * 0.55) * scale_y))
+		draw_electric_arc(top_tip, shock_point - Vector2(radius * 0.34, radius * 0.30), seconds * 2.3, beam_power, maxf(1.4, 2.5 * scale_y))
+		draw_electric_arc(right_tip, shock_point + Vector2(radius * 0.34, radius * 0.28), seconds * 2.7 + 0.43, beam_power, maxf(1.4, 2.5 * scale_y))
 
 	# Keep the real character ball visible under the electric glow.
 	var shake := Vector2.ZERO
 	if electrified > 0.05 and release <= 0.0:
 		shake = Vector2(sin(seconds * 43.0), cos(seconds * 37.0)) * 2.5 * scale_y * electrified
 	draw_rubber_game_ball(center + shake, ball_radius, effect.team, effect.piece, alpha)
+	# Strong irregular white/yellow flashes repeatedly wash over the whole ball.
+	var flash_wave := sin(seconds * 17.0) * 0.5 + sin(seconds * 29.0 + 0.7) * 0.3 + 0.2
+	var flash := smooth_step(clampf((flash_wave - 0.12) / 0.48, 0.0, 1.0)) * electrified
+	if flash > 0.02:
+		draw_circle(center + shake, ball_radius * (1.04 + flash * 0.10), Color(1.0, 0.96, 0.60, flash * 0.72 * alpha), true, -1.0, true)
+		draw_circle(center + shake, ball_radius * (1.36 + flash * 0.18), Color(1.0, 0.88, 0.24, flash * 0.20 * alpha), false, maxf(2.0, 4.0 * scale_y), true)
 
 	# Compact lightning remains wrapped around the ball, including during its fall.
 	var local_power := electrified * (1.0 - release * 0.18)
 	if local_power > 0.01:
-		draw_circle(center + shake, ball_radius * (1.30 + sin(seconds * 24.0) * 0.07), Color(0.58, 0.90, 1.0, 0.20 * local_power * alpha))
-		for i in 8:
-			var a := TAU * float(i) / 8.0 + seconds * (2.1 + float(i % 3) * 0.2)
-			var inner := center + shake + Vector2(cos(a), sin(a)) * ball_radius * 0.72
+		draw_circle(center + shake, ball_radius * (1.30 + sin(seconds * 24.0) * 0.07), Color(0.82, 0.96, 1.0, 0.18 * local_power * alpha))
+		for i in 10:
+			var a := TAU * float(i) / 10.0 + seconds * (2.1 + float(i % 3) * 0.2)
+			var inner := center + shake + Vector2(cos(a), sin(a)) * ball_radius * 0.82
 			var outer_angle := a + sin(seconds * 17.0 + float(i)) * 0.28
-			var outer := center + shake + Vector2(cos(outer_angle), sin(outer_angle)) * ball_radius * (1.22 + 0.18 * sin(seconds * 21.0 + float(i)))
-			draw_electric_arc(inner, outer, seconds * 1.4 + float(i), local_power * alpha * 0.82, maxf(1.0, 1.7 * scale_y))
+			var outer := center + shake + Vector2(cos(outer_angle), sin(outer_angle)) * ball_radius * (1.30 + 0.22 * sin(seconds * 21.0 + float(i)))
+			draw_electric_arc(inner, outer, seconds * 1.4 + float(i), local_power * alpha * 0.92, maxf(1.0, 1.8 * scale_y))
 
 
 func fire_point(x: float, y: float) -> Vector2:
