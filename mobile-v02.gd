@@ -395,6 +395,7 @@ func _draw() -> void:
 		return
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
+	draw_scoreboards()
 	draw_water_floaters(viewport_size)
 
 	for i in balls.size():
@@ -480,6 +481,34 @@ func draw_water_floaters(viewport_size: Vector2) -> void:
 		var ripple_alpha := 0.34 * (1.0 - drift * 0.45)
 		draw_arc(position + Vector2(0.0, radius * 0.55), radius * 1.22, 0.08, PI - 0.08, 28, Color(0.72, 0.95, 1.0, ripple_alpha), maxf(1.5, radius * 0.10), true)
 		draw_rubber_game_ball(position, radius, floater.team, floater.piece, 1.0)
+
+func fallen_count(team: int) -> int:
+	var count := 0
+	for ball in balls:
+		if ball.team == team and not ball.alive:
+			count += 1
+	return count
+
+func draw_scoreboards() -> void:
+	# The blue and purple displays baked into the board art are covered by these
+	# live panels. Their colors follow each player's selected lifebuoy.
+	var centers := [
+		board_rect.position + Vector2(board_rect.size.x * 0.289, board_rect.size.y * 0.052),
+		board_rect.position + Vector2(board_rect.size.x * 0.683, board_rect.size.y * 0.052)
+	]
+	var colors := [RING_COLORS[player_ring_color], RING_COLORS[ai_ring_color]]
+	var panel_size := Vector2(board_rect.size.x * 0.075, board_rect.size.y * 0.060)
+	var corner := maxf(5.0, board_rect.size.y * 0.012)
+	for team in 2:
+		var outer_rect := Rect2(centers[team] - panel_size * 0.5, panel_size)
+		draw_style_box(make_box(Color(0.08, 0.13, 0.14, 0.96), corner + 3.0), outer_rect.grow(4.0))
+		draw_style_box(make_box(colors[team].darkened(0.16), corner), outer_rect)
+		var shine_rect := Rect2(outer_rect.position + Vector2(3.0, 3.0), Vector2(outer_rect.size.x - 6.0, outer_rect.size.y * 0.28))
+		draw_style_box(make_box(Color(1.0, 1.0, 1.0, 0.20), corner * 0.55), shine_rect)
+		var score := str(fallen_count(team))
+		var font_size := maxi(18, int(panel_size.y * 0.82))
+		var baseline := centers[team].y + float(font_size) * 0.34
+		draw_string(ThemeDB.fallback_font, Vector2(outer_rect.position.x, baseline), score, HORIZONTAL_ALIGNMENT_CENTER, outer_rect.size.x, font_size, Color.WHITE)
 
 func draw_hud(viewport_size: Vector2) -> void:
 	# Overlay the compact HUD so it no longer reserves valuable board height.
