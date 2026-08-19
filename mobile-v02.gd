@@ -422,6 +422,7 @@ func _draw() -> void:
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
 	draw_scoreboards()
+	draw_idle_weapon_animations()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -535,6 +536,65 @@ func draw_scoreboards() -> void:
 		var font_size := maxi(18, int(panel_size.y * 0.82))
 		var baseline: float = float(centers[team].y) + float(font_size) * 0.34
 		draw_string(ThemeDB.fallback_font, Vector2(outer_rect.position.x, baseline), score, HORIZONTAL_ALIGNMENT_CENTER, outer_rect.size.x, font_size, Color.WHITE)
+
+func hole_effect_is_active(hole: int) -> bool:
+	for effect in active_effects:
+		if effect.hole == hole:
+			return true
+	return false
+
+func draw_idle_weapon_animations() -> void:
+	var seconds: float = float(Time.get_ticks_msec()) / 1000.0
+	var scale_y: float = board_rect.size.y / 600.0
+
+	# Rubber trap: two soft pulses travel from the launchers toward the opening.
+	if not hole_effect_is_active(RUBBER_TRAP_HOLE):
+		var rubber_focus := rubber_point(128.0, 104.0)
+		var rubber_pulse: float = 0.35 + sin(seconds * 2.2) * 0.12
+		draw_arc(rubber_focus, 28.0 * scale_y * (1.0 + rubber_pulse * 0.18), 0.0, TAU, 32, Color(1.0, 0.91, 0.40, 0.18 + rubber_pulse * 0.12), maxf(1.5, 2.4 * scale_y), true)
+
+	# Press: the two plates breathe toward the opening and retract again.
+	if not hole_effect_is_active(PRESS_TRAP_HOLE):
+		var press_breathe: float = 0.5 + sin(seconds * 1.8) * 0.5
+		var press_tip_offset: float = press_breathe * 8.0
+		draw_press_rod(546.0, 55.0, 557.0 + press_tip_offset, true, press_breathe * 0.24)
+		draw_press_rod(695.0, 55.0, 684.0 - press_tip_offset, false, press_breathe * 0.24)
+
+	# Electric trap: small harmless sparks jump near each probe while waiting.
+	if not hole_effect_is_active(ELECTRIC_TRAP_HOLE):
+		var electric_glow: float = 0.38 + sin(seconds * 4.1) * 0.16
+		var electric_top := electric_point(965.0, 63.0)
+		var electric_right := electric_point(1125.0, 145.0)
+		draw_electric_arc(electric_top, electric_top + Vector2(7.0, 14.0) * scale_y, seconds, electric_glow, maxf(1.0, 1.4 * scale_y))
+		draw_electric_arc(electric_right, electric_right + Vector2(-14.0, 5.0) * scale_y, seconds + 0.7, electric_glow, maxf(1.0, 1.4 * scale_y))
+
+	# Fire trap: short pilot flames flicker without reaching the play area.
+	if not hole_effect_is_active(FIRE_TRAP_HOLE):
+		var fire_idle: float = 0.10 + (0.5 + sin(seconds * 3.3) * 0.5) * 0.06
+		var fire_focus := fire_point(112.0, 536.0)
+		draw_fire_stream(fire_point(78.0, 492.0), fire_focus, fire_idle, 0.17)
+		draw_fire_stream(fire_point(188.0, 565.0), fire_focus, fire_idle * 0.92, 0.63)
+
+	# Ice trap: a few cold motes drift out of both nozzles.
+	if not hole_effect_is_active(ICE_TRAP_HOLE):
+		for side in 2:
+			var origin := ice_point(470.0 if side == 0 else 730.0, 565.0)
+			for mote in 4:
+				var phase: float = fmod(seconds * (0.22 + float(mote) * 0.025) + float(mote) * 0.24 + float(side) * 0.41, 1.0)
+				var direction := Vector2(1.0 if side == 0 else -1.0, -0.36)
+				var mote_position := origin + direction * phase * 34.0 * scale_y + Vector2(0.0, sin(seconds * 2.0 + float(mote)) * 4.0 * scale_y)
+				draw_circle(mote_position, (1.8 + float(mote % 2)) * scale_y, Color(0.82, 0.97, 1.0, (1.0 - phase) * 0.62))
+
+	# Hammer trap: both hammer heads slowly aim toward the grass and back.
+	if not hole_effect_is_active(HAMMER_TRAP_HOLE):
+		var hammer_sway: float = sin(seconds * 1.25) * 0.055
+		var hammer_hit := hammer_point(1072.0, 522.0)
+		var hammer_right := hammer_point(1128.0, 455.0)
+		var hammer_bottom := hammer_point(1010.0, 565.0)
+		var right_target := hammer_right + (hammer_hit - hammer_right).rotated(hammer_sway)
+		var bottom_target := hammer_bottom + (hammer_hit - hammer_bottom).rotated(-hammer_sway * 0.82)
+		draw_trap_hammer(hammer_right, right_target, 0.46, scale_y)
+		draw_trap_hammer(hammer_bottom, bottom_target, 0.43, scale_y)
 
 func draw_hud(viewport_size: Vector2) -> void:
 	# Overlay the compact HUD so it no longer reserves valuable board height.
