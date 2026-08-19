@@ -6,6 +6,14 @@ const RADIUS := 6.0
 const GAME_BALL_VISUAL_SCALE := 1.25
 const SUBSTEPS := 10
 const STEP_TIME := 0.005
+# Collision rails fitted to the visible inner stone edge of the modular board.
+# The previous board used 38/165 and 27/183, leaving a visible air gap before
+# the ball reached the new stones.
+const WALL_MIN_X := 33.0
+const WALL_MAX_X := 170.0
+const WALL_MIN_Y := 22.0
+const WALL_MAX_Y := 188.0
+const SCORE_MARGIN := 5.0
 const SCORING_HOLE_CENTERS := [
 	Vector2(32, 177), Vector2(32, 104), Vector2(32, 30),
 	Vector2(174, 30), Vector2(174, 104), Vector2(174, 177)
@@ -219,26 +227,26 @@ func resolve_walls(index: int) -> void:
 	var v: Vector2 = ball.v
 	var vertical_open := p.y < 41.0 or (p.y > 90.0 and p.y < 119.0) or p.y > 166.0
 	var horizontal_open := p.x < 52.0 or p.x > 156.0
-	if p.x - RADIUS < 38.0:
+	if p.x - RADIUS < WALL_MIN_X:
 		if vertical_open:
-			if p.x - RADIUS < 33.0: score_ball(index, hole_for_vertical(p.y, true)); return
+			if p.x - RADIUS < WALL_MIN_X - SCORE_MARGIN: score_ball(index, hole_for_vertical(p.y, true)); return
 		else:
-			p.x = 38.0 + RADIUS; v.x = abs(v.x) * 0.75
-	elif p.x + RADIUS > 165.0:
+			p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
+	elif p.x + RADIUS > WALL_MAX_X:
 		if vertical_open:
-			if p.x + RADIUS >= 170.0: score_ball(index, hole_for_vertical(p.y, false)); return
+			if p.x + RADIUS >= WALL_MAX_X + SCORE_MARGIN: score_ball(index, hole_for_vertical(p.y, false)); return
 		else:
-			p.x = 165.0 - RADIUS; v.x = -abs(v.x) * 0.75
-	if p.y - RADIUS < 27.0:
+			p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
+	if p.y - RADIUS < WALL_MIN_Y:
 		if horizontal_open:
-			if p.y - RADIUS < 22.0: score_ball(index, 2 if p.x < 104.0 else 3); return
+			if p.y - RADIUS < WALL_MIN_Y - SCORE_MARGIN: score_ball(index, 2 if p.x < 104.0 else 3); return
 		else:
-			p.y = 27.0 + RADIUS; v.y = abs(v.y) * 0.75
-	elif p.y + RADIUS > 183.0:
+			p.y = WALL_MIN_Y + RADIUS; v.y = abs(v.y) * 0.75
+	elif p.y + RADIUS > WALL_MAX_Y:
 		if horizontal_open:
-			if p.y + RADIUS >= 188.0: score_ball(index, 0 if p.x < 104.0 else 5); return
+			if p.y + RADIUS >= WALL_MAX_Y + SCORE_MARGIN: score_ball(index, 0 if p.x < 104.0 else 5); return
 		else:
-			p.y = 183.0 - RADIUS; v.y = -abs(v.y) * 0.75
+			p.y = WALL_MAX_Y - RADIUS; v.y = -abs(v.y) * 0.75
 	ball.p = p; ball.v = v
 
 func hole_for_vertical(y: float, left: bool) -> int:
