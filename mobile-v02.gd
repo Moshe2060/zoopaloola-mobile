@@ -101,17 +101,16 @@ func _ready() -> void:
 
 func _on_resize() -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
-	# Fill almost the entire landscape play area. Every visual and physics
-	# coordinate uses this same rectangle, so stretching cannot misalign holes.
-	# Let the board extend slightly beyond the top and bottom edges. This keeps
-	# its real 2:1 proportions while making it fill modern wide phone screens.
-	# Keep a small safe margin around the board so edge weapons remain visible
-	# and touchable on phones with browser/system controls.
-	var safe_margin := Vector2(22.0, 18.0)
-	var play_position := safe_margin
+	# Leave a clearly visible ocean frame around the floating board. The HUD is
+	# drawn over the ocean, so the board begins below it instead of hiding under
+	# the bar. All gameplay coordinates still use board_rect and stay aligned.
+	var side_margin := maxf(72.0, viewport_size.x * 0.075)
+	var top_margin := 88.0
+	var bottom_margin := 42.0
+	var play_position := Vector2(side_margin, top_margin)
 	var available := Vector2(
-		maxf(300.0, viewport_size.x - safe_margin.x * 2.0),
-		maxf(220.0, viewport_size.y - safe_margin.y * 2.0)
+		maxf(300.0, viewport_size.x - side_margin * 2.0),
+		maxf(220.0, viewport_size.y - top_margin - bottom_margin)
 	)
 	# Match the clean original board exactly (1829 x 860).
 	var target_aspect := 1829.0 / 860.0
@@ -354,7 +353,7 @@ func screen_to_board(p: Vector2) -> Vector2:
 
 func _draw() -> void:
 	var viewport_size := get_viewport_rect().size
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color("101a28"))
+	draw_ocean(viewport_size)
 	if viewport_size.y > viewport_size.x:
 		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.44), "ROTATE YOUR PHONE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color("f6d365"))
 		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.50), "Zoopaloola is designed for landscape mode", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color.WHITE)
@@ -395,6 +394,33 @@ func _draw() -> void:
 	draw_hud(viewport_size)
 	draw_effect_editor(viewport_size)
 	draw_customizer(viewport_size)
+
+func draw_ocean(viewport_size: Vector2) -> void:
+	# Bright layered water makes the space around the table read as sea even on
+	# small phone screens. The curves are intentionally subtle so they do not
+	# compete with the balls or the weapon effects.
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color("087fa8"))
+	var band_height := maxf(34.0, viewport_size.y / 10.0)
+	for band in 10:
+		var y := float(band) * band_height
+		var band_color := Color("0797bd") if band % 2 == 0 else Color("078db5")
+		draw_rect(Rect2(0.0, y, viewport_size.x, band_height + 1.0), band_color)
+	var wave_color := Color(0.68, 0.94, 1.0, 0.34)
+	var wave_shadow := Color(0.01, 0.39, 0.60, 0.28)
+	var spacing := maxf(46.0, viewport_size.y / 9.0)
+	var amplitude := clampf(viewport_size.y * 0.011, 5.0, 10.0)
+	for row in 11:
+		var points := PackedVector2Array()
+		var shadow_points := PackedVector2Array()
+		var base_y := float(row) * spacing + 12.0
+		var phase := float(row % 2) * PI
+		for x_step in 33:
+			var x := float(x_step) / 32.0 * viewport_size.x
+			var y := base_y + sin(float(x_step) * 0.72 + phase) * amplitude
+			points.append(Vector2(x, y))
+			shadow_points.append(Vector2(x, y + 7.0))
+		draw_polyline(shadow_points, wave_shadow, 3.0, true)
+		draw_polyline(points, wave_color, 2.0, true)
 
 func draw_hud(viewport_size: Vector2) -> void:
 	# Overlay the compact HUD so it no longer reserves valuable board height.
