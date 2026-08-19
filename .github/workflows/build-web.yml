@@ -37,6 +37,8 @@ jobs:
           mkdir -p zoopaloola_godot_mobile/assets/animal_pieces
           cp animal_pieces/*.png zoopaloola_godot_mobile/assets/animal_pieces/
           mkdir -p zoopaloola_godot_mobile/assets/rubber_trap/hands
+          mkdir -p zoopaloola_godot_mobile/assets/rubber_launcher
+          cp rubber_launcher/launcher.svg zoopaloola_godot_mobile/assets/rubber_launcher/launcher.svg
           curl -fsSL https://zoopaloola-v4-playtest.osadon2070.chatgpt.site/playtest/rubber-ball.png -o zoopaloola_godot_mobile/assets/rubber_trap/rubber-ball.png
           for i in 0 1 2 3 4; do
             curl -fsSL "https://zoopaloola-v4-playtest.osadon2070.chatgpt.site/playtest/hands/pose-$i.png" -o "zoopaloola_godot_mobile/assets/rubber_trap/hands/pose-$i.png"
