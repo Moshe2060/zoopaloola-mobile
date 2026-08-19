@@ -85,7 +85,7 @@ var ai_ring_color := 0
 func _ready() -> void:
 	# Smooth the original character art when it is enlarged inside HD balls.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	board_texture = load("res://assets/board-original-clean.png") as Texture2D
+	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
@@ -118,8 +118,9 @@ func _on_resize() -> void:
 		maxf(300.0, viewport_size.x - side_margin * 2.0),
 		maxf(220.0, viewport_size.y - top_margin - bottom_margin)
 	)
-	# Match the clean original board exactly (1829 x 860).
-	var target_aspect := 1829.0 / 860.0
+	# Preserve the actual modular board proportions (1480 x 1063). The previous
+	# landscape ratio stretched the stones and center circle horizontally.
+	var target_aspect := 1480.0 / 1063.0
 	var play_size := available
 	if play_size.x / play_size.y > target_aspect:
 		play_size.x = play_size.y * target_aspect

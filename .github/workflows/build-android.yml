@@ -26,7 +26,7 @@ jobs:
       - name: Apply approved remastered assets
         run: |
           cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
-          cp board-faithful-remastered.png zoopaloola_godot_mobile/assets/board-faithful-remastered.png
+          cp board-clean-modular.webp zoopaloola_godot_mobile/assets/board-clean-modular.webp
           mkdir -p zoopaloola_godot_mobile/assets/remastered_effects
           cp effect-*.png zoopaloola_godot_mobile/assets/remastered_effects/
           mkdir -p zoopaloola_godot_mobile/assets/rubber_trap/hands
