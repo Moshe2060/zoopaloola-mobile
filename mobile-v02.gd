@@ -134,19 +134,19 @@ func new_game() -> void:
 	ai_pending = false
 	selected = -1
 	dragging = false
-	# Ten balls per rival, arranged in two balanced rows on each half.
-	var red_positions := [
-		Vector2(66, 55), Vector2(66, 79), Vector2(66, 103), Vector2(66, 127), Vector2(66, 151),
-		Vector2(86, 55), Vector2(86, 79), Vector2(86, 103), Vector2(86, 127), Vector2(86, 151)
-	]
-	var blue_positions := [
-		Vector2(121, 55), Vector2(121, 79), Vector2(121, 103), Vector2(121, 127), Vector2(121, 151),
-		Vector2(141, 55), Vector2(141, 79), Vector2(141, 103), Vector2(141, 127), Vector2(141, 151)
-	]
-	for p in red_positions:
-		balls.append({"p":p, "v":Vector2.ZERO, "team":0, "alive":true})
-	for p in blue_positions:
-		balls.append({"p":p, "v":Vector2.ZERO, "team":1, "alive":true})
+	# Match the original opening formation: twenty pieces form one wide oval
+	# around the center logo, alternating between the two rivals.
+	var formation_center := Vector2(103.5, 104.0)
+	var formation_radius := Vector2(50.0, 70.0)
+	for i in 20:
+		var angle := -PI * 0.5 + TAU * float(i) / 20.0
+		# Board coordinates are rotated clockwise when drawn. This conversion
+		# creates a horizontal ellipse on the landscape screen.
+		var p := formation_center + Vector2(
+			sin(angle) * formation_radius.x,
+			-cos(angle) * formation_radius.y
+		)
+		balls.append({"p":p, "v":Vector2.ZERO, "team":i % 2, "alive":true})
 	status = "Your turn - touch a red ball, pull back and release"
 	queue_redraw()
 
