@@ -426,6 +426,7 @@ func _draw() -> void:
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
 	draw_scoreboards()
+	draw_rubber_launchers_idle()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -1062,70 +1063,125 @@ func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, widt
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: float) -> void:
-	var count := int(floor(amount * 12.0))
+	var count := int(floor(amount * 18.0))
 	for i in count:
 		var points := PackedVector2Array()
-		var ellipse_angle := i * 0.91 + spin
-		var rx := radius * (0.55 + (i % 3) * 0.12)
-		var ry := radius * (0.28 + (i % 4) * 0.08)
+		var ellipse_angle := i * 0.69 + spin * (0.12 + float(i % 3) * 0.025)
+		var rx := radius * (0.58 + (i % 4) * 0.09)
+		var ry := radius * (0.34 + (i % 5) * 0.065)
 		for step in 33:
 			var a := TAU * step / 32.0
 			var local := Vector2(cos(a) * rx, sin(a) * ry).rotated(ellipse_angle)
 			points.append(position + local)
-		draw_polyline(points, Color("f7f5ed"), maxf(3.0, radius * 0.13), true)
+		# A grey underside and bright face make the strips read like the thick,
+		# flat elastic tape in the original animation instead of thin string.
+		draw_polyline(points, Color(0.48, 0.50, 0.53, 0.88), maxf(4.0, radius * 0.16), true)
+		draw_polyline(points, Color(0.98, 0.97, 0.93, 0.98), maxf(2.4, radius * 0.105), true)
+
+func rubber_launcher_points() -> Dictionary:
+	return {
+		"capture": rubber_point(128.0, 104.0),
+		"top": rubber_point(128.0, 54.0),
+		"side": rubber_point(62.0, 104.0)
+	}
+
+func rubber_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == RUBBER_TRAP_HOLE:
+			return true
+	return false
+
+func draw_rubber_launcher(center: Vector2, target: Vector2, size: float, pulse: float = 0.0) -> Vector2:
+	var direction := (target - center).normalized()
+	var side := Vector2(-direction.y, direction.x)
+	# Low round stone-and-metal puck, matching the two small original devices.
+	draw_circle(center + Vector2(0.0, size * 0.09), size * 0.54, Color(0.05, 0.08, 0.09, 0.30))
+	draw_circle(center, size * 0.52, Color("303943"))
+	draw_circle(center, size * 0.45, Color("7b54b3"))
+	draw_circle(center, size * 0.31, Color("ddd45a"))
+	draw_circle(center, size * 0.20, Color("65509b"))
+	for i in 4:
+		var angle := TAU * float(i) / 4.0 + PI * 0.25
+		var p := center + Vector2(cos(angle), sin(angle)) * size * 0.37
+		draw_circle(p, size * 0.075, Color("d8dee2"))
+		draw_circle(p, size * 0.038, Color("525d67"))
+	# Pink neck and white elastic visible at the mouth make its purpose obvious.
+	var neck_start := center + direction * size * 0.38
+	var muzzle := center + direction * size * (0.70 + pulse * 0.06)
+	draw_line(neck_start, muzzle, Color("61284f"), size * 0.30, true)
+	draw_line(neck_start, muzzle, Color("d65aab"), size * 0.18, true)
+	draw_line(muzzle - side * size * 0.13, muzzle + side * size * 0.13, Color("f6f3e9"), size * 0.11, true)
+	return muzzle
+
+func draw_rubber_launchers_idle() -> void:
+	if customizer_open or rubber_trap_is_active():
+		return
+	var points := rubber_launcher_points()
+	var scale_y := board_rect.size.y / 600.0
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
+	draw_rubber_launcher(points.top, points.capture, 31.0 * scale_y, pulse * 0.18)
+	draw_rubber_launcher(points.side, points.capture, 31.0 * scale_y, pulse * 0.18)
+
+func draw_elastic_tape(origin: Vector2, target: Vector2, amount: float, bend: float, width: float) -> void:
+	if amount <= 0.001:
+		return
+	var end := origin.lerp(target, amount)
+	var delta := end - origin
+	var normal := Vector2(-delta.y, delta.x).normalized()
+	var points := PackedVector2Array()
+	for i in 17:
+		var u := float(i) / 16.0
+		var wave := sin(u * PI) * bend + sin(u * TAU * 2.0 + amount * 8.0) * bend * 0.12
+		points.append(origin.lerp(end, u) + normal * wave)
+	draw_polyline(points, Color(0.43, 0.45, 0.48, 0.90), width * 1.55, true)
+	draw_polyline(points, Color("faf8f0"), width, true)
+	# A slim pink edge reproduces the colored elastic seam seen in the frames.
+	var seam := PackedVector2Array()
+	for p in points:
+		seam.append(p + normal * width * 0.32)
+	draw_polyline(seam, Color("d95caf"), maxf(1.0, width * 0.22), true)
 
 func draw_rubber_trap(effect: Dictionary) -> void:
-	if rubber_ball_texture == null or rubber_hand_textures.size() < 5: return
 	var elapsed: float = effect.elapsed
 	var t := elapsed / RUBBER_CAPTURE_TIME
 	var scale_y := board_rect.size.y / 600.0
-	# The rubber-hand weapon is at the upper-left opening on the clean board.
-	# These points mirror the former upper-right placement across the board.
-	var anchor_top := rubber_point(235, 63) + rubber_top_offset * scale_y
-	var anchor_left := rubber_point(75, 145) + rubber_side_offset * scale_y
-	var capture := rubber_point(128, 104)
+	var points := rubber_launcher_points()
+	var anchor_top: Vector2 = points.top
+	var anchor_left: Vector2 = points.side
+	var capture: Vector2 = points.capture
 	var ball_radius := 34.0 * scale_y
 	# The real gameplay ball has already entered this hole. Start the trap at
 	# the capture point so the V4 preview's staged entry is not replayed.
 	var ball := capture
-	var reach := smooth_step((t - 0.10) / 0.28)
-	var hold := clampf((t - 0.32) / 0.38, 0.0, 1.0)
-	var wrap := clampf((t - 0.40) / 0.34, 0.0, 1.0)
+	var reach := smooth_step((t - 0.06) / 0.28)
+	var wrap := smooth_step((t - 0.26) / 0.52)
 	var team: int = effect.team
 	var piece: int = effect.piece
+	var top_muzzle := draw_rubber_launcher(anchor_top, capture, 31.0 * scale_y, reach)
+	var side_muzzle := draw_rubber_launcher(anchor_left, capture, 31.0 * scale_y, reach)
 	if elapsed < RUBBER_CAPTURE_TIME:
-		# Mirror the grip paths as well as the artwork: the upper hand now
-		# approaches the ball's right side and the side hand its left side.
-		var target_1 := ball + Vector2((15.0 - sin(t * 36.0) * 5.0 * hold) * scale_y, (-7.0 + cos(t * 31.0) * 5.0 * hold) * scale_y)
-		var target_2 := ball + Vector2((-15.0 + sin(t * 34.0) * 5.0 * hold) * scale_y, (10.0 - cos(t * 29.0) * 5.0 * hold) * scale_y)
-		var point_1 := anchor_top.lerp(target_1, reach)
-		var point_2 := anchor_left.lerp(target_2, reach)
 		var focus := wrap * (1.0 - wrap * 0.45)
 		draw_circle(ball, ball_radius * (1.45 + sin(t * 45.0) * 0.08), Color(1.0, 0.965, 0.72, 0.28 * focus))
-		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap * 0.72)
-		if wrap > 0.0: draw_rubber_wrap(ball, ball_radius * 1.05, wrap, t * 20.0)
-		var pose := rubber_hand_pose(hold)
-		# Reveal the hands from inside their weapons. Drawing the full-width sprite
-		# at reach=0 made a complete hand appear before it started extending.
-		var hand_emerge := smooth_step(reach / 0.42)
-		if hand_emerge > 0.02:
-			draw_rubber_hand(rubber_hand_textures[pose], anchor_top, point_1, rubber_top_width * scale_y * hand_emerge, rubber_top_mirror, hand_emerge, rubber_top_rotation)
-			draw_rubber_hand(rubber_hand_textures[pose], anchor_left, point_2, rubber_side_width * scale_y * hand_emerge, rubber_side_mirror, hand_emerge, rubber_side_rotation)
+		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap * 0.90)
+		var target_1 := ball + Vector2(ball_radius * 0.28, -ball_radius * 0.25)
+		var target_2 := ball + Vector2(-ball_radius * 0.30, ball_radius * 0.22)
+		draw_elastic_tape(top_muzzle, target_1, reach, 10.0 * scale_y * reach, maxf(3.0, 7.0 * scale_y))
+		draw_elastic_tape(side_muzzle, target_2, reach, -10.0 * scale_y * reach, maxf(3.0, 7.0 * scale_y))
+		if wrap > 0.0:
+			draw_rubber_wrap(ball, ball_radius * 1.12, wrap, t * 12.0)
 	else:
 		var release := smooth_step((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME)
 		var fall := release * release
 		var out := rubber_point(2, 22)
 		ball = capture.lerp(out, fall)
 		ball_radius *= 1.0 - release * 0.42
-		var retract := 1.0 - clampf(release / 0.32, 0.0, 1.0)
-		var point_1 := anchor_top.lerp(capture + Vector2(15, -7) * scale_y, retract)
-		var point_2 := anchor_left.lerp(capture + Vector2(-15, 10) * scale_y, retract)
-		if retract > 0.08:
-			draw_rubber_hand(rubber_hand_textures[4], anchor_top, point_1, rubber_top_width * scale_y, rubber_top_mirror, retract, rubber_top_rotation)
-			draw_rubber_hand(rubber_hand_textures[4], anchor_left, point_2, rubber_side_width * scale_y, rubber_side_mirror, retract, rubber_side_rotation)
-		draw_set_transform(ball, fall * 3.2, Vector2.ONE)
-		draw_texture_rect(rubber_ball_texture, Rect2(-Vector2.ONE * ball_radius, Vector2.ONE * ball_radius * 2.0), false, Color(1, 1, 1, 1.0 - release * 0.05))
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var retract := 1.0 - smooth_step(release / 0.23)
+		if retract > 0.01:
+			draw_elastic_tape(top_muzzle, capture, retract, 8.0 * scale_y, maxf(3.0, 7.0 * scale_y))
+			draw_elastic_tape(side_muzzle, capture, retract, -8.0 * scale_y, maxf(3.0, 7.0 * scale_y))
+		# Keep the cocoon on the falling ball exactly like the source frames.
+		draw_rubber_game_ball(ball, ball_radius, team, piece, 0.08)
+		draw_rubber_wrap(ball, ball_radius * 1.12, 1.0, fall * 4.2)
 
 func editor_panel_rect(viewport_size: Vector2) -> Rect2:
 	# Keep the upper-left trap fully visible while editing. Touch duplication is
