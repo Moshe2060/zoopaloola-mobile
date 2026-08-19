@@ -1145,7 +1145,10 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	var anchor_top: Vector2 = points.top
 	var anchor_left: Vector2 = points.side
 	var capture: Vector2 = points.capture
-	var ball_radius := 34.0 * scale_y
+	# Use exactly the same on-screen radius as the live gameplay piece. The old
+	# fixed effect radius was about 1.5x larger and caused a visible size pop on
+	# the first wrapping frame.
+	var ball_radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
 	# The real gameplay ball has already entered this hole. Start the trap at
 	# the capture point so the V4 preview's staged entry is not replayed.
 	var ball := capture
