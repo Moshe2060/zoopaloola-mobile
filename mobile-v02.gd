@@ -275,18 +275,39 @@ func update_effects(delta: float) -> void:
 			active_effects.remove_at(i)
 
 func spawn_water_floater(effect: Dictionary) -> void:
-	var hole_position := board_to_screen(SCORING_HOLE_CENTERS[effect.hole])
-	var outward := (hole_position - board_rect.get_center()).normalized()
+	# Continue from the exact final frame of each weapon fall. Spawning again at
+	# the hole made the animal grow and appear to fall from the table twice.
+	var landing := effect_fall_endpoint(effect.hole)
+	var outward := (landing - board_rect.get_center()).normalized()
 	if outward.length_squared() < 0.01:
 		outward = Vector2.DOWN
-	var radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+	# Keep the distant perspective size reached at the end of the fall.
+	var radius := 15.0 * board_rect.size.y / 600.0
 	water_floaters.append({
 		"elapsed": 0.0,
 		"team": effect.team,
 		"piece": effect.piece,
-		"start": hole_position + outward * radius * 1.8,
-		"direction": outward
+		"start": landing,
+		"direction": outward,
+		"radius": radius
 	})
+
+func effect_fall_endpoint(hole: int) -> Vector2:
+	var scale_y := board_rect.size.y / 600.0
+	match hole:
+		RUBBER_TRAP_HOLE:
+			return rubber_point(2.0, 22.0)
+		PRESS_TRAP_HOLE:
+			return press_point(621.0, -121.0)
+		ELECTRIC_TRAP_HOLE:
+			return electric_point(1198.0, 22.0)
+		HAMMER_TRAP_HOLE:
+			return hammer_point(1198.0, 598.0)
+		ICE_TRAP_HOLE:
+			return ice_point(600.0, 738.0)
+		FIRE_TRAP_HOLE:
+			return fire_point(112.0, 536.0) + Vector2(-82.0, 155.0) * scale_y
+	return board_to_screen(SCORING_HOLE_CENTERS[hole])
 
 func update_water_floaters(delta: float) -> void:
 	for floater in water_floaters:
@@ -393,10 +414,12 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.44), "ROTATE YOUR PHONE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color("f6d365"))
 		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.50), "Zoopaloola is designed for landscape mode", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color.WHITE)
 		return
+	# Floating animals stay behind the elevated table and only remain visible on
+	# the surrounding water.
+	draw_water_floaters(viewport_size)
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
 	draw_scoreboards()
-	draw_water_floaters(viewport_size)
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -466,10 +489,11 @@ func draw_water_floaters(viewport_size: Vector2) -> void:
 		var start: Vector2 = floater.start
 		var drift := smooth_step((seconds - WATER_DRIFT_DELAY) / (WATER_FLOAT_TIME - WATER_DRIFT_DELAY))
 		var drift_distance := maxf(viewport_size.x, viewport_size.y) * 0.72
-		var sideways := direction.orthogonal() * sin(seconds * 1.25 + float(floater.piece)) * 12.0
-		var bob := Vector2(0.0, sin(seconds * 3.1 + float(floater.piece)) * 5.0)
+		var settle := smooth_step(seconds / 0.75)
+		var sideways := direction.orthogonal() * sin(seconds * 1.25 + float(floater.piece)) * 12.0 * settle
+		var bob := Vector2(0.0, sin(seconds * 3.1 + float(floater.piece)) * 5.0 * settle)
 		var position := start + direction * drift_distance * drift * drift + sideways + bob
-		var radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+		var radius: float = floater.radius
 		var splash := 1.0 - smooth_step(seconds / 0.65)
 		if splash > 0.01:
 			draw_circle(position, radius * (1.1 + (1.0 - splash) * 1.25), Color(0.78, 0.96, 1.0, splash * 0.58), false, maxf(2.0, radius * 0.14), true)
