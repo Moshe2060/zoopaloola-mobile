@@ -36,6 +36,8 @@ jobs:
           cp effect-*.png zoopaloola_godot_mobile/assets/remastered_effects/
           mkdir -p zoopaloola_godot_mobile/assets/animal_pieces
           cp animal_pieces/*.png zoopaloola_godot_mobile/assets/animal_pieces/
+          mkdir -p zoopaloola_godot_mobile/assets/net_cannon
+          cp net_cannon/*.webp zoopaloola_godot_mobile/assets/net_cannon/
           mkdir -p zoopaloola_godot_mobile/assets/rubber_trap/hands
           curl -fsSL https://zoopaloola-v4-playtest.osadon2070.chatgpt.site/playtest/rubber-ball.png -o zoopaloola_godot_mobile/assets/rubber_trap/rubber-ball.png
           for i in 0 1 2 3 4; do

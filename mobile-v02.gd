@@ -44,6 +44,9 @@ var team_piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
 var rubber_ball_texture: Texture2D
 var rubber_hand_textures: Array[Texture2D] = []
+var net_cannon_base_texture: Texture2D
+var net_cannon_turret_texture: Texture2D
+var net_cannon_projectile_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
@@ -99,6 +102,9 @@ func _ready() -> void:
 	rubber_ball_texture = load("res://assets/rubber_trap/rubber-ball.png") as Texture2D
 	for i in 5:
 		rubber_hand_textures.append(load("res://assets/rubber_trap/hands/pose-%d.png" % i))
+	net_cannon_base_texture = load("res://assets/net_cannon/base.webp") as Texture2D
+	net_cannon_turret_texture = load("res://assets/net_cannon/turret.webp") as Texture2D
+	net_cannon_projectile_texture = load("res://assets/net_cannon/net.webp") as Texture2D
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -426,6 +432,7 @@ func _draw() -> void:
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
 	draw_scoreboards()
+	draw_net_cannon_idle()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -1074,7 +1081,89 @@ func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: flo
 			points.append(position + local)
 		draw_polyline(points, Color("f7f5ed"), maxf(3.0, radius * 0.13), true)
 
+func rubber_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == RUBBER_TRAP_HOLE:
+			return true
+	return false
+
+func draw_net_cannon_texture(texture: Texture2D, center: Vector2, max_size: float, rotation: float = 0.0, alpha: float = 1.0) -> void:
+	if texture == null:
+		return
+	var source_size := texture.get_size()
+	var factor: float = max_size / maxf(source_size.x, source_size.y)
+	var size := source_size * factor
+	draw_set_transform(center, rotation, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_net_cannon_unit(anchor: Vector2, target: Vector2, size: float, extra_rotation: float = 0.0) -> Vector2:
+	var direction := (target - anchor).normalized()
+	# The generated turret artwork naturally faces down-right.
+	var rotation: float = direction.angle() - 0.34 + extra_rotation
+	draw_net_cannon_texture(net_cannon_base_texture, anchor, size, 0.0, 1.0)
+	draw_net_cannon_texture(net_cannon_turret_texture, anchor, size * 0.92, rotation, 1.0)
+	return anchor + direction * size * 0.34
+
+func net_cannon_points() -> Dictionary:
+	return {
+		"capture": rubber_point(128.0, 104.0),
+		"top": rubber_point(128.0, 53.0),
+		"side": rubber_point(57.0, 104.0)
+	}
+
+func draw_net_cannon_idle() -> void:
+	if rubber_trap_is_active() or customizer_open:
+		return
+	if net_cannon_base_texture == null or net_cannon_turret_texture == null:
+		return
+	var points := net_cannon_points()
+	var seconds: float = float(Time.get_ticks_msec()) / 1000.0
+	var scale_y: float = board_rect.size.y / 600.0
+	var target: Vector2 = points.capture + Vector2(sin(seconds * 1.15) * 20.0, cos(seconds * 0.83) * 9.0) * scale_y
+	var sway: float = sin(seconds * 1.35) * 0.035
+	draw_net_cannon_unit(points.top, target, 82.0 * scale_y, sway)
+	draw_net_cannon_unit(points.side, target, 82.0 * scale_y, -sway)
+
 func draw_rubber_trap(effect: Dictionary) -> void:
+	if net_cannon_base_texture == null or net_cannon_turret_texture == null or net_cannon_projectile_texture == null:
+		return
+	var elapsed: float = effect.elapsed
+	var scale_y: float = board_rect.size.y / 600.0
+	var points := net_cannon_points()
+	var capture: Vector2 = points.capture
+	var aim: float = smooth_step(elapsed / 0.55)
+	var fire: float = smooth_step((elapsed - 0.52) / 0.70)
+	var wrap: float = smooth_step((elapsed - 1.02) / 0.62)
+	var recoil: float = sin(clampf((elapsed - 0.52) / 0.42, 0.0, 1.0) * PI) * 0.06
+	var top_muzzle := draw_net_cannon_unit(points.top, capture, 82.0 * scale_y, recoil)
+	var side_muzzle := draw_net_cannon_unit(points.side, capture, 82.0 * scale_y, -recoil)
+	var ball_radius: float = 28.0 * scale_y
+	var team: int = effect.team
+	var piece: int = effect.piece
+
+	if elapsed < RUBBER_CAPTURE_TIME:
+		draw_rubber_game_ball(capture, ball_radius, team, piece, 1.0 - wrap * 0.18)
+		if fire > 0.01:
+			var net_size: float = lerpf(18.0, ball_radius * 2.75, fire) * scale_y
+			var top_net := top_muzzle.lerp(capture, fire)
+			var side_net := side_muzzle.lerp(capture, fire)
+			draw_net_cannon_texture(net_cannon_projectile_texture, top_net, net_size, fire * 0.55, 0.72)
+			draw_net_cannon_texture(net_cannon_projectile_texture, side_net, net_size, -fire * 0.55, 0.72)
+		if wrap > 0.01:
+			var pulse: float = 1.0 + sin(elapsed * 16.0) * 0.045 * (1.0 - wrap * 0.45)
+			draw_net_cannon_texture(net_cannon_projectile_texture, capture, ball_radius * 2.85 * pulse, elapsed * 0.18, 0.92)
+			draw_arc(capture, ball_radius * 1.45, 0.0, TAU, 38, Color(1.0, 0.66, 0.06, 0.52 * wrap), maxf(2.0, 3.0 * scale_y), true)
+	else:
+		var release: float = smooth_step((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME)
+		var fall: float = release * release
+		var out := rubber_point(2.0, 22.0)
+		var center := capture.lerp(out, fall)
+		ball_radius *= 1.0 - release * 0.42
+		draw_rubber_game_ball(center, ball_radius, team, piece, 0.88)
+		draw_net_cannon_texture(net_cannon_projectile_texture, center, ball_radius * 2.90, elapsed * 0.22, 0.92 - release * 0.10)
+
+func draw_legacy_rubber_trap(effect: Dictionary) -> void:
 	if rubber_ball_texture == null or rubber_hand_textures.size() < 5: return
 	var elapsed: float = effect.elapsed
 	var t := elapsed / RUBBER_CAPTURE_TIME
