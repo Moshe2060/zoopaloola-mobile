@@ -301,13 +301,16 @@ func effect_fall_endpoint(hole: int) -> Vector2:
 		RUBBER_TRAP_HOLE:
 			return rubber_point(2.0, 22.0)
 		PRESS_TRAP_HOLE:
-			return press_point(621.0, -121.0)
+			# Stop in the narrow water strip above the table instead of continuing
+			# behind the HUD and outside the visible screen.
+			return press_point(621.0, -12.0)
 		ELECTRIC_TRAP_HOLE:
 			return electric_point(1198.0, 22.0)
 		HAMMER_TRAP_HOLE:
 			return hammer_point(1198.0, 598.0)
 		ICE_TRAP_HOLE:
-			return ice_point(600.0, 738.0)
+			# Match the visible water strip immediately below the table.
+			return ice_point(600.0, 612.0)
 		FIRE_TRAP_HOLE:
 			return fire_point(112.0, 536.0) + Vector2(-82.0, 155.0) * scale_y
 	return board_to_screen(SCORING_HOLE_CENTERS[hole])
@@ -629,7 +632,9 @@ func draw_press_trap(effect: Dictionary) -> void:
 		var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
 		var motion := release * release
 		rotation = sin(wait * PI) * 0.045 - motion * 0.34
-		ball_y = cy - lerpf(0.0, 176.0, motion)
+		# Land just above the table in visible water; the previous -121 target
+		# continued behind the HUD before the floating phase began.
+		ball_y = cy - lerpf(0.0, 67.0, motion)
 		alpha = 1.0 - release * 0.08
 		var shrink := 1.0 - release * 0.30
 		rx_scale *= shrink
@@ -916,7 +921,9 @@ func draw_ice_trap(effect: Dictionary) -> void:
 	var alpha := 1.0
 	if release > 0.0:
 		var gravity_fall := release * release
-		center.y += gravity_fall * 190.0 * scale_y
+		# Finish just below the table so the small frozen animal remains visible
+		# when the water-floating phase takes over.
+		center.y += gravity_fall * 64.0 * scale_y
 		center.x += sin(release * PI) * 5.0 * scale_y
 		radius *= 1.0 - release * 0.28
 		alpha = 1.0 - release * 0.12
