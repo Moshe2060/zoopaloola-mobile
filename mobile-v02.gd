@@ -531,7 +531,7 @@ func draw_scoreboards() -> void:
 		draw_style_box(make_box(Color(1.0, 1.0, 1.0, 0.20), corner * 0.55), shine_rect)
 		var score := str(fallen_count(team))
 		var font_size := maxi(18, int(panel_size.y * 0.82))
-		var baseline := centers[team].y + float(font_size) * 0.34
+		var baseline: float = float(centers[team].y) + float(font_size) * 0.34
 		draw_string(ThemeDB.fallback_font, Vector2(outer_rect.position.x, baseline), score, HORIZONTAL_ALIGNMENT_CENTER, outer_rect.size.x, font_size, Color.WHITE)
 
 func draw_hud(viewport_size: Vector2) -> void:
