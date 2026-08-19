@@ -3,6 +3,7 @@ extends Node2D
 const BOARD_W := 207.0
 const BOARD_H := 208.0
 const RADIUS := 6.0
+const GAME_BALL_VISUAL_SCALE := 1.25
 const SUBSTEPS := 10
 const STEP_TIME := 0.005
 const SCORING_HOLE_CENTERS := [
@@ -139,14 +140,17 @@ func new_game() -> void:
 	dragging = false
 	# Match the original opening formation row by row. It is a shaped oval, not
 	# twenty equally spaced points on one mathematical ellipse.
+	# Centers measured from the supplied original screenshot, ordered clockwise
+	# so the two players alternate around the complete formation.
 	var screen_formation := [
-		Vector2(0.44, 0.18), Vector2(0.50, 0.15), Vector2(0.56, 0.18),
-		Vector2(0.37, 0.27), Vector2(0.63, 0.27),
-		Vector2(0.22, 0.39), Vector2(0.35, 0.38), Vector2(0.65, 0.38), Vector2(0.78, 0.39),
-		Vector2(0.34, 0.51), Vector2(0.66, 0.51),
-		Vector2(0.22, 0.64), Vector2(0.35, 0.64), Vector2(0.65, 0.64), Vector2(0.78, 0.64),
-		Vector2(0.37, 0.75), Vector2(0.63, 0.75),
-		Vector2(0.44, 0.84), Vector2(0.50, 0.87), Vector2(0.56, 0.84)
+		Vector2(0.493, 0.209), Vector2(0.579, 0.241),
+		Vector2(0.659, 0.304), Vector2(0.839, 0.397), Vector2(0.699, 0.397),
+		Vector2(0.718, 0.524), Vector2(0.699, 0.653), Vector2(0.839, 0.653),
+		Vector2(0.659, 0.740), Vector2(0.579, 0.795), Vector2(0.493, 0.817),
+		Vector2(0.406, 0.795), Vector2(0.328, 0.740),
+		Vector2(0.155, 0.653), Vector2(0.279, 0.653), Vector2(0.264, 0.524),
+		Vector2(0.279, 0.397), Vector2(0.155, 0.397),
+		Vector2(0.328, 0.304), Vector2(0.406, 0.241)
 	]
 	for i in screen_formation.size():
 		var normalized: Vector2 = screen_formation[i]
@@ -275,7 +279,7 @@ func spawn_water_floater(effect: Dictionary) -> void:
 	var outward := (hole_position - board_rect.get_center()).normalized()
 	if outward.length_squared() < 0.01:
 		outward = Vector2.DOWN
-	var radius := RADIUS * board_scale * 1.62
+	var radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
 	water_floaters.append({
 		"elapsed": 0.0,
 		"team": effect.team,
@@ -397,7 +401,7 @@ func _draw() -> void:
 		var ball: Dictionary = balls[i]
 		if not ball.alive: continue
 		var sp := board_to_screen(ball.p)
-		draw_rubber_game_ball(sp, RADIUS * board_scale * 1.62, ball.team, i, 1.0)
+		draw_rubber_game_ball(sp, RADIUS * board_scale * GAME_BALL_VISUAL_SCALE, ball.team, i, 1.0)
 
 	for effect in active_effects:
 		if effect.hole == RUBBER_TRAP_HOLE:
@@ -464,7 +468,7 @@ func draw_water_floaters(viewport_size: Vector2) -> void:
 		var sideways := direction.orthogonal() * sin(seconds * 1.25 + float(floater.piece)) * 12.0
 		var bob := Vector2(0.0, sin(seconds * 3.1 + float(floater.piece)) * 5.0)
 		var position := start + direction * drift_distance * drift * drift + sideways + bob
-		var radius := RADIUS * board_scale * 1.62
+		var radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
 		var splash := 1.0 - smooth_step(seconds / 0.65)
 		if splash > 0.01:
 			draw_circle(position, radius * (1.1 + (1.0 - splash) * 1.25), Color(0.78, 0.96, 1.0, splash * 0.58), false, maxf(2.0, radius * 0.14), true)
