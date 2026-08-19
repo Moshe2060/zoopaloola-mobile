@@ -159,9 +159,10 @@ func new_game() -> void:
 		Vector2(0.279, 0.397), Vector2(0.155, 0.397),
 		Vector2(0.328, 0.304), Vector2(0.406, 0.241)
 	]
-	# The four detached side pieces are indices 3, 7, 13 and 17. Assign one
-	# piece from each team on each side; assigning by i % 2 made all four blue.
-	var outside_teams := {3: 0, 7: 1, 13: 0, 17: 1}
+	# The four detached side pieces are indices 3, 7, 13 and 17. Keep each
+	# detached pair together: both left pieces belong to the player and both
+	# right pieces belong to the opponent.
+	var outside_teams := {3: 1, 7: 1, 13: 0, 17: 0}
 	var inner_index := 0
 	for i in screen_formation.size():
 		var normalized: Vector2 = screen_formation[i]
