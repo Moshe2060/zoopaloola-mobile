@@ -1423,7 +1423,7 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
 	var editor_title := "ALL WEAPONS + CAPTURE BALL EDITOR"
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(8, 76), editor_title, HORIZONTAL_ALIGNMENT_LEFT, 330, 14, Color("f6d365"))
-	var selected_name := ["WEAPON 1", "WEAPON 2", "BALL"][editor_target]
+	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL"][editor_target]
 	var values := editor_settings_text()
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(345, 76), names[editor_hole] + " / " + selected_name, HORIZONTAL_ALIGNMENT_LEFT, 180, 13, Color.WHITE)
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(530, 76), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 540, 9, Color("dbe7f3"))
