@@ -26,6 +26,8 @@ const HAMMER_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const RUBBER_CAPTURE_TIME := TRAP_CAPTURE_TIME
 const RUBBER_FALL_TIME := TRAP_FALL_TIME
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
+const WATER_FLOAT_TIME := 5.8
+const WATER_DRIFT_DELAY := 1.8
 const ANIMAL_NAMES := ["ELEPHANT", "ZEBRA", "MONKEY", "HIPPO", "RHINO", "GIRAFFE"]
 const ANIMAL_FILES := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe"]
 const RING_COLOR_NAMES := ["RED", "ORANGE", "BLUE", "GREEN", "PURPLE", "TURQUOISE"]
@@ -43,6 +45,7 @@ var rubber_ball_texture: Texture2D
 var rubber_hand_textures: Array[Texture2D] = []
 var balls: Array = []
 var active_effects: Array = []
+var water_floaters: Array = []
 var contacts := {}
 
 # Touch-friendly rubber effect editor. Values are stored in board-image units.
@@ -128,23 +131,28 @@ func _on_resize() -> void:
 func new_game() -> void:
 	balls.clear()
 	active_effects.clear()
+	water_floaters.clear()
 	contacts.clear()
 	turn = 0
 	ai_pending = false
 	selected = -1
 	dragging = false
-	# Match the original opening formation: twenty pieces form one wide oval
-	# around the center logo, alternating between the two rivals.
-	var formation_center := Vector2(103.5, 104.0)
-	var formation_radius := Vector2(50.0, 70.0)
-	for i in 20:
-		var angle := -PI * 0.5 + TAU * float(i) / 20.0
-		# Board coordinates are rotated clockwise when drawn. This conversion
-		# creates a horizontal ellipse on the landscape screen.
-		var p := formation_center + Vector2(
-			sin(angle) * formation_radius.x,
-			-cos(angle) * formation_radius.y
-		)
+	# Match the original opening formation row by row. It is a shaped oval, not
+	# twenty equally spaced points on one mathematical ellipse.
+	var screen_formation := [
+		Vector2(0.44, 0.18), Vector2(0.50, 0.15), Vector2(0.56, 0.18),
+		Vector2(0.37, 0.27), Vector2(0.63, 0.27),
+		Vector2(0.22, 0.39), Vector2(0.35, 0.38), Vector2(0.65, 0.38), Vector2(0.78, 0.39),
+		Vector2(0.34, 0.51), Vector2(0.66, 0.51),
+		Vector2(0.22, 0.64), Vector2(0.35, 0.64), Vector2(0.65, 0.64), Vector2(0.78, 0.64),
+		Vector2(0.37, 0.75), Vector2(0.63, 0.75),
+		Vector2(0.44, 0.84), Vector2(0.50, 0.87), Vector2(0.56, 0.84)
+	]
+	for i in screen_formation.size():
+		var normalized: Vector2 = screen_formation[i]
+		# Invert board_to_screen so these readable landscape coordinates continue
+		# to use the original rotated physics coordinate system.
+		var p := Vector2(normalized.y * BOARD_W, BOARD_H - normalized.x * BOARD_H)
 		balls.append({"p":p, "v":Vector2.ZERO, "team":i % 2, "alive":true})
 	status = "Your turn - touch a red ball, pull back and release"
 	queue_redraw()
@@ -155,6 +163,7 @@ func _process(delta: float) -> void:
 		physics_step()
 		accumulator -= STEP_TIME
 	update_effects(delta)
+	update_water_floaters(delta)
 	if ai_pending and active_effects.is_empty():
 		ai_timer -= delta
 		if ai_timer <= 0.0 and not any_ball_moving():
@@ -258,7 +267,29 @@ func update_effects(delta: float) -> void:
 		elif active_effects[i].hole == HAMMER_TRAP_HOLE:
 			duration = HAMMER_EFFECT_DURATION
 		if active_effects[i].elapsed >= duration:
+			spawn_water_floater(active_effects[i])
 			active_effects.remove_at(i)
+
+func spawn_water_floater(effect: Dictionary) -> void:
+	var hole_position := board_to_screen(SCORING_HOLE_CENTERS[effect.hole])
+	var outward := (hole_position - board_rect.get_center()).normalized()
+	if outward.length_squared() < 0.01:
+		outward = Vector2.DOWN
+	var radius := RADIUS * board_scale * 1.62
+	water_floaters.append({
+		"elapsed": 0.0,
+		"team": effect.team,
+		"piece": effect.piece,
+		"start": hole_position + outward * radius * 1.8,
+		"direction": outward
+	})
+
+func update_water_floaters(delta: float) -> void:
+	for floater in water_floaters:
+		floater.elapsed += delta
+	for i in range(water_floaters.size() - 1, -1, -1):
+		if water_floaters[i].elapsed >= WATER_FLOAT_TIME:
+			water_floaters.remove_at(i)
 
 func _input(event: InputEvent) -> void:
 	# The game is landscape-only. Ignore touches until the device is rotated.
@@ -360,6 +391,7 @@ func _draw() -> void:
 		return
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
+	draw_water_floaters(viewport_size)
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -421,6 +453,29 @@ func draw_ocean(viewport_size: Vector2) -> void:
 			shadow_points.append(Vector2(x, y + 7.0))
 		draw_polyline(shadow_points, wave_shadow, 3.0, true)
 		draw_polyline(points, wave_color, 2.0, true)
+
+func draw_water_floaters(viewport_size: Vector2) -> void:
+	for floater in water_floaters:
+		var seconds: float = floater.elapsed
+		var direction: Vector2 = floater.direction
+		var start: Vector2 = floater.start
+		var drift := smooth_step((seconds - WATER_DRIFT_DELAY) / (WATER_FLOAT_TIME - WATER_DRIFT_DELAY))
+		var drift_distance := maxf(viewport_size.x, viewport_size.y) * 0.72
+		var sideways := direction.orthogonal() * sin(seconds * 1.25 + float(floater.piece)) * 12.0
+		var bob := Vector2(0.0, sin(seconds * 3.1 + float(floater.piece)) * 5.0)
+		var position := start + direction * drift_distance * drift * drift + sideways + bob
+		var radius := RADIUS * board_scale * 1.62
+		var splash := 1.0 - smooth_step(seconds / 0.65)
+		if splash > 0.01:
+			draw_circle(position, radius * (1.1 + (1.0 - splash) * 1.25), Color(0.78, 0.96, 1.0, splash * 0.58), false, maxf(2.0, radius * 0.14), true)
+			for i in 7:
+				var angle := TAU * float(i) / 7.0
+				var drop_start := position + Vector2(cos(angle), sin(angle)) * radius * 1.05
+				var drop_end := position + Vector2(cos(angle), sin(angle)) * radius * (1.22 + (1.0 - splash) * 0.65)
+				draw_line(drop_start, drop_end, Color(0.84, 0.98, 1.0, splash * 0.75), maxf(1.0, radius * 0.10), true)
+		var ripple_alpha := 0.34 * (1.0 - drift * 0.45)
+		draw_arc(position + Vector2(0.0, radius * 0.55), radius * 1.22, 0.08, PI - 0.08, 28, Color(0.72, 0.95, 1.0, ripple_alpha), maxf(1.5, radius * 0.10), true)
+		draw_rubber_game_ball(position, radius, floater.team, floater.piece, 1.0)
 
 func draw_hud(viewport_size: Vector2) -> void:
 	# Overlay the compact HUD so it no longer reserves valuable board height.
