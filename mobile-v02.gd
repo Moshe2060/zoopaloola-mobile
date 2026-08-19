@@ -69,6 +69,7 @@ var contacts := {}
 
 # Touch-friendly rubber effect editor. Values are stored in board-image units.
 var effect_editor_enabled := false
+var effect_editor_mode := "electric"
 var editor_selected_hand := 0
 var rubber_top_offset := Vector2(-60.0, -10.0)
 var rubber_side_offset := Vector2(20.0, 20.0)
@@ -78,6 +79,10 @@ var rubber_top_rotation := deg_to_rad(-20.0)
 var rubber_side_rotation := deg_to_rad(-5.0)
 var rubber_top_mirror := false
 var rubber_side_mirror := false
+var electric_top_offset := Vector2(-74.0, -78.0)
+var electric_right_offset := Vector2(70.0, 58.0)
+var electric_top_size := 34.0
+var electric_right_size := 34.0
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -789,10 +794,8 @@ func electric_weapon_points() -> Dictionary:
 	var scale_y := board_rect.size.y / 600.0
 	return {
 		"capture": capture,
-		# Seat the left/top emitter on the outer stone edge instead of leaving it
-		# too far inside the grass.
-		"top": capture + Vector2(-74.0, -78.0) * scale_y,
-		"right": capture + Vector2(70.0, 58.0) * scale_y
+		"top": capture + electric_top_offset * scale_y,
+		"right": capture + electric_right_offset * scale_y
 	}
 
 func draw_electric_emitter(center: Vector2, target: Vector2, size: float, power: float = 0.0) -> Vector2:
@@ -818,8 +821,8 @@ func draw_electric_weapons_idle() -> void:
 	var points := electric_weapon_points()
 	var scale_y := board_rect.size.y / 600.0
 	var pulse := (sin(float(Time.get_ticks_msec()) * 0.0045) + 1.0) * 0.5
-	draw_electric_emitter(points.top, points.capture, 34.0 * scale_y, pulse * 0.20)
-	draw_electric_emitter(points.right, points.capture, 34.0 * scale_y, pulse * 0.20)
+	draw_electric_emitter(points.top, points.capture, electric_top_size * scale_y, pulse * 0.20)
+	draw_electric_emitter(points.right, points.capture, electric_right_size * scale_y, pulse * 0.20)
 
 func draw_electric_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
@@ -846,8 +849,8 @@ func draw_electric_trap(effect: Dictionary) -> void:
 		ball_radius *= 1.0 - release * 0.34
 		alpha = 1.0 - release * 0.10
 
-	var top_tip := draw_electric_emitter(top_weapon, shock_point, 34.0 * scale_y, beam_power)
-	var right_tip := draw_electric_emitter(right_weapon, shock_point, 34.0 * scale_y, beam_power)
+	var top_tip := draw_electric_emitter(top_weapon, shock_point, electric_top_size * scale_y, beam_power)
+	var right_tip := draw_electric_emitter(right_weapon, shock_point, electric_right_size * scale_y, beam_power)
 
 	# One short, bright discharge from each weapon, as in the source animation.
 	if beam_power > 0.01 and release <= 0.0:
@@ -1265,7 +1268,7 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 	if toggle.has_point(screen_pos):
 		effect_editor_enabled = not effect_editor_enabled
 		if effect_editor_enabled:
-			replay_rubber_editor()
+			replay_effect_editor()
 		queue_redraw()
 		return true
 	if not effect_editor_enabled:
@@ -1285,7 +1288,7 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 			8: change_editor_rotation(deg_to_rad(-5.0))
 			9: change_editor_rotation(deg_to_rad(5.0))
 			10: toggle_editor_mirror()
-		replay_rubber_editor()
+		replay_effect_editor()
 		queue_redraw()
 		return true
 	var replay_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(6, 8), Vector2(100, 46))
@@ -1293,7 +1296,7 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 	var preset_a_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(254, 8), Vector2(112, 46))
 	var preset_b_rect := Rect2(editor_panel_rect(viewport_size).position + Vector2(374, 8), Vector2(112, 46))
 	if replay_rect.has_point(screen_pos):
-		replay_rubber_editor()
+		replay_effect_editor()
 		return true
 	if copy_rect.has_point(screen_pos):
 		DisplayServer.clipboard_set(editor_settings_text())
@@ -1301,34 +1304,52 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 		queue_redraw()
 		return true
 	if preset_a_rect.has_point(screen_pos):
-		apply_rubber_preset_a()
-		replay_rubber_editor()
+		effect_editor_mode = "rubber"
+		editor_selected_hand = 0
+		replay_effect_editor()
 		return true
 	if preset_b_rect.has_point(screen_pos):
-		apply_rubber_preset_b()
-		replay_rubber_editor()
+		effect_editor_mode = "electric"
+		editor_selected_hand = 0
+		replay_effect_editor()
 		return true
 	return editor_panel_rect(viewport_size).has_point(screen_pos)
 
 func change_editor_offset(amount: Vector2) -> void:
+	if effect_editor_mode == "electric":
+		if editor_selected_hand == 0:
+			electric_top_offset += amount
+		else:
+			electric_right_offset += amount
+		return
 	if editor_selected_hand == 0:
 		rubber_top_offset += amount
 	else:
 		rubber_side_offset += amount
 
 func change_editor_width(amount: float) -> void:
+	if effect_editor_mode == "electric":
+		if editor_selected_hand == 0:
+			electric_top_size = clampf(electric_top_size + amount, 16.0, 80.0)
+		else:
+			electric_right_size = clampf(electric_right_size + amount, 16.0, 80.0)
+		return
 	if editor_selected_hand == 0:
 		rubber_top_width = clampf(rubber_top_width + amount, 20.0, 100.0)
 	else:
 		rubber_side_width = clampf(rubber_side_width + amount, 20.0, 100.0)
 
 func change_editor_rotation(amount: float) -> void:
+	if effect_editor_mode == "electric":
+		return
 	if editor_selected_hand == 0:
 		rubber_top_rotation += amount
 	else:
 		rubber_side_rotation += amount
 
 func toggle_editor_mirror() -> void:
+	if effect_editor_mode == "electric":
+		return
 	if editor_selected_hand == 0:
 		rubber_top_mirror = not rubber_top_mirror
 	else:
@@ -1360,7 +1381,14 @@ func replay_rubber_editor() -> void:
 	active_effects.clear()
 	active_effects.append({"hole":RUBBER_TRAP_HOLE, "elapsed":0.0, "team":0, "piece":0})
 
+func replay_effect_editor() -> void:
+	active_effects.clear()
+	var hole := ELECTRIC_TRAP_HOLE if effect_editor_mode == "electric" else RUBBER_TRAP_HOLE
+	active_effects.append({"hole":hole, "elapsed":0.0, "team":0, "piece":0})
+
 func editor_settings_text() -> String:
+	if effect_editor_mode == "electric":
+		return "left_offset=%s; right_offset=%s; left_size=%.1f; right_size=%.1f" % [electric_top_offset, electric_right_offset, electric_top_size, electric_right_size]
 	return "top_offset=%s; side_offset=%s; top_width=%.1f; side_width=%.1f; top_rotation_deg=%.1f; side_rotation_deg=%.1f; top_mirror=%s; side_mirror=%s" % [rubber_top_offset, rubber_side_offset, rubber_top_width, rubber_side_width, rad_to_deg(rubber_top_rotation), rad_to_deg(rubber_side_rotation), rubber_top_mirror, rubber_side_mirror]
 
 func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
@@ -1372,16 +1400,17 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 		return
 	var panel := editor_panel_rect(viewport_size)
 	draw_style_box(make_box(Color(0.04, 0.07, 0.12, 0.94), 12.0), panel)
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(505, 36), "RUBBER HAND EDITOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("f6d365"))
-	var selected_name := "TOP HAND" if editor_selected_hand == 0 else "SIDE HAND"
+	var editor_title := "ELECTRIC WEAPON EDITOR" if effect_editor_mode == "electric" else "RUBBER HAND EDITOR"
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(505, 36), editor_title, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("f6d365"))
+	var selected_name := ("LEFT WEAPON" if editor_selected_hand == 0 else "RIGHT WEAPON") if effect_editor_mode == "electric" else ("TOP HAND" if editor_selected_hand == 0 else "SIDE HAND")
 	var values := editor_settings_text()
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(505, 58), selected_name, HORIZONTAL_ALIGNMENT_LEFT, 120, 14, Color.WHITE)
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(625, 58), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 635, 10, Color("dbe7f3"))
 	draw_editor_button(Rect2(panel.position + Vector2(6, 8), Vector2(100, 46)), "REPLAY")
 	draw_editor_button(Rect2(panel.position + Vector2(114, 8), Vector2(132, 46)), "COPY")
-	draw_editor_button(Rect2(panel.position + Vector2(254, 8), Vector2(112, 46)), "PRESET A")
-	draw_editor_button(Rect2(panel.position + Vector2(374, 8), Vector2(112, 46)), "PRESET B")
-	var labels := ["TOP", "SIDE", "LEFT", "RIGHT", "UP", "DOWN", "SIZE-", "SIZE+", "ROT-", "ROT+", "MIRROR"]
+	draw_editor_button(Rect2(panel.position + Vector2(254, 8), Vector2(112, 46)), "RUBBER", effect_editor_mode == "rubber")
+	draw_editor_button(Rect2(panel.position + Vector2(374, 8), Vector2(112, 46)), "ELECTRIC", effect_editor_mode == "electric")
+	var labels := ["LEFT", "RIGHT", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "", "", ""] if effect_editor_mode == "electric" else ["TOP", "SIDE", "LEFT", "RIGHT", "UP", "DOWN", "SIZE-", "SIZE+", "ROT-", "ROT+", "MIRROR"]
 	for i in 11:
 		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_selected_hand and i < 2))
 
