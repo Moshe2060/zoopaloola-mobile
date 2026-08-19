@@ -44,6 +44,7 @@ var team_piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
 var rubber_ball_texture: Texture2D
 var rubber_hand_textures: Array[Texture2D] = []
+var rubber_launcher_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
@@ -99,6 +100,7 @@ func _ready() -> void:
 	rubber_ball_texture = load("res://assets/rubber_trap/rubber-ball.png") as Texture2D
 	for i in 5:
 		rubber_hand_textures.append(load("res://assets/rubber_trap/hands/pose-%d.png" % i))
+	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -1093,25 +1095,20 @@ func rubber_trap_is_active() -> bool:
 
 func draw_rubber_launcher(center: Vector2, target: Vector2, size: float, pulse: float = 0.0) -> Vector2:
 	var direction := (target - center).normalized()
-	var side := Vector2(-direction.y, direction.x)
-	# Low round stone-and-metal puck, matching the two small original devices.
-	draw_circle(center + Vector2(0.0, size * 0.09), size * 0.54, Color(0.05, 0.08, 0.09, 0.30))
-	draw_circle(center, size * 0.52, Color("303943"))
-	draw_circle(center, size * 0.45, Color("7b54b3"))
-	draw_circle(center, size * 0.31, Color("ddd45a"))
-	draw_circle(center, size * 0.20, Color("65509b"))
-	for i in 4:
-		var angle := TAU * float(i) / 4.0 + PI * 0.25
-		var p := center + Vector2(cos(angle), sin(angle)) * size * 0.37
-		draw_circle(p, size * 0.075, Color("d8dee2"))
-		draw_circle(p, size * 0.038, Color("525d67"))
-	# Pink neck and white elastic visible at the mouth make its purpose obvious.
-	var neck_start := center + direction * size * 0.38
-	var muzzle := center + direction * size * (0.70 + pulse * 0.06)
-	draw_line(neck_start, muzzle, Color("61284f"), size * 0.30, true)
-	draw_line(neck_start, muzzle, Color("d65aab"), size * 0.18, true)
-	draw_line(muzzle - side * size * 0.13, muzzle + side * size * 0.13, Color("f6f3e9"), size * 0.11, true)
-	return muzzle
+	if rubber_launcher_texture == null:
+		return center
+	# The HD sprite faces right. Its body center is at x=205 in a 512x412
+	# image, so rotate around the machine body rather than the image midpoint.
+	# This keeps both launchers seated on their stones like the original.
+	var source := rubber_launcher_texture.get_size()
+	var draw_height := size * (1.0 + pulse * 0.025)
+	var factor := draw_height / source.y
+	var draw_size := source * factor
+	var body_center_x := 205.0 * factor
+	draw_set_transform(center, direction.angle(), Vector2.ONE)
+	draw_texture_rect(rubber_launcher_texture, Rect2(Vector2(-body_center_x, -draw_size.y * 0.5), draw_size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	return center + direction * (307.0 * factor)
 
 func draw_rubber_launchers_idle() -> void:
 	if customizer_open or rubber_trap_is_active():
@@ -1119,8 +1116,8 @@ func draw_rubber_launchers_idle() -> void:
 	var points := rubber_launcher_points()
 	var scale_y := board_rect.size.y / 600.0
 	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
-	draw_rubber_launcher(points.top, points.capture, 31.0 * scale_y, pulse * 0.18)
-	draw_rubber_launcher(points.side, points.capture, 31.0 * scale_y, pulse * 0.18)
+	draw_rubber_launcher(points.top, points.capture, 44.0 * scale_y, pulse * 0.18)
+	draw_rubber_launcher(points.side, points.capture, 44.0 * scale_y, pulse * 0.18)
 
 func draw_elastic_tape(origin: Vector2, target: Vector2, amount: float, bend: float, width: float) -> void:
 	if amount <= 0.001:
@@ -1157,8 +1154,8 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	var wrap := smooth_step((t - 0.26) / 0.52)
 	var team: int = effect.team
 	var piece: int = effect.piece
-	var top_muzzle := draw_rubber_launcher(anchor_top, capture, 31.0 * scale_y, reach)
-	var side_muzzle := draw_rubber_launcher(anchor_left, capture, 31.0 * scale_y, reach)
+	var top_muzzle := draw_rubber_launcher(anchor_top, capture, 44.0 * scale_y, reach)
+	var side_muzzle := draw_rubber_launcher(anchor_left, capture, 44.0 * scale_y, reach)
 	if elapsed < RUBBER_CAPTURE_TIME:
 		var focus := wrap * (1.0 - wrap * 0.45)
 		draw_circle(ball, ball_radius * (1.45 + sin(t * 45.0) * 0.08), Color(1.0, 0.965, 0.72, 0.28 * focus))
