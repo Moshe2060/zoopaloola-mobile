@@ -108,9 +108,11 @@ func _on_resize() -> void:
 	# Leave a clearly visible ocean frame around the floating board. The HUD is
 	# drawn over the ocean, so the board begins below it instead of hiding under
 	# the bar. All gameplay coordinates still use board_rect and stay aligned.
-	var side_margin := maxf(72.0, viewport_size.x * 0.075)
-	var top_margin := 88.0
-	var bottom_margin := 42.0
+	# Slightly larger than the first ocean layout while retaining a visible water
+	# frame on every side of the floating table.
+	var side_margin := maxf(56.0, viewport_size.x * 0.055)
+	var top_margin := 74.0
+	var bottom_margin := 28.0
 	var play_position := Vector2(side_margin, top_margin)
 	var available := Vector2(
 		maxf(300.0, viewport_size.x - side_margin * 2.0),
@@ -138,10 +140,10 @@ func new_game() -> void:
 	ai_pending = false
 	selected = -1
 	dragging = false
-	# Match the original opening formation row by row. It is a shaped oval, not
-	# twenty equally spaced points on one mathematical ellipse.
-	# Centers measured from the supplied original screenshot, ordered clockwise
-	# so the two players alternate around the complete formation.
+	# Match the original opening formation: sixteen pieces wrap around the white
+	# center circle, with two additional pieces on the far left and two on the
+	# far right. Centers were measured from the supplied original screenshot and
+	# are ordered clockwise so the two players alternate around the formation.
 	var screen_formation := [
 		Vector2(0.493, 0.209), Vector2(0.579, 0.241),
 		Vector2(0.659, 0.304), Vector2(0.839, 0.397), Vector2(0.699, 0.397),
