@@ -15,13 +15,13 @@ const WALL_MIN_Y := 22.0
 const WALL_MAX_Y := 188.0
 # Openings are deliberately wider than on the legacy board, but scoring is a
 # separate deeper line. This prevents a near miss from triggering a weapon.
-const CORNER_OPEN_LOW := 56.0
-const CORNER_OPEN_HIGH := 151.0
-const MIDDLE_OPEN_MIN := 76.0
-const MIDDLE_OPEN_MAX := 133.0
-const SIDE_OPEN_LOW := 67.0
-const SIDE_OPEN_HIGH := 141.0
-const HOLE_CAPTURE_DEPTH := 2.0
+const CORNER_OPEN_LOW := 46.0
+const CORNER_OPEN_HIGH := 161.0
+const MIDDLE_OPEN_MIN := 84.0
+const MIDDLE_OPEN_MAX := 124.0
+const SIDE_OPEN_LOW := 48.0
+const SIDE_OPEN_HIGH := 158.0
+const HOLE_CAPTURE_DEPTH := 10.0
 const SCORING_HOLE_CENTERS := [
 	Vector2(32, 177), Vector2(32, 104), Vector2(32, 30),
 	Vector2(174, 30), Vector2(174, 104), Vector2(174, 177)
@@ -142,7 +142,10 @@ func _on_resize() -> void:
 	)
 	# Preserve the actual modular board proportions (1480 x 1063). The previous
 	# landscape ratio stretched the stones and center circle horizontally.
-	var target_aspect := 1480.0 / 1063.0
+	# Use a wider landscape footprint. The increase is deliberately moderate so
+	# the original artwork remains attractive while the table occupies much more
+	# of a phone's wide screen.
+	var target_aspect := 1.55
 	var play_size := available
 	if play_size.x / play_size.y > target_aspect:
 		play_size.x = play_size.y * target_aspect
@@ -459,6 +462,7 @@ func _draw() -> void:
 	draw_water_floaters(viewport_size)
 	# Approved faithful remaster, created natively in landscape.
 	draw_texture_rect(board_texture, board_rect, false)
+	draw_visual_pockets()
 	draw_scoreboards()
 	draw_rubber_launchers_idle()
 
@@ -495,6 +499,20 @@ func _draw() -> void:
 	draw_hud(viewport_size)
 	draw_effect_editor(viewport_size)
 	draw_customizer(viewport_size)
+
+func draw_visual_pockets() -> void:
+	# The clean board artwork contains only narrow gaps between stones. Carve a
+	# clearly readable sea opening at every real scoring center so the visible
+	# hole and collision opening describe the same thing.
+	var ball_radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+	var outer_radius := ball_radius * 1.95
+	var water_radius := ball_radius * 1.68
+	for hole_center in SCORING_HOLE_CENTERS:
+		var center := board_to_screen(hole_center)
+		draw_circle(center, outer_radius, Color(0.025, 0.20, 0.27, 0.72), true, -1.0, true)
+		draw_circle(center, water_radius, Color("0797bd"), true, -1.0, true)
+		# A small water highlight connects the cutout visually to the surrounding sea.
+		draw_arc(center, water_radius * 0.72, PI * 0.18, PI * 0.82, 16, Color(0.68, 0.94, 1.0, 0.34), maxf(1.0, ball_radius * 0.10), true)
 
 func draw_ocean(viewport_size: Vector2) -> void:
 	# Bright layered water makes the space around the table read as sea even on
