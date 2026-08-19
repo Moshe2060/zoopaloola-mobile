@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="412" viewBox="0 0 512 412">
+  <defs>
+    <radialGradient id="metal" cx="38%" cy="28%" r="72%">
+      <stop offset="0" stop-color="#79838d"/><stop offset="0.55" stop-color="#414a53"/><stop offset="1" stop-color="#20262c"/>
+    </radialGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b766c1"/><stop offset="0.55" stop-color="#8a439a"/><stop offset="1" stop-color="#643271"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe35c"/><stop offset="0.58" stop-color="#e7b71c"/><stop offset="1" stop-color="#a96f0c"/>
+    </linearGradient>
+    <radialGradient id="hub" cx="35%" cy="28%" r="70%">
+      <stop offset="0" stop-color="#b9c5ef"/><stop offset="0.55" stop-color="#7883b4"/><stop offset="1" stop-color="#4b537d"/>
+    </radialGradient>
+  </defs>
+  <g stroke="#171a20" stroke-width="14" stroke-linejoin="round">
+    <rect x="374" y="174" width="92" height="64" rx="18" fill="url(#metal)"/>
+    <rect x="438" y="139" width="68" height="134" rx="25" fill="url(#purple)"/>
+    <circle cx="205" cy="206" r="195" fill="#171a20"/>
+    <circle cx="205" cy="206" r="181" fill="url(#metal)" stroke="#9ca6ad" stroke-width="7"/>
+    <path d="M151 42 A173 173 0 0 1 259 42 L244 128 A87 87 0 0 0 166 128 Z" fill="url(#purple)"/>
+    <path d="M259 42 A173 173 0 0 1 361 144 L275 160 A87 87 0 0 0 244 128 Z" fill="url(#gold)"/>
+    <path d="M361 144 A173 173 0 0 1 361 268 L275 252 A87 87 0 0 0 275 160 Z" fill="url(#purple)"/>
+    <path d="M361 268 A173 173 0 0 1 259 370 L244 284 A87 87 0 0 0 275 252 Z" fill="url(#gold)"/>
+    <path d="M259 370 A173 173 0 0 1 151 370 L166 284 A87 87 0 0 0 244 284 Z" fill="url(#purple)"/>
+    <path d="M151 370 A173 173 0 0 1 49 268 L135 252 A87 87 0 0 0 166 284 Z" fill="url(#gold)"/>
+    <path d="M49 268 A173 173 0 0 1 49 144 L135 160 A87 87 0 0 0 135 252 Z" fill="url(#purple)"/>
+    <path d="M49 144 A173 173 0 0 1 151 42 L166 128 A87 87 0 0 0 135 160 Z" fill="url(#gold)"/>
+    <circle cx="205" cy="206" r="79" fill="url(#hub)"/>
+  </g>
+  <g fill="none" stroke="#fff" stroke-linecap="round" opacity=".25">
+    <path d="M79 113 A151 151 0 0 1 175 62" stroke-width="13"/>
+    <path d="M461 165 V218" stroke-width="9"/>
+    <path d="M174 155 A62 62 0 0 1 226 144" stroke-width="8"/>
+  </g>
+</svg>
