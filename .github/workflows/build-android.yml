@@ -29,6 +29,8 @@ jobs:
           cp board-clean-modular.webp zoopaloola_godot_mobile/assets/board-clean-modular.webp
           mkdir -p zoopaloola_godot_mobile/assets/remastered_effects
           cp effect-*.png zoopaloola_godot_mobile/assets/remastered_effects/
+          mkdir -p zoopaloola_godot_mobile/assets/animal_pieces
+          cp animal_pieces/*.png zoopaloola_godot_mobile/assets/animal_pieces/
           mkdir -p zoopaloola_godot_mobile/assets/rubber_trap/hands
           mkdir -p zoopaloola_godot_mobile/assets/rubber_launcher
           cp rubber_launcher/launcher.svg zoopaloola_godot_mobile/assets/rubber_launcher/launcher.svg
