@@ -979,24 +979,57 @@ func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offs
 		draw_circle(p, r, Color(1.0, 0.20 + 0.14 * float(i % 3), 0.005, 0.88))
 
 func draw_burning_ball(center: Vector2, radius: float, burn: float, team: int, piece: int, alpha: float) -> void:
-	draw_rubber_game_ball(center, radius, team, piece, (1.0 - burn * 0.94) * alpha)
-	var pulse := 1.0 + sin(float(Time.get_ticks_msec()) * 0.019) * 0.055 * burn
-	var ember_radius := radius * lerpf(0.82, 1.06, burn) * pulse
-	draw_circle(center, ember_radius * 1.28, Color(1.0, 0.12, 0.005, 0.30 * burn * alpha))
-	draw_circle(center, ember_radius, Color(0.035, 0.020, 0.014, burn * alpha))
-	draw_arc(center, ember_radius, 0.0, TAU, 48, Color(1.0, 0.25, 0.005, burn * alpha), maxf(3.0, radius * 0.18), true)
-	for i in 12:
-		var a := TAU * float(i) / 9.0 + sin(float(i) * 2.7) * 0.25
-		var base := center + Vector2(cos(a), sin(a)) * ember_radius * 0.72
-		var flicker := (9.0 + 8.0 * sin(Time.get_ticks_msec() * 0.016 + float(i))) * burn
-		var tip := base + Vector2(cos(a), sin(a)) * flicker
-		draw_line(base, tip, Color(1.0, 0.24 + 0.32 * float(i % 2), 0.005, burn * alpha), maxf(2.0, radius * 0.16), true)
-		draw_circle(tip, maxf(2.0, radius * 0.10), Color(1.0, 0.48, 0.01, burn * alpha))
+	var now := float(Time.get_ticks_msec()) * 0.001
+	# Let the animal remain visible while soot spreads over it instead of
+	# replacing it instantly with a flat black fire icon.
+	draw_rubber_game_ball(center, radius, team, piece, (1.0 - burn * 0.78) * alpha)
+	var ember_radius := radius * lerpf(0.88, 1.02, burn)
+	# Soft heat haze and deep ember body.
+	draw_circle(center, ember_radius * 1.34, Color(1.0, 0.14, 0.01, 0.10 * burn * alpha))
+	draw_circle(center, ember_radius * 1.15, Color(1.0, 0.30, 0.015, 0.12 * burn * alpha))
+	draw_circle(center, ember_radius, Color(0.025, 0.018, 0.014, 0.82 * burn * alpha))
+	# Irregular soot patches keep the surface organic and textured.
+	for i in 13:
+		var a := float(i) * 2.399 + 0.31
+		var distance := ember_radius * (0.18 + 0.56 * absf(sin(float(i) * 1.73)))
+		var soot_center: Vector2 = center + Vector2(cos(a), sin(a)) * distance
+		var soot_size := ember_radius * (0.13 + 0.09 * absf(cos(float(i) * 2.11)))
+		draw_circle(soot_center, soot_size, Color(0.005, 0.004, 0.003, (0.34 + float(i % 3) * 0.10) * burn * alpha))
+	# Fine glowing fissures rather than thick cartoon spokes.
+	for i in 7:
+		var a := float(i) * 2.31 + 0.52
+		var crack_a: Vector2 = center + Vector2(cos(a), sin(a)) * ember_radius * 0.18
+		var elbow: Vector2 = center + Vector2(cos(a + 0.20), sin(a + 0.20)) * ember_radius * 0.46
+		var crack_b: Vector2 = center + Vector2(cos(a - 0.10), sin(a - 0.10)) * ember_radius * 0.78
+		var heat := (0.58 + 0.42 * sin(now * 7.0 + float(i) * 1.7)) * burn * alpha
+		draw_line(crack_a, elbow, Color(1.0, 0.16, 0.005, heat * 0.75), maxf(1.0, radius * 0.035), true)
+		draw_line(elbow, crack_b, Color(1.0, 0.42, 0.015, heat), maxf(1.0, radius * 0.045), true)
+	# Flames rise upward in translucent, constantly changing tongues.
 	for i in 8:
-		var a := float(i) * 1.91 + 0.4
-		var crack_a := center + Vector2(cos(a), sin(a)) * ember_radius * 0.15
-		var crack_b := center + Vector2(cos(a + 0.28), sin(a + 0.28)) * ember_radius * 0.68
-		draw_line(crack_a, crack_b, Color(1.0, 0.16 + 0.18 * float(i % 2), 0.005, 0.92 * burn * alpha), maxf(1.5, radius * 0.075), true)
+		var x_ratio := -0.82 + float(i) * 1.64 / 7.0
+		var surface_y := sqrt(maxf(0.0, 1.0 - x_ratio * x_ratio))
+		var flame_base: Vector2 = center + Vector2(x_ratio * ember_radius, -surface_y * ember_radius * 0.72)
+		var sway := sin(now * (5.2 + float(i % 3)) + float(i) * 1.91)
+		var flame_height := radius * (0.34 + 0.30 * absf(sin(now * 6.4 + float(i)))) * burn
+		var flame_tip: Vector2 = flame_base + Vector2(sway * radius * 0.16, -flame_height)
+		var flame_width := radius * (0.09 + 0.035 * float(i % 3)) * burn
+		var tongue := PackedVector2Array([
+			flame_base - Vector2(flame_width, 0.0),
+			flame_tip,
+			flame_base + Vector2(flame_width, 0.0)
+		])
+		draw_colored_polygon(tongue, Color(1.0, 0.15, 0.005, 0.48 * burn * alpha))
+		draw_line(flame_base, flame_tip.lerp(flame_base, 0.36), Color(1.0, 0.72, 0.10, 0.66 * burn * alpha), maxf(1.0, flame_width * 0.48), true)
+	# Sparse sparks and smoke sell the heat without forming a uniform outline.
+	for i in 7:
+		var phase := fmod(now * (0.52 + float(i) * 0.035) + float(i) * 0.173, 1.0)
+		var spark: Vector2 = center + Vector2(sin(float(i) * 3.17 + now) * radius * 0.72, -radius * (0.75 + phase * 1.75))
+		draw_circle(spark, maxf(0.8, radius * (0.045 - phase * 0.018)), Color(1.0, 0.55 + phase * 0.30, 0.08, (1.0 - phase) * burn * alpha))
+	for i in 4:
+		var smoke_phase := fmod(now * 0.22 + float(i) * 0.24, 1.0)
+		var smoke: Vector2 = center + Vector2(sin(now * 1.4 + float(i)) * radius * 0.45, -radius * (1.15 + smoke_phase * 1.65))
+		var smoke_radius := radius * (0.12 + smoke_phase * 0.18)
+		draw_circle(smoke, smoke_radius, Color(0.08, 0.075, 0.07, (1.0 - smoke_phase) * 0.18 * burn * alpha))
 
 func draw_fire_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
