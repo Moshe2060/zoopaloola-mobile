@@ -932,7 +932,7 @@ func draw_fire_emitter(center: Vector2, target: Vector2, size: float, heat: floa
 	draw_line(nozzle_base, nozzle_tip, Color("8c999d"), size * 0.25, true)
 	draw_line(nozzle_tip - side * size * 0.22, nozzle_tip + side * size * 0.22, Color("252d30"), size * 0.17, true)
 	for sign_value in [-1.0, 1.0]:
-		var lamp := center - direction * size * 0.12 + side * size * 0.20 * sign_value
+		var lamp: Vector2 = center - direction * size * 0.12 + side * size * 0.20 * float(sign_value)
 		draw_circle(lamp, size * 0.075, Color("ff8b10").lerp(Color("fff09a"), heat))
 	return nozzle_tip
 
