@@ -63,6 +63,7 @@ var rubber_hand_textures: Array[Texture2D] = []
 var rubber_launcher_texture: Texture2D
 var rubber_wrap_texture: Texture2D
 var fire_launcher_texture: Texture2D
+var hammer_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
@@ -140,6 +141,7 @@ func _ready() -> void:
 	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
 	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
 	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
+	hammer_texture = load("res://assets/hammer_trap/mechanical-hammer-v2.svg") as Texture2D
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -729,28 +731,32 @@ func draw_press_trap(effect: Dictionary) -> void:
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
-func hammer_strike_amount(seconds: float, offset: float) -> float:
-	var local := fmod(maxf(0.0, seconds - offset), 0.72) / 0.72
-	if seconds < offset:
+func hammer_strike_amount(seconds: float, start: float) -> float:
+	# A single decisive mechanical swing: fast attack, tiny hold on contact, then
+	# a slightly slower recoil. This matches the original trap more closely than
+	# the old repeating telescopic movement.
+	var local := seconds - start
+	if local <= 0.0 or local >= 0.82:
 		return 0.0
+	if local < 0.24:
+		return smooth_step(local / 0.24)
 	if local < 0.34:
-		return smooth_step(local / 0.34)
-	return 1.0 - smooth_step((local - 0.34) / 0.66)
+		return 1.0
+	return 1.0 - smooth_step((local - 0.34) / 0.48)
 
-func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, amount: float, scale_y: float) -> void:
-	if amount <= 0.01:
-		return
-	var direction := hit_point - anchor
-	var tip := anchor.lerp(hit_point, amount)
-	var angle := direction.angle()
-	var handle_end := tip - direction.normalized() * 12.0 * scale_y
-	draw_line(anchor, handle_end, Color("38464d"), 17.0 * scale_y, true)
-	draw_line(anchor, handle_end, Color("a8b2b5"), 7.0 * scale_y, true)
-	var head_size := Vector2(66.0, 38.0) * scale_y
-	draw_set_transform(tip, angle, Vector2.ONE)
-	draw_style_box(make_box(Color("d96513"), 5.0 * scale_y), Rect2(-head_size * 0.5, head_size))
-	draw_rect(Rect2(Vector2(-head_size.x * 0.34, -head_size.y * 0.36), Vector2(head_size.x * 0.68, head_size.y * 0.24)), Color("ffab32"))
+func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, scale_y: float, mirrored: bool) -> void:
+	var strike_angle := (hit_point - anchor).angle()
+	var angle := lerp_angle(rest_angle, strike_angle, amount)
+	var draw_scale := scale_y * 0.40
+	draw_set_transform(anchor, angle, Vector2(draw_scale, -draw_scale if mirrored else draw_scale))
+	if hammer_texture != null:
+		# The SVG pivot is the center of its mechanical joint (40, 71).
+		draw_texture_rect(hammer_texture, Rect2(Vector2(-40.0, -71.0), Vector2(320.0, 144.0)), false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# Keep the mounted swivel visually anchored to the stone during the swing.
+	draw_circle(anchor, 14.0 * scale_y, Color("27343b"))
+	draw_circle(anchor, 9.0 * scale_y, Color("c94a91"))
+	draw_circle(anchor, 4.5 * scale_y, Color("f2dce9"))
 
 func draw_hammer_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
@@ -759,9 +765,8 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	var bottom_weapon := hammer_point(1010.0, 565.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 1)
 	var hit_point := trap_ball_position(HAMMER_TRAP_HOLE, hammer_point(1072.0, 522.0))
 	var radius := trap_ball_radius(HAMMER_TRAP_HOLE, 27.0 * scale_y)
-	var hammering := 1.0 - smooth_step((seconds - 1.82) / 0.30)
-	var right_amount := hammer_strike_amount(seconds, 0.04) * hammering
-	var bottom_amount := hammer_strike_amount(seconds, 0.39) * hammering
+	var right_amount := hammer_strike_amount(seconds, 0.58)
+	var bottom_amount := hammer_strike_amount(seconds, 0.76)
 	var impact := maxf(
 		smooth_step((right_amount - 0.52) / 0.44),
 		smooth_step((bottom_amount - 0.52) / 0.44)
@@ -795,10 +800,11 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	# Draw the ball first, then the hammers, so their heads visibly land on top.
 	draw_press_ball(center, ball_radius, squash_x, squash_y, ball_rotation, effect.team, effect.piece, alpha)
 	if release <= 0.0:
-		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.28, 0.0), right_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0))
-		draw_trap_hammer(bottom_weapon, hit_point + Vector2(0.0, radius * 0.28), bottom_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1))
+		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.20, 0.0), deg_to_rad(92.0), right_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+		draw_trap_hammer(bottom_weapon, hit_point + Vector2(0.0, radius * 0.20), deg_to_rad(-8.0), bottom_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
 
 	if impact > 0.05 and release <= 0.0:
+		draw_circle(center, ball_radius * 0.78, Color(1.0, 0.98, 0.82, 0.72 * impact))
 		draw_circle(center, ball_radius * (1.32 + impact * 0.18), Color(1.0, 0.77, 0.25, 0.28 * impact), false, maxf(2.0, 4.0 * scale_y))
 		for i in 6:
 			var a := TAU * float(i) / 6.0

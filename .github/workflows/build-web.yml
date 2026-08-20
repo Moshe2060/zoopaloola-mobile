@@ -28,8 +28,6 @@ jobs:
 
       - name: Apply current landscape game files
         run: |
-          apt-get update -qq
-          apt-get install -y -qq curl
           cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
           cp board-clean-modular.webp zoopaloola_godot_mobile/assets/board-clean-modular.webp
           mkdir -p zoopaloola_godot_mobile/assets/remastered_effects
@@ -42,10 +40,10 @@ jobs:
           cp rubber_launcher/wrap-sequence.svg zoopaloola_godot_mobile/assets/rubber_launcher/wrap-sequence.svg
           mkdir -p zoopaloola_godot_mobile/assets/fire_trap
           cp assets/fire_trap/flamethrower-v2.svg zoopaloola_godot_mobile/assets/fire_trap/flamethrower-v2.svg
-          curl -fsSL https://zoopaloola-v4-playtest.osadon2070.chatgpt.site/playtest/rubber-ball.png -o zoopaloola_godot_mobile/assets/rubber_trap/rubber-ball.png
-          for i in 0 1 2 3 4; do
-            curl -fsSL "https://zoopaloola-v4-playtest.osadon2070.chatgpt.site/playtest/hands/pose-$i.png" -o "zoopaloola_godot_mobile/assets/rubber_trap/hands/pose-$i.png"
-          done
+          mkdir -p zoopaloola_godot_mobile/assets/hammer_trap
+          cp assets/hammer_trap/mechanical-hammer-v2.svg zoopaloola_godot_mobile/assets/hammer_trap/mechanical-hammer-v2.svg
+          cp rubber_trap/rubber-ball.png zoopaloola_godot_mobile/assets/rubber_trap/
+          cp rubber_trap/hands/pose-*.png zoopaloola_godot_mobile/assets/rubber_trap/hands/
 
       - name: Add Web export preset
         working-directory: zoopaloola_godot_mobile
