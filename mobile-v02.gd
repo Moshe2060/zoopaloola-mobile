@@ -487,6 +487,7 @@ func _draw() -> void:
 	draw_rubber_launchers_idle()
 	draw_electric_weapons_idle()
 	draw_fire_weapons_idle()
+	draw_hammer_weapons_idle()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -731,23 +732,47 @@ func draw_press_trap(effect: Dictionary) -> void:
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
-func hammer_strike_amount(seconds: float, start: float) -> float:
-	# A single decisive mechanical swing: fast attack, tiny hold on contact, then
-	# a slightly slower recoil. This matches the original trap more closely than
-	# the old repeating telescopic movement.
-	var local := seconds - start
-	if local <= 0.0 or local >= 0.82:
+func hammer_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == HAMMER_TRAP_HOLE:
+			return true
+	return false
+
+func hammer_weapon_points() -> Dictionary:
+	return {
+		"right": hammer_point(1128.0, 455.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
+		"bottom": hammer_point(1010.0, 565.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
+		"hit": trap_ball_position(HAMMER_TRAP_HOLE, hammer_point(1072.0, 522.0))
+	}
+
+func hammer_strike_amount(seconds: float, first_start: float) -> float:
+	# Each hammer gets its own repeated stroke. Their starts are separated by
+	# half a cycle, producing right-left-right-left impacts without overlap.
+	if seconds < first_start or seconds >= 2.20:
 		return 0.0
-	if local < 0.24:
-		return smooth_step(local / 0.24)
-	if local < 0.34:
+	var local := fmod(seconds - first_start, 0.68)
+	if local < 0.12:
+		return smooth_step(local / 0.12)
+	if local < 0.17:
 		return 1.0
-	return 1.0 - smooth_step((local - 0.34) / 0.48)
+	if local < 0.32:
+		return 1.0 - smooth_step((local - 0.17) / 0.15)
+	return 0.0
 
 func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, scale_y: float, mirrored: bool) -> void:
 	var strike_angle := (hit_point - anchor).angle()
 	var angle := lerp_angle(rest_angle, strike_angle, amount)
 	var draw_scale := scale_y * 0.40
+	# Heavy stone-mounted base, rear hinge and bolts remain fixed while the arm
+	# rotates. This makes the hammer read as a real installed trap, not a loose
+	# sprite floating over the board.
+	draw_set_transform(anchor, rest_angle, Vector2.ONE)
+	draw_style_box(make_box(Color("172228"), 9.0 * scale_y), Rect2(Vector2(-31.0, -25.0) * scale_y, Vector2(63.0, 50.0) * scale_y))
+	draw_style_box(make_box(Color("596a70"), 7.0 * scale_y), Rect2(Vector2(-25.0, -20.0) * scale_y, Vector2(50.0, 40.0) * scale_y))
+	for bolt_y in [-12.0, 12.0]:
+		draw_circle(Vector2(-15.0, bolt_y) * scale_y, 4.0 * scale_y, Color("d7e0e2"))
+		draw_circle(Vector2(-15.0, bolt_y) * scale_y, 1.8 * scale_y, Color("526168"))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_set_transform(anchor, angle, Vector2(draw_scale, -draw_scale if mirrored else draw_scale))
 	if hammer_texture != null:
 		# The SVG pivot is the center of its mechanical joint (40, 71).
@@ -758,15 +783,24 @@ func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, am
 	draw_circle(anchor, 9.0 * scale_y, Color("c94a91"))
 	draw_circle(anchor, 4.5 * scale_y, Color("f2dce9"))
 
+func draw_hammer_weapons_idle() -> void:
+	if customizer_open or hammer_trap_is_active():
+		return
+	var points := hammer_weapon_points()
+	var scale_y := board_rect.size.y / 600.0
+	draw_trap_hammer(points.right, points.hit, deg_to_rad(92.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+	draw_trap_hammer(points.bottom, points.hit, deg_to_rad(-8.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+
 func draw_hammer_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	var right_weapon := hammer_point(1128.0, 455.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 0)
-	var bottom_weapon := hammer_point(1010.0, 565.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 1)
-	var hit_point := trap_ball_position(HAMMER_TRAP_HOLE, hammer_point(1072.0, 522.0))
+	var points := hammer_weapon_points()
+	var right_weapon: Vector2 = points.right
+	var bottom_weapon: Vector2 = points.bottom
+	var hit_point: Vector2 = points.hit
 	var radius := trap_ball_radius(HAMMER_TRAP_HOLE, 27.0 * scale_y)
-	var right_amount := hammer_strike_amount(seconds, 0.58)
-	var bottom_amount := hammer_strike_amount(seconds, 0.76)
+	var right_amount := hammer_strike_amount(seconds, 0.20)
+	var bottom_amount := hammer_strike_amount(seconds, 0.54)
 	var impact := maxf(
 		smooth_step((right_amount - 0.52) / 0.44),
 		smooth_step((bottom_amount - 0.52) / 0.44)
@@ -785,16 +819,23 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	var squash_x := 1.0
 	var squash_y := 1.0
 	var ball_rotation := 0.0
+	# The ball stays progressively crushed after every alternating blow instead
+	# of returning completely to its original size between hits.
+	var completed_hits := clampi(int(floor((seconds - 0.20) / 0.34)) + 1, 0, 6)
+	var permanent_crush := float(completed_hits) / 6.0
+	if release <= 0.0:
+		ball_radius *= lerpf(1.0, 0.72, permanent_crush)
+		squash_x = lerpf(1.0, 1.10, permanent_crush)
+		squash_y = lerpf(1.0, 0.70, permanent_crush)
 	if release <= 0.0 and impact > 0.01:
-		# Make every strike visibly compress and briefly shrink the ball.
-		ball_radius *= lerpf(1.0, 0.76, impact)
+		ball_radius *= lerpf(1.0, 0.88, impact)
 		if right_amount >= bottom_amount:
-			squash_x = lerpf(1.0, 0.44, impact)
-			squash_y = lerpf(1.0, 1.34, impact)
+			squash_x *= lerpf(1.0, 0.48, impact)
+			squash_y *= lerpf(1.0, 1.42, impact)
 			ball_rotation = -0.13 * impact
 		else:
-			squash_x = lerpf(1.0, 1.34, impact)
-			squash_y = lerpf(1.0, 0.44, impact)
+			squash_x *= lerpf(1.0, 1.42, impact)
+			squash_y *= lerpf(1.0, 0.48, impact)
 			ball_rotation = 0.13 * impact
 
 	# Draw the ball first, then the hammers, so their heads visibly land on top.
