@@ -1280,10 +1280,10 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 		draw_rubber_wrap(ball, ball_radius, 1.0, 0.0)
 
 func editor_panel_rect(viewport_size: Vector2) -> Rect2:
-	# Keep the upper-left trap fully visible while editing. Touch duplication is
-	# handled separately, so the bottom panel remains usable on mobile.
+	# Keep the editor in the vertical center so it does not cover the weapons
+	# and capture points along the bottom edge of the table.
 	var panel_width := minf(980.0, viewport_size.x - 24.0)
-	return Rect2((viewport_size.x - panel_width) * 0.5, viewport_size.y - 162.0, panel_width, 150.0)
+	return Rect2((viewport_size.x - panel_width) * 0.5, (viewport_size.y - 150.0) * 0.5, panel_width, 150.0)
 
 func editor_button(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := editor_panel_rect(viewport_size)
