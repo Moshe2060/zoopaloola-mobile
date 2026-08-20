@@ -33,6 +33,8 @@ jobs:
           mkdir -p zoopaloola_godot_mobile/assets/rubber_launcher
           cp rubber_launcher/launcher.svg zoopaloola_godot_mobile/assets/rubber_launcher/launcher.svg
           cp rubber_launcher/wrap-sequence.svg zoopaloola_godot_mobile/assets/rubber_launcher/wrap-sequence.svg
+          mkdir -p zoopaloola_godot_mobile/assets/fire_trap
+          cp assets/fire_trap/flamethrower-v2.svg zoopaloola_godot_mobile/assets/fire_trap/flamethrower-v2.svg
           cp rubber_trap/rubber-ball.png zoopaloola_godot_mobile/assets/rubber_trap/
           cp rubber_trap/hands/pose-*.png zoopaloola_godot_mobile/assets/rubber_trap/hands/
 
