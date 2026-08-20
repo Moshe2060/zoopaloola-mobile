@@ -85,7 +85,7 @@ var electric_right_offset := Vector2(70.0, 58.0)
 var electric_top_size := 34.0
 var electric_right_size := 34.0
 var editor_hole := ELECTRIC_TRAP_HOLE
-var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball
+var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall endpoint
 var trap_weapon_offsets: Array[Vector2] = [
 	Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO,
 	Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO,
@@ -94,6 +94,7 @@ var trap_weapon_offsets: Array[Vector2] = [
 var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 var trap_ball_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
 var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+var trap_fall_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -348,23 +349,24 @@ func spawn_water_floater(effect: Dictionary) -> void:
 
 func effect_fall_endpoint(hole: int) -> Vector2:
 	var scale_y := board_rect.size.y / 600.0
+	var endpoint := board_to_screen(SCORING_HOLE_CENTERS[hole])
 	match hole:
 		RUBBER_TRAP_HOLE:
-			return rubber_point(2.0, 22.0)
+			endpoint = rubber_point(2.0, 22.0)
 		PRESS_TRAP_HOLE:
 			# Stop in the narrow water strip above the table instead of continuing
 			# behind the HUD and outside the visible screen.
-			return press_point(621.0, -12.0)
+			endpoint = press_point(621.0, -12.0)
 		ELECTRIC_TRAP_HOLE:
-			return electric_point(1198.0, 22.0)
+			endpoint = electric_point(1198.0, 22.0)
 		HAMMER_TRAP_HOLE:
-			return hammer_point(1198.0, 598.0)
+			endpoint = hammer_point(1198.0, 598.0)
 		ICE_TRAP_HOLE:
 			# Match the visible water strip immediately below the table.
-			return ice_point(600.0, 612.0)
+			endpoint = ice_point(600.0, 612.0)
 		FIRE_TRAP_HOLE:
-			return fire_point(112.0, 536.0) + Vector2(-82.0, 155.0) * scale_y
-	return board_to_screen(SCORING_HOLE_CENTERS[hole])
+			endpoint = fire_point(112.0, 536.0) + Vector2(-54.0, 76.0) * scale_y
+	return endpoint + trap_fall_offsets[hole] * scale_y
 
 func update_water_floaters(delta: float) -> void:
 	for floater in water_floaters:
@@ -685,6 +687,7 @@ func draw_press_trap(effect: Dictionary) -> void:
 	var alpha := 0.0
 	var extend := 0.0
 	var retract := 0.0
+	var release := 0.0
 	extend = smooth_step(seconds / 0.78)
 	alpha = smooth_step((extend - 0.52) / 0.12)
 	if seconds >= 1.17:
@@ -700,7 +703,7 @@ func draw_press_trap(effect: Dictionary) -> void:
 		rx_scale = 0.16
 		ry_scale = 1.10
 		var wait := clampf((seconds - 1.79) / (TRAP_CAPTURE_TIME - 1.79), 0.0, 1.0)
-		var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
+		release = smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
 		var motion := release * release
 		rotation = sin(wait * PI) * 0.045 - motion * 0.34
 		# Land just above the table in visible water; the previous -121 target
@@ -714,7 +717,11 @@ func draw_press_trap(effect: Dictionary) -> void:
 		draw_press_rod(546.0, cy, left_tip, true, squeeze)
 		draw_press_rod(695.0, cy, right_tip, false, squeeze)
 	var radius_screen := trap_ball_radius(PRESS_TRAP_HOLE, radius * board_rect.size.y / 600.0)
-	draw_press_ball(trap_ball_position(PRESS_TRAP_HOLE, press_point(cx, ball_y)), radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
+	var press_center := trap_ball_position(PRESS_TRAP_HOLE, press_point(cx, ball_y))
+	if release > 0.0:
+		var press_start := trap_ball_position(PRESS_TRAP_HOLE, press_point(cx, cy))
+		press_center = press_start.lerp(effect_fall_endpoint(PRESS_TRAP_HOLE), release * release)
+	draw_press_ball(press_center, radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
 
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
@@ -762,7 +769,7 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	var alpha := 1.0
 	if release > 0.0:
 		var fall := release * release
-		center = hit_point.lerp(hammer_point(1198.0, 598.0), fall)
+		center = hit_point.lerp(effect_fall_endpoint(HAMMER_TRAP_HOLE), fall)
 		center.y -= sin(release * PI) * 5.0 * scale_y
 		ball_radius *= 1.0 - release * 0.32
 		alpha = 1.0 - release * 0.10
@@ -874,7 +881,7 @@ func draw_electric_trap(effect: Dictionary) -> void:
 	if release > 0.0:
 		# Fall out through the nearby upper-right opening while remaining charged.
 		var fall := release * release
-		center = shock_point.lerp(electric_point(1198.0, 22.0), fall)
+		center = shock_point.lerp(effect_fall_endpoint(ELECTRIC_TRAP_HOLE), fall)
 		center.y -= sin(release * PI) * 7.0 * scale_y
 		ball_radius *= 1.0 - release * 0.34
 		alpha = 1.0 - release * 0.10
@@ -1050,7 +1057,7 @@ func draw_fire_trap(effect: Dictionary) -> void:
 	if release > 0.0:
 		var gravity_fall := release * release
 		# End in the visible water strip close to the lower-left corner.
-		center += Vector2(-54.0, 76.0) * scale_y * gravity_fall
+		center = burn_point.lerp(effect_fall_endpoint(FIRE_TRAP_HOLE), gravity_fall)
 		center.x += sin(release * PI) * -6.0 * scale_y
 		radius *= 1.0 - release * 0.22
 		alpha = 1.0 - release * 0.10
@@ -1119,7 +1126,7 @@ func draw_ice_trap(effect: Dictionary) -> void:
 		var gravity_fall := release * release
 		# Finish just below the table so the small frozen animal remains visible
 		# when the water-floating phase takes over.
-		center.y += gravity_fall * 64.0 * scale_y
+		center = freeze_point.lerp(effect_fall_endpoint(ICE_TRAP_HOLE), gravity_fall)
 		center.x += sin(release * PI) * 5.0 * scale_y
 		radius *= 1.0 - release * 0.28
 		alpha = 1.0 - release * 0.12
@@ -1359,7 +1366,7 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	else:
 		var release := smooth_step((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME)
 		var fall := release * release
-		var out := rubber_point(2, 22)
+		var out := effect_fall_endpoint(RUBBER_TRAP_HOLE)
 		ball = capture.lerp(out, fall)
 		ball_radius *= 1.0 - release * 0.42
 		# Keep the cocoon on the falling ball exactly like the source frames.
@@ -1373,7 +1380,7 @@ func editor_panel_rect(viewport_size: Vector2) -> Rect2:
 
 func editor_button(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := editor_panel_rect(viewport_size)
-	var button_w := (panel.size.x - 22.0) / 11.0
+	var button_w := (panel.size.x - 22.0) / 12.0
 	return Rect2(panel.position + Vector2(6.0 + index * button_w, 82.0), Vector2(button_w - 4.0, 56.0))
 
 func editor_top_button(index: int, viewport_size: Vector2) -> Rect2:
@@ -1404,33 +1411,38 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 			replay_effect_editor()
 		queue_redraw()
 		return true
-	for i in 11:
+	for i in 12:
 		if not editor_button(i, viewport_size).has_point(screen_pos):
 			continue
 		match i:
 			0: editor_target = 0
 			1: editor_target = 1
 			2: editor_target = 2
-			3: change_editor_offset(Vector2(-5, 0))
-			4: change_editor_offset(Vector2(5, 0))
-			5: change_editor_offset(Vector2(0, -5))
-			6: change_editor_offset(Vector2(0, 5))
-			7: change_editor_width(-0.10)
-			8: change_editor_width(0.10)
-			9: reset_editor_target()
-			10: replay_effect_editor()
+			3: editor_target = 3
+			4: change_editor_offset(Vector2(-5, 0))
+			5: change_editor_offset(Vector2(5, 0))
+			6: change_editor_offset(Vector2(0, -5))
+			7: change_editor_offset(Vector2(0, 5))
+			8: change_editor_width(-0.10)
+			9: change_editor_width(0.10)
+			10: reset_editor_target()
+			11: replay_effect_editor()
 		replay_effect_editor()
 		queue_redraw()
 		return true
 	return editor_panel_rect(viewport_size).has_point(screen_pos)
 
 func change_editor_offset(amount: Vector2) -> void:
-	if editor_target == 2:
+	if editor_target == 3:
+		trap_fall_offsets[editor_hole] += amount
+	elif editor_target == 2:
 		trap_ball_offsets[editor_hole] += amount
 	else:
 		trap_weapon_offsets[editor_hole * 2 + editor_target] += amount
 
 func change_editor_width(amount: float) -> void:
+	if editor_target == 3:
+		return
 	if editor_target == 2:
 		trap_ball_scales[editor_hole] = clampf(trap_ball_scales[editor_hole] + amount, 0.4, 2.0)
 	else:
@@ -1438,7 +1450,9 @@ func change_editor_width(amount: float) -> void:
 		trap_weapon_scales[index] = clampf(trap_weapon_scales[index] + amount, 0.4, 2.0)
 
 func reset_editor_target() -> void:
-	if editor_target == 2:
+	if editor_target == 3:
+		trap_fall_offsets[editor_hole] = Vector2.ZERO
+	elif editor_target == 2:
 		trap_ball_offsets[editor_hole] = Vector2.ZERO
 		trap_ball_scales[editor_hole] = 1.0
 	else:
@@ -1495,7 +1509,7 @@ func replay_effect_editor() -> void:
 func editor_settings_text() -> String:
 	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
 	var first := editor_hole * 2
-	return "%s: weapon1_offset=%s scale=%.2f; weapon2_offset=%s scale=%.2f; ball_offset=%s scale=%.2f" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole]]
+	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole]]
 
 func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
 	draw_style_box(make_box(Color("7256d8") if selected_button else Color("26384b"), 8.0), rect)
@@ -1509,16 +1523,16 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
 	var editor_title := "ALL WEAPONS + CAPTURE BALL EDITOR"
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(8, 76), editor_title, HORIZONTAL_ALIGNMENT_LEFT, 330, 14, Color("f6d365"))
-	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL"][editor_target]
+	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL", "FALL"][editor_target]
 	var values := editor_settings_text()
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(345, 76), names[editor_hole] + " / " + selected_name, HORIZONTAL_ALIGNMENT_LEFT, 180, 13, Color.WHITE)
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(530, 76), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 540, 9, Color("dbe7f3"))
 	draw_editor_button(editor_top_button(0, viewport_size), "COPY")
 	for i in 6:
 		draw_editor_button(editor_top_button(i + 1, viewport_size), names[i], editor_hole == i)
-	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
-	for i in 11:
-		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 3))
+	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
+	for i in 12:
+		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 4))
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
