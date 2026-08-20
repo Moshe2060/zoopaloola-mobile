@@ -62,6 +62,7 @@ var rubber_ball_texture: Texture2D
 var rubber_hand_textures: Array[Texture2D] = []
 var rubber_launcher_texture: Texture2D
 var rubber_wrap_texture: Texture2D
+var fire_launcher_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
@@ -134,6 +135,7 @@ func _ready() -> void:
 		rubber_hand_textures.append(load("res://assets/rubber_trap/hands/pose-%d.png" % i))
 	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
 	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
+	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -920,20 +922,20 @@ func fire_trap_is_active() -> bool:
 
 func draw_fire_emitter(center: Vector2, target: Vector2, size: float, heat: float = 0.0) -> Vector2:
 	var direction := (target - center).normalized()
-	var side := direction.orthogonal()
-	var shadow := center + Vector2(0.0, size * 0.10)
-	draw_circle(shadow, size * 0.55, Color(0.02, 0.03, 0.035, 0.30))
-	draw_circle(center, size * 0.52, Color("20282d"))
-	draw_circle(center, size * 0.43, Color("7f8b8f"))
-	draw_circle(center - direction * size * 0.05, size * 0.32, Color("aeb7b8"))
-	var nozzle_base := center + direction * size * 0.22
-	var nozzle_tip := center + direction * size * 0.64
-	draw_line(nozzle_base, nozzle_tip, Color("303a3e"), size * 0.42, true)
-	draw_line(nozzle_base, nozzle_tip, Color("8c999d"), size * 0.25, true)
-	draw_line(nozzle_tip - side * size * 0.22, nozzle_tip + side * size * 0.22, Color("252d30"), size * 0.17, true)
-	for sign_value in [-1.0, 1.0]:
-		var lamp: Vector2 = center - direction * size * 0.12 + side * size * 0.20 * float(sign_value)
-		draw_circle(lamp, size * 0.075, Color("ff8b10").lerp(Color("fff09a"), heat))
+	if fire_launcher_texture == null:
+		return center
+	var source := fire_launcher_texture.get_size()
+	var factor := size / source.y
+	# The generated turret's rotation center is inside the large round base,
+	# not at the center of its square canvas.
+	var pivot := Vector2(source.x * 0.43, source.y * 0.52)
+	var draw_size := source * factor
+	draw_set_transform(center, direction.angle(), Vector2.ONE)
+	draw_texture_rect(fire_launcher_texture, Rect2(-pivot * factor, draw_size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var nozzle_tip := center + direction * (source.x - pivot.x) * factor
+	if heat > 0.01:
+		draw_circle(nozzle_tip, size * (0.055 + heat * 0.035), Color(1.0, 0.66, 0.12, 0.45 + heat * 0.45))
 	return nozzle_tip
 
 func fire_weapon_points() -> Dictionary:
@@ -949,8 +951,8 @@ func draw_fire_weapons_idle() -> void:
 		return
 	var points := fire_weapon_points()
 	var scale_y := board_rect.size.y / 600.0
-	draw_fire_emitter(points.left, points.burn, 31.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0))
-	draw_fire_emitter(points.bottom, points.burn, 31.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1))
+	draw_fire_emitter(points.left, points.burn, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0))
+	draw_fire_emitter(points.bottom, points.burn, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1))
 
 func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
 	if amount <= 0.01:
@@ -1047,13 +1049,14 @@ func draw_fire_trap(effect: Dictionary) -> void:
 	var alpha := 1.0
 	if release > 0.0:
 		var gravity_fall := release * release
-		center += Vector2(-112.0, 152.0) * scale_y * gravity_fall
-		center.x += sin(release * PI) * -10.0 * scale_y
+		# End in the visible water strip close to the lower-left corner.
+		center += Vector2(-54.0, 76.0) * scale_y * gravity_fall
+		center.x += sin(release * PI) * -6.0 * scale_y
 		radius *= 1.0 - release * 0.22
 		alpha = 1.0 - release * 0.10
 	var stream_strength := ignition * (1.0 - smooth_step((seconds - 1.62) / 0.42))
-	var left_tip := draw_fire_emitter(left_weapon, burn_point, 31.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0), stream_strength)
-	var bottom_tip := draw_fire_emitter(bottom_weapon, burn_point, 31.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1), stream_strength)
+	var left_tip := draw_fire_emitter(left_weapon, burn_point, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0), stream_strength)
+	var bottom_tip := draw_fire_emitter(bottom_weapon, burn_point, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1), stream_strength)
 	if stream_strength > 0.01:
 		draw_fire_stream(left_tip, burn_point, stream_strength, 0.17, trap_weapon_scale(FIRE_TRAP_HOLE, 0))
 		draw_fire_stream(bottom_tip, burn_point, stream_strength, 0.63, trap_weapon_scale(FIRE_TRAP_HOLE, 1))
