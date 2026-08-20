@@ -87,14 +87,17 @@ var electric_right_size := 34.0
 var editor_hole := ELECTRIC_TRAP_HOLE
 var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall endpoint
 var trap_weapon_offsets: Array[Vector2] = [
-	Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO,
-	Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO,
-	Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO
+	Vector2(0.0, 15.0), Vector2(10.0, -5.0),
+	Vector2(5.0, 0.0), Vector2(0.0, 0.0),
+	Vector2(10.0, 40.0), Vector2(-25.0, 0.0),
+	Vector2.ZERO, Vector2.ZERO,
+	Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
+	Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
 ]
 var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-var trap_ball_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2.ZERO, Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
 var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-var trap_fall_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -1449,15 +1452,34 @@ func change_editor_width(amount: float) -> void:
 		var index := editor_hole * 2 + editor_target
 		trap_weapon_scales[index] = clampf(trap_weapon_scales[index] + amount, 0.4, 2.0)
 
+func approved_weapon_offset(hole: int, weapon: int) -> Vector2:
+	var approved: Array[Vector2] = [
+		Vector2(0.0, 15.0), Vector2(10.0, -5.0),
+		Vector2(5.0, 0.0), Vector2(0.0, 0.0),
+		Vector2(10.0, 40.0), Vector2(-25.0, 0.0),
+		Vector2.ZERO, Vector2.ZERO,
+		Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
+		Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
+	]
+	return approved[hole * 2 + weapon]
+
+func approved_ball_offset(hole: int) -> Vector2:
+	var approved: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2.ZERO, Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
+	return approved[hole]
+
+func approved_fall_offset(hole: int) -> Vector2:
+	var approved: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
+	return approved[hole]
+
 func reset_editor_target() -> void:
 	if editor_target == 3:
-		trap_fall_offsets[editor_hole] = Vector2.ZERO
+		trap_fall_offsets[editor_hole] = approved_fall_offset(editor_hole)
 	elif editor_target == 2:
-		trap_ball_offsets[editor_hole] = Vector2.ZERO
+		trap_ball_offsets[editor_hole] = approved_ball_offset(editor_hole)
 		trap_ball_scales[editor_hole] = 1.0
 	else:
 		var index := editor_hole * 2 + editor_target
-		trap_weapon_offsets[index] = Vector2.ZERO
+		trap_weapon_offsets[index] = approved_weapon_offset(editor_hole, editor_target)
 		trap_weapon_scales[index] = 1.0
 
 func change_editor_rotation(amount: float) -> void:
