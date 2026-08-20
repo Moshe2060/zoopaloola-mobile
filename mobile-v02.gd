@@ -477,6 +477,7 @@ func _draw() -> void:
 	draw_scoreboards()
 	draw_rubber_launchers_idle()
 	draw_electric_weapons_idle()
+	draw_fire_weapons_idle()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -911,6 +912,46 @@ func draw_electric_trap(effect: Dictionary) -> void:
 func fire_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
+func fire_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == FIRE_TRAP_HOLE:
+			return true
+	return false
+
+func draw_fire_emitter(center: Vector2, target: Vector2, size: float, heat: float = 0.0) -> Vector2:
+	var direction := (target - center).normalized()
+	var side := direction.orthogonal()
+	var shadow := center + Vector2(0.0, size * 0.10)
+	draw_circle(shadow, size * 0.55, Color(0.02, 0.03, 0.035, 0.30))
+	draw_circle(center, size * 0.52, Color("20282d"))
+	draw_circle(center, size * 0.43, Color("7f8b8f"))
+	draw_circle(center - direction * size * 0.05, size * 0.32, Color("aeb7b8"))
+	var nozzle_base := center + direction * size * 0.22
+	var nozzle_tip := center + direction * size * 0.64
+	draw_line(nozzle_base, nozzle_tip, Color("303a3e"), size * 0.42, true)
+	draw_line(nozzle_base, nozzle_tip, Color("8c999d"), size * 0.25, true)
+	draw_line(nozzle_tip - side * size * 0.22, nozzle_tip + side * size * 0.22, Color("252d30"), size * 0.17, true)
+	for sign_value in [-1.0, 1.0]:
+		var lamp := center - direction * size * 0.12 + side * size * 0.20 * sign_value
+		draw_circle(lamp, size * 0.075, Color("ff8b10").lerp(Color("fff09a"), heat))
+	return nozzle_tip
+
+func fire_weapon_points() -> Dictionary:
+	var burn := trap_ball_position(FIRE_TRAP_HOLE, fire_point(112.0, 536.0))
+	return {
+		"burn": burn,
+		"left": fire_point(78.0, 492.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 0),
+		"bottom": fire_point(188.0, 565.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 1)
+	}
+
+func draw_fire_weapons_idle() -> void:
+	if customizer_open or fire_trap_is_active():
+		return
+	var points := fire_weapon_points()
+	var scale_y := board_rect.size.y / 600.0
+	draw_fire_emitter(points.left, points.burn, 31.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0))
+	draw_fire_emitter(points.bottom, points.burn, 31.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1))
+
 func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
 	if amount <= 0.01:
 		return
@@ -920,60 +961,69 @@ func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offs
 		return
 	var normal := direction.normalized().orthogonal()
 	var scale_y := board_rect.size.y / 600.0 * edit_scale
-	draw_line(origin, end, Color(1.0, 0.18, 0.01, 0.72), 18.0 * scale_y, true)
-	draw_line(origin, end, Color(1.0, 0.58, 0.03, 0.92), 10.0 * scale_y, true)
-	draw_line(origin, end, Color(1.0, 0.94, 0.28, 0.94), 4.0 * scale_y, true)
-	for i in 17:
-		var phase := fmod(float(i) / 16.0 + seed_offset + amount * 1.1, 1.0)
-		if phase > amount:
-			continue
+	var outer := PackedVector2Array()
+	var inner := PackedVector2Array()
+	for i in 14:
+		var t := float(i) / 13.0
+		var wave := sin(t * 18.0 + seed_offset * 13.0 + float(Time.get_ticks_msec()) * 0.018) * 7.0 * scale_y
+		outer.append(origin.lerp(end, t) + normal * wave)
+		inner.append(origin.lerp(end, t) + normal * wave * 0.42)
+	draw_polyline(outer, Color(0.82, 0.08, 0.005, 0.92), 24.0 * scale_y, true)
+	draw_polyline(outer, Color(1.0, 0.32, 0.01, 0.98), 16.0 * scale_y, true)
+	draw_polyline(inner, Color(1.0, 0.82, 0.12, 0.98), 7.0 * scale_y, true)
+	for i in 12:
+		var phase := fmod(float(i) / 11.0 + seed_offset + float(Time.get_ticks_msec()) * 0.0007, 1.0) * amount
 		var p := origin.lerp(target, phase)
-		var wave := sin(phase * 34.0 + seed_offset * 19.0) * 9.0 * scale_y
-		p += normal * wave
-		var r := (3.0 + float(i % 4) * 1.5) * scale_y
-		var flame_color := Color(1.0, 0.25 + 0.16 * float(i % 3), 0.01, 0.88)
-		draw_circle(p, r, flame_color)
+		p += normal * sin(phase * 29.0 + seed_offset * 17.0) * 13.0 * scale_y
+		var r := (3.5 + float(i % 4) * 1.7) * scale_y
+		draw_circle(p, r, Color(1.0, 0.20 + 0.14 * float(i % 3), 0.005, 0.88))
 
 func draw_burning_ball(center: Vector2, radius: float, burn: float, team: int, piece: int, alpha: float) -> void:
-	draw_rubber_game_ball(center, radius, team, piece, (1.0 - burn * 0.88) * alpha)
-	var ember_radius := radius * lerpf(0.76, 1.08, burn)
-	draw_circle(center, ember_radius * 1.18, Color(1.0, 0.20, 0.01, 0.42 * burn * alpha))
-	draw_circle(center, ember_radius, Color(0.055, 0.035, 0.025, burn * alpha))
-	draw_arc(center, ember_radius, 0.0, TAU, 40, Color(1.0, 0.34, 0.02, burn * alpha), maxf(2.0, radius * 0.13), true)
-	for i in 9:
+	draw_rubber_game_ball(center, radius, team, piece, (1.0 - burn * 0.94) * alpha)
+	var pulse := 1.0 + sin(float(Time.get_ticks_msec()) * 0.019) * 0.055 * burn
+	var ember_radius := radius * lerpf(0.82, 1.06, burn) * pulse
+	draw_circle(center, ember_radius * 1.28, Color(1.0, 0.12, 0.005, 0.30 * burn * alpha))
+	draw_circle(center, ember_radius, Color(0.035, 0.020, 0.014, burn * alpha))
+	draw_arc(center, ember_radius, 0.0, TAU, 48, Color(1.0, 0.25, 0.005, burn * alpha), maxf(3.0, radius * 0.18), true)
+	for i in 12:
 		var a := TAU * float(i) / 9.0 + sin(float(i) * 2.7) * 0.25
 		var base := center + Vector2(cos(a), sin(a)) * ember_radius * 0.72
-		var flicker := (7.0 + 6.0 * sin(Time.get_ticks_msec() * 0.012 + float(i))) * burn
+		var flicker := (9.0 + 8.0 * sin(Time.get_ticks_msec() * 0.016 + float(i))) * burn
 		var tip := base + Vector2(cos(a), sin(a)) * flicker
-		draw_line(base, tip, Color(1.0, 0.32 + 0.28 * float(i % 2), 0.01, burn * alpha), maxf(2.0, radius * 0.12), true)
-	for i in 5:
+		draw_line(base, tip, Color(1.0, 0.24 + 0.32 * float(i % 2), 0.005, burn * alpha), maxf(2.0, radius * 0.16), true)
+		draw_circle(tip, maxf(2.0, radius * 0.10), Color(1.0, 0.48, 0.01, burn * alpha))
+	for i in 8:
 		var a := float(i) * 1.91 + 0.4
 		var crack_a := center + Vector2(cos(a), sin(a)) * ember_radius * 0.15
 		var crack_b := center + Vector2(cos(a + 0.28), sin(a + 0.28)) * ember_radius * 0.68
-		draw_line(crack_a, crack_b, Color(1.0, 0.29, 0.01, 0.78 * burn * alpha), maxf(1.0, radius * 0.055), true)
+		draw_line(crack_a, crack_b, Color(1.0, 0.16 + 0.18 * float(i % 2), 0.005, 0.92 * burn * alpha), maxf(1.5, radius * 0.075), true)
 
 func draw_fire_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	var left_weapon := fire_point(78.0, 492.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 0)
-	var bottom_weapon := fire_point(188.0, 565.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 1)
-	var burn_point := trap_ball_position(FIRE_TRAP_HOLE, fire_point(112.0, 536.0))
+	var points := fire_weapon_points()
+	var left_weapon: Vector2 = points.left
+	var bottom_weapon: Vector2 = points.bottom
+	var burn_point: Vector2 = points.burn
 	var radius := trap_ball_radius(FIRE_TRAP_HOLE, 27.0 * scale_y)
-	var ignition := smooth_step(seconds / 0.72)
-	var burn := smooth_step((seconds - 0.18) / 1.22)
-	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
+	var ignition := smooth_step(seconds / 0.38)
+	var burn := smooth_step((seconds - 0.12) / 1.48)
+	var fire_fall_start := 2.72
+	var release := smooth_step((seconds - fire_fall_start) / (FIRE_EFFECT_DURATION - fire_fall_start))
 	var center := burn_point
 	var alpha := 1.0
 	if release > 0.0:
 		var gravity_fall := release * release
-		center += Vector2(-82.0, 155.0) * scale_y * gravity_fall
-		center.x += sin(release * PI) * -7.0 * scale_y
-		radius *= 1.0 - release * 0.30
+		center += Vector2(-112.0, 152.0) * scale_y * gravity_fall
+		center.x += sin(release * PI) * -10.0 * scale_y
+		radius *= 1.0 - release * 0.22
 		alpha = 1.0 - release * 0.10
-	if seconds < 1.72:
-		var stream_strength := ignition * (1.0 - smooth_step((seconds - 1.34) / 0.38))
-		draw_fire_stream(left_weapon, burn_point, stream_strength, 0.17, trap_weapon_scale(FIRE_TRAP_HOLE, 0))
-		draw_fire_stream(bottom_weapon, burn_point, stream_strength, 0.63, trap_weapon_scale(FIRE_TRAP_HOLE, 1))
+	var stream_strength := ignition * (1.0 - smooth_step((seconds - 1.62) / 0.42))
+	var left_tip := draw_fire_emitter(left_weapon, burn_point, 31.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0), stream_strength)
+	var bottom_tip := draw_fire_emitter(bottom_weapon, burn_point, 31.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1), stream_strength)
+	if stream_strength > 0.01:
+		draw_fire_stream(left_tip, burn_point, stream_strength, 0.17, trap_weapon_scale(FIRE_TRAP_HOLE, 0))
+		draw_fire_stream(bottom_tip, burn_point, stream_strength, 0.63, trap_weapon_scale(FIRE_TRAP_HOLE, 1))
 	draw_burning_ball(center, radius, burn, effect.team, effect.piece, alpha)
 
 func ice_point(x: float, y: float) -> Vector2:
