@@ -4,6 +4,9 @@ const BOARD_W := 207.0
 const BOARD_H := 208.0
 const RADIUS := 6.0
 const GAME_BALL_VISUAL_SCALE := 1.25
+# Releasing inside this short pull distance cancels aiming. A slightly longer
+# pull becomes a shot, giving touch and mouse players a natural way to switch balls.
+const MIN_SHOT_PULL := 6.0
 const SUBSTEPS := 10
 const STEP_TIME := 0.005
 # Collision rails fitted to the visible inner stone edge of the modular board.
@@ -105,12 +108,12 @@ var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.
 var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
 var trap_entry_offsets: Array[Vector2] = [
-	Vector2(-13.0, 0.0), Vector2(0.0, -15.0), Vector2(11.0, -2.0),
-	Vector2(15.0, 17.0), Vector2(1.0, 25.0), Vector2(-14.0, 15.0)
+	Vector2(-13.0, 0.0), Vector2(-1.0, -11.0), Vector2(11.0, -2.0),
+	Vector2(12.0, 14.0), Vector2(1.0, 19.0), Vector2(-12.0, 14.0)
 ]
-var trap_entry_radii: Array[float] = [13.0, 12.0, 12.0, 12.0, 12.0, 12.0]
-var table_wall_offsets: Array[float] = [-3.0, -5.0, 5.0, 7.0] # left, top, right, bottom
-var table_wall_sizes: Array[float] = [4.0, 4.0, 4.0, 1.0]
+var trap_entry_radii: Array[float] = [13.0, 12.0, 12.0, 12.0, 11.0, 12.0]
+var table_wall_offsets: Array[float] = [-2.0, -7.0, 5.0, 8.0] # left, top, right, bottom
+var table_wall_sizes: Array[float] = [1.0, 1.0, 1.0, 1.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -483,33 +486,27 @@ func pointer_down(screen_pos: Vector2) -> void:
 			return
 
 func pointer_move(screen_pos: Vector2) -> void:
-	if dragging:
+	if dragging and selected >= 0:
 		drag_point = screen_to_board(screen_pos)
+		var pull_distance := balls[selected].p.distance_to(drag_point)
+		status = "Release to shoot" if pull_distance >= MIN_SHOT_PULL else "Release to cancel"
 
 func pointer_up(screen_pos: Vector2) -> void:
 	if not dragging or selected < 0: return
-	if cancel_aim_rect(get_viewport_rect().size).has_point(screen_pos):
-		dragging = false
-		selected = -1
-		status = "Your turn - choose another ball"
-		queue_redraw()
-		return
 	drag_point = screen_to_board(screen_pos)
 	var pull: Vector2 = balls[selected].p - drag_point
-	var strength: float = clampf(pull.length(), 5.0, 30.0)
-	if pull.length() >= 4.0:
+	var pull_distance := pull.length()
+	var strength: float = clampf(pull_distance, MIN_SHOT_PULL, 30.0)
+	if pull_distance >= MIN_SHOT_PULL:
 		balls[selected].v = pull.normalized() * (strength * 0.078)
 		turn = 1
 		ai_pending = true
 		ai_timer = 0.28
 		status = "Blue player's turn"
 	else:
-		status = "Your turn - choose a ball"
+		status = "Aim cancelled - choose another ball"
 	dragging = false
 	selected = -1
-
-func cancel_aim_rect(viewport_size: Vector2) -> Rect2:
-	return Rect2(viewport_size.x - 590.0, 6.0, 120.0, 42.0)
 
 func ai_shot() -> void:
 	var candidates: Array[int] = []
@@ -854,10 +851,6 @@ func draw_hud(viewport_size: Vector2) -> void:
 	var choose_rect := Rect2(viewport_size.x - 454.0, 6.0, 105.0, 42.0)
 	draw_style_box(make_box(Color("1b91a8"), 14.0), choose_rect)
 	draw_string(ThemeDB.fallback_font, choose_rect.position + Vector2(0, 28), "CHOOSE", HORIZONTAL_ALIGNMENT_CENTER, choose_rect.size.x, 15, Color.WHITE)
-	if dragging:
-		var cancel_rect := cancel_aim_rect(viewport_size)
-		draw_style_box(make_box(Color("c73f50"), 14.0), cancel_rect)
-		draw_string(ThemeDB.fallback_font, cancel_rect.position + Vector2(0, 28), "CANCEL", HORIZONTAL_ALIGNMENT_CENTER, cancel_rect.size.x, 15, Color.WHITE)
 	var edit_rect := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
 	draw_style_box(make_box(Color("7256d8") if effect_editor_enabled else Color("34495e"), 14.0), edit_rect)
 	draw_string(ThemeDB.fallback_font, edit_rect.position + Vector2(19, 28), "EDIT EFFECT", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
@@ -1814,21 +1807,21 @@ func approved_fall_offset(hole: int) -> Vector2:
 
 func approved_entry_offset(hole: int) -> Vector2:
 	var approved: Array[Vector2] = [
-		Vector2(-13.0, 0.0), Vector2(0.0, -15.0), Vector2(11.0, -2.0),
-		Vector2(15.0, 17.0), Vector2(1.0, 25.0), Vector2(-14.0, 15.0)
+		Vector2(-13.0, 0.0), Vector2(-1.0, -11.0), Vector2(11.0, -2.0),
+		Vector2(12.0, 14.0), Vector2(1.0, 19.0), Vector2(-12.0, 14.0)
 	]
 	return approved[hole]
 
 func approved_entry_radius(hole: int) -> float:
-	var approved: Array[float] = [13.0, 12.0, 12.0, 12.0, 12.0, 12.0]
+	var approved: Array[float] = [13.0, 12.0, 12.0, 12.0, 11.0, 12.0]
 	return approved[hole]
 
 func approved_wall_offset(side: int) -> float:
-	var approved: Array[float] = [-3.0, -5.0, 5.0, 7.0]
+	var approved: Array[float] = [-2.0, -7.0, 5.0, 8.0]
 	return approved[side]
 
 func approved_wall_size(side: int) -> float:
-	var approved: Array[float] = [4.0, 4.0, 4.0, 1.0]
+	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0]
 	return approved[side]
 
 func reset_editor_target() -> void:
