@@ -64,8 +64,11 @@ var rubber_launcher_texture: Texture2D
 var rubber_wrap_texture: Texture2D
 var fire_launcher_texture: Texture2D
 var hammer_texture: Texture2D
+var hammer_base_texture: Texture2D
 var hammer_idle_texture: Texture2D
 var hammer_swing_texture: Texture2D
+var hammer_head_side_texture: Texture2D
+var hammer_impact_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
@@ -144,8 +147,11 @@ func _ready() -> void:
 	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
 	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
 	hammer_texture = load("res://assets/hammer_trap/mechanical-hammer-v2.svg") as Texture2D
+	hammer_base_texture = load("res://assets/hammer_trap/remastered/hammer-base.png") as Texture2D
 	hammer_idle_texture = load("res://assets/hammer_trap/remastered/hammer-idle.png") as Texture2D
 	hammer_swing_texture = load("res://assets/hammer_trap/remastered/hammer-swing.png") as Texture2D
+	hammer_head_side_texture = load("res://assets/hammer_trap/remastered/hammer-head-side.png") as Texture2D
+	hammer_impact_texture = load("res://assets/hammer_trap/remastered/hammer-impact.png") as Texture2D
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -776,16 +782,37 @@ func draw_hammer_sprite_frame(texture: Texture2D, anchor: Vector2, angle: float,
 	draw_texture_rect(texture, Rect2(-pivot * factor, source * factor), false, Color(1.0, 1.0, 1.0, alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+func draw_hammer_cutout(texture: Texture2D, center: Vector2, target_height: float, rotation: float, alpha: float = 1.0) -> void:
+	if texture == null or alpha <= 0.01:
+		return
+	var source := texture.get_size()
+	var factor := target_height / maxf(1.0, source.y)
+	var size := source * factor
+	draw_set_transform(center, rotation, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, scale_y: float, mirrored: bool) -> void:
 	var strike_angle := (hit_point - anchor).angle()
 	var angle := lerp_angle(rest_angle, strike_angle, amount)
 	var target_length := anchor.distance_to(hit_point)
-	# Cross-fade between two remastered frames from the original animation. The
-	# real base in each image is pinned to the stone, so the whole hammer rotates
-	# around its genuine joint instead of a hand-drawn substitute.
-	var side_mix := smooth_step((amount - 0.18) / 0.34)
-	draw_hammer_sprite_frame(hammer_idle_texture, anchor, angle, target_length, Vector2(0.50, 0.91), Vector2(0.50, 0.15), 1.0 - side_mix)
-	draw_hammer_sprite_frame(hammer_swing_texture, anchor, angle, target_length, Vector2(0.75, 0.17), Vector2(0.38, 0.78), side_mix)
+	# The original is a frame animation, not one continuously rotating drawing.
+	# Keep the mount fixed, then swap through the restored source poses.
+	if amount < 0.12:
+		draw_hammer_sprite_frame(hammer_idle_texture, anchor, rest_angle, target_length, Vector2(0.50, 0.91), Vector2(0.50, 0.15), 1.0)
+		return
+
+	# The cropped base stays attached to the stone throughout every strike.
+	draw_hammer_cutout(hammer_base_texture, anchor, 38.0 * scale_y, rest_angle + PI * 0.5)
+	if amount < 0.58:
+		draw_hammer_sprite_frame(hammer_swing_texture, anchor, angle, target_length, Vector2(0.75, 0.17), Vector2(0.38, 0.78), 1.0)
+	elif amount < 0.88:
+		var travel := smooth_step((amount - 0.58) / 0.30)
+		var direction := Vector2(cos(strike_angle), sin(strike_angle))
+		var head_center := anchor + direction * target_length * lerpf(0.76, 1.0, travel)
+		draw_hammer_cutout(hammer_head_side_texture, head_center, 43.0 * scale_y, strike_angle + PI * 0.5)
+	else:
+		draw_hammer_cutout(hammer_impact_texture, hit_point, 54.0 * scale_y, strike_angle + PI * 0.5)
 
 func draw_hammer_weapons_idle() -> void:
 	if hammer_trap_is_active():
