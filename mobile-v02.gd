@@ -568,6 +568,7 @@ func _draw() -> void:
 		var end := board_to_screen(drag_point)
 		draw_original_style_aim(start, end)
 
+	draw_ball_hitbox_editor_overlay()
 	draw_entry_editor_marker()
 	draw_table_wall_editor_overlay()
 
@@ -685,6 +686,29 @@ func draw_entry_editor_marker() -> void:
 	draw_line(marker + Vector2(-22.0, 0.0), marker + Vector2(22.0, 0.0), color, 3.0, true)
 	draw_line(marker + Vector2(0.0, -22.0), marker + Vector2(0.0, 22.0), color, 3.0, true)
 	draw_string(ThemeDB.fallback_font, marker + Vector2(-34.0, -27.0), "ENTRY", HORIZONTAL_ALIGNMENT_CENTER, 68.0, 13, Color.WHITE)
+
+func draw_physics_radius_ring(center: Vector2, radius: float, color: Color, width: float) -> void:
+	var ring := PackedVector2Array()
+	for i in 33:
+		var angle := TAU * float(i) / 32.0
+		ring.append(board_to_screen(center + Vector2(cos(angle), sin(angle)) * radius))
+	draw_polyline(ring, color, width, true)
+
+func draw_ball_hitbox_editor_overlay() -> void:
+	if not effect_editor_enabled or editor_target not in [2, 4, 5]:
+		return
+	var color := Color(0.20, 0.92, 1.0, 0.90)
+	# Outline the real collision radius around every live gameplay ball.
+	for ball in balls:
+		if ball.alive:
+			draw_physics_radius_ring(ball.p, RADIUS, color, 3.0)
+	# Also place a same-size reference ring at the selected hole so ENTRY and
+	# WALL can be compared directly with the incoming ball's collider.
+	if editor_target == 4 or editor_target == 5:
+		var center := entry_trigger_center(editor_hole)
+		draw_physics_radius_ring(center, RADIUS, Color(0.20, 0.92, 1.0, 0.72), 3.0)
+		var label_position := board_to_screen(center) + Vector2(-48.0, 38.0)
+		draw_string(ThemeDB.fallback_font, label_position, "BALL HITBOX", HORIZONTAL_ALIGNMENT_CENTER, 96.0, 12, Color.WHITE)
 
 func draw_table_wall_editor_overlay() -> void:
 	if not effect_editor_enabled or editor_target != 5:
