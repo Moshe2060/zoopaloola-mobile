@@ -1199,19 +1199,52 @@ func electric_weapon_points() -> Dictionary:
 
 func draw_electric_emitter(center: Vector2, target: Vector2, size: float, power: float = 0.0) -> Vector2:
 	var direction := (target - center).normalized()
-	var side := direction.orthogonal()
-	# Compact stone-mounted orange emitter matching the original weapon shape.
-	draw_circle(center + Vector2(0.0, size * 0.10), size * 0.56, Color(0.02, 0.04, 0.05, 0.30))
-	draw_circle(center, size * 0.54, Color("202a2f"))
-	draw_circle(center, size * 0.43, Color("53636a"))
-	var body_start := center - direction * size * 0.28
-	var body_end := center + direction * size * 0.36
-	draw_line(body_start, body_end, Color("161d21"), size * 0.50, true)
-	draw_line(body_start, body_end, Color("d56b08"), size * 0.33, true)
-	draw_line(body_start, body_end, Color("ffad16"), size * 0.17, true)
-	var tip := center + direction * size * 0.58
-	draw_line(tip - side * size * 0.22, tip + side * size * 0.22, Color("1a2328"), size * 0.16, true)
-	draw_circle(tip, size * (0.10 + power * 0.035), Color(0.94, 1.0, 1.0, 0.65 + power * 0.35))
+	if direction.length_squared() < 0.01:
+		direction = Vector2.RIGHT
+	var angle := direction.angle()
+	# Heavy stone-mounted high-voltage generator: steel housing, copper coil,
+	# ceramic insulators and a forked discharge head. Everything is drawn in the
+	# weapon's local axis so both emitters retain the editor-approved positions.
+	draw_set_transform(center + Vector2(0.0, size * 0.10), angle, Vector2.ONE)
+	var shadow_rect := Rect2(Vector2(-size * 0.52, -size * 0.39) + Vector2(0.0, size * 0.10), Vector2(size * 0.86, size * 0.78))
+	draw_style_box(make_box(Color(0.02, 0.04, 0.06, 0.32), size * 0.14), shadow_rect)
+	var body_rect := Rect2(Vector2(-size * 0.52, -size * 0.39), Vector2(size * 0.86, size * 0.78))
+	draw_style_box(make_box(Color("1f3039"), size * 0.13), body_rect)
+	var inner_rect := Rect2(Vector2(-size * 0.43, -size * 0.30), Vector2(size * 0.65, size * 0.60))
+	draw_style_box(make_box(Color("6f858e"), size * 0.10), inner_rect)
+	# Rear mounting band and four warm metal bolts.
+	draw_rect(Rect2(Vector2(-size * 0.47, -size * 0.32), Vector2(size * 0.13, size * 0.64)), Color("314650"))
+	for bolt_y in [-0.22, 0.22]:
+		draw_circle(Vector2(-size * 0.405, size * bolt_y), size * 0.045, Color("e6bd43"))
+	# Bright copper induction coil wrapped around a dark magnetic core.
+	draw_rect(Rect2(Vector2(-size * 0.27, -size * 0.20), Vector2(size * 0.39, size * 0.40)), Color("243740"))
+	for i in 5:
+		var coil_x := size * (-0.235 + float(i) * 0.078)
+		draw_line(Vector2(coil_x, -size * 0.22), Vector2(coil_x, size * 0.22), Color("6f2b18"), size * 0.090, true)
+		draw_line(Vector2(coil_x - size * 0.012, -size * 0.20), Vector2(coil_x - size * 0.012, size * 0.20), Color("f18a2b"), size * 0.045, true)
+	# Two pale ceramic insulators lead into the forked electrode.
+	for insulator_y in [-0.17, 0.17]:
+		draw_line(Vector2(size * 0.14, size * insulator_y), Vector2(size * 0.42, size * insulator_y), Color("24343b"), size * 0.15, true)
+		draw_line(Vector2(size * 0.16, size * insulator_y), Vector2(size * 0.39, size * insulator_y), Color("d9e7e4"), size * 0.085, true)
+		for ring_x in [0.20, 0.29, 0.38]:
+			draw_line(Vector2(size * ring_x, size * (insulator_y - 0.075)), Vector2(size * ring_x, size * (insulator_y + 0.075)), Color("6d8790"), size * 0.035, true)
+	# Fork tips focus the discharge into a single bright muzzle point.
+	var fork_color := Color("a9c0c5")
+	draw_line(Vector2(size * 0.40, -size * 0.17), Vector2(size * 0.62, -size * 0.08), fork_color, size * 0.075, true)
+	draw_line(Vector2(size * 0.40, size * 0.17), Vector2(size * 0.62, size * 0.08), fork_color, size * 0.075, true)
+	draw_circle(Vector2(size * 0.62, -size * 0.08), size * 0.065, Color("d8f6ff"))
+	draw_circle(Vector2(size * 0.62, size * 0.08), size * 0.065, Color("d8f6ff"))
+	# Animated energy window remains subtle at idle and brightens before firing.
+	var core_alpha := 0.34 + power * 0.58
+	draw_circle(Vector2(-size * 0.07, 0.0), size * (0.095 + power * 0.018), Color(0.35, 0.88, 1.0, core_alpha))
+	draw_circle(Vector2(-size * 0.07, 0.0), size * 0.17, Color(0.18, 0.70, 1.0, 0.10 + power * 0.16), false, maxf(1.0, size * 0.035), true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var upper_tip := center + direction * size * 0.62 - direction.orthogonal() * size * 0.08
+	var lower_tip := center + direction * size * 0.62 + direction.orthogonal() * size * 0.08
+	var tip := center + direction * size * 0.70
+	if power > 0.01:
+		draw_electric_arc(upper_tip, lower_tip, float(Time.get_ticks_msec()) * 0.006, 0.30 + power * 0.65, maxf(1.0, size * 0.035))
+		draw_circle(tip, size * (0.08 + power * 0.045), Color(0.82, 0.97, 1.0, 0.42 + power * 0.50))
 	return tip
 
 func draw_electric_weapons_idle() -> void:
