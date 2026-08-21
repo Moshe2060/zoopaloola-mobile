@@ -912,19 +912,28 @@ func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, co
 	var direction := 1.0 if left_side else -1.0
 	var unit_x := board_rect.size.x / 1276.0
 	var unit_y := board_rect.size.y / 600.0
-	# Permanent stone-mounted motor body. It remains visible both while idle and
-	# throughout the complete squeeze/retract animation.
+	# Permanent stone-mounted press housing. A wide steel cradle makes the weapon
+	# read as a heavy machine fixed to the stone instead of a floating dark wheel.
 	var base_radius := 22.0 * unit_y * edit_scale
-	draw_circle(anchor + Vector2(0.0, 4.0 * unit_y), base_radius * 1.08, Color(0.02, 0.04, 0.05, 0.30))
-	draw_circle(anchor, base_radius, Color("263640"))
-	draw_circle(anchor, base_radius * 0.78, Color("71858d"))
-	draw_circle(anchor, base_radius * 0.54, Color("354852"))
-	draw_circle(anchor, base_radius * 0.25, Color("d6a82d"))
+	var housing_size := Vector2(42.0 * unit_x, 52.0 * unit_y) * edit_scale
+	var housing_center := anchor - Vector2(direction * 2.0 * unit_x, 0.0)
+	draw_style_box(make_box(Color(0.02, 0.04, 0.05, 0.30), 9.0 * unit_y), Rect2(housing_center - housing_size * 0.5 + Vector2(0.0, 4.0 * unit_y), housing_size))
+	draw_style_box(make_box(Color("273840"), 8.0 * unit_y), Rect2(housing_center - housing_size * 0.5, housing_size))
+	var inner_size := housing_size * Vector2(0.72, 0.76)
+	draw_style_box(make_box(Color("82969b"), 7.0 * unit_y), Rect2(housing_center - inner_size * 0.5, inner_size))
+	draw_circle(anchor, base_radius * 0.58, Color("31464f"))
+	draw_circle(anchor, base_radius * 0.40, Color("a9b9ba"))
+	draw_circle(anchor, base_radius * 0.25, Color("485e66"))
 	for i in 4:
 		var bolt_angle := TAU * float(i) / 4.0 + PI * 0.25
-		var bolt := anchor + Vector2(cos(bolt_angle), sin(bolt_angle)) * base_radius * 0.68
-		draw_circle(bolt, maxf(1.5, 2.4 * unit_y * edit_scale), Color("d7e0dd"))
-	var rod_start := anchor + Vector2(direction * base_radius * 0.72, 0.0)
+		var bolt := anchor + Vector2(cos(bolt_angle), sin(bolt_angle)) * base_radius * 0.70
+		draw_circle(bolt, maxf(1.5, 2.3 * unit_y * edit_scale), Color("e6c14a"))
+	# Collar at the front of the housing clearly defines where the piston stops.
+	var collar_center := anchor + Vector2(direction * 18.0 * unit_x * edit_scale, 0.0)
+	var collar_size := Vector2(12.0 * unit_x, 34.0 * unit_y) * edit_scale
+	draw_style_box(make_box(Color("263840"), 3.0 * unit_y), Rect2(collar_center - collar_size * 0.5, collar_size))
+	draw_rect(Rect2(collar_center - collar_size * 0.34, collar_size * 0.68), Color("a8b8ba"))
+	var rod_start := collar_center + Vector2(direction * collar_size.x * 0.38, 0.0)
 	var rod_end := tip - Vector2(direction * 8.0 * unit_x, 0.0)
 	draw_line(rod_start, rod_end, Color("263944"), 15.0 * unit_y * edit_scale, true)
 	draw_line(rod_start - Vector2(0, 1.5 * unit_y), rod_end - Vector2(0, 1.5 * unit_y), Color("b9cbd0"), 7.0 * unit_y * edit_scale, true)
@@ -971,14 +980,19 @@ func draw_press_trap(effect: Dictionary) -> void:
 	var extend := 0.0
 	var retract := 0.0
 	var release := 0.0
-	extend = smooth_step(seconds / 0.78)
-	if seconds >= 1.17:
-		retract = smooth_step((seconds - 1.17) / 0.62)
-	var squeeze := clampf((extend - 0.57) / 0.43, 0.0, 1.0)
+	# Close steadily instead of delivering a sudden final hit. Compression begins
+	# while the plates are approaching and increases continuously until contact.
+	extend = smooth_step((seconds - 0.10) / 1.02)
+	if seconds >= 1.32:
+		retract = smooth_step((seconds - 1.32) / 0.58)
+	var squeeze := smooth_step(clampf((extend - 0.18) / 0.82, 0.0, 1.0))
 	var arm_amount := extend * (1.0 - retract)
 	var compressed_rx := lerpf(radius, radius * 0.32, squeeze)
-	var left_tip := lerpf(546.0, cx - compressed_rx - 9.0, arm_amount)
-	var right_tip := lerpf(695.0, cx + compressed_rx + 9.0, arm_amount)
+	# Rest at the front collars, never at the center of the weapon housing.
+	var left_rest_tip := 570.0
+	var right_rest_tip := 671.0
+	var left_tip := lerpf(left_rest_tip, cx - compressed_rx - 9.0, arm_amount)
+	var right_tip := lerpf(right_rest_tip, cx + compressed_rx + 9.0, arm_amount)
 	rx_scale = lerpf(1.0, 0.32, squeeze)
 	ry_scale = lerpf(1.0, 1.10, squeeze)
 	if seconds >= 1.79:
