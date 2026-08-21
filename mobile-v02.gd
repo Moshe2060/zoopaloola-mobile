@@ -91,7 +91,7 @@ var electric_right_offset := Vector2(70.0, 58.0)
 var electric_top_size := 34.0
 var electric_right_size := 34.0
 var editor_hole := ELECTRIC_TRAP_HOLE
-var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall endpoint
+var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall endpoint, 4=entry trigger
 var trap_weapon_offsets: Array[Vector2] = [
 	Vector2(0.0, 15.0), Vector2(10.0, -5.0),
 	Vector2(5.0, 0.0), Vector2(0.0, 0.0),
@@ -104,6 +104,7 @@ var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.0, 
 var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
 var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
+var trap_entry_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -273,22 +274,26 @@ func resolve_walls(index: int) -> void:
 	if p.x - RADIUS < WALL_MIN_X:
 		if vertical_open:
 			# Capture only after the ball center is genuinely behind the rail.
-			if p.x < WALL_MIN_X - HOLE_CAPTURE_DEPTH: score_ball(index, hole_for_vertical(p.y, true)); return
+			var hole := hole_for_vertical(p.y, true)
+			if p.x < WALL_MIN_X - HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].x: score_ball(index, hole); return
 		else:
 			p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
 	elif p.x + RADIUS > WALL_MAX_X:
 		if vertical_open:
-			if p.x > WALL_MAX_X + HOLE_CAPTURE_DEPTH: score_ball(index, hole_for_vertical(p.y, false)); return
+			var hole := hole_for_vertical(p.y, false)
+			if p.x > WALL_MAX_X + HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].x: score_ball(index, hole); return
 		else:
 			p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
 	if p.y - RADIUS < WALL_MIN_Y:
 		if horizontal_open:
-			if p.y < WALL_MIN_Y - HOLE_CAPTURE_DEPTH: score_ball(index, 2 if p.x < 104.0 else 3); return
+			var hole := 2 if p.x < 104.0 else 3
+			if p.y < WALL_MIN_Y - HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].y: score_ball(index, hole); return
 		else:
 			p.y = WALL_MIN_Y + RADIUS; v.y = abs(v.y) * 0.75
 	elif p.y + RADIUS > WALL_MAX_Y:
 		if horizontal_open:
-			if p.y > WALL_MAX_Y + HOLE_CAPTURE_DEPTH: score_ball(index, 0 if p.x < 104.0 else 5); return
+			var hole := 0 if p.x < 104.0 else 5
+			if p.y > WALL_MAX_Y + HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].y: score_ball(index, hole); return
 		else:
 			p.y = WALL_MAX_Y - RADIUS; v.y = -abs(v.y) * 0.75
 	ball.p = p; ball.v = v
@@ -709,13 +714,13 @@ func draw_press_trap(effect: Dictionary) -> void:
 		retract = smooth_step((seconds - 1.17) / 0.62)
 	var squeeze := clampf((extend - 0.57) / 0.43, 0.0, 1.0)
 	var arm_amount := extend * (1.0 - retract)
-	var compressed_rx := lerpf(radius, radius * 0.16, squeeze)
+	var compressed_rx := lerpf(radius, radius * 0.32, squeeze)
 	var left_tip := lerpf(546.0, cx - compressed_rx - 9.0, arm_amount)
 	var right_tip := lerpf(695.0, cx + compressed_rx + 9.0, arm_amount)
-	rx_scale = lerpf(1.0, 0.16, squeeze)
+	rx_scale = lerpf(1.0, 0.32, squeeze)
 	ry_scale = lerpf(1.0, 1.10, squeeze)
 	if seconds >= 1.79:
-		rx_scale = 0.16
+		rx_scale = 0.32
 		ry_scale = 1.10
 		var wait := clampf((seconds - 1.79) / (TRAP_CAPTURE_TIME - 1.79), 0.0, 1.0)
 		release = smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
@@ -1461,7 +1466,7 @@ func editor_panel_rect(viewport_size: Vector2) -> Rect2:
 
 func editor_button(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := editor_panel_rect(viewport_size)
-	var button_w := (panel.size.x - 22.0) / 12.0
+	var button_w := (panel.size.x - 22.0) / 13.0
 	return Rect2(panel.position + Vector2(6.0 + index * button_w, 82.0), Vector2(button_w - 4.0, 56.0))
 
 func editor_top_button(index: int, viewport_size: Vector2) -> Rect2:
@@ -1492,7 +1497,7 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 			replay_effect_editor()
 		queue_redraw()
 		return true
-	for i in 12:
+	for i in 13:
 		if not editor_button(i, viewport_size).has_point(screen_pos):
 			continue
 		match i:
@@ -1500,21 +1505,24 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 			1: editor_target = 1
 			2: editor_target = 2
 			3: editor_target = 3
-			4: change_editor_offset(Vector2(-5, 0))
-			5: change_editor_offset(Vector2(5, 0))
-			6: change_editor_offset(Vector2(0, -5))
-			7: change_editor_offset(Vector2(0, 5))
-			8: change_editor_width(-0.10)
-			9: change_editor_width(0.10)
-			10: reset_editor_target()
-			11: replay_effect_editor()
+			4: editor_target = 4
+			5: change_editor_offset(Vector2(-1, 0))
+			6: change_editor_offset(Vector2(1, 0))
+			7: change_editor_offset(Vector2(0, -1))
+			8: change_editor_offset(Vector2(0, 1))
+			9: change_editor_width(-0.10)
+			10: change_editor_width(0.10)
+			11: reset_editor_target()
+			12: replay_effect_editor()
 		replay_effect_editor()
 		queue_redraw()
 		return true
 	return editor_panel_rect(viewport_size).has_point(screen_pos)
 
 func change_editor_offset(amount: Vector2) -> void:
-	if editor_target == 3:
+	if editor_target == 4:
+		trap_entry_offsets[editor_hole] += amount
+	elif editor_target == 3:
 		trap_fall_offsets[editor_hole] += amount
 	elif editor_target == 2:
 		trap_ball_offsets[editor_hole] += amount
@@ -1522,7 +1530,7 @@ func change_editor_offset(amount: Vector2) -> void:
 		trap_weapon_offsets[editor_hole * 2 + editor_target] += amount
 
 func change_editor_width(amount: float) -> void:
-	if editor_target == 3:
+	if editor_target == 3 or editor_target == 4:
 		return
 	if editor_target == 2:
 		trap_ball_scales[editor_hole] = clampf(trap_ball_scales[editor_hole] + amount, 0.4, 2.0)
@@ -1558,7 +1566,9 @@ func approved_fall_offset(hole: int) -> Vector2:
 	return approved[hole]
 
 func reset_editor_target() -> void:
-	if editor_target == 3:
+	if editor_target == 4:
+		trap_entry_offsets[editor_hole] = Vector2.ZERO
+	elif editor_target == 3:
 		trap_fall_offsets[editor_hole] = approved_fall_offset(editor_hole)
 	elif editor_target == 2:
 		trap_ball_offsets[editor_hole] = approved_ball_offset(editor_hole)
@@ -1617,7 +1627,7 @@ func replay_effect_editor() -> void:
 func editor_settings_text() -> String:
 	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
 	var first := editor_hole * 2
-	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole]]
+	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s; entry=%s" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole], trap_entry_offsets[editor_hole]]
 
 func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
 	draw_style_box(make_box(Color("7256d8") if selected_button else Color("26384b"), 8.0), rect)
@@ -1631,16 +1641,16 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
 	var editor_title := "ALL WEAPONS + CAPTURE BALL EDITOR"
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(8, 76), editor_title, HORIZONTAL_ALIGNMENT_LEFT, 330, 14, Color("f6d365"))
-	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL", "FALL"][editor_target]
+	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY"][editor_target]
 	var values := editor_settings_text()
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(345, 76), names[editor_hole] + " / " + selected_name, HORIZONTAL_ALIGNMENT_LEFT, 180, 13, Color.WHITE)
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(530, 76), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 540, 9, Color("dbe7f3"))
 	draw_editor_button(editor_top_button(0, viewport_size), "COPY")
 	for i in 6:
 		draw_editor_button(editor_top_button(i + 1, viewport_size), names[i], editor_hole == i)
-	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
-	for i in 12:
-		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 4))
+	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
+	for i in 13:
+		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 5))
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
