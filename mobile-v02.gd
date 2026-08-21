@@ -100,9 +100,9 @@ var trap_weapon_offsets: Array[Vector2] = [
 	Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
 	Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
 ]
-var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.8, 1.0, 1.0, 1.0, 1.0, 1.0]
+var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
 var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
-var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 0.8, 1.0, 1.0]
+var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
@@ -698,14 +698,13 @@ func draw_press_trap(effect: Dictionary) -> void:
 	var rx_scale := 1.0
 	var ry_scale := 1.0
 	var rotation := 0.0
-	# Do not show a duplicate effect ball while the pistons approach. It appears
-	# only at the fixed crushing point, eliminating any perceived pull from the grass.
-	var alpha := 0.0
+	# The physics ball is hidden as soon as it scores, so its effect replacement
+	# must be visible immediately while the pistons approach.
+	var alpha := 1.0
 	var extend := 0.0
 	var retract := 0.0
 	var release := 0.0
 	extend = smooth_step(seconds / 0.78)
-	alpha = smooth_step((extend - 0.52) / 0.12)
 	if seconds >= 1.17:
 		retract = smooth_step((seconds - 1.17) / 0.62)
 	var squeeze := clampf((extend - 0.57) / 0.43, 0.0, 1.0)
@@ -1439,7 +1438,10 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	if elapsed < RUBBER_CAPTURE_TIME:
 		var focus := wrap * (1.0 - wrap * 0.45)
 		draw_circle(ball, ball_radius * (1.45 + sin(t * 45.0) * 0.08), Color(1.0, 0.965, 0.72, 0.28 * focus))
-		draw_rubber_game_ball(ball, ball_radius * (1.0 + sin(t * 40.0) * 0.025 * focus), team, piece, 1.0 - wrap)
+		# Once wrapping begins, draw only the cocoon. Fading the original ball
+		# underneath it left a visible duplicate through the first wrapping pass.
+		if wrap <= 0.001:
+			draw_rubber_game_ball(ball, ball_radius, team, piece, 1.0)
 		if wrap > 0.0:
 			draw_rubber_wrap(ball, ball_radius, wrap, 0.0)
 	else:
@@ -1540,7 +1542,7 @@ func approved_weapon_offset(hole: int, weapon: int) -> Vector2:
 	return approved[hole * 2 + weapon]
 
 func approved_weapon_scale(hole: int, weapon: int) -> float:
-	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.8, 1.0, 1.0, 1.0, 1.0, 1.0]
+	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
 	return approved[hole * 2 + weapon]
 
 func approved_ball_offset(hole: int) -> Vector2:
@@ -1548,7 +1550,7 @@ func approved_ball_offset(hole: int) -> Vector2:
 	return approved[hole]
 
 func approved_ball_scale(hole: int) -> float:
-	var approved: Array[float] = [1.0, 1.0, 1.0, 0.8, 1.0, 1.0]
+	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 	return approved[hole]
 
 func approved_fall_offset(hole: int) -> Vector2:
