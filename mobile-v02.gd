@@ -105,6 +105,7 @@ var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.
 var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
 var trap_entry_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2(10.0, -1.0), Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+var trap_entry_radii: Array[float] = [12.0, 12.0, 12.0, 12.0, 12.0, 12.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -275,25 +276,25 @@ func resolve_walls(index: int) -> void:
 		if vertical_open:
 			# Capture only after the ball center is genuinely behind the rail.
 			var hole := hole_for_vertical(p.y, true)
-			if p.x < WALL_MIN_X - HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].y: score_ball(index, hole); return
+			if entry_triggered(p, hole): score_ball(index, hole); return
 		else:
 			p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
 	elif p.x + RADIUS > WALL_MAX_X:
 		if vertical_open:
 			var hole := hole_for_vertical(p.y, false)
-			if p.x > WALL_MAX_X + HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].y: score_ball(index, hole); return
+			if entry_triggered(p, hole): score_ball(index, hole); return
 		else:
 			p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
 	if p.y - RADIUS < WALL_MIN_Y:
 		if horizontal_open:
 			var hole := 2 if p.x < 104.0 else 3
-			if p.y < WALL_MIN_Y - HOLE_CAPTURE_DEPTH - trap_entry_offsets[hole].x: score_ball(index, hole); return
+			if entry_triggered(p, hole): score_ball(index, hole); return
 		else:
 			p.y = WALL_MIN_Y + RADIUS; v.y = abs(v.y) * 0.75
 	elif p.y + RADIUS > WALL_MAX_Y:
 		if horizontal_open:
 			var hole := 0 if p.x < 104.0 else 5
-			if p.y > WALL_MAX_Y + HOLE_CAPTURE_DEPTH - trap_entry_offsets[hole].x: score_ball(index, hole); return
+			if entry_triggered(p, hole): score_ball(index, hole); return
 		else:
 			p.y = WALL_MAX_Y - RADIUS; v.y = -abs(v.y) * 0.75
 	ball.p = p; ball.v = v
@@ -301,6 +302,15 @@ func resolve_walls(index: int) -> void:
 func hole_for_vertical(y: float, left: bool) -> int:
 	var k := 0 if y < CORNER_OPEN_LOW else (1 if y < MIDDLE_OPEN_MAX else 2)
 	return 2 - k if left else 3 + k
+
+func entry_trigger_center(hole: int) -> Vector2:
+	# ENTRY offsets use the visible screen axes. Convert them back into the
+	# rotated physics coordinates used by the board.
+	var offset := trap_entry_offsets[hole]
+	return SCORING_HOLE_CENTERS[hole] + Vector2(offset.y, -offset.x)
+
+func entry_triggered(ball_position: Vector2, hole: int) -> bool:
+	return ball_position.distance_to(entry_trigger_center(hole)) <= trap_entry_radii[hole]
 
 func resolve_collision(a_index: int, b_index: int) -> void:
 	var key := Vector2i(a_index, b_index)
@@ -540,30 +550,20 @@ func _draw() -> void:
 	draw_effect_editor(viewport_size)
 	draw_customizer(viewport_size)
 
-func entry_trigger_board_point(hole: int) -> Vector2:
-	var center: Vector2 = SCORING_HOLE_CENTERS[hole]
-	match hole:
-		0, 5:
-			return Vector2(center.x, WALL_MAX_Y + HOLE_CAPTURE_DEPTH)
-		1, 2:
-			return Vector2(WALL_MIN_X - HOLE_CAPTURE_DEPTH, center.y)
-		3:
-			return Vector2(center.x, WALL_MIN_Y - HOLE_CAPTURE_DEPTH)
-		4:
-			return Vector2(WALL_MAX_X + HOLE_CAPTURE_DEPTH, center.y)
-	return center
-
 func draw_entry_editor_marker() -> void:
 	if not effect_editor_enabled or editor_target != 4:
 		return
-	var marker := board_to_screen(entry_trigger_board_point(editor_hole))
-	var offset := trap_entry_offsets[editor_hole]
-	marker += Vector2(
-		offset.x * board_rect.size.x / BOARD_H,
-		offset.y * board_rect.size.y / BOARD_W
-	)
+	var trigger_center := entry_trigger_center(editor_hole)
+	var marker := board_to_screen(trigger_center)
+	var radius := trap_entry_radii[editor_hole]
 	var color := Color("ffdf3d")
 	var glow := Color(1.0, 0.24, 0.18, 0.30)
+	var ring := PackedVector2Array()
+	for i in 49:
+		var angle := TAU * float(i) / 48.0
+		ring.append(board_to_screen(trigger_center + Vector2(cos(angle), sin(angle)) * radius))
+	draw_colored_polygon(ring, Color(1.0, 0.24, 0.18, 0.14))
+	draw_polyline(ring, color, 4.0, true)
 	draw_circle(marker, 19.0, glow)
 	draw_circle(marker, 12.0, color, false, 4.0, true)
 	draw_line(marker + Vector2(-22.0, 0.0), marker + Vector2(22.0, 0.0), color, 3.0, true)
@@ -1562,7 +1562,10 @@ func change_editor_offset(amount: Vector2) -> void:
 		trap_weapon_offsets[editor_hole * 2 + editor_target] += amount
 
 func change_editor_width(amount: float) -> void:
-	if editor_target == 3 or editor_target == 4:
+	if editor_target == 4:
+		trap_entry_radii[editor_hole] = clampf(trap_entry_radii[editor_hole] + amount * 10.0, 2.0, 40.0)
+		return
+	if editor_target == 3:
 		return
 	if editor_target == 2:
 		trap_ball_scales[editor_hole] = clampf(trap_ball_scales[editor_hole] + amount, 0.4, 2.0)
@@ -1601,9 +1604,14 @@ func approved_entry_offset(hole: int) -> Vector2:
 	var approved: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2(10.0, -1.0), Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
 	return approved[hole]
 
+func approved_entry_radius(hole: int) -> float:
+	var approved: Array[float] = [12.0, 12.0, 12.0, 12.0, 12.0, 12.0]
+	return approved[hole]
+
 func reset_editor_target() -> void:
 	if editor_target == 4:
 		trap_entry_offsets[editor_hole] = approved_entry_offset(editor_hole)
+		trap_entry_radii[editor_hole] = approved_entry_radius(editor_hole)
 	elif editor_target == 3:
 		trap_fall_offsets[editor_hole] = approved_fall_offset(editor_hole)
 	elif editor_target == 2:
@@ -1663,7 +1671,7 @@ func replay_effect_editor() -> void:
 func editor_settings_text() -> String:
 	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
 	var first := editor_hole * 2
-	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s; entry=%s" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole], trap_entry_offsets[editor_hole]]
+	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s; entry=%s radius=%.1f" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole], trap_entry_offsets[editor_hole], trap_entry_radii[editor_hole]]
 
 func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
 	draw_style_box(make_box(Color("7256d8") if selected_button else Color("26384b"), 8.0), rect)
