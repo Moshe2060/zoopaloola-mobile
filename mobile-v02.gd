@@ -540,16 +540,55 @@ func _draw() -> void:
 	if dragging and selected >= 0:
 		var start := board_to_screen(balls[selected].p)
 		var end := board_to_screen(drag_point)
-		draw_line(start, end, Color("f6d365"), 5.0, true)
-		draw_circle(end, 10.0, Color("f6d365"), false, 3.0)
-		var launch := start + (start - end).limit_length(150.0)
-		draw_line(start, launch, Color(1,1,1,0.7), 3.0, true)
+		draw_original_style_aim(start, end)
 
 	draw_entry_editor_marker()
 
 	draw_hud(viewport_size)
 	draw_effect_editor(viewport_size)
 	draw_customizer(viewport_size)
+
+func draw_aim_arrow(origin: Vector2, direction: Vector2, length: float) -> void:
+	var tip := origin + direction * length
+	var head_base := tip - direction * 22.0
+	var normal := Vector2(-direction.y, direction.x)
+	var arrow_color := Color(0.86, 1.0, 0.88, 0.88)
+	# Soft wide glow plus a solid inner shaft reproduces the chunky original
+	# direction arrow and keeps it readable over the green field.
+	draw_line(origin, head_base, Color(0.78, 1.0, 0.82, 0.24), 18.0, true)
+	draw_line(origin, head_base, arrow_color, 8.0, true)
+	var head := PackedVector2Array([
+		tip,
+		head_base + normal * 15.0,
+		head_base - normal * 15.0
+	])
+	draw_colored_polygon(head, arrow_color)
+
+func draw_original_style_aim(ball_center: Vector2, pull_point: Vector2) -> void:
+	var pull := pull_point - ball_center
+	if pull.length_squared() < 4.0:
+		return
+	var pull_direction := pull.normalized()
+	var shot_direction := -pull_direction
+	var visual_ball_radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+	var pull_length := pull.length()
+
+	# Mechanical cue behind the ball: dark outline, silver body, highlight and
+	# the pale round cap visible in the supplied original-game screenshot.
+	var cue_near := ball_center + pull_direction * (visual_ball_radius * 0.92)
+	var cue_length := clampf(pull_length, 72.0, 142.0)
+	var cue_far := cue_near + pull_direction * cue_length
+	var cue_normal := Vector2(-pull_direction.y, pull_direction.x)
+	draw_line(cue_near, cue_far, Color("17212b"), 18.0, true)
+	draw_line(cue_near, cue_far, Color("697985"), 12.0, true)
+	draw_line(cue_near + cue_normal * 2.0, cue_far + cue_normal * 2.0, Color("d9e2e6"), 4.0, true)
+	draw_circle(cue_far, 11.0, Color("263441"))
+	draw_circle(cue_far, 7.5, Color("c7d9ef"))
+	draw_circle(cue_near, 6.0, Color("d6e0e5"))
+
+	var arrow_start := ball_center + shot_direction * (visual_ball_radius * 1.10)
+	var arrow_length := clampf(pull_length * 1.18, 88.0, 175.0)
+	draw_aim_arrow(arrow_start, shot_direction, arrow_length)
 
 func draw_entry_editor_marker() -> void:
 	if not effect_editor_enabled or editor_target != 4:
