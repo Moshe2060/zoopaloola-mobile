@@ -275,25 +275,25 @@ func resolve_walls(index: int) -> void:
 		if vertical_open:
 			# Capture only after the ball center is genuinely behind the rail.
 			var hole := hole_for_vertical(p.y, true)
-			if p.x < WALL_MIN_X - HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].x: score_ball(index, hole); return
+			if p.x < WALL_MIN_X - HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].y: score_ball(index, hole); return
 		else:
 			p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
 	elif p.x + RADIUS > WALL_MAX_X:
 		if vertical_open:
 			var hole := hole_for_vertical(p.y, false)
-			if p.x > WALL_MAX_X + HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].x: score_ball(index, hole); return
+			if p.x > WALL_MAX_X + HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].y: score_ball(index, hole); return
 		else:
 			p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
 	if p.y - RADIUS < WALL_MIN_Y:
 		if horizontal_open:
 			var hole := 2 if p.x < 104.0 else 3
-			if p.y < WALL_MIN_Y - HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].y: score_ball(index, hole); return
+			if p.y < WALL_MIN_Y - HOLE_CAPTURE_DEPTH - trap_entry_offsets[hole].x: score_ball(index, hole); return
 		else:
 			p.y = WALL_MIN_Y + RADIUS; v.y = abs(v.y) * 0.75
 	elif p.y + RADIUS > WALL_MAX_Y:
 		if horizontal_open:
 			var hole := 0 if p.x < 104.0 else 5
-			if p.y > WALL_MAX_Y + HOLE_CAPTURE_DEPTH + trap_entry_offsets[hole].y: score_ball(index, hole); return
+			if p.y > WALL_MAX_Y + HOLE_CAPTURE_DEPTH - trap_entry_offsets[hole].x: score_ball(index, hole); return
 		else:
 			p.y = WALL_MAX_Y - RADIUS; v.y = -abs(v.y) * 0.75
 	ball.p = p; ball.v = v
@@ -534,9 +534,41 @@ func _draw() -> void:
 		var launch := start + (start - end).limit_length(150.0)
 		draw_line(start, launch, Color(1,1,1,0.7), 3.0, true)
 
+	draw_entry_editor_marker()
+
 	draw_hud(viewport_size)
 	draw_effect_editor(viewport_size)
 	draw_customizer(viewport_size)
+
+func entry_trigger_board_point(hole: int) -> Vector2:
+	var center: Vector2 = SCORING_HOLE_CENTERS[hole]
+	match hole:
+		0, 5:
+			return Vector2(center.x, WALL_MAX_Y + HOLE_CAPTURE_DEPTH)
+		1, 2:
+			return Vector2(WALL_MIN_X - HOLE_CAPTURE_DEPTH, center.y)
+		3:
+			return Vector2(center.x, WALL_MIN_Y - HOLE_CAPTURE_DEPTH)
+		4:
+			return Vector2(WALL_MAX_X + HOLE_CAPTURE_DEPTH, center.y)
+	return center
+
+func draw_entry_editor_marker() -> void:
+	if not effect_editor_enabled or editor_target != 4:
+		return
+	var marker := board_to_screen(entry_trigger_board_point(editor_hole))
+	var offset := trap_entry_offsets[editor_hole]
+	marker += Vector2(
+		offset.x * board_rect.size.x / BOARD_H,
+		offset.y * board_rect.size.y / BOARD_W
+	)
+	var color := Color("ffdf3d")
+	var glow := Color(1.0, 0.24, 0.18, 0.30)
+	draw_circle(marker, 19.0, glow)
+	draw_circle(marker, 12.0, color, false, 4.0, true)
+	draw_line(marker + Vector2(-22.0, 0.0), marker + Vector2(22.0, 0.0), color, 3.0, true)
+	draw_line(marker + Vector2(0.0, -22.0), marker + Vector2(0.0, 22.0), color, 3.0, true)
+	draw_string(ThemeDB.fallback_font, marker + Vector2(-34.0, -27.0), "ENTRY", HORIZONTAL_ALIGNMENT_CENTER, 68.0, 13, Color.WHITE)
 
 func draw_ocean(viewport_size: Vector2) -> void:
 	# Bright layered water makes the space around the table read as sea even on
