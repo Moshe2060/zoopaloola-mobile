@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="384" viewBox="0 0 512 384">
+<defs>
+ <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#d8e2e4"/><stop offset=".38" stop-color="#879ba1"/><stop offset=".72" stop-color="#435961"/><stop offset="1" stop-color="#24363e"/></linearGradient>
+ <linearGradient id="dark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#526972"/><stop offset=".5" stop-color="#233740"/><stop offset="1" stop-color="#14242b"/></linearGradient>
+ <linearGradient id="hyd" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f3f7f5"/><stop offset=".28" stop-color="#aebfc2"/><stop offset=".7" stop-color="#536970"/><stop offset="1" stop-color="#263a42"/></linearGradient>
+ <radialGradient id="motor"><stop stop-color="#788e94"/><stop offset=".55" stop-color="#354b53"/><stop offset="1" stop-color="#15262d"/></radialGradient>
+ <filter id="shadow" x="-30%" y="-30%" width="170%" height="180%"><feGaussianBlur stdDeviation="10"/></filter>
+</defs>
+<ellipse cx="238" cy="318" rx="190" ry="35" fill="#061016" opacity=".34" filter="url(#shadow)"/>
+<!-- reinforced mounting feet -->
+<path d="M73 270h76l17 35H57z" fill="#182a32" stroke="#0b171d" stroke-width="10"/>
+<path d="M276 270h88l22 35H260z" fill="#182a32" stroke="#0b171d" stroke-width="10"/>
+<rect x="66" y="288" width="320" height="25" rx="10" fill="url(#steel)" stroke="#172930" stroke-width="9"/>
+<circle cx="91" cy="300" r="7" fill="#e8bd43"/><circle cx="358" cy="300" r="7" fill="#e8bd43"/>
+<!-- heavy outer frame -->
+<path d="M72 86Q72 58 101 58h232q31 0 31 30v187H72z" fill="url(#dark)" stroke="#101f26" stroke-width="13"/>
+<path d="M92 84h249v170H92z" fill="none" stroke="#8da0a4" stroke-width="9" opacity=".75"/>
+<path d="M104 98h224" stroke="#d4dfe0" stroke-width="5" opacity=".55"/>
+<!-- motor and gearbox -->
+<circle cx="158" cy="185" r="73" fill="#122229" stroke="#0a151a" stroke-width="12"/>
+<circle cx="158" cy="185" r="60" fill="url(#motor)" stroke="#8ba0a5" stroke-width="8"/>
+<g fill="#243841" stroke="#b6c4c5" stroke-width="5">
+ <path d="M147 116h22l7 27 25-13 15 16-15 24 27 8v22l-27 8 14 24-16 16-24-14-8 27h-22l-8-27-24 14-16-16 14-24-27-8v-22l27-8-14-24 16-16 24 14z"/>
+</g>
+<circle cx="158" cy="185" r="29" fill="#182b33" stroke="#d1dbda" stroke-width="8"/>
+<circle cx="158" cy="185" r="12" fill="#e6b83d" stroke="#7b5b18" stroke-width="5"/>
+<!-- hydraulic cylinder -->
+<rect x="226" y="124" width="129" height="122" rx="24" fill="#172a32" stroke="#0b171c" stroke-width="10"/>
+<rect x="240" y="137" width="101" height="94" rx="17" fill="url(#hyd)" stroke="#8ea2a6" stroke-width="6"/>
+<path d="M250 150h80" stroke="#f1f6f4" stroke-width="8" opacity=".6"/>
+<rect x="270" y="105" width="42" height="160" rx="11" fill="#273c44" stroke="#13242b" stroke-width="8"/>
+<rect x="280" y="112" width="21" height="145" rx="8" fill="#99acb0"/>
+<!-- pressure gauge -->
+<circle cx="248" cy="105" r="27" fill="#15262e" stroke="#9fb1b4" stroke-width="7"/>
+<circle cx="248" cy="105" r="17" fill="#d8f3f2"/>
+<path d="M248 105l10-11" stroke="#d94c3f" stroke-width="5" stroke-linecap="round"/>
+<circle cx="248" cy="105" r="4" fill="#263b43"/>
+<!-- front reinforced collar -->
+<path d="M351 129h43l23 24v65l-23 24h-43z" fill="url(#steel)" stroke="#14262d" stroke-width="11"/>
+<rect x="372" y="144" width="34" height="83" rx="8" fill="#243840" stroke="#a9b8ba" stroke-width="6"/>
+<path d="M381 153v65" stroke="#e3ebea" stroke-width="6" opacity=".55"/>
+<!-- hazard plate -->
+<rect x="94" y="72" width="102" height="30" rx="8" fill="#1b2c33" stroke="#8fa2a5" stroke-width="5"/>
+<path d="M107 78l14 18m10-18 14 18m10-18 14 18" stroke="#e0ae31" stroke-width="8"/>
+<!-- bolts -->
+<g fill="#e4bd4b" stroke="#73591c" stroke-width="4">
+ <circle cx="93" cy="111" r="8"/><circle cx="335" cy="111" r="8"/><circle cx="93" cy="260" r="8"/><circle cx="335" cy="260" r="8"/>
+</g>
+</svg>

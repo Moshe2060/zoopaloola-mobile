@@ -65,6 +65,7 @@ var rubber_ball_texture: Texture2D
 var rubber_hand_textures: Array[Texture2D] = []
 var rubber_launcher_texture: Texture2D
 var rubber_wrap_texture: Texture2D
+var press_machine_texture: Texture2D
 var fire_launcher_texture: Texture2D
 var hammer_texture: Texture2D
 var hammer_base_texture: Texture2D
@@ -162,6 +163,7 @@ func _ready() -> void:
 		rubber_hand_textures.append(load("res://assets/rubber_trap/hands/pose-%d.png" % i))
 	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
 	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
+	press_machine_texture = load("res://assets/press_trap/industrial-press.svg") as Texture2D
 	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
 	hammer_texture = load("res://assets/hammer_trap/mechanical-hammer-v2.svg") as Texture2D
 	hammer_base_texture = load("res://assets/hammer_trap/remastered/hammer-base.png") as Texture2D
@@ -913,27 +915,23 @@ func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, co
 	var direction := 1.0 if left_side else -1.0
 	var unit_x := board_rect.size.x / 1276.0
 	var unit_y := board_rect.size.y / 600.0
-	# Permanent stone-mounted press housing. A wide steel cradle makes the weapon
-	# read as a heavy machine fixed to the stone instead of a floating dark wheel.
+	# High-detail scalable industrial press sprite. The animation keeps the rod and
+	# plate procedural, but the fixed machine is now a serious hydraulic assembly.
 	var base_radius := 22.0 * unit_y * edit_scale
-	var housing_size := Vector2(42.0 * unit_x, 52.0 * unit_y) * edit_scale
-	var housing_center := anchor - Vector2(direction * 2.0 * unit_x, 0.0)
-	draw_style_box(make_box(Color(0.02, 0.04, 0.05, 0.30), 9.0 * unit_y), Rect2(housing_center - housing_size * 0.5 + Vector2(0.0, 4.0 * unit_y), housing_size))
-	draw_style_box(make_box(Color("273840"), 8.0 * unit_y), Rect2(housing_center - housing_size * 0.5, housing_size))
-	var inner_size := housing_size * Vector2(0.72, 0.76)
-	draw_style_box(make_box(Color("82969b"), 7.0 * unit_y), Rect2(housing_center - inner_size * 0.5, inner_size))
-	draw_circle(anchor, base_radius * 0.58, Color("31464f"))
-	draw_circle(anchor, base_radius * 0.40, Color("a9b9ba"))
-	draw_circle(anchor, base_radius * 0.25, Color("485e66"))
-	for i in 4:
-		var bolt_angle := TAU * float(i) / 4.0 + PI * 0.25
-		var bolt := anchor + Vector2(cos(bolt_angle), sin(bolt_angle)) * base_radius * 0.70
-		draw_circle(bolt, maxf(1.5, 2.3 * unit_y * edit_scale), Color("e6c14a"))
-	# Collar at the front of the housing clearly defines where the piston stops.
-	var collar_center := anchor + Vector2(direction * 18.0 * unit_x * edit_scale, 0.0)
-	var collar_size := Vector2(12.0 * unit_x, 34.0 * unit_y) * edit_scale
-	draw_style_box(make_box(Color("263840"), 3.0 * unit_y), Rect2(collar_center - collar_size * 0.5, collar_size))
-	draw_rect(Rect2(collar_center - collar_size * 0.34, collar_size * 0.68), Color("a8b8ba"))
+	var machine_height := 68.0 * unit_y * edit_scale
+	if press_machine_texture != null:
+		var source := press_machine_texture.get_size()
+		var factor := machine_height / maxf(1.0, source.y)
+		var machine_size := source * factor
+		var pivot := Vector2(source.x * 0.46, source.y * 0.50) * factor
+		draw_set_transform(anchor, 0.0 if left_side else PI, Vector2.ONE)
+		draw_texture_rect(press_machine_texture, Rect2(-pivot, machine_size), false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	else:
+		draw_circle(anchor, base_radius, Color("31464f"))
+		draw_circle(anchor, base_radius * 0.62, Color("a9b9ba"))
+	var collar_center := anchor + Vector2(direction * 25.0 * unit_x * edit_scale, 0.0)
+	var collar_size := Vector2(13.0 * unit_x, 38.0 * unit_y) * edit_scale
 	var rod_start := collar_center + Vector2(direction * collar_size.x * 0.38, 0.0)
 	var rod_end := tip - Vector2(direction * 8.0 * unit_x, 0.0)
 	draw_line(rod_start, rod_end, Color("263944"), 15.0 * unit_y * edit_scale, true)
