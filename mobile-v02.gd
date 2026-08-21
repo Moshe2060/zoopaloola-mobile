@@ -762,29 +762,44 @@ func hammer_strike_amount(seconds: float, first_start: float) -> float:
 func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, scale_y: float, mirrored: bool) -> void:
 	var strike_angle := (hit_point - anchor).angle()
 	var angle := lerp_angle(rest_angle, strike_angle, amount)
-	var draw_scale := scale_y * 0.40
-	# Heavy stone-mounted base, rear hinge and bolts remain fixed while the arm
-	# rotates. This makes the hammer read as a real installed trap, not a loose
-	# sprite floating over the board.
-	draw_set_transform(anchor, rest_angle, Vector2.ONE)
-	draw_style_box(make_box(Color("172228"), 9.0 * scale_y), Rect2(Vector2(-31.0, -25.0) * scale_y, Vector2(63.0, 50.0) * scale_y))
-	draw_style_box(make_box(Color("596a70"), 7.0 * scale_y), Rect2(Vector2(-25.0, -20.0) * scale_y, Vector2(50.0, 40.0) * scale_y))
-	for bolt_y in [-12.0, 12.0]:
-		draw_circle(Vector2(-15.0, bolt_y) * scale_y, 4.0 * scale_y, Color("d7e0e2"))
-		draw_circle(Vector2(-15.0, bolt_y) * scale_y, 1.8 * scale_y, Color("526168"))
+	var arm_length := anchor.distance_to(hit_point)
+	var direction := Vector2(cos(angle), sin(angle))
+	var tip := anchor + direction * arm_length
+	var side := direction.orthogonal()
+
+	# Faithful small purple claw mount from the original game. The mount is
+	# deliberately compact so it sits inside the stone instead of covering it.
+	draw_circle(anchor + Vector2(2.0, 4.0) * scale_y, 15.0 * scale_y, Color(0.05, 0.07, 0.08, 0.28))
+	draw_line(anchor - side * 11.0 * scale_y, anchor + direction * 11.0 * scale_y, Color("3c183d"), 13.0 * scale_y, true)
+	draw_line(anchor + side * 11.0 * scale_y, anchor + direction * 11.0 * scale_y, Color("3c183d"), 13.0 * scale_y, true)
+	draw_circle(anchor - side * 9.0 * scale_y, 7.0 * scale_y, Color("9e3b83"))
+	draw_circle(anchor + side * 9.0 * scale_y, 7.0 * scale_y, Color("9e3b83"))
+	draw_circle(anchor, 8.0 * scale_y, Color("343f43"))
+	draw_circle(anchor, 4.5 * scale_y, Color("d65aab"))
+	draw_circle(anchor - Vector2(1.0, 1.0) * scale_y, 2.0 * scale_y, Color("ffd8ee"))
+
+	# Short telescopic-looking silver arm, with the same dark outline and bright
+	# center highlight visible in the source animation.
+	var shaft_end := tip - direction * 12.0 * scale_y
+	draw_line(anchor + direction * 5.0 * scale_y, shaft_end + Vector2(2.0, 4.0) * scale_y, Color(0.04, 0.06, 0.07, 0.30), 13.0 * scale_y, true)
+	draw_line(anchor + direction * 5.0 * scale_y, shaft_end, Color("263237"), 12.0 * scale_y, true)
+	draw_line(anchor + direction * 7.0 * scale_y, shaft_end, Color("9ba9ad"), 7.0 * scale_y, true)
+	draw_line(anchor + direction * 8.0 * scale_y, shaft_end, Color("e2e8e9"), 2.5 * scale_y, true)
+
+	# The orange cylinder faces the camera while idle and exposes more of its
+	# rectangular side during a strike, like the original Flash sprite.
+	var head_angle := angle + PI * 0.5
+	var head_size := Vector2(lerpf(34.0, 47.0, amount), lerpf(34.0, 29.0, amount)) * scale_y
+	draw_set_transform(tip + Vector2(2.0, 4.0) * scale_y, head_angle, Vector2.ONE)
+	draw_style_box(make_box(Color(0.16, 0.07, 0.01, 0.32), 7.0 * scale_y), Rect2(-head_size * 0.5, head_size))
+	draw_set_transform(tip, head_angle, Vector2.ONE)
+	draw_style_box(make_box(Color("9a3d08"), 7.0 * scale_y), Rect2(-head_size * 0.54, head_size * 1.08))
+	draw_style_box(make_box(Color("ef7e0b"), 6.0 * scale_y), Rect2(-head_size * 0.5, head_size))
+	draw_style_box(make_box(Color("ffad1f"), 5.0 * scale_y), Rect2(Vector2(-head_size.x * 0.40, -head_size.y * 0.40), Vector2(head_size.x * 0.66, head_size.y * 0.34)))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_set_transform(anchor, angle, Vector2(draw_scale, -draw_scale if mirrored else draw_scale))
-	if hammer_texture != null:
-		# The SVG pivot is the center of its mechanical joint (40, 71).
-		draw_texture_rect(hammer_texture, Rect2(Vector2(-40.0, -71.0), Vector2(320.0, 144.0)), false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# Keep the mounted swivel visually anchored to the stone during the swing.
-	draw_circle(anchor, 14.0 * scale_y, Color("27343b"))
-	draw_circle(anchor, 9.0 * scale_y, Color("c94a91"))
-	draw_circle(anchor, 4.5 * scale_y, Color("f2dce9"))
 
 func draw_hammer_weapons_idle() -> void:
-	if customizer_open or hammer_trap_is_active():
+	if hammer_trap_is_active():
 		return
 	var points := hammer_weapon_points()
 	var scale_y := board_rect.size.y / 600.0
