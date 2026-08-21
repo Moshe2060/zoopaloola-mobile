@@ -455,7 +455,7 @@ func pointer_up(screen_pos: Vector2) -> void:
 	var pull: Vector2 = balls[selected].p - drag_point
 	var strength: float = clampf(pull.length(), 5.0, 30.0)
 	if pull.length() >= 4.0:
-		balls[selected].v = pull.normalized() * (strength * 0.0995)
+		balls[selected].v = pull.normalized() * (strength * 0.078)
 		turn = 1
 		ai_pending = true
 		ai_timer = 0.75
@@ -471,7 +471,7 @@ func ai_shot() -> void:
 	var shooter := candidates[randi() % candidates.size()]
 	var target := Vector2(38.0, [25.0, 104.0, 183.0][randi() % 3])
 	var direction: Vector2 = target - balls[shooter].p
-	balls[shooter].v = direction.normalized() * randf_range(1.5, 2.7)
+	balls[shooter].v = direction.normalized() * randf_range(1.25, 2.2)
 	status = "Blue player shot..."
 
 func finish_ai_turn() -> void:
@@ -564,6 +564,35 @@ func draw_aim_arrow(origin: Vector2, direction: Vector2, length: float) -> void:
 	])
 	draw_colored_polygon(head, arrow_color)
 
+func predicted_aim_collision(origin: Vector2, direction: Vector2, combined_radius: float) -> Dictionary:
+	var best_distance := INF
+	var best_center := Vector2.ZERO
+	for i in balls.size():
+		if i == selected or not balls[i].alive:
+			continue
+		var center := board_to_screen(balls[i].p)
+		var delta := center - origin
+		var along := delta.dot(direction)
+		if along <= 0.0:
+			continue
+		var perpendicular_squared := delta.length_squared() - along * along
+		var radius_squared := combined_radius * combined_radius
+		if perpendicular_squared > radius_squared:
+			continue
+		var contact_distance := along - sqrt(maxf(0.0, radius_squared - perpendicular_squared))
+		if contact_distance < best_distance:
+			best_distance = contact_distance
+			best_center = center
+	if best_distance == INF:
+		return {}
+	var moving_center_at_contact := origin + direction * best_distance
+	var target_direction := (best_center - moving_center_at_contact).normalized()
+	return {
+		"distance": best_distance,
+		"center": best_center,
+		"direction": target_direction
+	}
+
 func draw_original_style_aim(ball_center: Vector2, pull_point: Vector2) -> void:
 	var pull := pull_point - ball_center
 	if pull.length_squared() < 4.0:
@@ -588,7 +617,19 @@ func draw_original_style_aim(ball_center: Vector2, pull_point: Vector2) -> void:
 
 	var arrow_start := ball_center + shot_direction * (visual_ball_radius * 1.10)
 	var arrow_length := clampf(pull_length * 1.18, 88.0, 175.0)
-	draw_aim_arrow(arrow_start, shot_direction, arrow_length)
+	var collision := predicted_aim_collision(ball_center, shot_direction, visual_ball_radius * 2.0)
+	if collision.is_empty():
+		draw_aim_arrow(arrow_start, shot_direction, arrow_length)
+	else:
+		# Stop the shooter's guide at the predicted contact point and show the
+		# second arrow on the ball that will receive the impact.
+		var contact_length: float = maxf(34.0, float(collision.distance) - visual_ball_radius * 1.10)
+		draw_aim_arrow(arrow_start, shot_direction, contact_length)
+		var target_center: Vector2 = collision.center
+		var target_direction: Vector2 = collision.direction
+		var target_start := target_center + target_direction * (visual_ball_radius * 1.10)
+		var target_length := clampf(pull_length * 0.82, 62.0, 128.0)
+		draw_aim_arrow(target_start, target_direction, target_length)
 
 func draw_entry_editor_marker() -> void:
 	if not effect_editor_enabled or editor_target != 4:
