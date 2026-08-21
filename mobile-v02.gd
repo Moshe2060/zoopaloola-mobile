@@ -96,13 +96,13 @@ var trap_weapon_offsets: Array[Vector2] = [
 	Vector2(0.0, 15.0), Vector2(10.0, -5.0),
 	Vector2(5.0, 0.0), Vector2(0.0, 0.0),
 	Vector2(10.0, 40.0), Vector2(-25.0, 0.0),
-	Vector2.ZERO, Vector2.ZERO,
+	Vector2(20.0, 5.0), Vector2(0.0, 5.0),
 	Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
 	Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
 ]
-var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2.ZERO, Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
-var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.8, 1.0, 1.0, 1.0, 1.0, 1.0]
+var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
+var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 0.8, 1.0, 1.0]
 var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
@@ -847,10 +847,11 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	# of returning completely to its original size between hits.
 	var completed_hits := clampi(int(floor((seconds - 0.20) / 0.34)) + 1, 0, 6)
 	var permanent_crush := float(completed_hits) / 6.0
-	if release <= 0.0:
-		ball_radius *= lerpf(1.0, 0.72, permanent_crush)
-		squash_x = lerpf(1.0, 1.10, permanent_crush)
-		squash_y = lerpf(1.0, 0.70, permanent_crush)
+	# Keep the accumulated crushed shape during the fall as well. Previously
+	# this was applied only before release, so the ball briefly grew back.
+	ball_radius *= lerpf(1.0, 0.72, permanent_crush)
+	squash_x = lerpf(1.0, 1.10, permanent_crush)
+	squash_y = lerpf(1.0, 0.70, permanent_crush)
 	if release <= 0.0 and impact > 0.01:
 		ball_radius *= lerpf(1.0, 0.88, impact)
 		if right_amount >= bottom_amount:
@@ -1533,14 +1534,22 @@ func approved_weapon_offset(hole: int, weapon: int) -> Vector2:
 		Vector2(0.0, 15.0), Vector2(10.0, -5.0),
 		Vector2(5.0, 0.0), Vector2(0.0, 0.0),
 		Vector2(10.0, 40.0), Vector2(-25.0, 0.0),
-		Vector2.ZERO, Vector2.ZERO,
+		Vector2(20.0, 5.0), Vector2(0.0, 5.0),
 		Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
 		Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
 	]
 	return approved[hole * 2 + weapon]
 
+func approved_weapon_scale(hole: int, weapon: int) -> float:
+	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.8, 1.0, 1.0, 1.0, 1.0, 1.0]
+	return approved[hole * 2 + weapon]
+
 func approved_ball_offset(hole: int) -> Vector2:
-	var approved: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2.ZERO, Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
+	var approved: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
+	return approved[hole]
+
+func approved_ball_scale(hole: int) -> float:
+	var approved: Array[float] = [1.0, 1.0, 1.0, 0.8, 1.0, 1.0]
 	return approved[hole]
 
 func approved_fall_offset(hole: int) -> Vector2:
@@ -1552,11 +1561,11 @@ func reset_editor_target() -> void:
 		trap_fall_offsets[editor_hole] = approved_fall_offset(editor_hole)
 	elif editor_target == 2:
 		trap_ball_offsets[editor_hole] = approved_ball_offset(editor_hole)
-		trap_ball_scales[editor_hole] = 1.0
+		trap_ball_scales[editor_hole] = approved_ball_scale(editor_hole)
 	else:
 		var index := editor_hole * 2 + editor_target
 		trap_weapon_offsets[index] = approved_weapon_offset(editor_hole, editor_target)
-		trap_weapon_scales[index] = 1.0
+		trap_weapon_scales[index] = approved_weapon_scale(editor_hole, editor_target)
 
 func change_editor_rotation(amount: float) -> void:
 	if effect_editor_mode == "electric":
