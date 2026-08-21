@@ -91,7 +91,7 @@ var electric_right_offset := Vector2(70.0, 58.0)
 var electric_top_size := 34.0
 var electric_right_size := 34.0
 var editor_hole := ELECTRIC_TRAP_HOLE
-var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall endpoint, 4=entry trigger
+var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall, 4=entry, 5=table wall
 var trap_weapon_offsets: Array[Vector2] = [
 	Vector2(0.0, 15.0), Vector2(10.0, -5.0),
 	Vector2(5.0, 0.0), Vector2(0.0, 0.0),
@@ -109,6 +109,8 @@ var trap_entry_offsets: Array[Vector2] = [
 	Vector2(15.0, 17.0), Vector2(1.0, 25.0), Vector2(-14.0, 15.0)
 ]
 var trap_entry_radii: Array[float] = [13.0, 12.0, 12.0, 12.0, 12.0, 12.0]
+var table_wall_offsets: Array[float] = [0.0, 0.0, 0.0, 0.0] # left, top, right, bottom
+var table_wall_sizes: Array[float] = [4.0, 4.0, 4.0, 4.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -275,34 +277,58 @@ func resolve_walls(index: int) -> void:
 	var v: Vector2 = ball.v
 	var vertical_open := p.y < CORNER_OPEN_LOW or (p.y > MIDDLE_OPEN_MIN and p.y < MIDDLE_OPEN_MAX) or p.y > CORNER_OPEN_HIGH
 	var horizontal_open := p.x < SIDE_OPEN_LOW or p.x > SIDE_OPEN_HIGH
-	if p.x - RADIUS < WALL_MIN_X:
+	var wall_min_x := effective_wall_min_x()
+	var wall_max_x := effective_wall_max_x()
+	var wall_min_y := effective_wall_min_y()
+	var wall_max_y := effective_wall_max_y()
+	if p.x - RADIUS < wall_min_x:
 		if vertical_open:
 			# Capture only after the ball center is genuinely behind the rail.
 			var hole := hole_for_vertical(p.y, true)
 			if entry_triggered(p, hole): score_ball(index, hole); return
 		# The visual opening is wider than the editable ENTRY circle. Everything
 		# outside that circle must still behave as a rail instead of leaking out.
-		p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
-	elif p.x + RADIUS > WALL_MAX_X:
+		p.x = wall_min_x + RADIUS; v.x = abs(v.x) * 0.75
+	elif p.x + RADIUS > wall_max_x:
 		if vertical_open:
 			var hole := hole_for_vertical(p.y, false)
 			if entry_triggered(p, hole): score_ball(index, hole); return
-		p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
-	if p.y - RADIUS < WALL_MIN_Y:
+		p.x = wall_max_x - RADIUS; v.x = -abs(v.x) * 0.75
+	if p.y - RADIUS < wall_min_y:
 		if horizontal_open:
 			var hole := 2 if p.x < 104.0 else 3
 			if entry_triggered(p, hole): score_ball(index, hole); return
-		p.y = WALL_MIN_Y + RADIUS; v.y = abs(v.y) * 0.75
-	elif p.y + RADIUS > WALL_MAX_Y:
+		p.y = wall_min_y + RADIUS; v.y = abs(v.y) * 0.75
+	elif p.y + RADIUS > wall_max_y:
 		if horizontal_open:
 			var hole := 0 if p.x < 104.0 else 5
 			if entry_triggered(p, hole): score_ball(index, hole); return
-		p.y = WALL_MAX_Y - RADIUS; v.y = -abs(v.y) * 0.75
+		p.y = wall_max_y - RADIUS; v.y = -abs(v.y) * 0.75
 	ball.p = p; ball.v = v
 
 func hole_for_vertical(y: float, left: bool) -> int:
 	var k := 0 if y < CORNER_OPEN_LOW else (1 if y < MIDDLE_OPEN_MAX else 2)
 	return 2 - k if left else 3 + k
+
+func editor_wall_side(hole: int) -> int:
+	match hole:
+		0, 5: return 0 # visible left
+		1, 2: return 1 # visible top
+		3: return 2 # visible right
+		4: return 3 # visible bottom
+	return 0
+
+func effective_wall_min_x() -> float:
+	return WALL_MIN_X + table_wall_offsets[1] + (table_wall_sizes[1] - 4.0) * 0.5
+
+func effective_wall_max_x() -> float:
+	return WALL_MAX_X + table_wall_offsets[3] - (table_wall_sizes[3] - 4.0) * 0.5
+
+func effective_wall_min_y() -> float:
+	return WALL_MIN_Y - table_wall_offsets[2] + (table_wall_sizes[2] - 4.0) * 0.5
+
+func effective_wall_max_y() -> float:
+	return WALL_MAX_Y - table_wall_offsets[0] - (table_wall_sizes[0] - 4.0) * 0.5
 
 func entry_trigger_center(hole: int) -> Vector2:
 	# ENTRY offsets use the visible screen axes. Convert them back into the
@@ -543,6 +569,7 @@ func _draw() -> void:
 		draw_original_style_aim(start, end)
 
 	draw_entry_editor_marker()
+	draw_table_wall_editor_overlay()
 
 	draw_hud(viewport_size)
 	draw_effect_editor(viewport_size)
@@ -658,6 +685,35 @@ func draw_entry_editor_marker() -> void:
 	draw_line(marker + Vector2(-22.0, 0.0), marker + Vector2(22.0, 0.0), color, 3.0, true)
 	draw_line(marker + Vector2(0.0, -22.0), marker + Vector2(0.0, 22.0), color, 3.0, true)
 	draw_string(ThemeDB.fallback_font, marker + Vector2(-34.0, -27.0), "ENTRY", HORIZONTAL_ALIGNMENT_CENTER, 68.0, 13, Color.WHITE)
+
+func draw_table_wall_editor_overlay() -> void:
+	if not effect_editor_enabled or editor_target != 5:
+		return
+	var selected_side := editor_wall_side(editor_hole)
+	var top_y := board_to_screen(Vector2(effective_wall_min_x(), 0.0)).y
+	var bottom_y := board_to_screen(Vector2(effective_wall_max_x(), 0.0)).y
+	var left_x := board_to_screen(Vector2(0.0, effective_wall_max_y())).x
+	var right_x := board_to_screen(Vector2(0.0, effective_wall_min_y())).x
+	var positions := [left_x, top_y, right_x, bottom_y]
+	for side in 4:
+		var selected_wall := side == selected_side
+		var color := Color(1.0, 0.20, 0.12, 0.72 if selected_wall else 0.30)
+		var thickness := maxf(4.0, table_wall_sizes[side] * 3.0)
+		if side == 0 or side == 2:
+			draw_line(Vector2(positions[side], board_rect.position.y), Vector2(positions[side], board_rect.end.y), color, thickness, true)
+		else:
+			draw_line(Vector2(board_rect.position.x, positions[side]), Vector2(board_rect.end.x, positions[side]), color, thickness, true)
+	# Hole openings remain editable through ENTRY, but show all of them here so
+	# the relationship between the rails and each opening is visible at once.
+	for hole in 6:
+		var trigger_center := entry_trigger_center(hole)
+		var ring := PackedVector2Array()
+		for i in 33:
+			var angle := TAU * float(i) / 32.0
+			ring.append(board_to_screen(trigger_center + Vector2(cos(angle), sin(angle)) * trap_entry_radii[hole]))
+		draw_polyline(ring, Color(1.0, 0.88, 0.24, 0.72), 3.0, true)
+	var side_names := ["LEFT WALL", "TOP WALL", "RIGHT WALL", "BOTTOM WALL"]
+	draw_string(ThemeDB.fallback_font, board_rect.position + Vector2(12.0, 24.0), side_names[selected_side], HORIZONTAL_ALIGNMENT_LEFT, 180.0, 16, Color.WHITE)
 
 func draw_ocean(viewport_size: Vector2) -> void:
 	# Bright layered water makes the space around the table read as sea even on
@@ -1587,7 +1643,7 @@ func editor_panel_rect(viewport_size: Vector2) -> Rect2:
 
 func editor_button(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := editor_panel_rect(viewport_size)
-	var button_w := (panel.size.x - 22.0) / 13.0
+	var button_w := (panel.size.x - 22.0) / 14.0
 	return Rect2(panel.position + Vector2(6.0 + index * button_w, 82.0), Vector2(button_w - 4.0, 56.0))
 
 func editor_top_button(index: int, viewport_size: Vector2) -> Rect2:
@@ -1618,7 +1674,7 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 			replay_effect_editor()
 		queue_redraw()
 		return true
-	for i in 13:
+	for i in 14:
 		if not editor_button(i, viewport_size).has_point(screen_pos):
 			continue
 		match i:
@@ -1627,21 +1683,28 @@ func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
 			2: editor_target = 2
 			3: editor_target = 3
 			4: editor_target = 4
-			5: change_editor_offset(Vector2(-1, 0))
-			6: change_editor_offset(Vector2(1, 0))
-			7: change_editor_offset(Vector2(0, -1))
-			8: change_editor_offset(Vector2(0, 1))
-			9: change_editor_width(-0.10)
-			10: change_editor_width(0.10)
-			11: reset_editor_target()
-			12: replay_effect_editor()
+			5: editor_target = 5
+			6: change_editor_offset(Vector2(-1, 0))
+			7: change_editor_offset(Vector2(1, 0))
+			8: change_editor_offset(Vector2(0, -1))
+			9: change_editor_offset(Vector2(0, 1))
+			10: change_editor_width(-0.10)
+			11: change_editor_width(0.10)
+			12: reset_editor_target()
+			13: replay_effect_editor()
 		replay_effect_editor()
 		queue_redraw()
 		return true
 	return editor_panel_rect(viewport_size).has_point(screen_pos)
 
 func change_editor_offset(amount: Vector2) -> void:
-	if editor_target == 4:
+	if editor_target == 5:
+		var side := editor_wall_side(editor_hole)
+		if side == 0 or side == 2:
+			table_wall_offsets[side] += amount.x
+		else:
+			table_wall_offsets[side] += amount.y
+	elif editor_target == 4:
 		trap_entry_offsets[editor_hole] += amount
 	elif editor_target == 3:
 		trap_fall_offsets[editor_hole] += amount
@@ -1651,6 +1714,10 @@ func change_editor_offset(amount: Vector2) -> void:
 		trap_weapon_offsets[editor_hole * 2 + editor_target] += amount
 
 func change_editor_width(amount: float) -> void:
+	if editor_target == 5:
+		var side := editor_wall_side(editor_hole)
+		table_wall_sizes[side] = clampf(table_wall_sizes[side] + amount * 10.0, 1.0, 12.0)
+		return
 	if editor_target == 4:
 		trap_entry_radii[editor_hole] = clampf(trap_entry_radii[editor_hole] + amount * 10.0, 2.0, 40.0)
 		return
@@ -1701,7 +1768,11 @@ func approved_entry_radius(hole: int) -> float:
 	return approved[hole]
 
 func reset_editor_target() -> void:
-	if editor_target == 4:
+	if editor_target == 5:
+		var side := editor_wall_side(editor_hole)
+		table_wall_offsets[side] = 0.0
+		table_wall_sizes[side] = 4.0
+	elif editor_target == 4:
 		trap_entry_offsets[editor_hole] = approved_entry_offset(editor_hole)
 		trap_entry_radii[editor_hole] = approved_entry_radius(editor_hole)
 	elif editor_target == 3:
@@ -1763,7 +1834,9 @@ func replay_effect_editor() -> void:
 func editor_settings_text() -> String:
 	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
 	var first := editor_hole * 2
-	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s; entry=%s radius=%.1f" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole], trap_entry_offsets[editor_hole], trap_entry_radii[editor_hole]]
+	var wall_side := editor_wall_side(editor_hole)
+	var wall_names := ["left", "top", "right", "bottom"]
+	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s; entry=%s radius=%.1f; wall=%s offset=%.1f size=%.1f" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole], trap_entry_offsets[editor_hole], trap_entry_radii[editor_hole], wall_names[wall_side], table_wall_offsets[wall_side], table_wall_sizes[wall_side]]
 
 func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
 	draw_style_box(make_box(Color("7256d8") if selected_button else Color("26384b"), 8.0), rect)
@@ -1777,16 +1850,16 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
 	var editor_title := "ALL WEAPONS + CAPTURE BALL EDITOR"
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(8, 76), editor_title, HORIZONTAL_ALIGNMENT_LEFT, 330, 14, Color("f6d365"))
-	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY"][editor_target]
+	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "WALL"][editor_target]
 	var values := editor_settings_text()
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(345, 76), names[editor_hole] + " / " + selected_name, HORIZONTAL_ALIGNMENT_LEFT, 180, 13, Color.WHITE)
 	draw_string(ThemeDB.fallback_font, panel.position + Vector2(530, 76), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 540, 9, Color("dbe7f3"))
 	draw_editor_button(editor_top_button(0, viewport_size), "COPY")
 	for i in 6:
 		draw_editor_button(editor_top_button(i + 1, viewport_size), names[i], editor_hole == i)
-	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
-	for i in 13:
-		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 5))
+	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "WALL", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
+	for i in 14:
+		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 6))
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
