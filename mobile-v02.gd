@@ -755,8 +755,8 @@ func hammer_weapon_points() -> Dictionary:
 		# Mounts sit deep on the two stones, far away from the capture point, just
 		# like the supplied original screenshots. The heads point away from the
 		# hole while idle and swing inward only during a strike.
-		"right": hit + Vector2(34.0, -150.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
-		"bottom": hit + Vector2(-185.0, 62.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
+		"right": hit + Vector2(21.0, -92.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
+		"bottom": hit + Vector2(-112.0, 38.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
 		"hit": hit
 	}
 
@@ -867,6 +867,11 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	if release <= 0.0:
 		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.12, -radius * 0.08), deg_to_rad(-90.0), right_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
 		draw_trap_hammer(bottom_weapon, hit_point + Vector2(-radius * 0.08, radius * 0.12), deg_to_rad(180.0), bottom_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+	else:
+		# Return both hammers to their stone-mounted idle poses as soon as the
+		# crushing ends. The active fall continues, but the weapons never vanish.
+		draw_trap_hammer(right_weapon, hit_point, deg_to_rad(-90.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+		draw_trap_hammer(bottom_weapon, hit_point, deg_to_rad(180.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
 
 	if impact > 0.05 and release <= 0.0:
 		draw_circle(center, ball_radius * 0.78, Color(1.0, 0.98, 0.82, 0.72 * impact))
