@@ -244,12 +244,23 @@ func _process(delta: float) -> void:
 		accumulator -= STEP_TIME
 	update_effects(delta)
 	update_water_floaters(delta)
-	if ai_pending and active_effects.is_empty():
+	if ai_pending and effects_allow_next_turn():
 		ai_timer -= delta
 		if ai_timer <= 0.0 and not any_ball_moving():
 			ai_pending = false
 			ai_shot()
 	queue_redraw()
+
+func effects_allow_next_turn() -> bool:
+	# The capture/crush portion must finish, but the longer fall and water
+	# continuation may keep playing while the next player starts aiming.
+	for effect in active_effects:
+		var unlock_time := TRAP_CAPTURE_TIME
+		if effect.hole not in [RUBBER_TRAP_HOLE, PRESS_TRAP_HOLE, ELECTRIC_TRAP_HOLE, HAMMER_TRAP_HOLE, ICE_TRAP_HOLE, FIRE_TRAP_HOLE]:
+			unlock_time = EFFECT_DURATION * 0.58
+		if effect.elapsed < unlock_time:
+			return false
+	return true
 
 func physics_step() -> void:
 	contacts.clear()
@@ -268,7 +279,7 @@ func physics_step() -> void:
 		for j in range(i + 1, balls.size()):
 			if balls[j].alive:
 				resolve_collision(i, j)
-	if turn == 1 and not ai_pending and not any_ball_moving():
+	if turn == 1 and not ai_pending and not any_ball_moving() and effects_allow_next_turn():
 		finish_ai_turn()
 
 func resolve_walls(index: int) -> void:
@@ -455,13 +466,13 @@ func pointer_down(screen_pos: Vector2) -> void:
 	if handle_effect_editor_touch(screen_pos):
 		return
 	if Rect2(get_viewport_rect().size.x - 454.0, 6.0, 105.0, 42.0).has_point(screen_pos):
-		if not any_ball_moving() and active_effects.is_empty():
+		if not any_ball_moving() and effects_allow_next_turn():
 			customizer_open = true
 			queue_redraw()
 		return
 	if Rect2(get_viewport_rect().size.x - 174.0, 6.0, 150.0, 42.0).has_point(screen_pos):
 		new_game(); return
-	if turn != 0 or any_ball_moving() or not active_effects.is_empty(): return
+	if turn != 0 or any_ball_moving() or not effects_allow_next_turn(): return
 	var board_pos := screen_to_board(screen_pos)
 	for i in balls.size():
 		if balls[i].alive and balls[i].team == 0 and balls[i].p.distance_to(board_pos) <= 16.0:
@@ -477,6 +488,12 @@ func pointer_move(screen_pos: Vector2) -> void:
 
 func pointer_up(screen_pos: Vector2) -> void:
 	if not dragging or selected < 0: return
+	if cancel_aim_rect(get_viewport_rect().size).has_point(screen_pos):
+		dragging = false
+		selected = -1
+		status = "Your turn - choose another ball"
+		queue_redraw()
+		return
 	drag_point = screen_to_board(screen_pos)
 	var pull: Vector2 = balls[selected].p - drag_point
 	var strength: float = clampf(pull.length(), 5.0, 30.0)
@@ -484,10 +501,15 @@ func pointer_up(screen_pos: Vector2) -> void:
 		balls[selected].v = pull.normalized() * (strength * 0.078)
 		turn = 1
 		ai_pending = true
-		ai_timer = 0.75
+		ai_timer = 0.28
 		status = "Blue player's turn"
+	else:
+		status = "Your turn - choose a ball"
 	dragging = false
 	selected = -1
+
+func cancel_aim_rect(viewport_size: Vector2) -> Rect2:
+	return Rect2(viewport_size.x - 590.0, 6.0, 120.0, 42.0)
 
 func ai_shot() -> void:
 	var candidates: Array[int] = []
@@ -545,7 +567,13 @@ func _draw() -> void:
 		var ball: Dictionary = balls[i]
 		if not ball.alive: continue
 		var sp := board_to_screen(ball.p)
-		draw_rubber_game_ball(sp, RADIUS * board_scale * GAME_BALL_VISUAL_SCALE, ball.team, i, 1.0)
+		var visual_radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+		if ball.team == turn and not effect_editor_enabled and not customizer_open:
+			var pulse := (sin(float(Time.get_ticks_msec()) * 0.006) + 1.0) * 0.5
+			var halo_radius := visual_radius * (1.34 + pulse * 0.10)
+			draw_circle(sp, halo_radius, Color(0.54, 1.0, 0.62, 0.16 + pulse * 0.08))
+			draw_circle(sp, halo_radius, Color(0.76, 1.0, 0.80, 0.68), false, maxf(2.0, visual_radius * 0.12), true)
+		draw_rubber_game_ball(sp, visual_radius, ball.team, i, 1.0)
 
 	for effect in active_effects:
 		if effect.hole == RUBBER_TRAP_HOLE:
@@ -826,6 +854,10 @@ func draw_hud(viewport_size: Vector2) -> void:
 	var choose_rect := Rect2(viewport_size.x - 454.0, 6.0, 105.0, 42.0)
 	draw_style_box(make_box(Color("1b91a8"), 14.0), choose_rect)
 	draw_string(ThemeDB.fallback_font, choose_rect.position + Vector2(0, 28), "CHOOSE", HORIZONTAL_ALIGNMENT_CENTER, choose_rect.size.x, 15, Color.WHITE)
+	if dragging:
+		var cancel_rect := cancel_aim_rect(viewport_size)
+		draw_style_box(make_box(Color("c73f50"), 14.0), cancel_rect)
+		draw_string(ThemeDB.fallback_font, cancel_rect.position + Vector2(0, 28), "CANCEL", HORIZONTAL_ALIGNMENT_CENTER, cancel_rect.size.x, 15, Color.WHITE)
 	var edit_rect := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
 	draw_style_box(make_box(Color("7256d8") if effect_editor_enabled else Color("34495e"), 14.0), edit_rect)
 	draw_string(ThemeDB.fallback_font, edit_rect.position + Vector2(19, 28), "EDIT EFFECT", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
