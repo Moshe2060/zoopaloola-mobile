@@ -104,8 +104,11 @@ var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.0, 
 var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
 var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
-var trap_entry_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2(10.0, -1.0), Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
-var trap_entry_radii: Array[float] = [12.0, 12.0, 12.0, 12.0, 12.0, 12.0]
+var trap_entry_offsets: Array[Vector2] = [
+	Vector2(-13.0, 0.0), Vector2(0.0, -15.0), Vector2(11.0, -2.0),
+	Vector2(15.0, 17.0), Vector2(1.0, 25.0), Vector2(-14.0, 15.0)
+]
+var trap_entry_radii: Array[float] = [13.0, 12.0, 12.0, 12.0, 12.0, 12.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -1599,11 +1602,14 @@ func approved_fall_offset(hole: int) -> Vector2:
 	return approved[hole]
 
 func approved_entry_offset(hole: int) -> Vector2:
-	var approved: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO, Vector2(10.0, -1.0), Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+	var approved: Array[Vector2] = [
+		Vector2(-13.0, 0.0), Vector2(0.0, -15.0), Vector2(11.0, -2.0),
+		Vector2(15.0, 17.0), Vector2(1.0, 25.0), Vector2(-14.0, 15.0)
+	]
 	return approved[hole]
 
 func approved_entry_radius(hole: int) -> float:
-	var approved: Array[float] = [12.0, 12.0, 12.0, 12.0, 12.0, 12.0]
+	var approved: Array[float] = [13.0, 12.0, 12.0, 12.0, 12.0, 12.0]
 	return approved[hole]
 
 func reset_editor_target() -> void:
