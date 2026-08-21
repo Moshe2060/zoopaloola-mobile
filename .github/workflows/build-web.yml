@@ -44,6 +44,9 @@ jobs:
           cp assets/ui/zoopaloola-splash.svg zoopaloola_godot_mobile/assets/ui/zoopaloola-splash.svg
           cp assets/ui/zoopaloola-home-bg-v3.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-home-bg-v3.webp
           cp assets/ui/zoopaloola-loading-team-v1.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-loading-team-v1.webp
+          cp assets/ui/zoopaloola-logo-v1.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-logo-v1.webp
+          mkdir -p zoopaloola_godot_mobile/assets/ui/full_body
+          cp assets/ui/full_body/*.webp zoopaloola_godot_mobile/assets/ui/full_body/
           sed -i 's/config\/name="Zoopaloola Mobile Prototype"/config\/name="Zoopaloola"/' zoopaloola_godot_mobile/project.godot
           sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-splash.svg"\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-splash.svg"' zoopaloola_godot_mobile/project.godot
           mkdir -p zoopaloola_godot_mobile/assets/fire_trap

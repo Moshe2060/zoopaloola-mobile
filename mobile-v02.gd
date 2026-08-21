@@ -63,8 +63,10 @@ const APP_GAME := 4
 var board_texture: Texture2D
 var lobby_background_texture: Texture2D
 var loading_team_texture: Texture2D
+var zoopaloola_logo_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
+var full_body_animal_textures: Array[Texture2D] = []
 var animal_ring_masks: Array[Texture2D] = []
 var team_piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
@@ -165,6 +167,7 @@ func _ready() -> void:
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
+	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
@@ -172,6 +175,7 @@ func _ready() -> void:
 	for animal_file in ANIMAL_FILES:
 		animal_textures.append(load("res://assets/animal_pieces/%s.png" % animal_file))
 		animal_ring_masks.append(load("res://assets/animal_pieces/%s-ring-mask.png" % animal_file))
+		full_body_animal_textures.append(load("res://assets/ui/full_body/%s.webp" % animal_file))
 	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
@@ -2197,7 +2201,7 @@ func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(viewport_size.x * 0.29, viewport_size.y * 0.29), Vector2(290.0, 290.0) * unit)
+	return Rect2(Vector2(viewport_size.x * 0.29, viewport_size.y * 0.16), Vector2(280.0, 410.0) * unit)
 
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
@@ -2306,8 +2310,13 @@ func draw_splash_screen(viewport_size: Vector2) -> void:
 	var entrance := smooth_step(splash_elapsed / 0.75)
 	var exit_alpha := 1.0 - smooth_step((splash_elapsed - 2.65) / 0.55)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var logo_scale := (0.50 + entrance * 0.10) * unit
-	draw_zoopaloola_logo(Vector2(viewport_size.x * 0.5, 102.0 * unit), logo_scale, entrance * exit_alpha)
+	var logo_width := 510.0 * unit * (0.92 + entrance * 0.08)
+	var logo_height := logo_width * 174.0 / 540.0
+	var logo_rect := Rect2(Vector2((viewport_size.x - logo_width) * 0.5, 14.0 * unit), Vector2(logo_width, logo_height))
+	if zoopaloola_logo_texture != null:
+		draw_texture_rect(zoopaloola_logo_texture, logo_rect, false, Color(1.0, 1.0, 1.0, entrance * exit_alpha))
+	else:
+		draw_zoopaloola_logo(Vector2(viewport_size.x * 0.5, 102.0 * unit), (0.50 + entrance * 0.10) * unit, entrance * exit_alpha)
 	var loading_width := minf(620.0 * unit, viewport_size.x * 0.52)
 	var loading_rect := Rect2((viewport_size.x - loading_width) * 0.5, viewport_size.y - 58.0 * unit, loading_width, 23.0 * unit)
 	draw_style_box(make_box(Color(0.015, 0.035, 0.07, 0.92), 12.0), loading_rect.grow(5.0 * unit))
@@ -2345,8 +2354,21 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	# The selected animal is a separate interactive layer, never baked into the background.
 	var character_area := home_character_rect(viewport_size)
 	var character_bob := sin(menu_elapsed * 2.1) * 7.0 * unit
-	draw_circle(character_area.get_center() + Vector2(0.0, character_area.size.y * 0.40), 92.0 * unit, Color(0.02, 0.09, 0.14, 0.24))
-	if player_animal >= 0 and player_animal < animal_textures.size() and animal_textures[player_animal] != null:
+	var feet_center := character_area.position + Vector2(character_area.size.x * 0.48, character_area.size.y * 0.91)
+	draw_circle(feet_center, 60.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
+	# The buoy is its own selectable item. Drawing it first lets the hero's hand sit naturally over it.
+	var ring_center := character_area.position + Vector2(character_area.size.x * 0.82, character_area.size.y * 0.43 + character_bob)
+	var ring_radius := 53.0 * unit
+	draw_circle(ring_center + Vector2(5.0, 7.0) * unit, ring_radius, Color(0.01, 0.05, 0.10, 0.30), false, 22.0 * unit, true)
+	var ring_color := RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
+	draw_circle(ring_center, ring_radius, ring_color, false, 22.0 * unit, true)
+	for segment in 4:
+		var segment_start := float(segment) * TAU / 4.0 - 0.25
+		draw_arc(ring_center, ring_radius, segment_start, segment_start + 0.50, 12, Color("fff4dc"), 22.0 * unit, true)
+	draw_circle(ring_center, ring_radius - 13.0 * unit, Color(0.75, 0.95, 1.0, 0.34), false, 2.0 * unit, true)
+	if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
+		draw_texture_rect(full_body_animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
+	elif player_animal >= 0 and player_animal < animal_textures.size() and animal_textures[player_animal] != null:
 		draw_texture_rect(animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
 	var change_tag := Rect2(character_area.position + Vector2(42.0 * unit, character_area.size.y - 12.0 * unit), Vector2(206.0, 38.0) * unit)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 16.0), change_tag)
