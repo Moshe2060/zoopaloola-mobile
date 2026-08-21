@@ -162,7 +162,7 @@ func _ready() -> void:
 	# Smooth the original character art when it is enlarged inside HD balls.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
-	lobby_background_texture = load("res://assets/ui/zoopaloola-lobby-v1.webp") as Texture2D
+	lobby_background_texture = load("res://assets/ui/zoopaloola-home-hero-v2.webp") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
@@ -2174,23 +2174,24 @@ func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	if index == 2:
-		return Rect2(viewport_size.x * 0.665, viewport_size.y * 0.315, 270.0 * unit, 190.0 * unit)
-	var width := 176.0 * unit
-	return Rect2(viewport_size.x * 0.635 + float(index) * (width + 18.0 * unit), viewport_size.y * 0.615, width, 62.0 * unit)
+		return Rect2(viewport_size.x - 365.0 * unit, viewport_size.y - 170.0 * unit, 330.0 * unit, 112.0 * unit)
+	return Rect2(viewport_size.x - 365.0 * unit, (205.0 + float(index) * 92.0) * unit, 330.0 * unit, 76.0 * unit)
 
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
-	return Rect2(viewport_size.x - 292.0, 20.0, 264.0, 54.0)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
 
-func home_coin_rect(_viewport_size: Vector2) -> Rect2:
-	return Rect2(92.0, 20.0, 142.0, 54.0)
+func home_coin_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(viewport_size.x - 374.0 * unit, 22.0 * unit, 154.0 * unit, 54.0 * unit)
 
-func home_settings_rect(_viewport_size: Vector2) -> Rect2:
-	return Rect2(24.0, 20.0, 54.0, 54.0)
+func home_settings_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(viewport_size.x - 78.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var width := minf(132.0, (viewport_size.x - 80.0) / 4.0)
-	var total := width * 4.0 + 30.0
-	return Rect2((viewport_size.x - total) * 0.5 + index * (width + 10.0), viewport_size.y - 65.0, width, 52.0)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(28.0 * unit, (126.0 + float(index) * 90.0) * unit, 154.0 * unit, 72.0 * unit)
 
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
@@ -2225,14 +2226,12 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		for i in 4:
 			if not home_nav_rect(i, viewport_size).has_point(screen_pos):
 				continue
-			if i == 0:
-				app_screen = APP_SHOP
-			elif i == 1:
-				show_menu_notice("DAILY REWARDS - COMING NEXT")
-			elif i == 2:
+			if i == 0 or i == 1:
 				app_screen = APP_PROFILE
+			elif i == 2:
+				app_screen = APP_SHOP
 			else:
-				show_menu_notice("SETTINGS PANEL - COMING NEXT")
+				show_menu_notice("DAILY REWARDS - COMING NEXT")
 			return
 		if home_mode_rect(0, viewport_size).has_point(screen_pos):
 			show_menu_notice("ARENA ONLINE - COMING SOON")
@@ -2319,70 +2318,85 @@ func draw_frontend(viewport_size: Vector2) -> void:
 
 func draw_home_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	# A subtle vignette keeps the UI readable without hiding the illustrated world.
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.08))
-	draw_rect(Rect2(viewport_size.x * 0.59, 0.0, viewport_size.x * 0.41, viewport_size.y), Color(0.02, 0.07, 0.12, 0.12))
+	# Readability gradients preserve the illustrated island while separating the controls.
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.05))
+	draw_rect(Rect2(0.0, 0.0, 205.0 * unit, viewport_size.y), Color(0.02, 0.06, 0.12, 0.36))
+	draw_rect(Rect2(viewport_size.x - 395.0 * unit, 92.0 * unit, 395.0 * unit, viewport_size.y - 92.0 * unit), Color(0.02, 0.06, 0.12, 0.18))
 
-	# Top status strip: settings, coins and permanent player identity.
+	# Top HUD: player identity on the left, currencies and settings on the right.
 	var settings := home_settings_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), settings.grow(4.0))
-	draw_style_box(make_box(Color("4b91b5"), 16.0), settings)
-	draw_circle(settings.get_center(), 14.0, Color("d8f5ff"), false, 4.0, true)
+	draw_style_box(make_box(Color("486889"), 16.0), settings)
+	draw_circle(settings.get_center(), 13.0 * unit, Color("d8f5ff"), false, 4.0 * unit, true)
 	for i in 8:
 		var angle := TAU * float(i) / 8.0
-		var a := settings.get_center() + Vector2(cos(angle), sin(angle)) * 18.0
-		var b := settings.get_center() + Vector2(cos(angle), sin(angle)) * 23.0
-		draw_line(a, b, Color("d8f5ff"), 4.0, true)
+		var a := settings.get_center() + Vector2(cos(angle), sin(angle)) * 17.0 * unit
+		var b := settings.get_center() + Vector2(cos(angle), sin(angle)) * 22.0 * unit
+		draw_line(a, b, Color("d8f5ff"), 4.0 * unit, true)
 	var coin_rect := home_coin_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), coin_rect.grow(4.0))
-	draw_style_box(make_box(Color("263d70"), 16.0), coin_rect)
-	draw_circle(coin_rect.position + Vector2(29.0, 27.0), 15.0, Color("ffc83d"))
-	draw_circle(coin_rect.position + Vector2(29.0, 27.0), 9.0, Color("e9971b"), false, 3.0, true)
-	draw_string(ThemeDB.fallback_font, coin_rect.position + Vector2(52.0, 35.0), str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 78.0, 20, Color.WHITE)
+	draw_style_box(make_box(Color("253e67"), 16.0), coin_rect)
+	draw_circle(coin_rect.position + Vector2(29.0, 27.0) * unit, 15.0 * unit, Color("ffc83d"))
+	draw_circle(coin_rect.position + Vector2(29.0, 27.0) * unit, 9.0 * unit, Color("e9971b"), false, 3.0 * unit, true)
+	draw_string(ThemeDB.fallback_font, coin_rect.position + Vector2(54.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 82.0 * unit, int(20.0 * unit), Color.WHITE)
+	var gems := Rect2(viewport_size.x - 210.0 * unit, 22.0 * unit, 120.0 * unit, 54.0 * unit)
+	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), gems.grow(4.0))
+	draw_style_box(make_box(Color("253e67"), 16.0), gems)
+	var gem_center := gems.position + Vector2(28.0, 27.0) * unit
+	var gem_shape := PackedVector2Array([gem_center + Vector2(0.0, -15.0) * unit, gem_center + Vector2(14.0, -3.0) * unit, gem_center + Vector2(8.0, 14.0) * unit, gem_center + Vector2(-8.0, 14.0) * unit, gem_center + Vector2(-14.0, -3.0) * unit])
+	draw_colored_polygon(gem_shape, Color("42e4ff"))
+	draw_string(ThemeDB.fallback_font, gems.position + Vector2(52.0, 35.0) * unit, "0", HORIZONTAL_ALIGNMENT_LEFT, 52.0 * unit, int(20.0 * unit), Color.WHITE)
 	var profile := home_profile_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 19.0), profile.grow(4.0))
-	draw_style_box(make_box(Color("263d70"), 17.0), profile)
-	draw_circle(profile.position + Vector2(profile.size.x - 30.0, 27.0), 23.0, RING_COLORS[player_ring_color])
+	draw_style_box(make_box(Color("244d70"), 17.0), profile)
+	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, RING_COLORS[player_ring_color])
 	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
-		draw_texture_rect(team_piece_textures[0], Rect2(profile.position + Vector2(profile.size.x - 52.0, 5.0), Vector2(44.0, 44.0)), false)
-	draw_string(ThemeDB.fallback_font, profile.position + Vector2(18.0, 24.0), profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 78.0, 17, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, profile.position + Vector2(18.0, 43.0), "LEVEL 1  •  ROOKIE EXPLORER", HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 78.0, 10, Color("8cecff"))
+		draw_texture_rect(team_piece_textures[0], Rect2(profile.position + Vector2(9.0, 7.0) * unit, Vector2(44.0, 44.0) * unit), false)
+	draw_string(ThemeDB.fallback_font, profile.position + Vector2(65.0, 25.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(17.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, profile.position + Vector2(65.0, 45.0) * unit, "LEVEL 1  •  ROOKIE EXPLORER", HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(10.0 * unit), Color("8cecff"))
 
-	# Logo and main play control sit inside the clear grass area on the right.
-	draw_zoopaloola_logo(Vector2(viewport_size.x * 0.765, viewport_size.y * 0.20), 0.46 * unit)
-	var play_rect := home_mode_rect(2, viewport_size)
-	var play_center := play_rect.get_center()
-	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
-	draw_circle(play_center + Vector2(0.0, 8.0 * unit), 92.0 * unit, Color(0.02, 0.11, 0.16, 0.55))
-	draw_circle(play_center, (84.0 + pulse * 4.0) * unit, Color("8ee600"))
-	draw_circle(play_center, 72.0 * unit, Color("54c900"))
-	var triangle := PackedVector2Array([
-		play_center + Vector2(-20.0, -34.0) * unit,
-		play_center + Vector2(-20.0, 34.0) * unit,
-		play_center + Vector2(39.0, 0.0) * unit
-	])
-	draw_colored_polygon(triangle, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, Vector2(play_rect.position.x, play_rect.end.y - 5.0 * unit), "PLAY", HORIZONTAL_ALIGNMENT_CENTER, play_rect.size.x, int(24.0 * unit), Color.WHITE)
-	draw_string(ThemeDB.fallback_font, Vector2(play_rect.position.x, play_rect.end.y + 16.0 * unit), "VS COMPUTER", HORIZONTAL_ALIGNMENT_CENTER, play_rect.size.x, int(11.0 * unit), Color("e8ffd0"))
+	# Brand title floats above the clear play area.
+	draw_string(ThemeDB.fallback_font, Vector2(viewport_size.x - 390.0 * unit, 132.0 * unit), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(34.0 * unit), Color("ffe25d"))
+	draw_string(ThemeDB.fallback_font, Vector2(viewport_size.x - 390.0 * unit, 158.0 * unit), "CHOOSE YOUR ADVENTURE", HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(12.0 * unit), Color.WHITE)
 
-	var small_titles := ["ARENA", "FRIEND"]
-	var small_colors := [Color("9d59e8"), Color("ff8a3d")]
+	# Two compact mode cards and one unmistakable primary action.
+	var small_titles := ["ARENA", "PLAY A FRIEND"]
+	var small_subtitles := ["ONLINE LEAGUES • COMING SOON", "TWO PLAYERS • ONE DEVICE"]
+	var small_colors := [Color("9d59e8"), Color("ff7b43")]
 	for i in 2:
 		var button := home_mode_rect(i, viewport_size)
-		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.78), 18.0), button.grow(4.0))
+		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.84), 18.0), button.grow(5.0 * unit))
 		draw_style_box(make_box(small_colors[i], 16.0), button)
-		draw_string(ThemeDB.fallback_font, button.position + Vector2(0.0, button.size.y * 0.62), small_titles[i], HORIZONTAL_ALIGNMENT_CENTER, button.size.x, int(17.0 * unit), Color.WHITE)
-		if i == 0:
-			draw_string(ThemeDB.fallback_font, button.position + Vector2(0.0, 15.0 * unit), "COMING SOON", HORIZONTAL_ALIGNMENT_CENTER, button.size.x, int(8.0 * unit), Color("fff0a6"))
+		draw_circle(button.position + Vector2(38.0, 38.0) * unit, 23.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(75.0, 33.0) * unit, small_titles[i], HORIZONTAL_ALIGNMENT_LEFT, button.size.x - 94.0 * unit, int(19.0 * unit), Color.WHITE)
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(75.0, 55.0) * unit, small_subtitles[i], HORIZONTAL_ALIGNMENT_LEFT, button.size.x - 94.0 * unit, int(9.0 * unit), Color("fff5d2"))
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(button.size.x - 33.0 * unit, 48.0 * unit), ">", HORIZONTAL_ALIGNMENT_CENTER, 24.0 * unit, int(22.0 * unit), Color.WHITE)
 
-	var nav_labels := ["SHOP", "REWARDS", "PROFILE", "SETTINGS"]
-	var nav_icons := ["RINGS", "GIFT", "ANIMAL", "GEAR"]
+	var play_rect := home_mode_rect(2, viewport_size)
+	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 25.0), play_rect.grow((6.0 + pulse * 2.0) * unit))
+	draw_style_box(make_box(Color("6fda18"), 22.0), play_rect)
+	var play_center := play_rect.position + Vector2(58.0, 56.0) * unit
+	draw_circle(play_center, 37.0 * unit, Color("4cb900"))
+	var triangle := PackedVector2Array([
+		play_center + Vector2(-10.0, -18.0) * unit,
+		play_center + Vector2(-10.0, 18.0) * unit,
+		play_center + Vector2(22.0, 0.0) * unit
+	])
+	draw_colored_polygon(triangle, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(108.0, 51.0) * unit, "PLAY", HORIZONTAL_ALIGNMENT_LEFT, 190.0 * unit, int(32.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(108.0, 80.0) * unit, "VS COMPUTER", HORIZONTAL_ALIGNMENT_LEFT, 190.0 * unit, int(12.0 * unit), Color("eaffcf"))
+
+	# Collection shortcuts stay close to the hero character.
+	var nav_labels := ["CHARACTERS", "LIFEBUOYS", "SHOP", "REWARDS"]
+	var nav_icons := ["ANIMAL", "RINGS", "STORE", "GIFT"]
+	var nav_colors := [Color("2a9bd5"), Color("8e55df"), Color("ff9f24"), Color("e94f78")]
 	for i in 4:
 		var nav := home_nav_rect(i, viewport_size)
-		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 17.0), nav.grow(4.0))
-		draw_style_box(make_box(Color("6c3fc7"), 15.0), nav)
-		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 21.0), nav_icons[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, 10, Color("fff0a6"))
-		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 41.0), nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, 11, Color.WHITE)
+		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.86), 17.0), nav.grow(4.0 * unit))
+		draw_style_box(make_box(nav_colors[i], 15.0), nav)
+		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 28.0) * unit, nav_icons[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(10.0 * unit), Color("fff0a6"))
+		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 52.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(12.0 * unit), Color.WHITE)
 
 func draw_home_character(animal_index: int, center: Vector2, size: float, phase: float, outfit_color: Color) -> void:
 	if animal_index < 0 or animal_index >= animal_textures.size() or animal_textures[animal_index] == null:
