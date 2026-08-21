@@ -277,26 +277,24 @@ func resolve_walls(index: int) -> void:
 			# Capture only after the ball center is genuinely behind the rail.
 			var hole := hole_for_vertical(p.y, true)
 			if entry_triggered(p, hole): score_ball(index, hole); return
-		else:
-			p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
+		# The visual opening is wider than the editable ENTRY circle. Everything
+		# outside that circle must still behave as a rail instead of leaking out.
+		p.x = WALL_MIN_X + RADIUS; v.x = abs(v.x) * 0.75
 	elif p.x + RADIUS > WALL_MAX_X:
 		if vertical_open:
 			var hole := hole_for_vertical(p.y, false)
 			if entry_triggered(p, hole): score_ball(index, hole); return
-		else:
-			p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
+		p.x = WALL_MAX_X - RADIUS; v.x = -abs(v.x) * 0.75
 	if p.y - RADIUS < WALL_MIN_Y:
 		if horizontal_open:
 			var hole := 2 if p.x < 104.0 else 3
 			if entry_triggered(p, hole): score_ball(index, hole); return
-		else:
-			p.y = WALL_MIN_Y + RADIUS; v.y = abs(v.y) * 0.75
+		p.y = WALL_MIN_Y + RADIUS; v.y = abs(v.y) * 0.75
 	elif p.y + RADIUS > WALL_MAX_Y:
 		if horizontal_open:
 			var hole := 0 if p.x < 104.0 else 5
 			if entry_triggered(p, hole): score_ball(index, hole); return
-		else:
-			p.y = WALL_MAX_Y - RADIUS; v.y = -abs(v.y) * 0.75
+		p.y = WALL_MAX_Y - RADIUS; v.y = -abs(v.y) * 0.75
 	ball.p = p; ball.v = v
 
 func hole_for_vertical(y: float, left: bool) -> int:
