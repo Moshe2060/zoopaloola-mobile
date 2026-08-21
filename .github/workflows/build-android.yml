@@ -48,7 +48,7 @@ jobs:
           mkdir -p zoopaloola_godot_mobile/assets/ui/full_body
           cp assets/ui/full_body/*.webp zoopaloola_godot_mobile/assets/ui/full_body/
           sed -i 's/config\/name="Zoopaloola Mobile Prototype"/config\/name="Zoopaloola"/' zoopaloola_godot_mobile/project.godot
-          sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-boot-splash-v1.png"\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-splash.svg"' zoopaloola_godot_mobile/project.godot
+          sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-boot-splash-v1.png"\nboot_splash/fullsize=true\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-splash.svg"' zoopaloola_godot_mobile/project.godot
           mkdir -p zoopaloola_godot_mobile/assets/hammer_trap
           cp assets/hammer_trap/mechanical-hammer-v2.svg zoopaloola_godot_mobile/assets/hammer_trap/mechanical-hammer-v2.svg
           mkdir -p zoopaloola_godot_mobile/assets/hammer_trap/remastered
