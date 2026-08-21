@@ -904,7 +904,7 @@ func trap_ball_radius(hole: int, base: float) -> float:
 func press_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1276.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
-func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, compression: float) -> void:
+func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, compression: float, machine_activity: float = 0.0) -> void:
 	var anchor: Vector2 = press_point(anchor_x, y)
 	var tip: Vector2 = press_point(tip_x, y)
 	var weapon_index := 0 if left_side else 1
@@ -927,6 +927,26 @@ func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, co
 		draw_set_transform(anchor, 0.0 if left_side else PI, Vector2.ONE)
 		draw_texture_rect(press_machine_texture, Rect2(-pivot, machine_size), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# Animated gearbox overlay centered exactly over the large gear in the
+		# vector machine. It spins only while the hydraulic piston is moving.
+		var gear_local := Vector2(158.0 - source.x * 0.46, 185.0 - source.y * 0.50) * factor
+		var gear_center := anchor + direction * gear_local.x + direction.orthogonal() * gear_local.y
+		var gear_radius := 57.0 * factor
+		var spin_direction := 1.0 if left_side else -1.0
+		var gear_rotation := float(Time.get_ticks_msec()) * 0.010 * spin_direction
+		var gear_points := PackedVector2Array()
+		for tooth in 24:
+			var tooth_angle := gear_rotation + TAU * float(tooth) / 24.0
+			var tooth_radius := gear_radius * (1.0 if tooth % 2 == 0 else 0.80)
+			gear_points.append(gear_center + Vector2(cos(tooth_angle), sin(tooth_angle)) * tooth_radius)
+		if machine_activity > 0.01:
+			draw_colored_polygon(gear_points, Color("30464f"))
+			var gear_outline := gear_points.duplicate()
+			gear_outline.append(gear_points[0])
+			draw_polyline(gear_outline, Color(0.76, 0.84, 0.84, 0.70 + machine_activity * 0.25), maxf(1.0, gear_radius * 0.10), true)
+			draw_circle(gear_center, gear_radius * 0.47, Color("162a32"))
+			draw_circle(gear_center, gear_radius * 0.20, Color("e0b33e"))
+			draw_circle(gear_center - Vector2(gear_radius * 0.13, gear_radius * 0.17), gear_radius * 0.10, Color(0.96, 1.0, 1.0, 0.42 * machine_activity))
 	else:
 		draw_circle(anchor, base_radius, Color("31464f"))
 		draw_circle(anchor, base_radius * 0.62, Color("a9b9ba"))
@@ -986,6 +1006,9 @@ func draw_press_trap(effect: Dictionary) -> void:
 		retract = smooth_step((seconds - 1.32) / 0.58)
 	var squeeze := smooth_step(clampf((extend - 0.18) / 0.82, 0.0, 1.0))
 	var arm_amount := extend * (1.0 - retract)
+	# Keep the gearbox running throughout extension and retraction, then ease it
+	# to a stop as the plates settle at their front collars.
+	var machine_activity := smooth_step(extend) * (1.0 - smooth_step((retract - 0.78) / 0.22))
 	var compressed_rx := lerpf(radius, radius * 0.32, squeeze)
 	# Rest at the front collars, never at the center of the weapon housing.
 	var left_rest_tip := 570.0
@@ -1018,8 +1041,8 @@ func draw_press_trap(effect: Dictionary) -> void:
 	draw_press_ball(press_center, radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
 	# Always draw the complete machines. During retraction they return to their
 	# idle positions while the crushed disc remains in the center.
-	draw_press_rod(546.0, cy, left_tip, true, squeeze)
-	draw_press_rod(695.0, cy, right_tip, false, squeeze)
+	draw_press_rod(546.0, cy, left_tip, true, squeeze, machine_activity)
+	draw_press_rod(695.0, cy, right_tip, false, squeeze, machine_activity)
 
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
