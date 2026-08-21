@@ -2169,6 +2169,25 @@ func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var total_width := card_width * 3.0 + 32.0
 	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + index * (card_width + 16.0), viewport_size.y * 0.43), Vector2(card_width, minf(225.0, viewport_size.y * 0.34)))
 
+func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var width := minf(430.0, viewport_size.x * 0.35)
+	var x := viewport_size.x * 0.5 - width * 0.5
+	return Rect2(x, viewport_size.y * 0.315 + index * 92.0, width, 76.0)
+
+func home_profile_rect(viewport_size: Vector2) -> Rect2:
+	return Rect2(viewport_size.x - 292.0, 20.0, 264.0, 54.0)
+
+func home_coin_rect(_viewport_size: Vector2) -> Rect2:
+	return Rect2(92.0, 20.0, 142.0, 54.0)
+
+func home_settings_rect(_viewport_size: Vector2) -> Rect2:
+	return Rect2(24.0, 20.0, 54.0, 54.0)
+
+func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var width := minf(132.0, (viewport_size.x - 80.0) / 4.0)
+	var total := width * 4.0 + 30.0
+	return Rect2((viewport_size.x - total) * 0.5 + index * (width + 10.0), viewport_size.y - 65.0, width, 52.0)
+
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
 
@@ -2193,20 +2212,32 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		app_screen = APP_HOME
 		return
 	if app_screen == APP_HOME:
-		if frontend_top_button(0, viewport_size).has_point(screen_pos):
+		if home_profile_rect(viewport_size).has_point(screen_pos):
 			app_screen = APP_PROFILE
 			return
-		if frontend_top_button(1, viewport_size).has_point(screen_pos):
-			app_screen = APP_SHOP
+		if home_settings_rect(viewport_size).has_point(screen_pos):
+			show_menu_notice("SETTINGS PANEL - COMING NEXT")
 			return
-		if frontend_mode_rect(0, viewport_size).has_point(screen_pos):
+		for i in 4:
+			if not home_nav_rect(i, viewport_size).has_point(screen_pos):
+				continue
+			if i == 0:
+				app_screen = APP_SHOP
+			elif i == 1:
+				show_menu_notice("DAILY REWARDS - COMING NEXT")
+			elif i == 2:
+				app_screen = APP_PROFILE
+			else:
+				show_menu_notice("SETTINGS PANEL - COMING NEXT")
+			return
+		if home_mode_rect(0, viewport_size).has_point(screen_pos):
 			show_menu_notice("ARENA ONLINE - COMING SOON")
 			return
-		if frontend_mode_rect(1, viewport_size).has_point(screen_pos):
-			start_selected_mode("computer")
-			return
-		if frontend_mode_rect(2, viewport_size).has_point(screen_pos):
+		if home_mode_rect(1, viewport_size).has_point(screen_pos):
 			start_selected_mode("friend")
+			return
+		if home_mode_rect(2, viewport_size).has_point(screen_pos):
+			start_selected_mode("computer")
 			return
 	else:
 		if frontend_back_rect(viewport_size).has_point(screen_pos):
@@ -2278,31 +2309,95 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		draw_string(ThemeDB.fallback_font, toast.position + Vector2(0.0, 29.0), menu_notice, HORIZONTAL_ALIGNMENT_CENTER, toast.size.x, 14, Color("f6d365"))
 
 func draw_home_screen(viewport_size: Vector2) -> void:
-	draw_zoopaloola_logo(Vector2(viewport_size.x * 0.22, viewport_size.y * 0.19), 0.58)
-	var labels := ["PROFILE", "SHOP"]
-	for i in 2:
-		var rect := frontend_top_button(i, viewport_size)
-		draw_style_box(make_box(Color("263d59") if i == 0 else Color("8b55dc"), 15.0), rect)
-		draw_string(ThemeDB.fallback_font, rect.position + Vector2(0.0, 31.0), labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 16, Color.WHITE)
-	var coin_rect := Rect2(viewport_size.x - 442.0, 22.0, 122.0, 48.0)
-	draw_style_box(make_box(Color("173249"), 15.0), coin_rect)
-	draw_circle(coin_rect.position + Vector2(25.0, 24.0), 11.0, Color("f6d365"))
-	draw_string(ThemeDB.fallback_font, coin_rect.position + Vector2(43.0, 31.0), str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 72.0, 16, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y * 0.37), "CHOOSE YOUR GAME", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 26, Color.WHITE)
-	var titles := ["ARENA", "VS COMPUTER", "PLAY A FRIEND"]
-	var subtitles := ["Online battles and leagues", "Challenge the Zoo AI", "Two players, one device"]
-	var colors := [Color("ef5f62"), Color("1cbf86"), Color("477ee8")]
-	var icons := ["A", "CPU", "2P"]
+	# Top status strip: settings, coins and the permanent player identity.
+	var settings := home_settings_rect(viewport_size)
+	draw_style_box(make_box(Color(0.04, 0.10, 0.17, 0.94), 18.0), settings.grow(3.0))
+	draw_style_box(make_box(Color("2a5874"), 16.0), settings)
+	draw_circle(settings.get_center(), 14.0, Color("d8f5ff"), false, 4.0, true)
+	for i in 8:
+		var angle := TAU * float(i) / 8.0
+		var a := settings.get_center() + Vector2(cos(angle), sin(angle)) * 18.0
+		var b := settings.get_center() + Vector2(cos(angle), sin(angle)) * 23.0
+		draw_line(a, b, Color("d8f5ff"), 4.0, true)
+	var coin_rect := home_coin_rect(viewport_size)
+	draw_style_box(make_box(Color(0.04, 0.10, 0.17, 0.94), 18.0), coin_rect.grow(3.0))
+	draw_style_box(make_box(Color("173b55"), 16.0), coin_rect)
+	draw_circle(coin_rect.position + Vector2(29.0, 27.0), 15.0, Color("ffc83d"))
+	draw_circle(coin_rect.position + Vector2(29.0, 27.0), 9.0, Color("e9971b"), false, 3.0, true)
+	draw_string(ThemeDB.fallback_font, coin_rect.position + Vector2(52.0, 35.0), str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 78.0, 20, Color.WHITE)
+	var profile := home_profile_rect(viewport_size)
+	draw_style_box(make_box(Color(0.04, 0.10, 0.17, 0.94), 19.0), profile.grow(3.0))
+	draw_style_box(make_box(Color("244a68"), 17.0), profile)
+	draw_circle(profile.position + Vector2(profile.size.x - 30.0, 27.0), 23.0, RING_COLORS[player_ring_color])
+	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
+		draw_texture_rect(team_piece_textures[0], Rect2(profile.position + Vector2(profile.size.x - 52.0, 5.0), Vector2(44.0, 44.0)), false)
+	draw_string(ThemeDB.fallback_font, profile.position + Vector2(18.0, 24.0), profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 78.0, 17, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, profile.position + Vector2(18.0, 43.0), "LEVEL 1  •  ROOKIE EXPLORER", HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 78.0, 10, Color("8cecff"))
+
+	# Left character stage: the animals bob independently like the original lobby.
+	draw_zoopaloola_logo(Vector2(viewport_size.x * 0.20, viewport_size.y * 0.19), 0.48)
+	var stage := Rect2(30.0, viewport_size.y * 0.29, viewport_size.x * 0.30, viewport_size.y * 0.54)
+	draw_style_box(make_box(Color(0.04, 0.13, 0.20, 0.54), 30.0), stage)
+	draw_home_character(ANIMAL_FILES.find("elephant"), stage.position + Vector2(stage.size.x * 0.25, stage.size.y * 0.50), 116.0, 0.0, Color("ef4d4d"))
+	draw_home_character(ANIMAL_FILES.find("zebra"), stage.position + Vector2(stage.size.x * 0.53, stage.size.y * 0.38), 132.0, 1.7, Color("a446dd"))
+	draw_home_character(ANIMAL_FILES.find("monkey"), stage.position + Vector2(stage.size.x * 0.78, stage.size.y * 0.56), 108.0, 3.1, Color("f3a52b"))
+	draw_string(ThemeDB.fallback_font, stage.position + Vector2(0.0, stage.size.y - 24.0), "THE ZOOPA CREW IS READY!", HORIZONTAL_ALIGNMENT_CENTER, stage.size.x, 14, Color("d9f6ff"))
+
+	# The three primary play actions use the stacked, oversized mobile-game layout.
+	draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y * 0.275), "CHOOSE YOUR GAME", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 23, Color.WHITE)
+	var titles := ["ARENA", "PLAY A FRIEND", "VS COMPUTER"]
+	var subtitles := ["Online leagues and ranked battles", "Two players on one device", "Practice against the Zoo AI"]
+	var colors := [Color("e95665"), Color("567ee8"), Color("1fbd83")]
+	var icons := ["A", "2P", "AI"]
 	for i in 3:
-		var card := frontend_mode_rect(i, viewport_size)
-		draw_style_box(make_box(Color(0.04, 0.09, 0.15, 0.95), 22.0), card.grow(4.0))
-		draw_style_box(make_box(colors[i].darkened(0.28), 19.0), card)
-		draw_circle(card.position + Vector2(card.size.x * 0.5, 62.0), 38.0, colors[i])
-		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 71.0), icons[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 20, Color.WHITE)
-		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 132.0), titles[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 23, Color.WHITE)
-		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 161.0), subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 13, Color(0.82, 0.91, 0.98))
-		var action := "COMING SOON" if i == 0 else "PLAY"
-		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, card.size.y - 24.0), action, HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 15, Color("f6d365"))
+		var button := home_mode_rect(i, viewport_size)
+		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 21.0), button.grow(5.0))
+		draw_style_box(make_box(colors[i].darkened(0.12), 18.0), button)
+		draw_circle(button.position + Vector2(42.0, 38.0), 25.0, colors[i].lightened(0.14))
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(17.0, 45.0), icons[i], HORIZONTAL_ALIGNMENT_CENTER, 50.0, 16, Color.WHITE)
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(78.0, 34.0), titles[i], HORIZONTAL_ALIGNMENT_LEFT, button.size.x - 130.0, 22, Color.WHITE)
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(78.0, 56.0), subtitles[i], HORIZONTAL_ALIGNMENT_LEFT, button.size.x - 130.0, 11, Color(0.88, 0.96, 1.0))
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(button.size.x - 52.0, 47.0), ">", HORIZONTAL_ALIGNMENT_CENTER, 34.0, 25, Color("fff1b0"))
+		if i == 0:
+			draw_string(ThemeDB.fallback_font, button.position + Vector2(button.size.x - 134.0, 19.0), "COMING SOON", HORIZONTAL_ALIGNMENT_CENTER, 112.0, 9, Color("ffe16b"))
+
+	draw_home_leaderboard(Rect2(viewport_size.x * 0.71, viewport_size.y * 0.155, viewport_size.x * 0.265, viewport_size.y * 0.66))
+	var nav_labels := ["SHOP", "REWARDS", "PROFILE", "SETTINGS"]
+	var nav_icons := ["$", "GIFT", "ME", "GEAR"]
+	for i in 4:
+		var nav := home_nav_rect(i, viewport_size)
+		draw_style_box(make_box(Color(0.03, 0.09, 0.15, 0.94), 17.0), nav.grow(3.0))
+		draw_style_box(make_box(Color("28526c"), 15.0), nav)
+		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 22.0), nav_icons[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, 12, Color("f6d365"))
+		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 42.0), nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, 11, Color.WHITE)
+
+func draw_home_character(animal_index: int, center: Vector2, size: float, phase: float, outfit_color: Color) -> void:
+	if animal_index < 0 or animal_index >= animal_textures.size() or animal_textures[animal_index] == null:
+		return
+	var bob := sin(menu_elapsed * 2.0 + phase) * 8.0
+	var tilt := sin(menu_elapsed * 1.4 + phase) * 0.055
+	var position := center + Vector2(0.0, bob)
+	draw_circle(position + Vector2(0.0, size * 0.12), size * 0.46, Color(outfit_color, 0.30))
+	draw_set_transform(position, tilt, Vector2.ONE)
+	draw_texture_rect(animal_textures[animal_index], Rect2(Vector2.ONE * -size * 0.5, Vector2.ONE * size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_home_leaderboard(panel: Rect2) -> void:
+	draw_style_box(make_box(Color(0.025, 0.075, 0.13, 0.92), 24.0), panel.grow(4.0))
+	draw_style_box(make_box(Color("eaf8f1"), 21.0), panel)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(0.0, 36.0), "LEADERBOARD", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 20, Color("173249"))
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(0.0, 57.0), "WEEKLY", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 11, Color("2982a6"))
+	var names := ["WaveRider", "JungleJoe", "SplashCat", "RhinoKing", profile_name]
+	var scores := [1280, 1140, 980, 820, 100]
+	for i in 5:
+		var row := Rect2(panel.position + Vector2(14.0, 72.0 + i * 55.0), Vector2(panel.size.x - 28.0, 46.0))
+		var row_color := Color("ffe6a8") if i == 4 else Color(0.95, 0.99, 0.97, 0.96)
+		draw_style_box(make_box(row_color, 13.0), row)
+		draw_circle(row.position + Vector2(24.0, 23.0), 16.0, Color("ffc83d") if i < 3 else Color("77b8ca"))
+		draw_string(ThemeDB.fallback_font, row.position + Vector2(8.0, 29.0), str(i + 1), HORIZONTAL_ALIGNMENT_CENTER, 32.0, 14, Color("173249"))
+		draw_string(ThemeDB.fallback_font, row.position + Vector2(49.0, 22.0), names[i], HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 115.0, 13, Color("173249"))
+		draw_string(ThemeDB.fallback_font, row.position + Vector2(49.0, 37.0), str(scores[i]) + " PTS", HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 115.0, 9, Color("527184"))
+		draw_string(ThemeDB.fallback_font, row.position + Vector2(row.size.x - 66.0, 29.0), str(18 - i * 2) + " W", HORIZONTAL_ALIGNMENT_CENTER, 56.0, 12, Color("1c936b"))
 
 func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: String) -> void:
 	var back := frontend_back_rect(viewport_size)
