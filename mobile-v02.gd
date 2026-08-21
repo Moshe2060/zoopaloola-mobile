@@ -62,6 +62,7 @@ const APP_SHOP := 3
 const APP_GAME := 4
 var board_texture: Texture2D
 var lobby_background_texture: Texture2D
+var loading_team_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var animal_ring_masks: Array[Texture2D] = []
@@ -162,7 +163,8 @@ func _ready() -> void:
 	# Smooth the original character art when it is enlarged inside HD balls.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
-	lobby_background_texture = load("res://assets/ui/zoopaloola-home-hero-v2.webp") as Texture2D
+	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
+	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
@@ -2193,6 +2195,10 @@ func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(28.0 * unit, (126.0 + float(index) * 90.0) * unit, 154.0 * unit, 72.0 * unit)
 
+func home_character_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(viewport_size.x * 0.29, viewport_size.y * 0.29), Vector2(290.0, 290.0) * unit)
+
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
 
@@ -2217,6 +2223,9 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		app_screen = APP_HOME
 		return
 	if app_screen == APP_HOME:
+		if home_character_rect(viewport_size).has_point(screen_pos):
+			app_screen = APP_PROFILE
+			return
 		if home_profile_rect(viewport_size).has_point(screen_pos):
 			app_screen = APP_PROFILE
 			return
@@ -2289,14 +2298,24 @@ func draw_zoopaloola_logo(center: Vector2, scale: float, reveal: float = 1.0) ->
 	draw_string(ThemeDB.fallback_font, c + Vector2(-225.0, 118.0) * scale, "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 450.0 * scale, int(54.0 * scale), Color(1.0, 0.86, 0.25, reveal))
 
 func draw_splash_screen(viewport_size: Vector2) -> void:
-	draw_menu_background(viewport_size)
+	if loading_team_texture != null:
+		draw_texture_rect(loading_team_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	else:
+		draw_menu_background(viewport_size)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.08, 0.08))
 	var entrance := smooth_step(splash_elapsed / 0.75)
 	var exit_alpha := 1.0 - smooth_step((splash_elapsed - 2.65) / 0.55)
-	var logo_scale := (0.70 + entrance * 0.30) * minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_zoopaloola_logo(viewport_size * 0.5 - Vector2(0.0, 42.0), logo_scale, entrance * exit_alpha)
-	if splash_elapsed > 1.0:
-		var alpha := smooth_step((splash_elapsed - 1.0) / 0.6) * exit_alpha
-		draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y * 0.82), "WELCOME TO THE WILDEST TABLE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color(0.82, 0.95, 1.0, alpha))
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var logo_scale := (0.50 + entrance * 0.10) * unit
+	draw_zoopaloola_logo(Vector2(viewport_size.x * 0.5, 102.0 * unit), logo_scale, entrance * exit_alpha)
+	var loading_width := minf(620.0 * unit, viewport_size.x * 0.52)
+	var loading_rect := Rect2((viewport_size.x - loading_width) * 0.5, viewport_size.y - 58.0 * unit, loading_width, 23.0 * unit)
+	draw_style_box(make_box(Color(0.015, 0.035, 0.07, 0.92), 12.0), loading_rect.grow(5.0 * unit))
+	draw_style_box(make_box(Color("25385d"), 10.0), loading_rect)
+	var progress := clampf(splash_elapsed / 2.85, 0.0, 1.0)
+	var fill_rect := Rect2(loading_rect.position, Vector2(maxf(12.0 * unit, loading_rect.size.x * progress), loading_rect.size.y))
+	draw_style_box(make_box(Color("ffd83d"), 10.0), fill_rect)
+	draw_string(ThemeDB.fallback_font, Vector2(0.0, loading_rect.position.y - 12.0 * unit), "LOADING THE ISLAND...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(13.0 * unit), Color.WHITE)
 
 func draw_frontend(viewport_size: Vector2) -> void:
 	if app_screen == APP_HOME:
@@ -2322,6 +2341,16 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.05))
 	draw_rect(Rect2(0.0, 0.0, 205.0 * unit, viewport_size.y), Color(0.02, 0.06, 0.12, 0.36))
 	draw_rect(Rect2(viewport_size.x - 395.0 * unit, 92.0 * unit, 395.0 * unit, viewport_size.y - 92.0 * unit), Color(0.02, 0.06, 0.12, 0.18))
+
+	# The selected animal is a separate interactive layer, never baked into the background.
+	var character_area := home_character_rect(viewport_size)
+	var character_bob := sin(menu_elapsed * 2.1) * 7.0 * unit
+	draw_circle(character_area.get_center() + Vector2(0.0, character_area.size.y * 0.40), 92.0 * unit, Color(0.02, 0.09, 0.14, 0.24))
+	if player_animal >= 0 and player_animal < animal_textures.size() and animal_textures[player_animal] != null:
+		draw_texture_rect(animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
+	var change_tag := Rect2(character_area.position + Vector2(42.0 * unit, character_area.size.y - 12.0 * unit), Vector2(206.0, 38.0) * unit)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 16.0), change_tag)
+	draw_string(ThemeDB.fallback_font, change_tag.position + Vector2(0.0, 24.0) * unit, "TAP TO CHANGE  •  " + ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, change_tag.size.x, int(11.0 * unit), Color.WHITE)
 
 	# Top HUD: player identity on the left, currencies and settings on the right.
 	var settings := home_settings_rect(viewport_size)
