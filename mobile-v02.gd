@@ -109,8 +109,8 @@ var trap_entry_offsets: Array[Vector2] = [
 	Vector2(15.0, 17.0), Vector2(1.0, 25.0), Vector2(-14.0, 15.0)
 ]
 var trap_entry_radii: Array[float] = [13.0, 12.0, 12.0, 12.0, 12.0, 12.0]
-var table_wall_offsets: Array[float] = [0.0, 0.0, 0.0, 0.0] # left, top, right, bottom
-var table_wall_sizes: Array[float] = [4.0, 4.0, 4.0, 4.0]
+var table_wall_offsets: Array[float] = [-3.0, -5.0, 5.0, 7.0] # left, top, right, bottom
+var table_wall_sizes: Array[float] = [4.0, 4.0, 4.0, 1.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
@@ -1767,11 +1767,19 @@ func approved_entry_radius(hole: int) -> float:
 	var approved: Array[float] = [13.0, 12.0, 12.0, 12.0, 12.0, 12.0]
 	return approved[hole]
 
+func approved_wall_offset(side: int) -> float:
+	var approved: Array[float] = [-3.0, -5.0, 5.0, 7.0]
+	return approved[side]
+
+func approved_wall_size(side: int) -> float:
+	var approved: Array[float] = [4.0, 4.0, 4.0, 1.0]
+	return approved[side]
+
 func reset_editor_target() -> void:
 	if editor_target == 5:
 		var side := editor_wall_side(editor_hole)
-		table_wall_offsets[side] = 0.0
-		table_wall_sizes[side] = 4.0
+		table_wall_offsets[side] = approved_wall_offset(side)
+		table_wall_sizes[side] = approved_wall_size(side)
 	elif editor_target == 4:
 		trap_entry_offsets[editor_hole] = approved_entry_offset(editor_hole)
 		trap_entry_radii[editor_hole] = approved_entry_radius(editor_hole)
