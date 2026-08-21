@@ -930,7 +930,7 @@ func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, co
 		# Animated gearbox overlay centered exactly over the large gear in the
 		# vector machine. It spins only while the hydraulic piston is moving.
 		var gear_local := Vector2(158.0 - source.x * 0.46, 185.0 - source.y * 0.50) * factor
-		var gear_center := anchor + direction * gear_local.x + direction.orthogonal() * gear_local.y
+		var gear_center: Vector2 = anchor + gear_local * direction
 		var gear_radius := 57.0 * factor
 		var spin_direction := 1.0 if left_side else -1.0
 		var gear_rotation := float(Time.get_ticks_msec()) * 0.010 * spin_direction
