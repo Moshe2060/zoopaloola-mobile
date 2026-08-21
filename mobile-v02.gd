@@ -755,8 +755,8 @@ func hammer_weapon_points() -> Dictionary:
 		# Mounts sit deep on the two stones, far away from the capture point, just
 		# like the supplied original screenshots. The heads point away from the
 		# hole while idle and swing inward only during a strike.
-		"right": hit + Vector2(21.0, -92.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
-		"bottom": hit + Vector2(-112.0, 38.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
+		"right": hit + Vector2(12.0, -52.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
+		"bottom": hit + Vector2(-64.0, 22.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
 		"hit": hit
 	}
 
