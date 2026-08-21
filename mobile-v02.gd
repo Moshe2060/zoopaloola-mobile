@@ -495,14 +495,14 @@ func pointer_down(screen_pos: Vector2) -> void:
 func pointer_move(screen_pos: Vector2) -> void:
 	if dragging and selected >= 0:
 		drag_point = screen_to_board(screen_pos)
-		var pull_distance := balls[selected].p.distance_to(drag_point)
+		var pull_distance: float = balls[selected].p.distance_to(drag_point)
 		status = "Release to shoot" if pull_distance >= MIN_SHOT_PULL else "Release to cancel"
 
 func pointer_up(screen_pos: Vector2) -> void:
 	if not dragging or selected < 0: return
 	drag_point = screen_to_board(screen_pos)
 	var pull: Vector2 = balls[selected].p - drag_point
-	var pull_distance := pull.length()
+	var pull_distance: float = pull.length()
 	var strength: float = clampf(pull_distance, MIN_SHOT_PULL, 30.0)
 	if pull_distance >= MIN_SHOT_PULL:
 		balls[selected].v = pull.normalized() * (strength * 0.078)
