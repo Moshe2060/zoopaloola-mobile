@@ -570,7 +570,9 @@ func predicted_aim_collision(origin: Vector2, direction: Vector2, combined_radiu
 	for i in balls.size():
 		if i == selected or not balls[i].alive:
 			continue
-		var center := board_to_screen(balls[i].p)
+		# Perform prediction in the same portrait physics coordinates used by
+		# resolve_collision(). Screen coordinates are rotated and stretched.
+		var center: Vector2 = balls[i].p
 		var delta := center - origin
 		var along := delta.dot(direction)
 		if along <= 0.0:
@@ -594,13 +596,16 @@ func predicted_aim_collision(origin: Vector2, direction: Vector2, combined_radiu
 	}
 
 func draw_original_style_aim(ball_center: Vector2, pull_point: Vector2) -> void:
-	var pull := pull_point - ball_center
-	if pull.length_squared() < 4.0:
+	var screen_pull := pull_point - ball_center
+	var physics_origin: Vector2 = balls[selected].p
+	var physics_shot := physics_origin - drag_point
+	if screen_pull.length_squared() < 4.0 or physics_shot.length_squared() < 0.01:
 		return
-	var pull_direction := pull.normalized()
-	var shot_direction := -pull_direction
+	var physics_direction := physics_shot.normalized()
+	var shot_direction := (board_to_screen(physics_origin + physics_direction) - ball_center).normalized()
+	var pull_direction := -shot_direction
 	var visual_ball_radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
-	var pull_length := pull.length()
+	var pull_length := screen_pull.length()
 
 	# Mechanical cue behind the ball: dark outline, silver body, highlight and
 	# the pale round cap visible in the supplied original-game screenshot.
@@ -617,16 +622,19 @@ func draw_original_style_aim(ball_center: Vector2, pull_point: Vector2) -> void:
 
 	var arrow_start := ball_center + shot_direction * (visual_ball_radius * 1.10)
 	var arrow_length := clampf(pull_length * 1.18, 88.0, 175.0)
-	var collision := predicted_aim_collision(ball_center, shot_direction, visual_ball_radius * 2.0)
+	var collision := predicted_aim_collision(physics_origin, physics_direction, RADIUS * 2.0)
 	if collision.is_empty():
 		draw_aim_arrow(arrow_start, shot_direction, arrow_length)
 	else:
 		# Stop the shooter's guide at the predicted contact point and show the
 		# second arrow on the ball that will receive the impact.
-		var contact_length: float = maxf(34.0, float(collision.distance) - visual_ball_radius * 1.10)
+		var contact_center := board_to_screen(physics_origin + physics_direction * float(collision.distance))
+		var contact_length: float = maxf(34.0, (contact_center - arrow_start).dot(shot_direction))
 		draw_aim_arrow(arrow_start, shot_direction, contact_length)
-		var target_center: Vector2 = collision.center
-		var target_direction: Vector2 = collision.direction
+		var target_physics_center: Vector2 = collision.center
+		var target_physics_direction: Vector2 = collision.direction
+		var target_center := board_to_screen(target_physics_center)
+		var target_direction := (board_to_screen(target_physics_center + target_physics_direction) - target_center).normalized()
 		var target_start := target_center + target_direction * (visual_ball_radius * 1.10)
 		var target_length := clampf(pull_length * 0.82, 62.0, 128.0)
 		draw_aim_arrow(target_start, target_direction, target_length)
