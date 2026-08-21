@@ -797,10 +797,10 @@ func draw_hammer_cutout(texture: Texture2D, center: Vector2, target_height: floa
 	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, scale_y: float, mirrored: bool) -> void:
+func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, weapon_scale: float, mirrored: bool) -> void:
 	var strike_angle := (hit_point - anchor).angle()
 	var angle := lerp_angle(rest_angle, strike_angle, amount)
-	var target_length := anchor.distance_to(hit_point)
+	var target_length := anchor.distance_to(hit_point) * weapon_scale
 	# Rotate the complete restored hammer around the center of its stone-mounted
 	# base. Nothing is translated into the pocket; only the arm swings inward.
 	var swing_mix := smooth_step((amount - 0.52) / 0.28)
@@ -811,9 +811,8 @@ func draw_hammer_weapons_idle() -> void:
 	if hammer_trap_is_active():
 		return
 	var points := hammer_weapon_points()
-	var scale_y := board_rect.size.y / 600.0
-	draw_trap_hammer(points.right, points.hit, deg_to_rad(-90.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
-	draw_trap_hammer(points.bottom, points.hit, deg_to_rad(180.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+	draw_trap_hammer(points.right, points.hit, deg_to_rad(-90.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+	draw_trap_hammer(points.bottom, points.hit, deg_to_rad(180.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
 
 func draw_hammer_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
@@ -866,13 +865,13 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	# Draw the ball first, then the hammers, so their heads visibly land on top.
 	draw_press_ball(center, ball_radius, squash_x, squash_y, ball_rotation, effect.team, effect.piece, alpha)
 	if release <= 0.0:
-		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.12, -radius * 0.08), deg_to_rad(-90.0), right_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
-		draw_trap_hammer(bottom_weapon, hit_point + Vector2(-radius * 0.08, radius * 0.12), deg_to_rad(180.0), bottom_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.12, -radius * 0.08), deg_to_rad(-90.0), right_amount, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+		draw_trap_hammer(bottom_weapon, hit_point + Vector2(-radius * 0.08, radius * 0.12), deg_to_rad(180.0), bottom_amount, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
 	else:
 		# Return both hammers to their stone-mounted idle poses as soon as the
 		# crushing ends. The active fall continues, but the weapons never vanish.
-		draw_trap_hammer(right_weapon, hit_point, deg_to_rad(-90.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
-		draw_trap_hammer(bottom_weapon, hit_point, deg_to_rad(180.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+		draw_trap_hammer(right_weapon, hit_point, deg_to_rad(-90.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+		draw_trap_hammer(bottom_weapon, hit_point, deg_to_rad(180.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
 
 	if impact > 0.05 and release <= 0.0:
 		draw_circle(center, ball_radius * 0.78, Color(1.0, 0.98, 0.82, 0.72 * impact))
