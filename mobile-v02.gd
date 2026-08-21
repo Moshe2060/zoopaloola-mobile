@@ -162,7 +162,7 @@ func _ready() -> void:
 	# Smooth the original character art when it is enlarged inside HD balls.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
-	lobby_background_texture = load("res://assets/ui/zoopaloola-lobby-v1.png") as Texture2D
+	lobby_background_texture = load("res://assets/ui/zoopaloola-lobby-v1.webp") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:

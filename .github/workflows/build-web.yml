@@ -42,7 +42,7 @@ jobs:
           cp assets/press_trap/industrial-press.svg zoopaloola_godot_mobile/assets/press_trap/industrial-press.svg
           mkdir -p zoopaloola_godot_mobile/assets/ui
           cp assets/ui/zoopaloola-splash.svg zoopaloola_godot_mobile/assets/ui/zoopaloola-splash.svg
-          cp assets/ui/zoopaloola-lobby-v1.png zoopaloola_godot_mobile/assets/ui/zoopaloola-lobby-v1.png
+          cp assets/ui/zoopaloola-lobby-v1.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-lobby-v1.webp
           sed -i 's/config\/name="Zoopaloola Mobile Prototype"/config\/name="Zoopaloola"/' zoopaloola_godot_mobile/project.godot
           sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-splash.svg"\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-splash.svg"' zoopaloola_godot_mobile/project.godot
           mkdir -p zoopaloola_godot_mobile/assets/fire_trap
