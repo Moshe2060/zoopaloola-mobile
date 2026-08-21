@@ -99,19 +99,19 @@ var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall, 4=entry, 5=tabl
 # ICE: weapon1=(35,-5) 1.00; weapon2=(-25,0) 1.00; ball=(5,20) 1.00; fall=(0,0); entry=(1,19) radius=11; wall=bottom offset=8 size=1
 # FIRE: weapon1=(-5,-10) 1.00; weapon2=(10,0) 1.00; ball=(0,10) 1.00; fall=(-30,-60); entry=(-12,14) radius=12; wall=left offset=-2 size=1
 # HAMMER: weapon1=(20,5) 1.10; weapon2=(0,5) 1.00; ball=(10,20) 1.00; fall=(0,0); entry=(12,14) radius=12; wall=right offset=5 size=1
-# ELECTRIC: weapon1=(10,40) 1.00; weapon2=(-25,0) 1.00; ball=(35,-5) 1.00; fall=(-15,45); entry=(11,-2) radius=12; wall=top offset=-7 size=1
-# PRESS: weapon1=(5,0) 1.00; weapon2=(0,0) 1.00; ball=(0,-5) 1.00; fall=(0,30); entry=(-1,-11) radius=12; wall=top offset=-7 size=1
+# ELECTRIC: weapon1=(10,40) 1.20; weapon2=(-27,-3) 1.20; ball=(35,-5) 1.00; fall=(-15,45); entry=(11,-2) radius=12; wall=top offset=-7 size=1
+# PRESS: weapon1=(-3,0) 1.00; weapon2=(14,-1) 1.00; ball=(4,-5) 1.00; fall=(0,30); entry=(-1,-11) radius=12; wall=top offset=-7 size=1
 # RUBBER: weapon1=(0,15) 1.00; weapon2=(10,-5) 1.00; ball=(-10,-15) 1.00; fall=(20,55); entry=(-13,0) radius=13; wall=left offset=-2 size=1
 var trap_weapon_offsets: Array[Vector2] = [
 	Vector2(0.0, 15.0), Vector2(10.0, -5.0),
-	Vector2(5.0, 0.0), Vector2(0.0, 0.0),
-	Vector2(10.0, 40.0), Vector2(-25.0, 0.0),
+	Vector2(-3.0, 0.0), Vector2(14.0, -1.0),
+	Vector2(10.0, 40.0), Vector2(-27.0, -3.0),
 	Vector2(20.0, 5.0), Vector2(0.0, 5.0),
 	Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
 	Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
 ]
-var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
-var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
+var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.2, 1.2, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
+var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(4.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
 var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
 var trap_entry_offsets: Array[Vector2] = [
@@ -1867,8 +1867,8 @@ func change_editor_width(amount: float) -> void:
 func approved_weapon_offset(hole: int, weapon: int) -> Vector2:
 	var approved: Array[Vector2] = [
 		Vector2(0.0, 15.0), Vector2(10.0, -5.0),
-		Vector2(5.0, 0.0), Vector2(0.0, 0.0),
-		Vector2(10.0, 40.0), Vector2(-25.0, 0.0),
+		Vector2(-3.0, 0.0), Vector2(14.0, -1.0),
+		Vector2(10.0, 40.0), Vector2(-27.0, -3.0),
 		Vector2(20.0, 5.0), Vector2(0.0, 5.0),
 		Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
 		Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
@@ -1876,11 +1876,11 @@ func approved_weapon_offset(hole: int, weapon: int) -> Vector2:
 	return approved[hole * 2 + weapon]
 
 func approved_weapon_scale(hole: int, weapon: int) -> float:
-	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
+	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.2, 1.2, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
 	return approved[hole * 2 + weapon]
 
 func approved_ball_offset(hole: int) -> Vector2:
-	var approved: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(0.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
+	var approved: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(4.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
 	return approved[hole]
 
 func approved_ball_scale(hole: int) -> float:
