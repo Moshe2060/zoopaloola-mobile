@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="512" viewBox="0 0 1024 512">
+  <defs>
+    <linearGradient id="ocean" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#071f3d"/>
+      <stop offset="1" stop-color="#063e61"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1024" height="512" rx="42" fill="url(#ocean)"/>
+  <g opacity=".22" fill="none" stroke="#8eeaff" stroke-width="4">
+    <circle cx="110" cy="102" r="17"/><circle cx="900" cy="122" r="11"/><circle cx="842" cy="383" r="21"/>
+  </g>
+  <g transform="translate(512 194)" filter="url(#glow)">
+    <circle r="105" fill="#2fe2ff" opacity=".12"/>
+    <circle r="84" fill="none" stroke="#ff5a55" stroke-width="26"/>
+    <path d="M-59-59A84 84 0 0 1 59-59M59 59A84 84 0 0 1-59 59" fill="none" stroke="#fff" stroke-width="26"/>
+    <circle cx="-38" cy="-42" r="28" fill="#607d8b"/>
+    <circle cx="38" cy="-42" r="28" fill="#607d8b"/>
+    <circle r="54" fill="#93aeb8"/>
+    <circle cx="-18" cy="-8" r="7" fill="#102338"/>
+    <circle cx="18" cy="-8" r="7" fill="#102338"/>
+    <path d="M0 4c0 20 12 22 3 38" fill="none" stroke="#607985" stroke-linecap="round" stroke-width="14"/>
+  </g>
+  <text x="512" y="380" text-anchor="middle" fill="#f6d365" font-family="Arial Rounded MT Bold,Arial,sans-serif" font-size="76" font-weight="900" letter-spacing="4">ZOOPALOOLA</text>
+  <text x="512" y="425" text-anchor="middle" fill="#d9f5ff" font-family="Arial,sans-serif" font-size="20" letter-spacing="7">THE WILDEST TABLE</text>
+</svg>

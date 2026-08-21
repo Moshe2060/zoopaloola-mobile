@@ -55,6 +55,11 @@ const RING_COLORS := [
 	Color("ef3340"), Color("ff8a00"), Color("1677ff"),
 	Color("12c95b"), Color("8f36dc"), Color("08cbd1")
 ]
+const APP_SPLASH := 0
+const APP_HOME := 1
+const APP_PROFILE := 2
+const APP_SHOP := 3
+const APP_GAME := 4
 var board_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
@@ -125,6 +130,14 @@ var table_wall_sizes: Array[float] = [1.0, 1.0, 1.0, 1.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
+var app_screen := APP_SPLASH
+var splash_elapsed := 0.0
+var menu_elapsed := 0.0
+var game_mode := "computer"
+var profile_name := "PLAYER 1"
+var player_coins := 1250
+var menu_notice := ""
+var menu_notice_time := 0.0
 
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
@@ -137,7 +150,7 @@ var accumulator := 0.0
 var status := "Your turn - touch a red ball, pull back and release"
 var ai_pending := false
 var ai_timer := 0.0
-var customizer_open := true
+var customizer_open := false
 # Start with the combination requested during the visual review: zebra + green.
 var player_animal := 1
 var player_ring_color := 3
@@ -250,6 +263,18 @@ func new_game() -> void:
 	queue_redraw()
 
 func _process(delta: float) -> void:
+	menu_elapsed += delta
+	if app_screen == APP_SPLASH:
+		splash_elapsed += delta
+		if splash_elapsed >= 3.2:
+			app_screen = APP_HOME
+		queue_redraw()
+		return
+	if app_screen != APP_GAME:
+		if menu_notice_time > 0.0:
+			menu_notice_time -= delta
+		queue_redraw()
+		return
 	accumulator += delta
 	while accumulator >= STEP_TIME:
 		physics_step()
@@ -291,7 +316,7 @@ func physics_step() -> void:
 		for j in range(i + 1, balls.size()):
 			if balls[j].alive:
 				resolve_collision(i, j)
-	if turn == 1 and not ai_pending and not any_ball_moving() and effects_allow_next_turn():
+	if game_mode == "computer" and turn == 1 and not ai_pending and not any_ball_moving() and effects_allow_next_turn():
 		finish_ai_turn()
 
 func resolve_walls(index: int) -> void:
@@ -473,6 +498,16 @@ func _input(event: InputEvent) -> void:
 		pointer_move(event.position)
 
 func pointer_down(screen_pos: Vector2) -> void:
+	if app_screen != APP_GAME:
+		handle_frontend_touch(screen_pos)
+		return
+	if Rect2(8.0, 6.0, 116.0, 42.0).has_point(screen_pos):
+		app_screen = APP_HOME
+		selected = -1
+		dragging = false
+		active_effects.clear()
+		queue_redraw()
+		return
 	if handle_customizer_touch(screen_pos):
 		return
 	if handle_effect_editor_touch(screen_pos):
@@ -484,10 +519,10 @@ func pointer_down(screen_pos: Vector2) -> void:
 		return
 	if Rect2(get_viewport_rect().size.x - 174.0, 6.0, 150.0, 42.0).has_point(screen_pos):
 		new_game(); return
-	if turn != 0 or any_ball_moving() or not effects_allow_next_turn(): return
+	if (game_mode == "computer" and turn != 0) or any_ball_moving() or not effects_allow_next_turn(): return
 	var board_pos := screen_to_board(screen_pos)
 	for i in balls.size():
-		if balls[i].alive and balls[i].team == 0 and balls[i].p.distance_to(board_pos) <= 16.0:
+		if balls[i].alive and balls[i].team == turn and balls[i].p.distance_to(board_pos) <= 16.0:
 			selected = i
 			dragging = true
 			drag_point = board_pos
@@ -508,10 +543,15 @@ func pointer_up(screen_pos: Vector2) -> void:
 	var strength: float = clampf(pull_distance, MIN_SHOT_PULL, 30.0)
 	if pull_distance >= MIN_SHOT_PULL:
 		balls[selected].v = pull.normalized() * (strength * 0.078)
-		turn = 1
-		ai_pending = true
-		ai_timer = 0.28
-		status = "Blue player's turn"
+		if game_mode == "computer":
+			turn = 1
+			ai_pending = true
+			ai_timer = 0.28
+			status = "Computer's turn"
+		else:
+			turn = 1 - turn
+			ai_pending = false
+			status = ("Red" if turn == 0 else "Blue") + " player's turn"
 	else:
 		status = "Aim cancelled - choose another ball"
 	dragging = false
@@ -557,6 +597,12 @@ func _draw() -> void:
 	if viewport_size.y > viewport_size.x:
 		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.44), "ROTATE YOUR PHONE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color("f6d365"))
 		draw_string(ThemeDB.fallback_font, Vector2(0, viewport_size.y * 0.50), "Zoopaloola is designed for landscape mode", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color.WHITE)
+		return
+	if app_screen == APP_SPLASH:
+		draw_splash_screen(viewport_size)
+		return
+	if app_screen != APP_GAME:
+		draw_frontend(viewport_size)
 		return
 	# Floating animals stay behind the elevated table and only remain visible on
 	# the surrounding water.
@@ -857,8 +903,9 @@ func draw_scoreboards() -> void:
 func draw_hud(viewport_size: Vector2) -> void:
 	# Overlay the compact HUD so it no longer reserves valuable board height.
 	draw_rect(Rect2(0, 0, viewport_size.x, 54), Color(0.09, 0.15, 0.23, 0.78))
-	draw_string(ThemeDB.fallback_font, Vector2(18, 33), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color("f6d365"))
-	draw_string(ThemeDB.fallback_font, Vector2(200, 34), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 675, 17, Color.WHITE)
+	draw_style_box(make_box(Color("172b42"), 12.0), Rect2(8.0, 6.0, 116.0, 42.0))
+	draw_string(ThemeDB.fallback_font, Vector2(8, 34), "MENU", HORIZONTAL_ALIGNMENT_CENTER, 116, 17, Color("f6d365"))
+	draw_string(ThemeDB.fallback_font, Vector2(142, 34), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 617, 17, Color.WHITE)
 	var choose_rect := Rect2(viewport_size.x - 454.0, 6.0, 105.0, 42.0)
 	draw_style_box(make_box(Color("1b91a8"), 14.0), choose_rect)
 	draw_string(ThemeDB.fallback_font, choose_rect.position + Vector2(0, 28), "CHOOSE", HORIZONTAL_ALIGNMENT_CENTER, choose_rect.size.x, 15, Color.WHITE)
@@ -2113,6 +2160,195 @@ func draw_effect_editor(viewport_size: Vector2) -> void:
 	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "WALL", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
 	for i in 14:
 		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 6))
+
+func frontend_top_button(index: int, viewport_size: Vector2) -> Rect2:
+	return Rect2(viewport_size.x - 300.0 + index * 142.0, 22.0, 126.0, 48.0)
+
+func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var card_width := minf(286.0, (viewport_size.x - 128.0) / 3.0)
+	var total_width := card_width * 3.0 + 32.0
+	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + index * (card_width + 16.0), viewport_size.y * 0.43), Vector2(card_width, minf(225.0, viewport_size.y * 0.34)))
+
+func frontend_back_rect(viewport_size: Vector2) -> Rect2:
+	return Rect2(24.0, 22.0, 116.0, 48.0)
+
+func start_selected_mode(mode: String) -> void:
+	game_mode = mode
+	customizer_open = false
+	effect_editor_enabled = false
+	app_screen = APP_GAME
+	new_game()
+	if game_mode == "friend":
+		status = "Red player's turn - local match"
+	else:
+		status = "Your turn - touch a red ball, pull back and release"
+
+func show_menu_notice(text: String) -> void:
+	menu_notice = text
+	menu_notice_time = 2.4
+
+func handle_frontend_touch(screen_pos: Vector2) -> void:
+	var viewport_size := get_viewport_rect().size
+	if app_screen == APP_SPLASH:
+		app_screen = APP_HOME
+		return
+	if app_screen == APP_HOME:
+		if frontend_top_button(0, viewport_size).has_point(screen_pos):
+			app_screen = APP_PROFILE
+			return
+		if frontend_top_button(1, viewport_size).has_point(screen_pos):
+			app_screen = APP_SHOP
+			return
+		if frontend_mode_rect(0, viewport_size).has_point(screen_pos):
+			show_menu_notice("ARENA ONLINE - COMING SOON")
+			return
+		if frontend_mode_rect(1, viewport_size).has_point(screen_pos):
+			start_selected_mode("computer")
+			return
+		if frontend_mode_rect(2, viewport_size).has_point(screen_pos):
+			start_selected_mode("friend")
+			return
+	else:
+		if frontend_back_rect(viewport_size).has_point(screen_pos):
+			app_screen = APP_HOME
+			return
+		if app_screen == APP_PROFILE:
+			var panel := Rect2(viewport_size.x * 0.18, viewport_size.y * 0.20, viewport_size.x * 0.64, viewport_size.y * 0.66)
+			var first_button := Rect2(panel.position + Vector2(panel.size.x * 0.89 - 58.0, 157.0), Vector2(58.0, 54.0))
+			var second_button := Rect2(panel.position + Vector2(panel.size.x * 0.89 - 58.0, 249.0), Vector2(58.0, 54.0))
+			if first_button.has_point(screen_pos):
+				player_animal = (player_animal + 1) % ANIMAL_NAMES.size()
+				rebuild_team_piece_textures()
+			elif second_button.has_point(screen_pos):
+				player_ring_color = (player_ring_color + 1) % RING_COLOR_NAMES.size()
+				rebuild_team_piece_textures()
+		elif app_screen == APP_SHOP:
+			show_menu_notice("THE FIRST SHOP COLLECTION IS COMING SOON")
+
+func draw_menu_background(viewport_size: Vector2) -> void:
+	var overlay := Color(0.015, 0.055, 0.11, 0.62)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), overlay)
+	for i in 18:
+		var phase := fmod(menu_elapsed * (10.0 + float(i % 4) * 3.0) + float(i * 67), viewport_size.y + 120.0)
+		var x := fmod(float(i * 149 + 71), viewport_size.x)
+		var y := viewport_size.y + 40.0 - phase
+		var radius := 3.0 + float(i % 5) * 1.6
+		draw_circle(Vector2(x, y), radius, Color(0.65, 0.94, 1.0, 0.16), false, 2.0, true)
+	var horizon := Rect2(0.0, viewport_size.y * 0.76, viewport_size.x, viewport_size.y * 0.24)
+	draw_rect(horizon, Color(0.0, 0.20, 0.31, 0.35))
+
+func draw_zoopaloola_logo(center: Vector2, scale: float, reveal: float = 1.0) -> void:
+	var bob := sin(menu_elapsed * 2.5) * 5.0 * scale
+	var c := center + Vector2(0.0, bob)
+	var ring_radius := 66.0 * scale
+	draw_circle(c, ring_radius * 1.18, Color(0.15, 0.90, 1.0, 0.16 * reveal))
+	draw_circle(c, ring_radius, Color("ff5a55"), false, 20.0 * scale, true)
+	draw_arc(c, ring_radius, -2.35, -0.78, 30, Color.WHITE, 20.0 * scale, true)
+	draw_arc(c, ring_radius, 0.78, 2.35, 30, Color.WHITE, 20.0 * scale, true)
+	var ear := 24.0 * scale
+	draw_circle(c + Vector2(-31.0, -34.0) * scale, ear, Color("607d8b"))
+	draw_circle(c + Vector2(31.0, -34.0) * scale, ear, Color("607d8b"))
+	draw_circle(c + Vector2.ZERO, 43.0 * scale, Color("93aeb8"))
+	draw_circle(c + Vector2(-14.0, -7.0) * scale, 6.0 * scale, Color("102338"))
+	draw_circle(c + Vector2(14.0, -7.0) * scale, 6.0 * scale, Color("102338"))
+	draw_line(c + Vector2(0.0, 3.0) * scale, c + Vector2(4.0, 29.0) * scale, Color("667f8b"), 12.0 * scale, true)
+	draw_string(ThemeDB.fallback_font, c + Vector2(-225.0, 118.0) * scale, "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 450.0 * scale, int(54.0 * scale), Color(1.0, 0.86, 0.25, reveal))
+
+func draw_splash_screen(viewport_size: Vector2) -> void:
+	draw_menu_background(viewport_size)
+	var entrance := smooth_step(splash_elapsed / 0.75)
+	var exit_alpha := 1.0 - smooth_step((splash_elapsed - 2.65) / 0.55)
+	var logo_scale := (0.70 + entrance * 0.30) * minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_zoopaloola_logo(viewport_size * 0.5 - Vector2(0.0, 42.0), logo_scale, entrance * exit_alpha)
+	if splash_elapsed > 1.0:
+		var alpha := smooth_step((splash_elapsed - 1.0) / 0.6) * exit_alpha
+		draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y * 0.82), "WELCOME TO THE WILDEST TABLE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color(0.82, 0.95, 1.0, alpha))
+
+func draw_frontend(viewport_size: Vector2) -> void:
+	draw_menu_background(viewport_size)
+	if app_screen == APP_HOME:
+		draw_home_screen(viewport_size)
+	elif app_screen == APP_PROFILE:
+		draw_profile_screen(viewport_size)
+	elif app_screen == APP_SHOP:
+		draw_shop_screen(viewport_size)
+	if menu_notice_time > 0.0:
+		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
+		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
+		draw_string(ThemeDB.fallback_font, toast.position + Vector2(0.0, 29.0), menu_notice, HORIZONTAL_ALIGNMENT_CENTER, toast.size.x, 14, Color("f6d365"))
+
+func draw_home_screen(viewport_size: Vector2) -> void:
+	draw_zoopaloola_logo(Vector2(viewport_size.x * 0.22, viewport_size.y * 0.19), 0.58)
+	var labels := ["PROFILE", "SHOP"]
+	for i in 2:
+		var rect := frontend_top_button(i, viewport_size)
+		draw_style_box(make_box(Color("263d59") if i == 0 else Color("8b55dc"), 15.0), rect)
+		draw_string(ThemeDB.fallback_font, rect.position + Vector2(0.0, 31.0), labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 16, Color.WHITE)
+	var coin_rect := Rect2(viewport_size.x - 442.0, 22.0, 122.0, 48.0)
+	draw_style_box(make_box(Color("173249"), 15.0), coin_rect)
+	draw_circle(coin_rect.position + Vector2(25.0, 24.0), 11.0, Color("f6d365"))
+	draw_string(ThemeDB.fallback_font, coin_rect.position + Vector2(43.0, 31.0), str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 72.0, 16, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y * 0.37), "CHOOSE YOUR GAME", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 26, Color.WHITE)
+	var titles := ["ARENA", "VS COMPUTER", "PLAY A FRIEND"]
+	var subtitles := ["Online battles and leagues", "Challenge the Zoo AI", "Two players, one device"]
+	var colors := [Color("ef5f62"), Color("1cbf86"), Color("477ee8")]
+	var icons := ["A", "CPU", "2P"]
+	for i in 3:
+		var card := frontend_mode_rect(i, viewport_size)
+		draw_style_box(make_box(Color(0.04, 0.09, 0.15, 0.95), 22.0), card.grow(4.0))
+		draw_style_box(make_box(colors[i].darkened(0.28), 19.0), card)
+		draw_circle(card.position + Vector2(card.size.x * 0.5, 62.0), 38.0, colors[i])
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 71.0), icons[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 20, Color.WHITE)
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 132.0), titles[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 23, Color.WHITE)
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 161.0), subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 13, Color(0.82, 0.91, 0.98))
+		var action := "COMING SOON" if i == 0 else "PLAY"
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, card.size.y - 24.0), action, HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 15, Color("f6d365"))
+
+func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: String) -> void:
+	var back := frontend_back_rect(viewport_size)
+	draw_style_box(make_box(Color("1b314a"), 14.0), back)
+	draw_string(ThemeDB.fallback_font, back.position + Vector2(0.0, 31.0), "BACK", HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 16, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, Vector2(0.0, 52.0), title, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 30, Color("f6d365"))
+	draw_string(ThemeDB.fallback_font, Vector2(0.0, 78.0), subtitle, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 14, Color(0.78, 0.91, 0.98))
+
+func draw_profile_screen(viewport_size: Vector2) -> void:
+	draw_frontend_header(viewport_size, "PLAYER PROFILE", "Build your permanent Zoopaloola identity")
+	var panel := Rect2(viewport_size.x * 0.18, viewport_size.y * 0.20, viewport_size.x * 0.64, viewport_size.y * 0.66)
+	draw_style_box(make_box(Color(0.035, 0.075, 0.13, 0.96), 24.0), panel)
+	var avatar_center := panel.position + Vector2(panel.size.x * 0.25, panel.size.y * 0.48)
+	draw_circle(avatar_center, 102.0, Color(RING_COLORS[player_ring_color], 0.16))
+	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
+		draw_texture_rect(team_piece_textures[0], Rect2(avatar_center - Vector2.ONE * 82.0, Vector2.ONE * 164.0), false)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(panel.size.x * 0.44, 74.0), profile_name, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x * 0.48, 28, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(panel.size.x * 0.44, 112.0), "ROOKIE EXPLORER  •  LEVEL 1", HORIZONTAL_ALIGNMENT_LEFT, panel.size.x * 0.48, 14, Color("7ee7ff"))
+	var labels := ["ANIMAL", "LIFEBUOY"]
+	var values := [ANIMAL_NAMES[player_animal], RING_COLOR_NAMES[player_ring_color]]
+	for i in 2:
+		var y := 142.0 + i * 92.0
+		draw_string(ThemeDB.fallback_font, panel.position + Vector2(panel.size.x * 0.44, y), labels[i], HORIZONTAL_ALIGNMENT_LEFT, 160.0, 13, Color(0.67, 0.78, 0.88))
+		var row := Rect2(panel.position + Vector2(panel.size.x * 0.44, y + 15.0), Vector2(panel.size.x * 0.45, 54.0))
+		draw_style_box(make_box(Color("17304a"), 13.0), row)
+		draw_string(ThemeDB.fallback_font, row.position + Vector2(18.0, 34.0), values[i], HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 78.0, 17, Color.WHITE)
+		draw_style_box(make_box(Color("7256d8"), 13.0), Rect2(row.end.x - 58.0, row.position.y, 58.0, 54.0))
+		draw_string(ThemeDB.fallback_font, Vector2(row.end.x - 58.0, row.position.y + 34.0), ">", HORIZONTAL_ALIGNMENT_CENTER, 58.0, 22, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, panel.position + Vector2(panel.size.x * 0.44, panel.size.y - 38.0), "More characters, rings and victory effects will unlock in the shop.", HORIZONTAL_ALIGNMENT_LEFT, panel.size.x * 0.50, 12, Color(0.67, 0.78, 0.88))
+
+func draw_shop_screen(viewport_size: Vector2) -> void:
+	draw_frontend_header(viewport_size, "ZOOPA SHOP", "Collect characters, lifebuoys and signature effects")
+	var categories := ["CHARACTERS", "LIFEBUOYS", "EFFECTS"]
+	var colors := [Color("24b889"), Color("467ce8"), Color("9a58dc")]
+	for i in 3:
+		var card := frontend_mode_rect(i, viewport_size)
+		card.position.y = viewport_size.y * 0.28
+		card.size.y = viewport_size.y * 0.50
+		draw_style_box(make_box(Color(0.035, 0.075, 0.13, 0.97), 22.0), card)
+		draw_circle(card.position + Vector2(card.size.x * 0.5, 82.0), 48.0, Color(colors[i], 0.30))
+		draw_circle(card.position + Vector2(card.size.x * 0.5, 82.0), 32.0, colors[i], false, 8.0, true)
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 160.0), categories[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 22, Color.WHITE)
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(20.0, 198.0), "Rare collections\nSeasonal designs\nSpecial animations", HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 40.0, 14, Color(0.74, 0.86, 0.94))
+		var button := Rect2(card.position + Vector2(24.0, card.size.y - 62.0), Vector2(card.size.x - 48.0, 42.0))
+		draw_style_box(make_box(colors[i], 13.0), button)
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(0.0, 27.0), "COMING SOON", HORIZONTAL_ALIGNMENT_CENTER, button.size.x, 14, Color.WHITE)
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
