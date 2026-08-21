@@ -64,6 +64,8 @@ var rubber_launcher_texture: Texture2D
 var rubber_wrap_texture: Texture2D
 var fire_launcher_texture: Texture2D
 var hammer_texture: Texture2D
+var hammer_idle_texture: Texture2D
+var hammer_swing_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
@@ -142,6 +144,8 @@ func _ready() -> void:
 	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
 	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
 	hammer_texture = load("res://assets/hammer_trap/mechanical-hammer-v2.svg") as Texture2D
+	hammer_idle_texture = load("res://assets/hammer_trap/remastered/hammer-idle.png") as Texture2D
+	hammer_swing_texture = load("res://assets/hammer_trap/remastered/hammer-swing.png") as Texture2D
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
@@ -759,44 +763,29 @@ func hammer_strike_amount(seconds: float, first_start: float) -> float:
 		return 1.0 - smooth_step((local - 0.17) / 0.15)
 	return 0.0
 
+func draw_hammer_sprite_frame(texture: Texture2D, anchor: Vector2, angle: float, target_length: float, pivot_ratio: Vector2, head_ratio: Vector2, alpha: float) -> void:
+	if texture == null or alpha <= 0.01:
+		return
+	var source := texture.get_size()
+	var pivot := source * pivot_ratio
+	var head := source * head_ratio
+	var internal_angle := (head - pivot).angle()
+	var internal_length := maxf(1.0, pivot.distance_to(head))
+	var factor := target_length / internal_length
+	draw_set_transform(anchor, angle - internal_angle, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-pivot * factor, source * factor), false, Color(1.0, 1.0, 1.0, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, scale_y: float, mirrored: bool) -> void:
 	var strike_angle := (hit_point - anchor).angle()
 	var angle := lerp_angle(rest_angle, strike_angle, amount)
-	var arm_length := anchor.distance_to(hit_point)
-	var direction := Vector2(cos(angle), sin(angle))
-	var tip := anchor + direction * arm_length
-	var side := direction.orthogonal()
-
-	# Faithful small purple claw mount from the original game. The mount is
-	# deliberately compact so it sits inside the stone instead of covering it.
-	draw_circle(anchor + Vector2(2.0, 4.0) * scale_y, 15.0 * scale_y, Color(0.05, 0.07, 0.08, 0.28))
-	draw_line(anchor - side * 11.0 * scale_y, anchor + direction * 11.0 * scale_y, Color("3c183d"), 13.0 * scale_y, true)
-	draw_line(anchor + side * 11.0 * scale_y, anchor + direction * 11.0 * scale_y, Color("3c183d"), 13.0 * scale_y, true)
-	draw_circle(anchor - side * 9.0 * scale_y, 7.0 * scale_y, Color("9e3b83"))
-	draw_circle(anchor + side * 9.0 * scale_y, 7.0 * scale_y, Color("9e3b83"))
-	draw_circle(anchor, 8.0 * scale_y, Color("343f43"))
-	draw_circle(anchor, 4.5 * scale_y, Color("d65aab"))
-	draw_circle(anchor - Vector2(1.0, 1.0) * scale_y, 2.0 * scale_y, Color("ffd8ee"))
-
-	# Short telescopic-looking silver arm, with the same dark outline and bright
-	# center highlight visible in the source animation.
-	var shaft_end := tip - direction * 12.0 * scale_y
-	draw_line(anchor + direction * 5.0 * scale_y, shaft_end + Vector2(2.0, 4.0) * scale_y, Color(0.04, 0.06, 0.07, 0.30), 13.0 * scale_y, true)
-	draw_line(anchor + direction * 5.0 * scale_y, shaft_end, Color("263237"), 12.0 * scale_y, true)
-	draw_line(anchor + direction * 7.0 * scale_y, shaft_end, Color("9ba9ad"), 7.0 * scale_y, true)
-	draw_line(anchor + direction * 8.0 * scale_y, shaft_end, Color("e2e8e9"), 2.5 * scale_y, true)
-
-	# The orange cylinder faces the camera while idle and exposes more of its
-	# rectangular side during a strike, like the original Flash sprite.
-	var head_angle := angle + PI * 0.5
-	var head_size := Vector2(lerpf(34.0, 47.0, amount), lerpf(34.0, 29.0, amount)) * scale_y
-	draw_set_transform(tip + Vector2(2.0, 4.0) * scale_y, head_angle, Vector2.ONE)
-	draw_style_box(make_box(Color(0.16, 0.07, 0.01, 0.32), 7.0 * scale_y), Rect2(-head_size * 0.5, head_size))
-	draw_set_transform(tip, head_angle, Vector2.ONE)
-	draw_style_box(make_box(Color("9a3d08"), 7.0 * scale_y), Rect2(-head_size * 0.54, head_size * 1.08))
-	draw_style_box(make_box(Color("ef7e0b"), 6.0 * scale_y), Rect2(-head_size * 0.5, head_size))
-	draw_style_box(make_box(Color("ffad1f"), 5.0 * scale_y), Rect2(Vector2(-head_size.x * 0.40, -head_size.y * 0.40), Vector2(head_size.x * 0.66, head_size.y * 0.34)))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var target_length := anchor.distance_to(hit_point)
+	# Cross-fade between two remastered frames from the original animation. The
+	# real base in each image is pinned to the stone, so the whole hammer rotates
+	# around its genuine joint instead of a hand-drawn substitute.
+	var side_mix := smooth_step((amount - 0.18) / 0.34)
+	draw_hammer_sprite_frame(hammer_idle_texture, anchor, angle, target_length, Vector2(0.50, 0.91), Vector2(0.50, 0.15), 1.0 - side_mix)
+	draw_hammer_sprite_frame(hammer_swing_texture, anchor, angle, target_length, Vector2(0.75, 0.17), Vector2(0.38, 0.78), side_mix)
 
 func draw_hammer_weapons_idle() -> void:
 	if hammer_trap_is_active():
