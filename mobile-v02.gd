@@ -565,6 +565,7 @@ func _draw() -> void:
 	draw_rubber_launchers_idle()
 	draw_press_weapons_idle()
 	draw_electric_weapons_idle()
+	draw_ice_weapons_idle()
 	draw_fire_weapons_idle()
 	draw_hammer_weapons_idle()
 
@@ -1467,6 +1468,70 @@ func draw_fire_trap(effect: Dictionary) -> void:
 func ice_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
+func ice_weapon_points() -> Dictionary:
+	var freeze := trap_ball_position(ICE_TRAP_HOLE, ice_point(600.0, 548.0))
+	return {
+		"freeze": freeze,
+		"left": ice_point(470.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 0),
+		"right": ice_point(730.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 1)
+	}
+
+func ice_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == ICE_TRAP_HOLE:
+			return true
+	return false
+
+func draw_ice_emitter(center: Vector2, target: Vector2, size: float, frost_power: float = 0.0) -> Vector2:
+	var direction := (target - center).normalized()
+	if direction.length_squared() < 0.01:
+		direction = Vector2.RIGHT
+	var angle := direction.angle()
+	# Detailed cryogenic cannon based on the source animation: a permanent
+	# stone-mounted base, violet coolant reservoir and stepped silver nozzle.
+	draw_set_transform(center, angle, Vector2.ONE)
+	var shadow := Rect2(Vector2(-size * 0.53, -size * 0.34) + Vector2(0.0, size * 0.10), Vector2(size * 0.86, size * 0.68))
+	draw_style_box(make_box(Color(0.02, 0.04, 0.07, 0.30), size * 0.15), shadow)
+	var mount := Rect2(Vector2(-size * 0.53, -size * 0.34), Vector2(size * 0.45, size * 0.68))
+	draw_style_box(make_box(Color("253844"), size * 0.14), mount)
+	var mount_inner := Rect2(Vector2(-size * 0.45, -size * 0.26), Vector2(size * 0.30, size * 0.52))
+	draw_style_box(make_box(Color("8498a0"), size * 0.11), mount_inner)
+	for bolt_y in [-0.20, 0.20]:
+		draw_circle(Vector2(-size * 0.39, size * bolt_y), size * 0.043, Color("d7e5e7"))
+	# Rounded insulated coolant tank.
+	var tank_start := Vector2(-size * 0.12, 0.0)
+	var tank_end := Vector2(size * 0.25, 0.0)
+	draw_line(tank_start, tank_end, Color("222c4f"), size * 0.54, true)
+	draw_line(tank_start, tank_end, Color("594fc2"), size * 0.42, true)
+	draw_line(tank_start - Vector2(0.0, size * 0.07), tank_end - Vector2(0.0, size * 0.07), Color("9c91ff"), size * 0.12, true)
+	# Cooling bands and pressure window.
+	for band_x in [-0.07, 0.08, 0.22]:
+		draw_line(Vector2(size * band_x, -size * 0.25), Vector2(size * band_x, size * 0.25), Color("273849"), size * 0.075, true)
+	draw_circle(Vector2(size * 0.01, 0.0), size * 0.10, Color("243947"))
+	draw_circle(Vector2(size * 0.01, 0.0), size * 0.067, Color(0.54, 0.94, 1.0, 0.48 + frost_power * 0.45))
+	# Stepped nozzle with a pale ceramic cold tip.
+	draw_line(Vector2(size * 0.27, 0.0), Vector2(size * 0.53, 0.0), Color("263844"), size * 0.27, true)
+	draw_line(Vector2(size * 0.29, 0.0), Vector2(size * 0.51, 0.0), Color("a8bcc1"), size * 0.15, true)
+	for ring_x in [0.31, 0.42, 0.52]:
+		draw_line(Vector2(size * ring_x, -size * 0.18), Vector2(size * ring_x, size * 0.18), Color("343768"), size * 0.07, true)
+	var local_tip := Vector2(size * 0.62, 0.0)
+	draw_circle(local_tip, size * 0.12, Color("25364b"))
+	draw_circle(local_tip, size * (0.072 + frost_power * 0.018), Color(0.83, 0.98, 1.0, 0.62 + frost_power * 0.34))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var tip := center + direction * size * 0.62
+	if frost_power > 0.01:
+		draw_circle(tip, size * (0.12 + frost_power * 0.04), Color(0.63, 0.92, 1.0, 0.14 + frost_power * 0.20))
+	return tip
+
+func draw_ice_weapons_idle() -> void:
+	if customizer_open or ice_trap_is_active():
+		return
+	var points := ice_weapon_points()
+	var scale_y := board_rect.size.y / 600.0
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.0038) + 1.0) * 0.5
+	draw_ice_emitter(points.left, points.freeze, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 0), pulse * 0.16)
+	draw_ice_emitter(points.right, points.freeze, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 1), pulse * 0.16)
+
 func draw_ice_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
 	if amount <= 0.01:
 		return
@@ -1508,9 +1573,10 @@ func draw_ice_shell(center: Vector2, radius: float, amount: float, alpha: float 
 func draw_ice_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
 	var scale_y := board_rect.size.y / 600.0
-	var left_weapon := ice_point(470.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 0)
-	var right_weapon := ice_point(730.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 1)
-	var freeze_point := trap_ball_position(ICE_TRAP_HOLE, ice_point(600.0, 548.0))
+	var points := ice_weapon_points()
+	var left_weapon: Vector2 = points.left
+	var right_weapon: Vector2 = points.right
+	var freeze_point: Vector2 = points.freeze
 	var radius := trap_ball_radius(ICE_TRAP_HOLE, 27.0 * scale_y)
 	var spray := smooth_step(seconds / 0.82)
 	var freeze := smooth_step((seconds - 0.22) / 1.18)
@@ -1525,10 +1591,12 @@ func draw_ice_trap(effect: Dictionary) -> void:
 		center.x += sin(release * PI) * 5.0 * scale_y
 		radius *= 1.0 - release * 0.28
 		alpha = 1.0 - release * 0.12
+	var stream_strength := spray * (1.0 - smooth_step((seconds - 1.28) / 0.37))
+	var left_tip := draw_ice_emitter(left_weapon, freeze_point, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 0), stream_strength)
+	var right_tip := draw_ice_emitter(right_weapon, freeze_point, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 1), stream_strength)
 	if seconds < 1.65:
-		var stream_strength := spray * (1.0 - smooth_step((seconds - 1.28) / 0.37))
-		draw_ice_stream(left_weapon, freeze_point, stream_strength, 0.13, trap_weapon_scale(ICE_TRAP_HOLE, 0))
-		draw_ice_stream(right_weapon, freeze_point, stream_strength, 0.61, trap_weapon_scale(ICE_TRAP_HOLE, 1))
+		draw_ice_stream(left_tip, freeze_point, stream_strength, 0.13, trap_weapon_scale(ICE_TRAP_HOLE, 0))
+		draw_ice_stream(right_tip, freeze_point, stream_strength, 0.61, trap_weapon_scale(ICE_TRAP_HOLE, 1))
 	draw_rubber_game_ball(center, radius, effect.team, effect.piece, 1.0 - freeze * 0.58)
 	draw_ice_shell(center, radius, freeze, alpha)
 	if freeze > 0.55 and release <= 0.0:
