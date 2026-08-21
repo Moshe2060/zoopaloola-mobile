@@ -2356,20 +2356,20 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var character_bob := sin(menu_elapsed * 2.1) * 7.0 * unit
 	var feet_center := character_area.position + Vector2(character_area.size.x * 0.48, character_area.size.y * 0.91)
 	draw_circle(feet_center, 60.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
-	# The buoy is its own selectable item. Drawing it first lets the hero's hand sit naturally over it.
-	var ring_center := character_area.position + Vector2(character_area.size.x * 0.82, character_area.size.y * 0.43 + character_bob)
+	# The buoy is its own selectable item and rests against the hero instead of being forced into a hand pose.
+	var ring_center := character_area.position + Vector2(character_area.size.x * 0.78, character_area.size.y * 0.78 + character_bob)
 	var ring_radius := 53.0 * unit
-	draw_circle(ring_center + Vector2(5.0, 7.0) * unit, ring_radius, Color(0.01, 0.05, 0.10, 0.30), false, 22.0 * unit, true)
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
+	if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
+		draw_texture_rect(full_body_animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
+	elif player_animal >= 0 and player_animal < animal_textures.size() and animal_textures[player_animal] != null:
+		draw_texture_rect(animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
+	draw_circle(ring_center + Vector2(5.0, 7.0) * unit, ring_radius, Color(0.01, 0.05, 0.10, 0.30), false, 22.0 * unit, true)
 	draw_circle(ring_center, ring_radius, ring_color, false, 22.0 * unit, true)
 	for segment in 4:
 		var segment_start := float(segment) * TAU / 4.0 - 0.25
 		draw_arc(ring_center, ring_radius, segment_start, segment_start + 0.50, 12, Color("fff4dc"), 22.0 * unit, true)
 	draw_circle(ring_center, ring_radius - 13.0 * unit, Color(0.75, 0.95, 1.0, 0.34), false, 2.0 * unit, true)
-	if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
-		draw_texture_rect(full_body_animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
-	elif player_animal >= 0 and player_animal < animal_textures.size() and animal_textures[player_animal] != null:
-		draw_texture_rect(animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
 	var change_tag := Rect2(character_area.position + Vector2(42.0 * unit, character_area.size.y - 12.0 * unit), Vector2(206.0, 38.0) * unit)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 16.0), change_tag)
 	draw_string(ThemeDB.fallback_font, change_tag.position + Vector2(0.0, 24.0) * unit, "TAP TO CHANGE  •  " + ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, change_tag.size.x, int(11.0 * unit), Color.WHITE)
