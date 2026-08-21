@@ -749,10 +749,15 @@ func hammer_trap_is_active() -> bool:
 	return false
 
 func hammer_weapon_points() -> Dictionary:
+	var hit := trap_ball_position(HAMMER_TRAP_HOLE, hammer_point(1072.0, 522.0))
+	var scale_y := board_rect.size.y / 600.0
 	return {
-		"right": hammer_point(1128.0, 455.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
-		"bottom": hammer_point(1010.0, 565.0) + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
-		"hit": trap_ball_position(HAMMER_TRAP_HOLE, hammer_point(1072.0, 522.0))
+		# Mounts sit deep on the two stones, far away from the capture point, just
+		# like the supplied original screenshots. The heads point away from the
+		# hole while idle and swing inward only during a strike.
+		"right": hit + Vector2(34.0, -150.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
+		"bottom": hit + Vector2(-185.0, 62.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
+		"hit": hit
 	}
 
 func hammer_strike_amount(seconds: float, first_start: float) -> float:
@@ -796,31 +801,19 @@ func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, am
 	var strike_angle := (hit_point - anchor).angle()
 	var angle := lerp_angle(rest_angle, strike_angle, amount)
 	var target_length := anchor.distance_to(hit_point)
-	# The original is a frame animation, not one continuously rotating drawing.
-	# Keep the mount fixed, then swap through the restored source poses.
-	if amount < 0.12:
-		draw_hammer_sprite_frame(hammer_idle_texture, anchor, rest_angle, target_length, Vector2(0.50, 0.91), Vector2(0.50, 0.15), 1.0)
-		return
-
-	# The cropped base stays attached to the stone throughout every strike.
-	draw_hammer_cutout(hammer_base_texture, anchor, 38.0 * scale_y, rest_angle + PI * 0.5)
-	if amount < 0.58:
-		draw_hammer_sprite_frame(hammer_swing_texture, anchor, angle, target_length, Vector2(0.75, 0.17), Vector2(0.38, 0.78), 1.0)
-	elif amount < 0.88:
-		var travel := smooth_step((amount - 0.58) / 0.30)
-		var direction := Vector2(cos(strike_angle), sin(strike_angle))
-		var head_center := anchor + direction * target_length * lerpf(0.76, 1.0, travel)
-		draw_hammer_cutout(hammer_head_side_texture, head_center, 43.0 * scale_y, strike_angle + PI * 0.5)
-	else:
-		draw_hammer_cutout(hammer_impact_texture, hit_point, 54.0 * scale_y, strike_angle + PI * 0.5)
+	# Rotate the complete restored hammer around the center of its stone-mounted
+	# base. Nothing is translated into the pocket; only the arm swings inward.
+	var swing_mix := smooth_step((amount - 0.52) / 0.28)
+	draw_hammer_sprite_frame(hammer_idle_texture, anchor, angle, target_length, Vector2(0.50, 0.91), Vector2(0.50, 0.15), 1.0 - swing_mix)
+	draw_hammer_sprite_frame(hammer_swing_texture, anchor, angle, target_length, Vector2(0.75, 0.17), Vector2(0.38, 0.78), swing_mix)
 
 func draw_hammer_weapons_idle() -> void:
 	if hammer_trap_is_active():
 		return
 	var points := hammer_weapon_points()
 	var scale_y := board_rect.size.y / 600.0
-	draw_trap_hammer(points.right, points.hit, deg_to_rad(92.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
-	draw_trap_hammer(points.bottom, points.hit, deg_to_rad(-8.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+	draw_trap_hammer(points.right, points.hit, deg_to_rad(-90.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+	draw_trap_hammer(points.bottom, points.hit, deg_to_rad(180.0), 0.0, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
 
 func draw_hammer_trap(effect: Dictionary) -> void:
 	var seconds: float = effect.elapsed
@@ -872,8 +865,8 @@ func draw_hammer_trap(effect: Dictionary) -> void:
 	# Draw the ball first, then the hammers, so their heads visibly land on top.
 	draw_press_ball(center, ball_radius, squash_x, squash_y, ball_rotation, effect.team, effect.piece, alpha)
 	if release <= 0.0:
-		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.20, 0.0), deg_to_rad(92.0), right_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
-		draw_trap_hammer(bottom_weapon, hit_point + Vector2(0.0, radius * 0.20), deg_to_rad(-8.0), bottom_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.12, -radius * 0.08), deg_to_rad(-90.0), right_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+		draw_trap_hammer(bottom_weapon, hit_point + Vector2(-radius * 0.08, radius * 0.12), deg_to_rad(180.0), bottom_amount, scale_y * trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
 
 	if impact > 0.05 and release <= 0.0:
 		draw_circle(center, ball_radius * 0.78, Color(1.0, 0.98, 0.82, 0.72 * impact))
