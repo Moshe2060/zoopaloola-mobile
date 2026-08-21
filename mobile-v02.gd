@@ -2360,7 +2360,7 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var ring_center := character_area.position + Vector2(character_area.size.x * 0.82, character_area.size.y * 0.43 + character_bob)
 	var ring_radius := 53.0 * unit
 	draw_circle(ring_center + Vector2(5.0, 7.0) * unit, ring_radius, Color(0.01, 0.05, 0.10, 0.30), false, 22.0 * unit, true)
-	var ring_color := RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
+	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
 	draw_circle(ring_center, ring_radius, ring_color, false, 22.0 * unit, true)
 	for segment in 4:
 		var segment_start := float(segment) * TAU / 4.0 - 0.25
