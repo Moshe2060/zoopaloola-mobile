@@ -96,7 +96,7 @@ var electric_right_size := 34.0
 var editor_hole := ELECTRIC_TRAP_HOLE
 var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall, 4=entry, 5=table wall
 # Approved trap editor snapshot (2026-08-21):
-# ICE: weapon1=(35,-5) 1.00; weapon2=(-25,0) 1.00; ball=(5,20) 1.00; fall=(0,0); entry=(1,19) radius=11; wall=bottom offset=8 size=1
+# ICE: weapon1=(26,1) 1.00; weapon2=(-16,2) 1.00; ball=(5,20) 1.00; fall=(0,0); entry=(1,19) radius=11; wall=bottom offset=8 size=1
 # FIRE: weapon1=(-5,-10) 1.00; weapon2=(10,0) 1.00; ball=(0,10) 1.00; fall=(-30,-60); entry=(-12,14) radius=12; wall=left offset=-2 size=1
 # HAMMER: weapon1=(20,5) 1.10; weapon2=(0,5) 1.00; ball=(10,20) 1.00; fall=(0,0); entry=(12,14) radius=12; wall=right offset=5 size=1
 # ELECTRIC: weapon1=(10,40) 1.20; weapon2=(-27,-3) 1.20; ball=(35,-5) 1.00; fall=(-15,45); entry=(11,-2) radius=12; wall=top offset=-7 size=1
@@ -107,7 +107,7 @@ var trap_weapon_offsets: Array[Vector2] = [
 	Vector2(-3.0, 0.0), Vector2(14.0, -1.0),
 	Vector2(10.0, 40.0), Vector2(-27.0, -3.0),
 	Vector2(20.0, 5.0), Vector2(0.0, 5.0),
-	Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
+	Vector2(26.0, 1.0), Vector2(-16.0, 2.0),
 	Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
 ]
 var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.2, 1.2, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
@@ -1498,17 +1498,26 @@ func draw_ice_emitter(center: Vector2, target: Vector2, size: float, frost_power
 	draw_style_box(make_box(Color("8498a0"), size * 0.11), mount_inner)
 	for bolt_y in [-0.20, 0.20]:
 		draw_circle(Vector2(-size * 0.39, size * bolt_y), size * 0.043, Color("d7e5e7"))
-	# Rounded insulated coolant tank.
+	# Rounded insulated coolant tank with layered shading and a polished highlight.
 	var tank_start := Vector2(-size * 0.12, 0.0)
 	var tank_end := Vector2(size * 0.25, 0.0)
-	draw_line(tank_start, tank_end, Color("222c4f"), size * 0.54, true)
-	draw_line(tank_start, tank_end, Color("594fc2"), size * 0.42, true)
-	draw_line(tank_start - Vector2(0.0, size * 0.07), tank_end - Vector2(0.0, size * 0.07), Color("9c91ff"), size * 0.12, true)
-	# Cooling bands and pressure window.
+	draw_line(tank_start, tank_end, Color("171d3a"), size * 0.58, true)
+	draw_line(tank_start, tank_end, Color("4a43aa"), size * 0.48, true)
+	draw_line(tank_start, tank_end, Color("6860d5"), size * 0.38, true)
+	draw_line(tank_start - Vector2(0.0, size * 0.075), tank_end - Vector2(0.0, size * 0.075), Color(0.76, 0.72, 1.0, 0.80), size * 0.085, true)
+	draw_line(tank_start + Vector2(0.0, size * 0.12), tank_end + Vector2(0.0, size * 0.12), Color(0.10, 0.12, 0.30, 0.55), size * 0.07, true)
+	# Cooling bands use a dark rim and a bright steel center.
 	for band_x in [-0.07, 0.08, 0.22]:
-		draw_line(Vector2(size * band_x, -size * 0.25), Vector2(size * band_x, size * 0.25), Color("273849"), size * 0.075, true)
-	draw_circle(Vector2(size * 0.01, 0.0), size * 0.10, Color("243947"))
-	draw_circle(Vector2(size * 0.01, 0.0), size * 0.067, Color(0.54, 0.94, 1.0, 0.48 + frost_power * 0.45))
+		draw_line(Vector2(size * band_x, -size * 0.27), Vector2(size * band_x, size * 0.27), Color("182934"), size * 0.095, true)
+		draw_line(Vector2(size * band_x, -size * 0.24), Vector2(size * band_x, size * 0.24), Color("9fb3ba"), size * 0.045, true)
+	# Illuminated snowflake pressure window.
+	var gauge_center := Vector2(size * 0.01, 0.0)
+	draw_circle(gauge_center, size * 0.12, Color("172b39"))
+	draw_circle(gauge_center, size * 0.085, Color(0.42, 0.88, 1.0, 0.42 + frost_power * 0.48))
+	for spoke in 3:
+		var spoke_angle := float(spoke) * PI / 3.0
+		var spoke_vector := Vector2(cos(spoke_angle), sin(spoke_angle)) * size * 0.061
+		draw_line(gauge_center - spoke_vector, gauge_center + spoke_vector, Color(0.91, 1.0, 1.0, 0.88), maxf(1.0, size * 0.018), true)
 	# Stepped nozzle with a pale ceramic cold tip.
 	draw_line(Vector2(size * 0.27, 0.0), Vector2(size * 0.53, 0.0), Color("263844"), size * 0.27, true)
 	draw_line(Vector2(size * 0.29, 0.0), Vector2(size * 0.51, 0.0), Color("a8bcc1"), size * 0.15, true)
@@ -1519,8 +1528,20 @@ func draw_ice_emitter(center: Vector2, target: Vector2, size: float, frost_power
 	draw_circle(local_tip, size * (0.072 + frost_power * 0.018), Color(0.83, 0.98, 1.0, 0.62 + frost_power * 0.34))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var tip := center + direction * size * 0.62
+	# Cold vapor and tiny ice crystals make the nozzle feel active without
+	# obscuring the weapon or the gameplay ball.
+	var vapor_phase := float(Time.get_ticks_msec()) * 0.0025
+	for i in 4:
+		var drift := fmod(vapor_phase + float(i) * 0.24, 1.0)
+		var vapor_center := tip + direction * size * drift * 0.23 + direction.orthogonal() * sin(vapor_phase * 3.0 + float(i)) * size * 0.055
+		var vapor_alpha := (1.0 - drift) * (0.08 + frost_power * 0.18)
+		draw_circle(vapor_center, size * (0.035 + drift * 0.055), Color(0.78, 0.96, 1.0, vapor_alpha))
 	if frost_power > 0.01:
 		draw_circle(tip, size * (0.12 + frost_power * 0.04), Color(0.63, 0.92, 1.0, 0.14 + frost_power * 0.20))
+		for i in 3:
+			var crystal_angle := vapor_phase * 4.0 + TAU * float(i) / 3.0
+			var crystal := tip + Vector2(cos(crystal_angle), sin(crystal_angle)) * size * 0.16
+			draw_circle(crystal, maxf(1.0, size * 0.022), Color(0.91, 1.0, 1.0, 0.60 * frost_power))
 	return tip
 
 func draw_ice_weapons_idle() -> void:
@@ -1938,7 +1959,7 @@ func approved_weapon_offset(hole: int, weapon: int) -> Vector2:
 		Vector2(-3.0, 0.0), Vector2(14.0, -1.0),
 		Vector2(10.0, 40.0), Vector2(-27.0, -3.0),
 		Vector2(20.0, 5.0), Vector2(0.0, 5.0),
-		Vector2(35.0, -5.0), Vector2(-25.0, 0.0),
+		Vector2(26.0, 1.0), Vector2(-16.0, 2.0),
 		Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
 	]
 	return approved[hole * 2 + weapon]
