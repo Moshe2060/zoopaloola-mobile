@@ -563,6 +563,7 @@ func _draw() -> void:
 	draw_texture_rect(board_texture, board_rect, false)
 	draw_scoreboards()
 	draw_rubber_launchers_idle()
+	draw_press_weapons_idle()
 	draw_electric_weapons_idle()
 	draw_fire_weapons_idle()
 	draw_hammer_weapons_idle()
@@ -901,8 +902,8 @@ func press_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1276.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
 func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, compression: float) -> void:
-	var anchor := press_point(anchor_x, y)
-	var tip := press_point(tip_x, y)
+	var anchor: Vector2 = press_point(anchor_x, y)
+	var tip: Vector2 = press_point(tip_x, y)
 	var weapon_index := 0 if left_side else 1
 	var edit_offset := trap_weapon_offset(PRESS_TRAP_HOLE, weapon_index)
 	var edit_scale := trap_weapon_scale(PRESS_TRAP_HOLE, weapon_index)
@@ -911,14 +912,42 @@ func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, co
 	var direction := 1.0 if left_side else -1.0
 	var unit_x := board_rect.size.x / 1276.0
 	var unit_y := board_rect.size.y / 600.0
+	# Permanent stone-mounted motor body. It remains visible both while idle and
+	# throughout the complete squeeze/retract animation.
+	var base_radius := 22.0 * unit_y * edit_scale
+	draw_circle(anchor + Vector2(0.0, 4.0 * unit_y), base_radius * 1.08, Color(0.02, 0.04, 0.05, 0.30))
+	draw_circle(anchor, base_radius, Color("263640"))
+	draw_circle(anchor, base_radius * 0.78, Color("71858d"))
+	draw_circle(anchor, base_radius * 0.54, Color("354852"))
+	draw_circle(anchor, base_radius * 0.25, Color("d6a82d"))
+	for i in 4:
+		var bolt_angle := TAU * float(i) / 4.0 + PI * 0.25
+		var bolt := anchor + Vector2(cos(bolt_angle), sin(bolt_angle)) * base_radius * 0.68
+		draw_circle(bolt, maxf(1.5, 2.4 * unit_y * edit_scale), Color("d7e0dd"))
+	var rod_start := anchor + Vector2(direction * base_radius * 0.72, 0.0)
 	var rod_end := tip - Vector2(direction * 8.0 * unit_x, 0.0)
-	draw_line(anchor, rod_end, Color("374957"), 14.0 * unit_y * edit_scale, true)
-	draw_line(anchor - Vector2(0, 1.5 * unit_y), rod_end - Vector2(0, 1.5 * unit_y), Color("a9bdc6"), 7.0 * unit_y * edit_scale, true)
-	var plate_size := Vector2(16.0 * unit_x, 46.0 * unit_y) * edit_scale
-	draw_style_box(make_box(Color("384b57"), 4.0 * unit_y), Rect2(tip - plate_size * 0.5, plate_size))
+	draw_line(rod_start, rod_end, Color("263944"), 15.0 * unit_y * edit_scale, true)
+	draw_line(rod_start - Vector2(0, 1.5 * unit_y), rod_end - Vector2(0, 1.5 * unit_y), Color("b9cbd0"), 7.0 * unit_y * edit_scale, true)
+	var plate_size := Vector2(18.0 * unit_x, 48.0 * unit_y) * edit_scale
+	draw_style_box(make_box(Color("273943"), 4.0 * unit_y), Rect2(tip - plate_size * 0.5, plate_size))
+	draw_rect(Rect2(tip - plate_size * 0.34, plate_size * 0.68), Color("91a5aa"))
 	var glow_width := 6.0 * unit_x
 	var glow_rect := Rect2(tip.x - glow_width * 0.5, tip.y - 19.0 * unit_y, glow_width, 38.0 * unit_y)
-	draw_rect(glow_rect, Color(1.0, 0.36, 0.59, 0.34 * compression))
+	draw_rect(glow_rect, Color(0.72, 0.34, 1.0, 0.48 * compression))
+
+func press_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == PRESS_TRAP_HOLE:
+			return true
+	return false
+
+func draw_press_weapons_idle() -> void:
+	if customizer_open or press_trap_is_active():
+		return
+	# The plates rest close to their stone-mounted motors, exactly as in the
+	# source animation, instead of disappearing until a ball reaches the pocket.
+	draw_press_rod(546.0, 55.0, 570.0, true, 0.0)
+	draw_press_rod(695.0, 55.0, 671.0, false, 0.0)
 
 func draw_press_ball(center: Vector2, radius: float, rx_scale: float, ry_scale: float, rotation: float, team: int, piece: int, alpha: float) -> void:
 	draw_set_transform(center, rotation, Vector2(rx_scale, ry_scale))
@@ -966,15 +995,18 @@ func draw_press_trap(effect: Dictionary) -> void:
 		var shrink := 1.0 - release * 0.30
 		rx_scale *= shrink
 		ry_scale *= shrink
-	if arm_amount > 0.01:
-		draw_press_rod(546.0, cy, left_tip, true, squeeze)
-		draw_press_rod(695.0, cy, right_tip, false, squeeze)
 	var radius_screen := trap_ball_radius(PRESS_TRAP_HOLE, radius * board_rect.size.y / 600.0)
 	var press_center := trap_ball_position(PRESS_TRAP_HOLE, press_point(cx, ball_y))
 	if release > 0.0:
 		var press_start := trap_ball_position(PRESS_TRAP_HOLE, press_point(cx, cy))
 		press_center = press_start.lerp(effect_fall_endpoint(PRESS_TRAP_HOLE), release * release)
+	# Draw the animal first so both plates visibly close over it. The old order
+	# placed the ball on top of the pistons and made the squeeze look fake.
 	draw_press_ball(press_center, radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
+	# Always draw the complete machines. During retraction they return to their
+	# idle positions while the crushed disc remains in the center.
+	draw_press_rod(546.0, cy, left_tip, true, squeeze)
+	draw_press_rod(695.0, cy, right_tip, false, squeeze)
 
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
