@@ -61,6 +61,7 @@ const APP_PROFILE := 2
 const APP_SHOP := 3
 const APP_GAME := 4
 var board_texture: Texture2D
+var lobby_background_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var animal_ring_masks: Array[Texture2D] = []
@@ -161,6 +162,7 @@ func _ready() -> void:
 	# Smooth the original character art when it is enlarged inside HD balls.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
+	lobby_background_texture = load("res://assets/ui/zoopaloola-lobby-v1.png") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
@@ -2170,9 +2172,11 @@ func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + index * (card_width + 16.0), viewport_size.y * 0.43), Vector2(card_width, minf(225.0, viewport_size.y * 0.34)))
 
 func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var width := minf(430.0, viewport_size.x * 0.35)
-	var x := viewport_size.x * 0.5 - width * 0.5
-	return Rect2(x, viewport_size.y * 0.315 + index * 92.0, width, 76.0)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	if index == 2:
+		return Rect2(viewport_size.x * 0.665, viewport_size.y * 0.315, 270.0 * unit, 190.0 * unit)
+	var width := 176.0 * unit
+	return Rect2(viewport_size.x * 0.635 + float(index) * (width + 18.0 * unit), viewport_size.y * 0.615, width, 62.0 * unit)
 
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(viewport_size.x - 292.0, 20.0, 264.0, 54.0)
@@ -2296,12 +2300,17 @@ func draw_splash_screen(viewport_size: Vector2) -> void:
 		draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y * 0.82), "WELCOME TO THE WILDEST TABLE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color(0.82, 0.95, 1.0, alpha))
 
 func draw_frontend(viewport_size: Vector2) -> void:
-	draw_menu_background(viewport_size)
 	if app_screen == APP_HOME:
+		if lobby_background_texture != null:
+			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		else:
+			draw_menu_background(viewport_size)
 		draw_home_screen(viewport_size)
 	elif app_screen == APP_PROFILE:
+		draw_menu_background(viewport_size)
 		draw_profile_screen(viewport_size)
 	elif app_screen == APP_SHOP:
+		draw_menu_background(viewport_size)
 		draw_shop_screen(viewport_size)
 	if menu_notice_time > 0.0:
 		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
@@ -2309,10 +2318,15 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		draw_string(ThemeDB.fallback_font, toast.position + Vector2(0.0, 29.0), menu_notice, HORIZONTAL_ALIGNMENT_CENTER, toast.size.x, 14, Color("f6d365"))
 
 func draw_home_screen(viewport_size: Vector2) -> void:
-	# Top status strip: settings, coins and the permanent player identity.
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	# A subtle vignette keeps the UI readable without hiding the illustrated world.
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.08))
+	draw_rect(Rect2(viewport_size.x * 0.59, 0.0, viewport_size.x * 0.41, viewport_size.y), Color(0.02, 0.07, 0.12, 0.12))
+
+	# Top status strip: settings, coins and permanent player identity.
 	var settings := home_settings_rect(viewport_size)
-	draw_style_box(make_box(Color(0.04, 0.10, 0.17, 0.94), 18.0), settings.grow(3.0))
-	draw_style_box(make_box(Color("2a5874"), 16.0), settings)
+	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), settings.grow(4.0))
+	draw_style_box(make_box(Color("4b91b5"), 16.0), settings)
 	draw_circle(settings.get_center(), 14.0, Color("d8f5ff"), false, 4.0, true)
 	for i in 8:
 		var angle := TAU * float(i) / 8.0
@@ -2320,56 +2334,55 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		var b := settings.get_center() + Vector2(cos(angle), sin(angle)) * 23.0
 		draw_line(a, b, Color("d8f5ff"), 4.0, true)
 	var coin_rect := home_coin_rect(viewport_size)
-	draw_style_box(make_box(Color(0.04, 0.10, 0.17, 0.94), 18.0), coin_rect.grow(3.0))
-	draw_style_box(make_box(Color("173b55"), 16.0), coin_rect)
+	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), coin_rect.grow(4.0))
+	draw_style_box(make_box(Color("263d70"), 16.0), coin_rect)
 	draw_circle(coin_rect.position + Vector2(29.0, 27.0), 15.0, Color("ffc83d"))
 	draw_circle(coin_rect.position + Vector2(29.0, 27.0), 9.0, Color("e9971b"), false, 3.0, true)
 	draw_string(ThemeDB.fallback_font, coin_rect.position + Vector2(52.0, 35.0), str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 78.0, 20, Color.WHITE)
 	var profile := home_profile_rect(viewport_size)
-	draw_style_box(make_box(Color(0.04, 0.10, 0.17, 0.94), 19.0), profile.grow(3.0))
-	draw_style_box(make_box(Color("244a68"), 17.0), profile)
+	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 19.0), profile.grow(4.0))
+	draw_style_box(make_box(Color("263d70"), 17.0), profile)
 	draw_circle(profile.position + Vector2(profile.size.x - 30.0, 27.0), 23.0, RING_COLORS[player_ring_color])
 	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
 		draw_texture_rect(team_piece_textures[0], Rect2(profile.position + Vector2(profile.size.x - 52.0, 5.0), Vector2(44.0, 44.0)), false)
 	draw_string(ThemeDB.fallback_font, profile.position + Vector2(18.0, 24.0), profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 78.0, 17, Color.WHITE)
 	draw_string(ThemeDB.fallback_font, profile.position + Vector2(18.0, 43.0), "LEVEL 1  •  ROOKIE EXPLORER", HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 78.0, 10, Color("8cecff"))
 
-	# Left character stage: the animals bob independently like the original lobby.
-	draw_zoopaloola_logo(Vector2(viewport_size.x * 0.20, viewport_size.y * 0.19), 0.48)
-	var stage := Rect2(30.0, viewport_size.y * 0.29, viewport_size.x * 0.30, viewport_size.y * 0.54)
-	draw_style_box(make_box(Color(0.04, 0.13, 0.20, 0.54), 30.0), stage)
-	draw_home_character(ANIMAL_FILES.find("elephant"), stage.position + Vector2(stage.size.x * 0.25, stage.size.y * 0.50), 116.0, 0.0, Color("ef4d4d"))
-	draw_home_character(ANIMAL_FILES.find("zebra"), stage.position + Vector2(stage.size.x * 0.53, stage.size.y * 0.38), 132.0, 1.7, Color("a446dd"))
-	draw_home_character(ANIMAL_FILES.find("monkey"), stage.position + Vector2(stage.size.x * 0.78, stage.size.y * 0.56), 108.0, 3.1, Color("f3a52b"))
-	draw_string(ThemeDB.fallback_font, stage.position + Vector2(0.0, stage.size.y - 24.0), "THE ZOOPA CREW IS READY!", HORIZONTAL_ALIGNMENT_CENTER, stage.size.x, 14, Color("d9f6ff"))
+	# Logo and main play control sit inside the clear grass area on the right.
+	draw_zoopaloola_logo(Vector2(viewport_size.x * 0.765, viewport_size.y * 0.20), 0.46 * unit)
+	var play_rect := home_mode_rect(2, viewport_size)
+	var play_center := play_rect.get_center()
+	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
+	draw_circle(play_center + Vector2(0.0, 8.0 * unit), 92.0 * unit, Color(0.02, 0.11, 0.16, 0.55))
+	draw_circle(play_center, (84.0 + pulse * 4.0) * unit, Color("8ee600"))
+	draw_circle(play_center, 72.0 * unit, Color("54c900"))
+	var triangle := PackedVector2Array([
+		play_center + Vector2(-20.0, -34.0) * unit,
+		play_center + Vector2(-20.0, 34.0) * unit,
+		play_center + Vector2(39.0, 0.0) * unit
+	])
+	draw_colored_polygon(triangle, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, Vector2(play_rect.position.x, play_rect.end.y - 5.0 * unit), "PLAY", HORIZONTAL_ALIGNMENT_CENTER, play_rect.size.x, int(24.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, Vector2(play_rect.position.x, play_rect.end.y + 16.0 * unit), "VS COMPUTER", HORIZONTAL_ALIGNMENT_CENTER, play_rect.size.x, int(11.0 * unit), Color("e8ffd0"))
 
-	# The three primary play actions use the stacked, oversized mobile-game layout.
-	draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y * 0.275), "CHOOSE YOUR GAME", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 23, Color.WHITE)
-	var titles := ["ARENA", "PLAY A FRIEND", "VS COMPUTER"]
-	var subtitles := ["Online leagues and ranked battles", "Two players on one device", "Practice against the Zoo AI"]
-	var colors := [Color("e95665"), Color("567ee8"), Color("1fbd83")]
-	var icons := ["A", "2P", "AI"]
-	for i in 3:
+	var small_titles := ["ARENA", "FRIEND"]
+	var small_colors := [Color("9d59e8"), Color("ff8a3d")]
+	for i in 2:
 		var button := home_mode_rect(i, viewport_size)
-		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 21.0), button.grow(5.0))
-		draw_style_box(make_box(colors[i].darkened(0.12), 18.0), button)
-		draw_circle(button.position + Vector2(42.0, 38.0), 25.0, colors[i].lightened(0.14))
-		draw_string(ThemeDB.fallback_font, button.position + Vector2(17.0, 45.0), icons[i], HORIZONTAL_ALIGNMENT_CENTER, 50.0, 16, Color.WHITE)
-		draw_string(ThemeDB.fallback_font, button.position + Vector2(78.0, 34.0), titles[i], HORIZONTAL_ALIGNMENT_LEFT, button.size.x - 130.0, 22, Color.WHITE)
-		draw_string(ThemeDB.fallback_font, button.position + Vector2(78.0, 56.0), subtitles[i], HORIZONTAL_ALIGNMENT_LEFT, button.size.x - 130.0, 11, Color(0.88, 0.96, 1.0))
-		draw_string(ThemeDB.fallback_font, button.position + Vector2(button.size.x - 52.0, 47.0), ">", HORIZONTAL_ALIGNMENT_CENTER, 34.0, 25, Color("fff1b0"))
+		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.78), 18.0), button.grow(4.0))
+		draw_style_box(make_box(small_colors[i], 16.0), button)
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(0.0, button.size.y * 0.62), small_titles[i], HORIZONTAL_ALIGNMENT_CENTER, button.size.x, int(17.0 * unit), Color.WHITE)
 		if i == 0:
-			draw_string(ThemeDB.fallback_font, button.position + Vector2(button.size.x - 134.0, 19.0), "COMING SOON", HORIZONTAL_ALIGNMENT_CENTER, 112.0, 9, Color("ffe16b"))
+			draw_string(ThemeDB.fallback_font, button.position + Vector2(0.0, 15.0 * unit), "COMING SOON", HORIZONTAL_ALIGNMENT_CENTER, button.size.x, int(8.0 * unit), Color("fff0a6"))
 
-	draw_home_leaderboard(Rect2(viewport_size.x * 0.71, viewport_size.y * 0.155, viewport_size.x * 0.265, viewport_size.y * 0.66))
 	var nav_labels := ["SHOP", "REWARDS", "PROFILE", "SETTINGS"]
-	var nav_icons := ["$", "GIFT", "ME", "GEAR"]
+	var nav_icons := ["RINGS", "GIFT", "ANIMAL", "GEAR"]
 	for i in 4:
 		var nav := home_nav_rect(i, viewport_size)
-		draw_style_box(make_box(Color(0.03, 0.09, 0.15, 0.94), 17.0), nav.grow(3.0))
-		draw_style_box(make_box(Color("28526c"), 15.0), nav)
-		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 22.0), nav_icons[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, 12, Color("f6d365"))
-		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 42.0), nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, 11, Color.WHITE)
+		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 17.0), nav.grow(4.0))
+		draw_style_box(make_box(Color("6c3fc7"), 15.0), nav)
+		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 21.0), nav_icons[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, 10, Color("fff0a6"))
+		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 41.0), nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, 11, Color.WHITE)
 
 func draw_home_character(animal_index: int, center: Vector2, size: float, phase: float, outfit_color: Color) -> void:
 	if animal_index < 0 or animal_index >= animal_textures.size() or animal_textures[animal_index] == null:
