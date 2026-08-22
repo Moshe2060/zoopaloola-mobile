@@ -113,6 +113,8 @@ const APP_SHOP := 3
 const APP_GAME := 4
 const APP_ARENA := 5
 const APP_PLAYER_PROFILE := 6
+const APP_FRIEND := 7
+const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
 var board_texture: Texture2D
 var ui_font: Font
 var lobby_background_texture: Texture2D
@@ -208,6 +210,16 @@ var player_current_streak := 3
 var player_world_rank := 6394
 var menu_notice := ""
 var menu_notice_time := 0.0
+var multiplayer_socket := WebSocketPeer.new()
+var multiplayer_state := "disconnected"
+var multiplayer_room_code := ""
+var multiplayer_slot := -1
+var multiplayer_players: Array = []
+var multiplayer_ready := false
+var multiplayer_error := ""
+var multiplayer_local_animal := -1
+var multiplayer_local_ring_color := -1
+var room_code_input: LineEdit
 
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
@@ -235,6 +247,15 @@ func _ready() -> void:
 	ui_font = load("res://assets/ui/fonts/DejaVuSans-Bold.ttf") as Font
 	if ui_font == null:
 		ui_font = ThemeDB.fallback_font
+	room_code_input = LineEdit.new()
+	room_code_input.visible = false
+	room_code_input.max_length = 6
+	room_code_input.placeholder_text = "ABC123"
+	room_code_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	room_code_input.add_theme_font_override("font", ui_font)
+	room_code_input.add_theme_font_size_override("font_size", 25)
+	room_code_input.text_changed.connect(_on_room_code_changed)
+	add_child(room_code_input)
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
@@ -348,6 +369,8 @@ func new_game() -> void:
 
 func _process(delta: float) -> void:
 	menu_elapsed += delta
+	poll_multiplayer()
+	update_room_code_input()
 	if app_screen == APP_SPLASH:
 		splash_elapsed += delta
 		if splash_elapsed >= 3.2:
@@ -586,11 +609,14 @@ func pointer_down(screen_pos: Vector2) -> void:
 		handle_frontend_touch(screen_pos)
 		return
 	if Rect2(8.0, 6.0, 116.0, 42.0).has_point(screen_pos):
+		leave_multiplayer_room()
 		app_screen = APP_HOME
 		selected = -1
 		dragging = false
 		active_effects.clear()
 		queue_redraw()
+		return
+	if game_mode == "online" and Rect2(get_viewport_rect().size.x - 454.0, 6.0, 430.0, 42.0).has_point(screen_pos):
 		return
 	if handle_customizer_touch(screen_pos):
 		return
@@ -603,7 +629,7 @@ func pointer_down(screen_pos: Vector2) -> void:
 		return
 	if Rect2(get_viewport_rect().size.x - 174.0, 6.0, 150.0, 42.0).has_point(screen_pos):
 		new_game(); return
-	if (game_mode == "computer" and turn != 0) or any_ball_moving() or not effects_allow_next_turn(): return
+	if (game_mode == "computer" and turn != 0) or (game_mode == "online" and turn != multiplayer_slot) or any_ball_moving() or not effects_allow_next_turn(): return
 	var board_pos := screen_to_board(screen_pos)
 	for i in balls.size():
 		if balls[i].alive and balls[i].team == turn and balls[i].p.distance_to(board_pos) <= 16.0:
@@ -626,13 +652,17 @@ func pointer_up(screen_pos: Vector2) -> void:
 	var pull_distance: float = pull.length()
 	var strength: float = clampf(pull_distance, MIN_SHOT_PULL, 30.0)
 	if pull_distance >= MIN_SHOT_PULL:
-		balls[selected].v = pull.normalized() * (strength * 0.078)
-		if game_mode == "computer":
+		if game_mode == "online":
+			send_multiplayer({"type":"shot", "ballIndex":selected, "pullX":pull.x, "pullY":pull.y, "strength":strength})
+			status = "שולח את הזריקה..." if ui_language == "he" else "Sending shot..."
+		elif game_mode == "computer":
+			balls[selected].v = pull.normalized() * (strength * 0.078)
 			turn = 1
 			ai_pending = true
 			ai_timer = 0.28
 			status = "Computer's turn"
 		else:
+			balls[selected].v = pull.normalized() * (strength * 0.078)
 			turn = 1 - turn
 			ai_pending = false
 			status = ("Red" if turn == 0 else "Blue") + " player's turn"
@@ -2316,6 +2346,154 @@ func character_ring_rect(index: int, viewport_size: Vector2) -> Rect2:
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
 
+func friend_create_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(250.0, 245.0) * unit, Vector2(330.0, 82.0) * unit)
+
+func friend_join_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(700.0, 355.0) * unit, Vector2(330.0, 72.0) * unit)
+
+func friend_ready_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(475.0, 570.0) * unit, Vector2(330.0, 72.0) * unit)
+
+func _on_room_code_changed(value: String) -> void:
+	var clean := ""
+	for character in value.to_upper():
+		if "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(character):
+			clean += character
+	if clean != value:
+		room_code_input.text = clean.left(6)
+		room_code_input.caret_column = room_code_input.text.length()
+
+func update_room_code_input() -> void:
+	if room_code_input == null:
+		return
+	var show_input := app_screen == APP_FRIEND and multiplayer_room_code.is_empty()
+	room_code_input.visible = show_input
+	if show_input:
+		var viewport_size := get_viewport_rect().size
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		room_code_input.position = Vector2(700.0, 260.0) * unit
+		room_code_input.size = Vector2(330.0, 72.0) * unit
+
+func connect_multiplayer() -> void:
+	if multiplayer_socket.get_ready_state() in [WebSocketPeer.STATE_OPEN, WebSocketPeer.STATE_CONNECTING]:
+		return
+	multiplayer_socket = WebSocketPeer.new()
+	var error := multiplayer_socket.connect_to_url(MATCH_SERVER_URL)
+	if error != OK:
+		multiplayer_state = "error"
+		multiplayer_error = "לא ניתן להתחבר לשרת" if ui_language == "he" else "Could not connect to server"
+	else:
+		multiplayer_state = "connecting"
+		multiplayer_error = ""
+
+func poll_multiplayer() -> void:
+	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_CLOSED:
+		if multiplayer_state not in ["disconnected", "error"]:
+			multiplayer_state = "disconnected"
+			multiplayer_error = "החיבור לשרת נותק" if ui_language == "he" else "Server connection closed"
+		return
+	multiplayer_socket.poll()
+	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN and multiplayer_state == "connecting":
+		multiplayer_state = "connected"
+	while multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN and multiplayer_socket.get_available_packet_count() > 0:
+		var payload = JSON.parse_string(multiplayer_socket.get_packet().get_string_from_utf8())
+		if typeof(payload) == TYPE_DICTIONARY:
+			handle_multiplayer_message(payload)
+
+func send_multiplayer(payload: Dictionary) -> void:
+	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		multiplayer_socket.send_text(JSON.stringify(payload))
+
+func create_multiplayer_room() -> void:
+	if multiplayer_state != "connected":
+		connect_multiplayer()
+		multiplayer_error = "השרת מתעורר, נסו שוב בעוד כמה שניות" if ui_language == "he" else "Server is waking up, try again shortly"
+		return
+	multiplayer_local_animal = player_animal
+	multiplayer_local_ring_color = player_ring_color
+	send_multiplayer({"type":"create_room", "name":profile_name, "animal":player_animal, "ringColor":player_ring_color})
+
+func join_multiplayer_room() -> void:
+	var code := room_code_input.text.strip_edges().to_upper()
+	if code.length() != 6:
+		multiplayer_error = "הכניסו קוד חדר בן 6 תווים" if ui_language == "he" else "Enter a 6-character room code"
+		return
+	if multiplayer_state != "connected":
+		connect_multiplayer()
+		multiplayer_error = "השרת מתעורר, נסו שוב בעוד כמה שניות" if ui_language == "he" else "Server is waking up, try again shortly"
+		return
+	multiplayer_local_animal = player_animal
+	multiplayer_local_ring_color = player_ring_color
+	send_multiplayer({"type":"join_room", "roomCode":code, "name":profile_name, "animal":player_animal, "ringColor":player_ring_color})
+
+func toggle_multiplayer_ready() -> void:
+	multiplayer_ready = not multiplayer_ready
+	send_multiplayer({"type":"ready", "ready":multiplayer_ready})
+
+func leave_multiplayer_room() -> void:
+	if multiplayer_room_code != "":
+		send_multiplayer({"type":"leave_room"})
+	multiplayer_room_code = ""
+	multiplayer_players.clear()
+	multiplayer_slot = -1
+	multiplayer_ready = false
+	if multiplayer_local_animal >= 0:
+		player_animal = multiplayer_local_animal
+		player_ring_color = multiplayer_local_ring_color
+		rebuild_team_piece_textures()
+	multiplayer_local_animal = -1
+	multiplayer_local_ring_color = -1
+
+func handle_multiplayer_message(payload: Dictionary) -> void:
+	match str(payload.get("type", "")):
+		"connected":
+			multiplayer_state = "connected"
+			multiplayer_error = ""
+		"joined":
+			multiplayer_room_code = str(payload.get("roomCode", ""))
+			multiplayer_slot = int(payload.get("slot", -1))
+			multiplayer_ready = false
+		"room_state":
+			multiplayer_players = payload.get("players", [])
+			turn = int(payload.get("turn", 0))
+			if multiplayer_players.size() > 0:
+				var first_player: Dictionary = multiplayer_players[0]
+				player_animal = int(first_player.get("animal", player_animal))
+				player_ring_color = int(first_player.get("ringColor", player_ring_color))
+			if multiplayer_players.size() > 1:
+				var second_player: Dictionary = multiplayer_players[1]
+				ai_animal = int(second_player.get("animal", ai_animal))
+				ai_ring_color = int(second_player.get("ringColor", ai_ring_color))
+			rebuild_team_piece_textures()
+		"match_started":
+			turn = int(payload.get("turn", 0))
+			game_mode = "online"
+			app_screen = APP_GAME
+			new_game()
+			turn = int(payload.get("turn", 0))
+			status = "התור שלכם" if turn == multiplayer_slot and ui_language == "he" else ("תור היריב" if ui_language == "he" else ("Your turn" if turn == multiplayer_slot else "Opponent's turn"))
+		"shot":
+			var ball_index := int(payload.get("ballIndex", -1))
+			if ball_index >= 0 and ball_index < balls.size() and balls[ball_index].alive:
+				var pull := Vector2(float(payload.get("pullX", 0.0)), float(payload.get("pullY", 0.0)))
+				var strength := float(payload.get("strength", 0.0))
+				if pull.length_squared() > 0.0:
+					balls[ball_index].v = pull.normalized() * (strength * 0.078)
+		"turn":
+			turn = int(payload.get("turn", 0))
+			status = "התור שלכם" if turn == multiplayer_slot and ui_language == "he" else ("תור היריב" if ui_language == "he" else ("Your turn" if turn == multiplayer_slot else "Opponent's turn"))
+		"opponent_left":
+			app_screen = APP_FRIEND
+			multiplayer_ready = false
+			multiplayer_error = "היריב יצא מהחדר" if ui_language == "he" else "Opponent left the room"
+		"error":
+			multiplayer_error = str(payload.get("message", "Server error"))
+	queue_redraw()
+
 func start_selected_mode(mode: String) -> void:
 	game_mode = mode
 	customizer_open = false
@@ -2374,13 +2552,16 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			app_screen = APP_ARENA
 			return
 		if home_mode_rect(1, viewport_size).has_point(screen_pos):
-			show_menu_notice("PRIVATE FRIEND MATCH - TWO DEVICES - COMING SOON")
+			app_screen = APP_FRIEND
+			connect_multiplayer()
 			return
 		if home_mode_rect(2, viewport_size).has_point(screen_pos):
 			start_selected_mode("computer")
 			return
 	else:
 		if frontend_back_rect(viewport_size).has_point(screen_pos):
+			if app_screen == APP_FRIEND:
+				leave_multiplayer_room()
 			app_screen = APP_HOME
 			return
 		if app_screen == APP_PROFILE:
@@ -2414,6 +2595,17 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					player_ring_color = i
 					rebuild_team_piece_textures()
 					return
+		elif app_screen == APP_FRIEND:
+			if multiplayer_room_code.is_empty():
+				if friend_create_rect(viewport_size).has_point(screen_pos):
+					create_multiplayer_room()
+					return
+				if friend_join_rect(viewport_size).has_point(screen_pos):
+					join_multiplayer_room()
+					return
+			elif friend_ready_rect(viewport_size).has_point(screen_pos):
+				toggle_multiplayer_ready()
+				return
 
 func draw_menu_background(viewport_size: Vector2) -> void:
 	var overlay := Color(0.015, 0.055, 0.11, 0.62)
@@ -2490,10 +2682,56 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		if lobby_background_texture != null:
 			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_player_profile_screen(viewport_size)
+	elif app_screen == APP_FRIEND:
+		if lobby_background_texture != null:
+			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_friend_screen(viewport_size)
 	if menu_notice_time > 0.0:
 		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
 		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
 		draw_string(ui_font, toast.position + Vector2(0.0, 29.0), menu_notice, HORIZONTAL_ALIGNMENT_CENTER, toast.size.x, 14, Color("f6d365"))
+
+func draw_friend_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.05, 0.10, 0.66))
+	draw_frontend_header(viewport_size, "משחק מול חבר" if ui_language == "he" else "PLAY A FRIEND", "צרו חדר או הצטרפו באמצעות קוד" if ui_language == "he" else "Create a room or join with a code")
+	var panel := Rect2(Vector2(175.0, 125.0) * unit, Vector2(930.0, 535.0) * unit)
+	draw_style_box(make_box(Color(0.025, 0.09, 0.16, 0.95), 28.0 * unit), panel)
+	var connection_text := "מחובר לשרת" if multiplayer_state == "connected" else ("מתחבר לשרת..." if multiplayer_state == "connecting" else "השרת לא מחובר")
+	if ui_language != "he":
+		connection_text = "Connected" if multiplayer_state == "connected" else ("Connecting..." if multiplayer_state == "connecting" else "Disconnected")
+	var connection_color := Color("51d995") if multiplayer_state == "connected" else Color("ffd05a")
+	draw_circle(panel.position + Vector2(panel.size.x * 0.5 - 75.0 * unit, 48.0 * unit), 8.0 * unit, connection_color)
+	draw_string(ui_font, panel.position + Vector2(0.0, 55.0) * unit, connection_text, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(17.0 * unit), Color.WHITE)
+	if multiplayer_room_code.is_empty():
+		var create_rect := friend_create_rect(viewport_size)
+		draw_style_box(make_box(Color("7655df"), 18.0 * unit), create_rect)
+		draw_string(ui_font, create_rect.position + Vector2(0.0, 50.0) * unit, "יצירת חדר חדש" if ui_language == "he" else "CREATE ROOM", HORIZONTAL_ALIGNMENT_CENTER, create_rect.size.x, int(23.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(0.0, 222.0 * unit), "או" if ui_language == "he" else "OR", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(19.0 * unit), Color("a9cde2"))
+		draw_string(ui_font, Vector2(700.0, 245.0) * unit, "קוד החדר" if ui_language == "he" else "ROOM CODE", HORIZONTAL_ALIGNMENT_CENTER, 330.0 * unit, int(16.0 * unit), Color("d7f6ff"))
+		var join_rect := friend_join_rect(viewport_size)
+		draw_style_box(make_box(Color("ff7b43"), 18.0 * unit), join_rect)
+		draw_string(ui_font, join_rect.position + Vector2(0.0, 45.0) * unit, "הצטרפות לחדר" if ui_language == "he" else "JOIN ROOM", HORIZONTAL_ALIGNMENT_CENTER, join_rect.size.x, int(22.0 * unit), Color.WHITE)
+	else:
+		draw_string(ui_font, panel.position + Vector2(0.0, 125.0) * unit, "קוד החדר" if ui_language == "he" else "ROOM CODE", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(18.0 * unit), Color("a9cde2"))
+		draw_string(ui_font, panel.position + Vector2(0.0, 190.0) * unit, multiplayer_room_code, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(48.0 * unit), Color("ffe25d"))
+		draw_string(ui_font, panel.position + Vector2(0.0, 235.0) * unit, "שלחו את הקוד לחבר במכשיר השני" if ui_language == "he" else "Send this code to your friend", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(16.0 * unit), Color.WHITE)
+		for i in 2:
+			var player_rect := Rect2(panel.position + Vector2((100.0 + i * 470.0) * unit, 275.0 * unit), Vector2(360.0, 82.0) * unit)
+			draw_style_box(make_box(Color("1d405b"), 17.0 * unit), player_rect)
+			var player_label := "ממתין לשחקן..." if ui_language == "he" else "Waiting for player..."
+			var ready_label := ""
+			if i < multiplayer_players.size():
+				var player_data: Dictionary = multiplayer_players[i]
+				player_label = str(player_data.get("name", "Player"))
+				ready_label = ("מוכן" if ui_language == "he" else "READY") if bool(player_data.get("ready", false)) else ("לא מוכן" if ui_language == "he" else "NOT READY")
+			draw_string(ui_font, player_rect.position + Vector2(18.0, 36.0) * unit, player_label, HORIZONTAL_ALIGNMENT_LEFT, player_rect.size.x - 36.0 * unit, int(19.0 * unit), Color.WHITE)
+			draw_string(ui_font, player_rect.position + Vector2(18.0, 63.0) * unit, ready_label, HORIZONTAL_ALIGNMENT_LEFT, player_rect.size.x - 36.0 * unit, int(13.0 * unit), Color("51d995") if ready_label.contains("מוכן") or ready_label == "READY" else Color("a9cde2"))
+		var ready_rect := friend_ready_rect(viewport_size)
+		draw_style_box(make_box(Color("35b96f") if not multiplayer_ready else Color("d49b2f"), 18.0 * unit), ready_rect)
+		draw_string(ui_font, ready_rect.position + Vector2(0.0, 45.0) * unit, ("ביטול מוכנות" if multiplayer_ready else "אני מוכן") if ui_language == "he" else ("NOT READY" if multiplayer_ready else "I'M READY"), HORIZONTAL_ALIGNMENT_CENTER, ready_rect.size.x, int(22.0 * unit), Color.WHITE)
+	if multiplayer_error != "":
+		draw_string(ui_font, panel.position + Vector2(35.0, panel.size.y - 25.0) * unit, multiplayer_error, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 70.0 * unit, int(15.0 * unit), Color("ff8c7a"))
 
 func draw_arena_preview(preview: Rect2, arena_index: int, unit: float) -> void:
 	if arena_index == 0:
