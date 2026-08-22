@@ -71,7 +71,7 @@ var zoopaloola_logo_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var full_body_animal_textures: Array[Texture2D] = []
-var zebra_lifebuoy_hero_texture: Texture2D
+var lifebuoy_hero_textures: Array = []
 var animal_ring_masks: Array[Texture2D] = []
 var team_piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
@@ -173,7 +173,6 @@ func _ready() -> void:
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
-	zebra_lifebuoy_hero_texture = load("res://assets/ui/full_body/zebra-lifebuoy-v2.png") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
@@ -182,6 +181,10 @@ func _ready() -> void:
 		animal_textures.append(load("res://assets/animal_pieces/%s.png" % animal_file))
 		animal_ring_masks.append(load("res://assets/animal_pieces/%s-ring-mask.png" % animal_file))
 		full_body_animal_textures.append(load("res://assets/ui/full_body/%s.webp" % animal_file))
+		var hero_colors: Array[Texture2D] = []
+		for ring_name in RING_COLOR_NAMES:
+			hero_colors.append(load("res://assets/ui/full_body/lifebuoy/%s-%s.png" % [animal_file, ring_name.to_lower()]) as Texture2D)
+		lifebuoy_hero_textures.append(hero_colors)
 	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
@@ -2371,12 +2374,16 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
 	var hand_color: Color = HERO_HAND_COLORS[clampi(player_animal, 0, HERO_HAND_COLORS.size() - 1)]
 	draw_circle(character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.91), 65.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
-	var use_integrated_zebra_hero := player_animal == 1 and player_ring_color == 3 and zebra_lifebuoy_hero_texture != null
-	if use_integrated_zebra_hero:
+	var integrated_hero: Texture2D = null
+	if player_animal >= 0 and player_animal < lifebuoy_hero_textures.size():
+		var hero_colors: Array = lifebuoy_hero_textures[player_animal]
+		if player_ring_color >= 0 and player_ring_color < hero_colors.size():
+			integrated_hero = hero_colors[player_ring_color] as Texture2D
+	if integrated_hero != null:
 		# This sprite contains the real pose: both arms reach the tube and both
-		# hands curl over it. It replaces the old detached code-drawn circles.
+		# hands curl over it. Every animal and ring color has a dedicated asset.
 		draw_set_transform(animated_center, 0.0, Vector2.ONE * breathe)
-		draw_texture_rect(zebra_lifebuoy_hero_texture, Rect2(-hero_size * 0.5, hero_size), false)
+		draw_texture_rect(integrated_hero, Rect2(-hero_size * 0.5, hero_size), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	else:
 		# Back half of the buoy sits behind the torso.
