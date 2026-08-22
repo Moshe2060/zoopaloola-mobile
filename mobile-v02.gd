@@ -65,6 +65,7 @@ const APP_PROFILE := 2
 const APP_SHOP := 3
 const APP_GAME := 4
 const APP_ARENA := 5
+const APP_PLAYER_PROFILE := 6
 var board_texture: Texture2D
 var lobby_background_texture: Texture2D
 var loading_team_texture: Texture2D
@@ -148,6 +149,14 @@ var game_mode := "computer"
 var profile_name := "PLAYER 1"
 var player_coins := 1250
 var selected_arena := 0
+var player_level := 1
+var player_xp := 100
+var player_next_level_xp := 500
+var player_wins := 12
+var player_losses := 4
+var player_best_streak := 5
+var player_current_streak := 3
+var player_world_rank := 6394
 var menu_notice := ""
 var menu_notice_time := 0.0
 
@@ -2207,6 +2216,14 @@ func arena_play_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2((viewport_size.x - 290.0 * unit) * 0.5, viewport_size.y - 78.0 * unit), Vector2(290.0, 58.0) * unit)
 
+func player_profile_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((62.0 + float(index) * 62.0) * unit, 526.0 * unit), Vector2(54.0, 62.0) * unit)
+
+func player_profile_color_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((70.0 + float(index) * 60.0) * unit, 614.0 * unit), Vector2(44.0, 44.0) * unit)
+
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
@@ -2270,7 +2287,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			app_screen = APP_PROFILE
 			return
 		if home_profile_rect(viewport_size).has_point(screen_pos):
-			app_screen = APP_PROFILE
+			app_screen = APP_PLAYER_PROFILE
 			return
 		if home_settings_rect(viewport_size).has_point(screen_pos):
 			show_menu_notice("SETTINGS PANEL - COMING NEXT")
@@ -2318,6 +2335,17 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					return
 			if arena_play_rect(viewport_size).has_point(screen_pos):
 				show_menu_notice("ONLINE MATCHMAKING FOR THIS ARENA - COMING SOON")
+		elif app_screen == APP_PLAYER_PROFILE:
+			for i in ANIMAL_NAMES.size():
+				if player_profile_animal_rect(i, viewport_size).has_point(screen_pos):
+					player_animal = i
+					rebuild_team_piece_textures()
+					return
+			for i in RING_COLOR_NAMES.size():
+				if player_profile_color_rect(i, viewport_size).has_point(screen_pos):
+					player_ring_color = i
+					rebuild_team_piece_textures()
+					return
 
 func draw_menu_background(viewport_size: Vector2) -> void:
 	var overlay := Color(0.015, 0.055, 0.11, 0.62)
@@ -2390,6 +2418,10 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		if lobby_background_texture != null:
 			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_arena_screen(viewport_size)
+	elif app_screen == APP_PLAYER_PROFILE:
+		if lobby_background_texture != null:
+			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_player_profile_screen(viewport_size)
 	if menu_notice_time > 0.0:
 		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
 		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
@@ -2464,6 +2496,84 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.90), 18.0 * unit), play.grow(5.0 * unit))
 	draw_style_box(make_box(Color("6fda18"), 16.0 * unit), play)
 	draw_string(ThemeDB.fallback_font, play.position + Vector2(0.0, 38.0) * unit, "FIND ONLINE MATCH", HORIZONTAL_ALIGNMENT_CENTER, play.size.x, int(20.0 * unit), Color.WHITE)
+
+func draw_profile_stat_card(rect: Rect2, label: String, value: String, accent: Color, unit: float) -> void:
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 17.0 * unit), rect.grow(3.0 * unit))
+	draw_style_box(make_box(Color("f4f1df"), 15.0 * unit), rect)
+	draw_circle(rect.position + Vector2(28.0 * unit, rect.size.y * 0.50), 14.0 * unit, accent)
+	draw_string(ThemeDB.fallback_font, rect.position + Vector2(53.0, 30.0) * unit, label, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 65.0 * unit, int(12.0 * unit), Color("607080"))
+	draw_string(ThemeDB.fallback_font, rect.position + Vector2(53.0, 62.0) * unit, value, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 65.0 * unit, int(24.0 * unit), Color("173249"))
+
+func draw_player_profile_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.48))
+	draw_frontend_header(viewport_size, "PLAYER PROFILE", "Your character, favorite color and career statistics")
+	var hero_panel := Rect2(Vector2(38.0, 102.0) * unit, Vector2(410.0, 570.0) * unit)
+	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.88), 27.0 * unit), hero_panel.grow(5.0 * unit))
+	draw_style_box(make_box(Color("48c4d1"), 24.0 * unit), hero_panel)
+	var glow_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 178.0 * unit)
+	draw_circle(glow_center, 145.0 * unit, Color(0.82, 0.98, 1.0, 0.28))
+	var podium_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 328.0 * unit)
+	draw_wood_podium(podium_center, unit * 0.66, false)
+	var hero_texture: Texture2D = null
+	if player_animal < lifebuoy_hero_textures.size():
+		var hero_colors: Array = lifebuoy_hero_textures[player_animal]
+		if player_ring_color < hero_colors.size():
+			hero_texture = hero_colors[player_ring_color] as Texture2D
+	if hero_texture != null:
+		var hero_size := Vector2(220.0, 286.0) * unit
+		var hero_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 176.0 * unit)
+		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
+	draw_string(ThemeDB.fallback_font, hero_panel.position + Vector2(0.0, 382.0) * unit, "MAIN CHARACTER", HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x, int(12.0 * unit), Color("d8f8ff"))
+	draw_string(ThemeDB.fallback_font, hero_panel.position + Vector2(0.0, 411.0) * unit, ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x, int(22.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, hero_panel.position + Vector2(22.0, 451.0) * unit, "CHOOSE YOUR MAIN ANIMAL", HORIZONTAL_ALIGNMENT_LEFT, hero_panel.size.x - 44.0 * unit, int(12.0 * unit), Color("173249"))
+	for i in ANIMAL_NAMES.size():
+		var animal_rect := player_profile_animal_rect(i, viewport_size)
+		var animal_selected := i == player_animal
+		draw_style_box(make_box(Color("ffe25d") if animal_selected else Color("244d70"), 13.0 * unit), animal_rect.grow((4.0 if animal_selected else 2.0) * unit))
+		draw_style_box(make_box(Color("e9f9f4"), 11.0 * unit), animal_rect)
+		if i < full_body_animal_textures.size() and full_body_animal_textures[i] != null:
+			draw_texture_rect(full_body_animal_textures[i], animal_rect.grow(-5.0 * unit), false)
+	draw_string(ThemeDB.fallback_font, hero_panel.position + Vector2(22.0, 506.0) * unit, "FAVORITE LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, hero_panel.size.x - 44.0 * unit, int(12.0 * unit), Color("173249"))
+	for i in RING_COLORS.size():
+		var color_rect := player_profile_color_rect(i, viewport_size)
+		var color_center := color_rect.get_center()
+		if i == player_ring_color:
+			draw_circle(color_center, 25.0 * unit, Color.WHITE)
+			draw_circle(color_center, 21.0 * unit, Color("ffe25d"))
+		draw_circle(color_center, 17.0 * unit, RING_COLORS[i])
+
+	var info_panel := Rect2(Vector2(474.0, 102.0) * unit, Vector2(768.0, 570.0) * unit)
+	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.92), 27.0 * unit), info_panel.grow(5.0 * unit))
+	draw_style_box(make_box(Color("eaf8f1"), 24.0 * unit), info_panel)
+	draw_circle(info_panel.position + Vector2(66.0, 69.0) * unit, 45.0 * unit, RING_COLORS[player_ring_color])
+	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
+		draw_texture_rect(team_piece_textures[0], Rect2(info_panel.position + Vector2(27.0, 30.0) * unit, Vector2(78.0, 78.0) * unit), false)
+	draw_string(ThemeDB.fallback_font, info_panel.position + Vector2(130.0, 58.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, 390.0 * unit, int(30.0 * unit), Color("173249"))
+	draw_string(ThemeDB.fallback_font, info_panel.position + Vector2(130.0, 87.0) * unit, "LEVEL " + str(player_level) + "  •  ROOKIE EXPLORER", HORIZONTAL_ALIGNMENT_LEFT, 390.0 * unit, int(13.0 * unit), Color("2982a6"))
+	var coin_box := Rect2(info_panel.position + Vector2(558.0, 27.0) * unit, Vector2(176.0, 74.0) * unit)
+	draw_style_box(make_box(Color("253e67"), 17.0 * unit), coin_box)
+	draw_circle(coin_box.position + Vector2(35.0, 37.0) * unit, 17.0 * unit, Color("ffc83d"))
+	draw_string(ThemeDB.fallback_font, coin_box.position + Vector2(65.0, 47.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 95.0 * unit, int(22.0 * unit), Color.WHITE)
+	var xp_rect := Rect2(info_panel.position + Vector2(130.0, 104.0) * unit, Vector2(400.0, 20.0) * unit)
+	draw_style_box(make_box(Color("cadbd5"), 9.0 * unit), xp_rect)
+	var xp_ratio := clampf(float(player_xp) / float(maxi(1, player_next_level_xp)), 0.0, 1.0)
+	draw_style_box(make_box(Color("49c984"), 9.0 * unit), Rect2(xp_rect.position, Vector2(xp_rect.size.x * xp_ratio, xp_rect.size.y)))
+	draw_string(ThemeDB.fallback_font, info_panel.position + Vector2(545.0, 121.0) * unit, str(player_xp) + " / " + str(player_next_level_xp) + " XP", HORIZONTAL_ALIGNMENT_LEFT, 170.0 * unit, int(11.0 * unit), Color("526b72"))
+	draw_string(ThemeDB.fallback_font, info_panel.position + Vector2(30.0, 165.0) * unit, "CAREER STATISTICS", HORIZONTAL_ALIGNMENT_LEFT, info_panel.size.x - 60.0 * unit, int(20.0 * unit), Color("173249"))
+	var total_matches := player_wins + player_losses
+	var win_rate := 0
+	if total_matches > 0:
+		win_rate = int(round(float(player_wins) * 100.0 / float(total_matches)))
+	var labels := ["MATCHES", "WINS", "LOSSES", "WIN RATE", "BEST STREAK", "WORLD RANK"]
+	var values := [str(total_matches), str(player_wins), str(player_losses), str(win_rate) + "%", str(player_best_streak), "#" + str(player_world_rank)]
+	var accents := [Color("42b8e8"), Color("49c984"), Color("ef6b65"), Color("ffc83d"), Color("9d59e8"), Color("ff8b3d")]
+	for i in 6:
+		var column := i % 2
+		var row := i / 2
+		var stat_rect := Rect2(info_panel.position + Vector2(30.0 + float(column) * 354.0, 190.0 + float(row) * 112.0) * unit, Vector2(330.0, 88.0) * unit)
+		draw_profile_stat_card(stat_rect, labels[i], values[i], accents[i], unit)
+	draw_string(ThemeDB.fallback_font, info_panel.position + Vector2(30.0, 548.0) * unit, "CURRENT WIN STREAK: " + str(player_current_streak), HORIZONTAL_ALIGNMENT_LEFT, info_panel.size.x - 60.0 * unit, int(14.0 * unit), Color("526b72"))
 
 func draw_home_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
