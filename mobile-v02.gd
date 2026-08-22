@@ -2212,6 +2212,22 @@ func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2(viewport_size.x * 0.29, viewport_size.y * 0.16), Vector2(280.0, 410.0) * unit)
 
+func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var card_size := Vector2(142.0, 142.0) * unit
+	var gap := 14.0 * unit
+	var total_width := card_size.x * 6.0 + gap * 5.0
+	var start_x := (viewport_size.x - total_width) * 0.5
+	return Rect2(Vector2(start_x + float(index) * (card_size.x + gap), viewport_size.y - 178.0 * unit), card_size)
+
+func character_ring_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var size := Vector2(58.0, 58.0) * unit
+	var gap := 15.0 * unit
+	var total_width := size.x * 6.0 + gap * 5.0
+	var start_x := viewport_size.x * 0.63 - total_width * 0.5
+	return Rect2(Vector2(start_x + float(index) * (size.x + gap), 385.0 * unit), size)
+
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
 
@@ -2269,15 +2285,16 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			app_screen = APP_HOME
 			return
 		if app_screen == APP_PROFILE:
-			var panel := Rect2(viewport_size.x * 0.18, viewport_size.y * 0.20, viewport_size.x * 0.64, viewport_size.y * 0.66)
-			var first_button := Rect2(panel.position + Vector2(panel.size.x * 0.89 - 58.0, 157.0), Vector2(58.0, 54.0))
-			var second_button := Rect2(panel.position + Vector2(panel.size.x * 0.89 - 58.0, 249.0), Vector2(58.0, 54.0))
-			if first_button.has_point(screen_pos):
-				player_animal = (player_animal + 1) % ANIMAL_NAMES.size()
-				rebuild_team_piece_textures()
-			elif second_button.has_point(screen_pos):
-				player_ring_color = (player_ring_color + 1) % RING_COLOR_NAMES.size()
-				rebuild_team_piece_textures()
+			for i in ANIMAL_NAMES.size():
+				if character_card_rect(i, viewport_size).has_point(screen_pos):
+					player_animal = i
+					rebuild_team_piece_textures()
+					return
+			for i in RING_COLOR_NAMES.size():
+				if character_ring_rect(i, viewport_size).has_point(screen_pos):
+					player_ring_color = i
+					rebuild_team_piece_textures()
+					return
 		elif app_screen == APP_SHOP:
 			show_menu_notice("THE FIRST SHOP COLLECTION IS COMING SOON")
 
@@ -2373,7 +2390,8 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var ring_width := 40.0 * unit
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
 	var hand_color: Color = HERO_HAND_COLORS[clampi(player_animal, 0, HERO_HAND_COLORS.size() - 1)]
-	draw_circle(character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.91), 65.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
+	var podium_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.94)
+	draw_wood_podium(podium_center, unit, true)
 	var integrated_hero: Texture2D = null
 	if player_animal >= 0 and player_animal < lifebuoy_hero_textures.size():
 		var hero_colors: Array = lifebuoy_hero_textures[player_animal]
@@ -2489,6 +2507,40 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 28.0) * unit, nav_icons[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(10.0 * unit), Color("fff0a6"))
 		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 52.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(12.0 * unit), Color.WHITE)
 
+func draw_wood_podium(center: Vector2, scale: float, show_side_steps: bool) -> void:
+	# Chunky timber blocks make the selected animal feel like the current champion.
+	var shadow_width := 300.0 if show_side_steps else 240.0
+	draw_set_transform(center, 0.0, Vector2(1.0, 0.34))
+	draw_circle(Vector2(0.0, 22.0 * scale), shadow_width * 0.48 * scale, Color(0.01, 0.05, 0.08, 0.32))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_set_transform(center, 0.0, Vector2.ONE)
+	var blocks: Array[Rect2] = []
+	if show_side_steps:
+		blocks = [
+			Rect2(Vector2(-148.0, -14.0) * scale, Vector2(94.0, 55.0) * scale),
+			Rect2(Vector2(54.0, -2.0) * scale, Vector2(94.0, 43.0) * scale),
+			Rect2(Vector2(-62.0, -48.0) * scale, Vector2(124.0, 89.0) * scale)
+		]
+	else:
+		blocks = [Rect2(Vector2(-100.0, -32.0) * scale, Vector2(200.0, 73.0) * scale)]
+	for block in blocks:
+		draw_style_box(make_box(Color("8a4b25"), 9.0 * scale), block)
+		var top := PackedVector2Array([
+			block.position,
+			block.position + Vector2(14.0, -11.0) * scale,
+			block.position + Vector2(block.size.x + 14.0 * scale, -11.0 * scale),
+			block.position + Vector2(block.size.x, 0.0)
+		])
+		draw_colored_polygon(top, Color("d3944d"))
+		for grain in 3:
+			var y := block.position.y + (18.0 + float(grain) * 13.0) * scale
+			draw_line(Vector2(block.position.x + 10.0 * scale, y), Vector2(block.end.x - 10.0 * scale, y + sin(float(grain)) * 3.0 * scale), Color(0.25, 0.10, 0.04, 0.34), 2.0 * scale, true)
+	var badge_center := Vector2(0.0, 2.0) * scale
+	draw_circle(badge_center, 23.0 * scale, Color("f7c943"))
+	draw_circle(badge_center, 17.0 * scale, Color("fff0a5"))
+	draw_string(ThemeDB.fallback_font, badge_center + Vector2(-18.0, 8.0) * scale, "1", HORIZONTAL_ALIGNMENT_CENTER, 36.0 * scale, int(23.0 * scale), Color("744018"))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func draw_home_character(animal_index: int, center: Vector2, size: float, phase: float, outfit_color: Color) -> void:
 	if animal_index < 0 or animal_index >= animal_textures.size() or animal_textures[animal_index] == null:
 		return
@@ -2525,26 +2577,56 @@ func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: Strin
 	draw_string(ThemeDB.fallback_font, Vector2(0.0, 78.0), subtitle, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 14, Color(0.78, 0.91, 0.98))
 
 func draw_profile_screen(viewport_size: Vector2) -> void:
-	draw_frontend_header(viewport_size, "PLAYER PROFILE", "Build your permanent Zoopaloola identity")
-	var panel := Rect2(viewport_size.x * 0.18, viewport_size.y * 0.20, viewport_size.x * 0.64, viewport_size.y * 0.66)
-	draw_style_box(make_box(Color(0.035, 0.075, 0.13, 0.96), 24.0), panel)
-	var avatar_center := panel.position + Vector2(panel.size.x * 0.25, panel.size.y * 0.48)
-	draw_circle(avatar_center, 102.0, Color(RING_COLORS[player_ring_color], 0.16))
-	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
-		draw_texture_rect(team_piece_textures[0], Rect2(avatar_center - Vector2.ONE * 82.0, Vector2.ONE * 164.0), false)
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(panel.size.x * 0.44, 74.0), profile_name, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x * 0.48, 28, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(panel.size.x * 0.44, 112.0), "ROOKIE EXPLORER  •  LEVEL 1", HORIZONTAL_ALIGNMENT_LEFT, panel.size.x * 0.48, 14, Color("7ee7ff"))
-	var labels := ["ANIMAL", "LIFEBUOY"]
-	var values := [ANIMAL_NAMES[player_animal], RING_COLOR_NAMES[player_ring_color]]
-	for i in 2:
-		var y := 142.0 + i * 92.0
-		draw_string(ThemeDB.fallback_font, panel.position + Vector2(panel.size.x * 0.44, y), labels[i], HORIZONTAL_ALIGNMENT_LEFT, 160.0, 13, Color(0.67, 0.78, 0.88))
-		var row := Rect2(panel.position + Vector2(panel.size.x * 0.44, y + 15.0), Vector2(panel.size.x * 0.45, 54.0))
-		draw_style_box(make_box(Color("17304a"), 13.0), row)
-		draw_string(ThemeDB.fallback_font, row.position + Vector2(18.0, 34.0), values[i], HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 78.0, 17, Color.WHITE)
-		draw_style_box(make_box(Color("7256d8"), 13.0), Rect2(row.end.x - 58.0, row.position.y, 58.0, 54.0))
-		draw_string(ThemeDB.fallback_font, Vector2(row.end.x - 58.0, row.position.y + 34.0), ">", HORIZONTAL_ALIGNMENT_CENTER, 58.0, 22, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, panel.position + Vector2(panel.size.x * 0.44, panel.size.y - 38.0), "More characters, rings and victory effects will unlock in the shop.", HORIZONTAL_ALIGNMENT_LEFT, panel.size.x * 0.50, 12, Color(0.67, 0.78, 0.88))
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_frontend_header(viewport_size, "CHOOSE YOUR CHARACTER", "Pick an animal and a lifebuoy color")
+	# Bright aqua showroom inspired by the sea surrounding the Zoopaloola table.
+	draw_rect(Rect2(0.0, 92.0 * unit, viewport_size.x, viewport_size.y - 92.0 * unit), Color(0.16, 0.72, 0.86, 0.20))
+	var display := Rect2(72.0 * unit, 106.0 * unit, 470.0 * unit, 405.0 * unit)
+	draw_style_box(make_box(Color(0.02, 0.10, 0.17, 0.78), 28.0 * unit), display.grow(5.0 * unit))
+	draw_style_box(make_box(Color("4fcbd5"), 25.0 * unit), display)
+	# A small wooden winner podium grounds the full-body hero.
+	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.86)
+	draw_wood_podium(podium_center, unit * 0.72, false)
+	var hero_size := Vector2(255.0, 330.0) * unit
+	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.48 + sin(menu_elapsed * 1.4) * 1.5 * unit)
+	var hero_texture: Texture2D = null
+	if player_animal < lifebuoy_hero_textures.size():
+		var colors: Array = lifebuoy_hero_textures[player_animal]
+		if player_ring_color < colors.size():
+			hero_texture = colors[player_ring_color] as Texture2D
+	if hero_texture != null:
+		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
+	draw_string(ThemeDB.fallback_font, display.position + Vector2(0.0, display.size.y - 18.0 * unit), ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, display.size.x, int(22.0 * unit), Color.WHITE)
+
+	var info := Rect2(575.0 * unit, 118.0 * unit, 630.0 * unit, 330.0 * unit)
+	draw_style_box(make_box(Color(0.025, 0.075, 0.14, 0.88), 24.0 * unit), info)
+	draw_string(ThemeDB.fallback_font, info.position + Vector2(28.0, 45.0) * unit, "YOUR ZOOPA", HORIZONTAL_ALIGNMENT_LEFT, info.size.x - 56.0 * unit, int(25.0 * unit), Color("ffe25d"))
+	draw_string(ThemeDB.fallback_font, info.position + Vector2(28.0, 75.0) * unit, "The selected character and ring will appear in every match.", HORIZONTAL_ALIGNMENT_LEFT, info.size.x - 56.0 * unit, int(12.0 * unit), Color("d7f6ff"))
+	draw_string(ThemeDB.fallback_font, info.position + Vector2(28.0, 124.0) * unit, "LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, info.size.x - 56.0 * unit, int(13.0 * unit), Color.WHITE)
+	for i in RING_COLOR_NAMES.size():
+		var ring_button := character_ring_rect(i, viewport_size)
+		if i == player_ring_color:
+			draw_circle(ring_button.get_center(), 33.0 * unit, Color("ffe25d"))
+		draw_circle(ring_button.get_center(), 25.0 * unit, RING_COLORS[i])
+		draw_circle(ring_button.get_center(), 11.0 * unit, Color("14324c"))
+		if i == player_ring_color:
+			draw_string(ThemeDB.fallback_font, ring_button.position + Vector2(0.0, 38.0) * unit, "✓", HORIZONTAL_ALIGNMENT_CENTER, ring_button.size.x, int(18.0 * unit), Color.WHITE)
+
+	draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y - 198.0 * unit), "CHOOSE AN ANIMAL", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color.WHITE)
+	for i in ANIMAL_NAMES.size():
+		var card := character_card_rect(i, viewport_size)
+		var selected_card := i == player_animal
+		draw_style_box(make_box(Color("ffe25d") if selected_card else Color(0.02, 0.08, 0.14, 0.90), 19.0 * unit), card.grow((5.0 if selected_card else 3.0) * unit))
+		draw_style_box(make_box(Color("35bfc8") if selected_card else Color("244b67"), 16.0 * unit), card)
+		var portrait := full_body_animal_textures[i]
+		if portrait != null:
+			var portrait_rect := Rect2(card.position + Vector2(27.0, 5.0) * unit, Vector2(88.0, 105.0) * unit)
+			draw_texture_rect(portrait, portrait_rect, false)
+		draw_rect(Rect2(card.position + Vector2(0.0, 108.0) * unit, Vector2(card.size.x, 34.0 * unit)), Color(0.01, 0.05, 0.10, 0.76))
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 132.0) * unit, ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(11.0 * unit), Color.WHITE)
+		if selected_card:
+			draw_circle(card.position + Vector2(card.size.x - 15.0 * unit, 15.0 * unit), 14.0 * unit, Color("ffe25d"))
+			draw_string(ThemeDB.fallback_font, card.position + Vector2(card.size.x - 29.0 * unit, 21.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 28.0 * unit, int(14.0 * unit), Color("173249"))
 
 func draw_shop_screen(viewport_size: Vector2) -> void:
 	draw_frontend_header(viewport_size, "ZOOPA SHOP", "Collect characters, lifebuoys and signature effects")
