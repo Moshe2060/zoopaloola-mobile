@@ -138,7 +138,7 @@ var table_wall_sizes: Array[float] = [1.0, 1.0, 1.0, 1.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
-var app_screen := APP_SPLASH
+var app_screen := APP_HOME
 var splash_elapsed := 0.0
 var menu_elapsed := 0.0
 var game_mode := "computer"
