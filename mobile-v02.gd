@@ -50,6 +50,9 @@ const WATER_FLOAT_TIME := 5.8
 const WATER_DRIFT_DELAY := 1.8
 const ANIMAL_NAMES := ["ELEPHANT", "ZEBRA", "MONKEY", "HIPPO", "RHINO", "GIRAFFE"]
 const ANIMAL_FILES := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe"]
+# The elephant artwork has about 8.6% transparent padding below its soles.
+# Compensate when grounding the large hero so every animal meets the stage.
+const HERO_GROUND_OFFSETS := [0.086, 0.0, 0.0, 0.0, 0.0, 0.0]
 const RING_COLOR_NAMES := ["RED", "ORANGE", "BLUE", "GREEN", "PURPLE", "TURQUOISE"]
 const RING_COLORS := [
 	Color("ef3340"), Color("ff8a00"), Color("1677ff"),
@@ -2587,7 +2590,8 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 			hero_texture = hero_colors[player_ring_color] as Texture2D
 	if hero_texture != null:
 		var hero_size := Vector2(220.0, 286.0) * unit
-		var hero_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 176.0 * unit)
+		var ground_offset := hero_size.y * HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)]
+		var hero_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 186.0 * unit + ground_offset)
 		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
 	draw_string(ui_font, hero_panel.position + Vector2(0.0, 382.0) * unit, ui_text("main_character"), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x, int(12.0 * unit), Color("d8f8ff"))
 	draw_string(ui_font, hero_panel.position + Vector2(0.0, 411.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x, int(22.0 * unit), Color.WHITE)
@@ -2652,8 +2656,9 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var idle_phase := menu_elapsed * 1.55
 	# Keep the soles slightly inside the visible top plane so the idle motion
 	# never makes the animal appear to float above the wooden stage.
-	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.425)
 	var hero_size := character_area.size
+	var ground_offset := hero_size.y * HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)]
+	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.425 + 10.0 * unit + ground_offset)
 	var breathe := 1.0 + sin(idle_phase) * 0.006
 	# Keep only a tiny idle movement so the feet stay planted on the stage.
 	var gentle_float := sin(idle_phase * 0.72) * 0.45 * unit
@@ -2837,7 +2842,8 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.83)
 	draw_wood_podium(podium_center, unit * 0.72, false)
 	var hero_size := Vector2(270.0, 350.0) * unit
-	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.405 + sin(menu_elapsed * 1.4) * 1.5 * unit)
+	var ground_offset := hero_size.y * HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)]
+	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.405 + 10.0 * unit + ground_offset + sin(menu_elapsed * 1.4) * 0.45 * unit)
 	var hero_texture: Texture2D = null
 	if player_animal < lifebuoy_hero_textures.size():
 		var colors: Array = lifebuoy_hero_textures[player_animal]
