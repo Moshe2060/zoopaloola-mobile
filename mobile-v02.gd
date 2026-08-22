@@ -67,6 +67,7 @@ var zoopaloola_logo_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var full_body_animal_textures: Array[Texture2D] = []
+var monkey_idle_textures: Array[Texture2D] = []
 var animal_ring_masks: Array[Texture2D] = []
 var team_piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
@@ -176,6 +177,8 @@ func _ready() -> void:
 		animal_textures.append(load("res://assets/animal_pieces/%s.png" % animal_file))
 		animal_ring_masks.append(load("res://assets/animal_pieces/%s-ring-mask.png" % animal_file))
 		full_body_animal_textures.append(load("res://assets/ui/full_body/%s.webp" % animal_file))
+	for frame_index in 8:
+		monkey_idle_textures.append(load("res://assets/ui/animated/monkey/frame-%d.webp" % frame_index))
 	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
@@ -2353,17 +2356,29 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 
 	# The selected animal is a separate interactive layer, never baked into the background.
 	var character_area := home_character_rect(viewport_size)
-	var character_bob := sin(menu_elapsed * 2.1) * 7.0 * unit
+	var idle_phase := menu_elapsed * 2.1
+	var character_bob := sin(idle_phase) * 4.0 * unit
 	var feet_center := character_area.position + Vector2(character_area.size.x * 0.48, character_area.size.y * 0.91)
 	draw_circle(feet_center, 60.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
 	# The buoy is its own selectable item and rests against the hero instead of being forced into a hand pose.
 	var ring_center := character_area.position + Vector2(character_area.size.x * 0.78, character_area.size.y * 0.78 + character_bob)
 	var ring_radius := 53.0 * unit
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
-	if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
-		draw_texture_rect(full_body_animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
-	elif player_animal >= 0 and player_animal < animal_textures.size() and animal_textures[player_animal] != null:
-		draw_texture_rect(animal_textures[player_animal], Rect2(character_area.position + Vector2(0.0, character_bob), character_area.size), false)
+	var hero_texture: Texture2D = null
+	if player_animal == 2 and not monkey_idle_textures.is_empty():
+		var idle_frame := int(floor(menu_elapsed * 3.2)) % monkey_idle_textures.size()
+		hero_texture = monkey_idle_textures[idle_frame]
+	elif player_animal >= 0 and player_animal < full_body_animal_textures.size():
+		hero_texture = full_body_animal_textures[player_animal]
+	elif player_animal >= 0 and player_animal < animal_textures.size():
+		hero_texture = animal_textures[player_animal]
+	if hero_texture != null:
+		# Every hero breathes and shifts weight; characters with frame sets also blink and move their face/limbs.
+		var breath_scale := Vector2(1.0 + sin(idle_phase) * 0.012, 1.0 + sin(idle_phase) * 0.020)
+		var body_sway := sin(menu_elapsed * 1.35) * 0.018
+		draw_set_transform(character_area.get_center(), body_sway, breath_scale)
+		draw_texture_rect(hero_texture, Rect2(-character_area.size * 0.5 + Vector2(0.0, character_bob), character_area.size), false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_circle(ring_center + Vector2(5.0, 7.0) * unit, ring_radius, Color(0.01, 0.05, 0.10, 0.30), false, 22.0 * unit, true)
 	draw_circle(ring_center, ring_radius, ring_color, false, 22.0 * unit, true)
 	for segment in 4:
