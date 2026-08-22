@@ -2381,7 +2381,8 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	# Full-body hero with the selected lifebuoy wrapped around its waist.
 	var character_area := home_character_rect(viewport_size)
 	var idle_phase := menu_elapsed * 1.55
-	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.49)
+	# Lift the animal so the soles meet the visible top plane of the wooden stage.
+	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.39)
 	var hero_size := character_area.size
 	var breathe := 1.0 + sin(idle_phase) * 0.006
 	var gentle_float := sin(idle_phase * 0.72) * 1.2 * unit
@@ -2509,7 +2510,7 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 
 func draw_wood_podium(center: Vector2, scale: float, show_side_steps: bool) -> void:
 	if wood_podium_texture != null:
-		var podium_size := Vector2(390.0, 180.0) * scale if show_side_steps else Vector2(315.0, 150.0) * scale
+		var podium_size := Vector2(440.0, 210.0) * scale if show_side_steps else Vector2(340.0, 165.0) * scale
 		# The usable standing surface is high in the source asset, so the image
 		# extends mostly below the supplied center point.
 		var podium_rect := Rect2(center - Vector2(podium_size.x * 0.5, podium_size.y * 0.37), podium_size)
@@ -2568,7 +2569,7 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.83)
 	draw_wood_podium(podium_center, unit * 0.72, false)
 	var hero_size := Vector2(270.0, 350.0) * unit
-	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.46 + sin(menu_elapsed * 1.4) * 1.5 * unit)
+	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.39 + sin(menu_elapsed * 1.4) * 1.5 * unit)
 	var hero_texture: Texture2D = null
 	if player_animal < lifebuoy_hero_textures.size():
 		var colors: Array = lifebuoy_hero_textures[player_animal]
