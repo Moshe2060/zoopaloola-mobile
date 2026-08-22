@@ -70,4 +70,11 @@ test("two players create, join, ready and relay a shot", async (context) => {
   const shot = await shotPromise;
   assert.equal(shot.ballIndex, 4);
   assert.equal(shot.playerSlot, 0);
+
+  const chatPromise = next(second, "chat");
+  first.send(JSON.stringify({ type: "chat", message: "Good luck!" }));
+  const chat = await chatPromise;
+  assert.equal(chat.playerSlot, 0);
+  assert.equal(chat.name, "One");
+  assert.equal(chat.message, "Good luck!");
 });

@@ -160,6 +160,19 @@ function handleMessage(socket, payload) {
     return;
   }
 
+  if (payload.type === "chat") {
+    if (room.status !== "playing") return;
+    const message = String(payload.message || "").trim().slice(0, 80);
+    if (!message) return;
+    broadcast(room, {
+      type: "chat",
+      playerSlot: player.slot,
+      name: player.name,
+      message
+    });
+    return;
+  }
+
   if (payload.type === "leave_room") leaveRoom(socket);
 }
 
