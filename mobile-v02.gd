@@ -71,6 +71,7 @@ var zoopaloola_logo_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var full_body_animal_textures: Array[Texture2D] = []
+var zebra_lifebuoy_hero_texture: Texture2D
 var animal_ring_masks: Array[Texture2D] = []
 var team_piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
@@ -172,6 +173,7 @@ func _ready() -> void:
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
+	zebra_lifebuoy_hero_texture = load("res://assets/ui/full_body/zebra-lifebuoy-v2.png") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
@@ -2369,30 +2371,38 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
 	var hand_color: Color = HERO_HAND_COLORS[clampi(player_animal, 0, HERO_HAND_COLORS.size() - 1)]
 	draw_circle(character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.91), 65.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
-	# Back half of the buoy sits behind the torso.
-	draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
-	draw_arc(Vector2.ZERO, ring_radius, PI, TAU, 32, ring_color, ring_width, true)
-	draw_arc(Vector2.ZERO, ring_radius, PI + 0.18, PI + 0.60, 10, Color("fff4dc"), ring_width, true)
-	draw_arc(Vector2.ZERO, ring_radius, TAU - 0.60, TAU - 0.18, 10, Color("fff4dc"), ring_width, true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
+	var use_integrated_zebra_hero := player_animal == 1 and player_ring_color == 3 and zebra_lifebuoy_hero_texture != null
+	if use_integrated_zebra_hero:
+		# This sprite contains the real pose: both arms reach the tube and both
+		# hands curl over it. It replaces the old detached code-drawn circles.
 		draw_set_transform(animated_center, 0.0, Vector2.ONE * breathe)
-		draw_texture_rect(full_body_animal_textures[player_animal], Rect2(-hero_size * 0.5, hero_size), false)
+		draw_texture_rect(zebra_lifebuoy_hero_texture, Rect2(-hero_size * 0.5, hero_size), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# Front half passes in front of the waist, making it clear the hero is inside the buoy.
-	draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
-	draw_arc(Vector2.ZERO, ring_radius, 0.0, PI, 32, ring_color, ring_width, true)
-	draw_arc(Vector2.ZERO, ring_radius, 0.18, 0.60, 10, Color("fff4dc"), ring_width, true)
-	draw_arc(Vector2.ZERO, ring_radius, PI - 0.60, PI - 0.18, 10, Color("fff4dc"), ring_width, true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# Two visible paws/hooves sit above the tube and clearly grip it on both sides.
-	for grip_side in [-1.0, 1.0]:
-		var grip_center := waist_center + Vector2(grip_side * ring_radius * 0.72, -ring_radius * 0.18)
-		draw_set_transform(grip_center, grip_side * 0.10, Vector2(0.82, 1.16))
-		draw_circle(Vector2.ZERO, 20.0 * unit, Color("182431"))
-		draw_circle(Vector2.ZERO, 15.5 * unit, hand_color)
-		draw_arc(Vector2(0.0, 2.0 * unit), 8.0 * unit, 0.18, PI - 0.18, 12, hand_color.lightened(0.24), 2.4 * unit, true)
+	else:
+		# Back half of the buoy sits behind the torso.
+		draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
+		draw_arc(Vector2.ZERO, ring_radius, PI, TAU, 32, ring_color, ring_width, true)
+		draw_arc(Vector2.ZERO, ring_radius, PI + 0.18, PI + 0.60, 10, Color("fff4dc"), ring_width, true)
+		draw_arc(Vector2.ZERO, ring_radius, TAU - 0.60, TAU - 0.18, 10, Color("fff4dc"), ring_width, true)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
+			draw_set_transform(animated_center, 0.0, Vector2.ONE * breathe)
+			draw_texture_rect(full_body_animal_textures[player_animal], Rect2(-hero_size * 0.5, hero_size), false)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# Front half passes in front of the waist, making it clear the hero is inside the buoy.
+		draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
+		draw_arc(Vector2.ZERO, ring_radius, 0.0, PI, 32, ring_color, ring_width, true)
+		draw_arc(Vector2.ZERO, ring_radius, 0.18, 0.60, 10, Color("fff4dc"), ring_width, true)
+		draw_arc(Vector2.ZERO, ring_radius, PI - 0.60, PI - 0.18, 10, Color("fff4dc"), ring_width, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# Fallback grip marks for combinations that do not yet have a dedicated pose.
+		for grip_side in [-1.0, 1.0]:
+			var grip_center := waist_center + Vector2(grip_side * ring_radius * 0.72, -ring_radius * 0.18)
+			draw_set_transform(grip_center, grip_side * 0.10, Vector2(0.82, 1.16))
+			draw_circle(Vector2.ZERO, 20.0 * unit, Color("182431"))
+			draw_circle(Vector2.ZERO, 15.5 * unit, hand_color)
+			draw_arc(Vector2(0.0, 2.0 * unit), 8.0 * unit, 0.18, PI - 0.18, 12, hand_color.lightened(0.24), 2.4 * unit, true)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var change_tag := Rect2(character_area.position + Vector2(42.0 * unit, character_area.size.y - 12.0 * unit), Vector2(206.0, 38.0) * unit)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 16.0), change_tag)
 	draw_string(ThemeDB.fallback_font, change_tag.position + Vector2(0.0, 24.0) * unit, "TAP TO CHANGE  •  " + ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, change_tag.size.x, int(11.0 * unit), Color.WHITE)
