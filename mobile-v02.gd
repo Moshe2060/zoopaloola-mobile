@@ -334,8 +334,8 @@ func _on_resize() -> void:
 	# source aspect ratio avoids stretching the stones or center circle.
 	# Balanced framing: enough clear water for the centered turn notice above,
 	# a slim visible water line below, and a large prominent board in between.
-	var top_margin := 54.0
-	var bottom_margin := 10.0
+	var top_margin := 46.0
+	var bottom_margin := 18.0
 	var play_position := Vector2(side_margin, top_margin)
 	var available := Vector2(
 		maxf(300.0, viewport_size.x - side_margin * 2.0),
