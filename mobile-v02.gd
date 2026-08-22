@@ -2548,7 +2548,7 @@ func draw_match_chat(viewport_size: Vector2) -> void:
 		var sender_slot := int(message.get("slot", -1))
 		var sender := str(message.get("name", ""))
 		var line := sender + ": " + str(message.get("message", ""))
-		var color := RING_COLORS[player_ring_color if sender_slot == 0 else ai_ring_color].lightened(0.35)
+		var color: Color = RING_COLORS[player_ring_color if sender_slot == 0 else ai_ring_color].lightened(0.35)
 		draw_string(ui_font, panel.position + Vector2(28.0, 92.0 + row * 38.0), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 56.0, 18, color)
 		row += 1
 	var send_rect := chat_send_rect(viewport_size)
