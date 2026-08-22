@@ -66,6 +66,7 @@ var loading_team_texture: Texture2D
 var zoopaloola_logo_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
+var full_body_animal_textures: Array[Texture2D] = []
 var animal_ring_masks: Array[Texture2D] = []
 var team_piece_textures: Array[Texture2D] = []
 var effect_textures: Array[Texture2D] = []
@@ -174,6 +175,7 @@ func _ready() -> void:
 	for animal_file in ANIMAL_FILES:
 		animal_textures.append(load("res://assets/animal_pieces/%s.png" % animal_file))
 		animal_ring_masks.append(load("res://assets/animal_pieces/%s-ring-mask.png" % animal_file))
+		full_body_animal_textures.append(load("res://assets/ui/full_body/%s.webp" % animal_file))
 	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
@@ -2349,19 +2351,35 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_rect(Rect2(0.0, 0.0, 205.0 * unit, viewport_size.y), Color(0.02, 0.06, 0.12, 0.36))
 	draw_rect(Rect2(viewport_size.x - 395.0 * unit, 92.0 * unit, 395.0 * unit, viewport_size.y - 92.0 * unit), Color(0.02, 0.06, 0.12, 0.18))
 
-	# The selected animal lives inside its selected lifebuoy, exactly like the game pieces.
+	# Full-body hero with the selected lifebuoy wrapped around its waist.
 	var character_area := home_character_rect(viewport_size)
 	var idle_phase := menu_elapsed * 1.55
 	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.49)
-	var hero_size := Vector2.ONE * 245.0 * unit
-	draw_circle(hero_center + Vector2(0.0, hero_size.y * 0.43), 78.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
-	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
-		# A restrained idle: tiny breathing and water-like float, without rotating or changing the pose.
-		var breathe := 1.0 + sin(idle_phase) * 0.008
-		var gentle_float := sin(idle_phase * 0.72) * 1.5 * unit
-		draw_set_transform(hero_center + Vector2(0.0, gentle_float), 0.0, Vector2.ONE * breathe)
-		draw_texture_rect(team_piece_textures[0], Rect2(-hero_size * 0.5, hero_size), false)
+	var hero_size := character_area.size
+	var breathe := 1.0 + sin(idle_phase) * 0.006
+	var gentle_float := sin(idle_phase * 0.72) * 1.2 * unit
+	var animated_center := hero_center + Vector2(0.0, gentle_float)
+	var waist_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.58 + gentle_float)
+	var ring_radius := 66.0 * unit
+	var ring_width := 25.0 * unit
+	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
+	draw_circle(character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.91), 65.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
+	# Back half of the buoy sits behind the torso.
+	draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.56))
+	draw_arc(Vector2.ZERO, ring_radius, PI, TAU, 32, ring_color, ring_width, true)
+	draw_arc(Vector2.ZERO, ring_radius, PI + 0.18, PI + 0.60, 10, Color("fff4dc"), ring_width, true)
+	draw_arc(Vector2.ZERO, ring_radius, TAU - 0.60, TAU - 0.18, 10, Color("fff4dc"), ring_width, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
+		draw_set_transform(animated_center, 0.0, Vector2.ONE * breathe)
+		draw_texture_rect(full_body_animal_textures[player_animal], Rect2(-hero_size * 0.5, hero_size), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# Front half passes in front of the waist, making it clear the hero is inside the buoy.
+	draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.56))
+	draw_arc(Vector2.ZERO, ring_radius, 0.0, PI, 32, ring_color, ring_width, true)
+	draw_arc(Vector2.ZERO, ring_radius, 0.18, 0.60, 10, Color("fff4dc"), ring_width, true)
+	draw_arc(Vector2.ZERO, ring_radius, PI - 0.60, PI - 0.18, 10, Color("fff4dc"), ring_width, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var change_tag := Rect2(character_area.position + Vector2(42.0 * unit, character_area.size.y - 12.0 * unit), Vector2(206.0, 38.0) * unit)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 16.0), change_tag)
 	draw_string(ThemeDB.fallback_font, change_tag.position + Vector2(0.0, 24.0) * unit, "TAP TO CHANGE  •  " + ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, change_tag.size.x, int(11.0 * unit), Color.WHITE)
