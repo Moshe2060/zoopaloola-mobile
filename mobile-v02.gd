@@ -2381,8 +2381,9 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	# Full-body hero with the selected lifebuoy wrapped around its waist.
 	var character_area := home_character_rect(viewport_size)
 	var idle_phase := menu_elapsed * 1.55
-	# Lift the animal so the soles meet the visible top plane of the wooden stage.
-	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.39)
+	# Keep the soles slightly inside the visible top plane so the idle motion
+	# never makes the animal appear to float above the wooden stage.
+	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.405)
 	var hero_size := character_area.size
 	var breathe := 1.0 + sin(idle_phase) * 0.006
 	var gentle_float := sin(idle_phase * 0.72) * 1.2 * unit
@@ -2569,7 +2570,7 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.83)
 	draw_wood_podium(podium_center, unit * 0.72, false)
 	var hero_size := Vector2(270.0, 350.0) * unit
-	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.39 + sin(menu_elapsed * 1.4) * 1.5 * unit)
+	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.405 + sin(menu_elapsed * 1.4) * 1.5 * unit)
 	var hero_texture: Texture2D = null
 	if player_animal < lifebuoy_hero_textures.size():
 		var colors: Array = lifebuoy_hero_textures[player_animal]
