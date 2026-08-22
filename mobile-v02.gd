@@ -332,8 +332,8 @@ func _on_resize() -> void:
 	var side_margin := maxf(8.0, viewport_size.x * 0.008)
 	# Grow the entire table uniformly by using more vertical space. Keeping the
 	# source aspect ratio avoids stretching the stones or center circle.
-	var top_margin := 4.0
-	var bottom_margin := 4.0
+	var top_margin := 70.0
+	var bottom_margin := 30.0
 	var play_position := Vector2(side_margin, top_margin)
 	var available := Vector2(
 		maxf(300.0, viewport_size.x - side_margin * 2.0),
@@ -1089,12 +1089,12 @@ func draw_scoreboards() -> void:
 
 func draw_hud(viewport_size: Vector2) -> void:
 	var back := game_back_rect()
-	draw_style_box(make_box(Color(0.04, 0.09, 0.16, 0.94), 14.0), back)
-	draw_string(ui_font, back.position + Vector2(0.0, 31.0), "‹  חזרה" if ui_language == "he" else "‹  BACK", HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 17, Color.WHITE)
+	draw_style_box(make_box(Color(0.04, 0.09, 0.16, 0.94), 18.0), back)
+	draw_string(ui_font, back.position + Vector2(0.0, 30.0), "‹", HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 27, Color.WHITE)
 	var card_width: float = minf(270.0, viewport_size.x * 0.22)
-	# Keep long player names away from the centered turn notice.
-	draw_match_player_card(Rect2(132.0, 7.0, card_width, 58.0), 0)
-	draw_match_player_card(Rect2(viewport_size.x - card_width - 132.0, 7.0, card_width, 58.0), 1)
+	# Keep the whole HUD on the water strip, with player identity at the edges.
+	draw_match_player_card(Rect2(8.0, 6.0, card_width, 58.0), 0)
+	draw_match_player_card(Rect2(viewport_size.x - card_width - 8.0, 6.0, card_width, 58.0), 1)
 	var turn_rect := Rect2(viewport_size.x * 0.5 - 102.0, 12.0, 204.0, 48.0)
 	var local_turn := (turn == multiplayer_slot) if game_mode == "online" else turn == 0
 	draw_style_box(make_box(Color("12a96b") if local_turn else Color("7256d8"), 18.0), turn_rect)
@@ -1110,10 +1110,10 @@ func draw_hud(viewport_size: Vector2) -> void:
 		draw_match_chat(viewport_size)
 
 func game_back_rect() -> Rect2:
-	return Rect2(10.0, 9.0, 112.0, 48.0)
+	return Rect2(286.0, 12.0, 46.0, 44.0)
 
 func game_chat_rect(viewport_size: Vector2) -> Rect2:
-	return Rect2(viewport_size.x - 122.0, 9.0, 112.0, 48.0)
+	return Rect2(viewport_size.x - 382.0, 10.0, 92.0, 48.0)
 
 func match_turn_text() -> String:
 	if game_mode == "online":
