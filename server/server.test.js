@@ -18,12 +18,12 @@ function connect() {
   });
 }
 
-function next(socket, type) {
+function next(socket, type, predicate = () => true) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${type}`)), 3000);
     function onMessage(buffer) {
       const message = JSON.parse(buffer.toString());
-      if (message.type !== type) return;
+      if (message.type !== type || !predicate(message)) return;
       clearTimeout(timeout);
       socket.off("message", onMessage);
       resolve(message);
@@ -50,7 +50,7 @@ test("two players create, join, ready and relay a shot", async (context) => {
   context.after(() => second.close());
 
   const joinedFirstPromise = next(first, "joined");
-  first.send(JSON.stringify({ type: "create_room", name: "One", animal: 1, ringColor: 3 }));
+  first.send(JSON.stringify({ type: "create_room", name: "One", animal: 1, ringColor: 3, level: 7, wins: 12, losses: 4 }));
   const joinedFirst = await joinedFirstPromise;
   assert.match(joinedFirst.roomCode, /^[A-Z2-9]{6}$/);
 
@@ -58,6 +58,15 @@ test("two players create, join, ready and relay a shot", async (context) => {
   second.send(JSON.stringify({ type: "join_room", roomCode: joinedFirst.roomCode, name: "Two" }));
   const joinedSecond = await joinedSecondPromise;
   assert.equal(joinedSecond.slot, 1);
+
+  const profilePromise = next(second, "room_state", (message) => message.players?.[0]?.animal === 5);
+  first.send(JSON.stringify({ type: "update_profile", animal: 5, ringColor: 4 }));
+  const profileState = await profilePromise;
+  assert.equal(profileState.players[0].animal, 5);
+  assert.equal(profileState.players[0].ringColor, 4);
+  assert.equal(profileState.players[0].level, 7);
+  assert.equal(profileState.players[0].wins, 12);
+  assert.equal(profileState.players[0].losses, 4);
 
   const startedPromise = next(first, "match_started");
   const secondStartedPromise = next(second, "match_started");

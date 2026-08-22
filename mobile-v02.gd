@@ -220,6 +220,8 @@ var multiplayer_ready := false
 var multiplayer_error := ""
 var multiplayer_local_animal := -1
 var multiplayer_local_ring_color := -1
+var friend_customizer_open := false
+var friend_opponent_profile_open := false
 var room_code_input: LineEdit
 var chat_input: LineEdit
 var exit_confirm_open := false
@@ -2479,6 +2481,23 @@ func friend_ready_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2(475.0, 570.0) * unit, Vector2(330.0, 72.0) * unit)
 
+func friend_player_rect(slot: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((210.0 + float(slot) * 500.0) * unit, 345.0 * unit), Vector2(360.0, 165.0) * unit)
+
+func friend_edit_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var card := friend_player_rect(multiplayer_slot if multiplayer_slot >= 0 else 0, viewport_size)
+	return Rect2(card.position + Vector2(card.size.x - 125.0 * unit, card.size.y - 44.0 * unit), Vector2(112.0, 34.0) * unit)
+
+func friend_choice_rect(index: int, colors: bool, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((318.0 + float(index) * 110.0) * unit, (430.0 if colors else 270.0) * unit), Vector2(92.0, 92.0) * unit)
+
+func friend_modal_close_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(935.0, 155.0) * unit, Vector2(65.0, 48.0) * unit)
+
 func _on_room_code_changed(value: String) -> void:
 	var clean := ""
 	for character in value.to_upper():
@@ -2592,7 +2611,7 @@ func create_multiplayer_room() -> void:
 		return
 	multiplayer_local_animal = player_animal
 	multiplayer_local_ring_color = player_ring_color
-	send_multiplayer({"type":"create_room", "name":profile_name, "animal":player_animal, "ringColor":player_ring_color})
+	send_multiplayer({"type":"create_room", "name":profile_name, "animal":player_animal, "ringColor":player_ring_color, "level":player_level, "wins":player_wins, "losses":player_losses})
 
 func join_multiplayer_room() -> void:
 	var code := room_code_input.text.strip_edges().to_upper()
@@ -2605,7 +2624,25 @@ func join_multiplayer_room() -> void:
 		return
 	multiplayer_local_animal = player_animal
 	multiplayer_local_ring_color = player_ring_color
-	send_multiplayer({"type":"join_room", "roomCode":code, "name":profile_name, "animal":player_animal, "ringColor":player_ring_color})
+	send_multiplayer({"type":"join_room", "roomCode":code, "name":profile_name, "animal":player_animal, "ringColor":player_ring_color, "level":player_level, "wins":player_wins, "losses":player_losses})
+
+func update_match_character(animal: int = -1, ring_color: int = -1) -> void:
+	if multiplayer_slot < 0:
+		return
+	var current_animal: int = player_animal if multiplayer_slot == 0 else ai_animal
+	var current_ring: int = player_ring_color if multiplayer_slot == 0 else ai_ring_color
+	if animal >= 0:
+		current_animal = animal
+	if ring_color >= 0:
+		current_ring = ring_color
+	if multiplayer_slot == 0:
+		player_animal = current_animal
+		player_ring_color = current_ring
+	else:
+		ai_animal = current_animal
+		ai_ring_color = current_ring
+	rebuild_team_piece_textures()
+	send_multiplayer({"type":"update_profile", "animal":current_animal, "ringColor":current_ring})
 
 func toggle_multiplayer_ready() -> void:
 	multiplayer_ready = not multiplayer_ready
@@ -2618,6 +2655,8 @@ func leave_multiplayer_room() -> void:
 	multiplayer_players.clear()
 	multiplayer_slot = -1
 	multiplayer_ready = false
+	friend_customizer_open = false
+	friend_opponent_profile_open = false
 	if multiplayer_local_animal >= 0:
 		player_animal = multiplayer_local_animal
 		player_ring_color = multiplayer_local_ring_color
@@ -2788,6 +2827,20 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					rebuild_team_piece_textures()
 					return
 		elif app_screen == APP_FRIEND:
+			if friend_customizer_open or friend_opponent_profile_open:
+				if friend_modal_close_rect(viewport_size).has_point(screen_pos):
+					friend_customizer_open = false
+					friend_opponent_profile_open = false
+					return
+				if friend_customizer_open:
+					for i in ANIMAL_NAMES.size():
+						if friend_choice_rect(i, false, viewport_size).has_point(screen_pos):
+							update_match_character(i, -1)
+							return
+						if friend_choice_rect(i, true, viewport_size).has_point(screen_pos):
+							update_match_character(-1, i)
+							return
+				return
 			if multiplayer_room_code.is_empty():
 				if friend_create_rect(viewport_size).has_point(screen_pos):
 					create_multiplayer_room()
@@ -2795,9 +2848,17 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				if friend_join_rect(viewport_size).has_point(screen_pos):
 					join_multiplayer_room()
 					return
-			elif friend_ready_rect(viewport_size).has_point(screen_pos):
-				toggle_multiplayer_ready()
-				return
+			else:
+				if friend_edit_rect(viewport_size).has_point(screen_pos):
+					friend_customizer_open = true
+					return
+				var opponent_slot := 1 - multiplayer_slot
+				if opponent_slot >= 0 and opponent_slot < multiplayer_players.size() and friend_player_rect(opponent_slot, viewport_size).has_point(screen_pos):
+					friend_opponent_profile_open = true
+					return
+				if friend_ready_rect(viewport_size).has_point(screen_pos):
+					toggle_multiplayer_ready()
+					return
 
 func draw_menu_background(viewport_size: Vector2) -> void:
 	var overlay := Color(0.015, 0.055, 0.11, 0.62)
@@ -2893,8 +2954,10 @@ func draw_friend_screen(viewport_size: Vector2) -> void:
 	if ui_language != "he":
 		connection_text = "Connected" if multiplayer_state == "connected" else ("Connecting..." if multiplayer_state == "connecting" else "Disconnected")
 	var connection_color := Color("51d995") if multiplayer_state == "connected" else Color("ffd05a")
-	draw_circle(panel.position + Vector2(panel.size.x * 0.5 - 75.0 * unit, 48.0 * unit), 8.0 * unit, connection_color)
-	draw_string(ui_font, panel.position + Vector2(0.0, 55.0) * unit, connection_text, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(17.0 * unit), Color.WHITE)
+	var status_pill := Rect2(panel.position + Vector2(330.0, 20.0) * unit, Vector2(270.0, 55.0) * unit)
+	draw_style_box(make_box(Color(0.04, 0.20, 0.24, 0.96), 20.0 * unit), status_pill)
+	draw_circle(status_pill.position + Vector2(35.0, 27.0) * unit, 10.0 * unit, connection_color)
+	draw_string(ui_font, status_pill.position + Vector2(0.0, 36.0) * unit, connection_text, HORIZONTAL_ALIGNMENT_CENTER, status_pill.size.x, int(23.0 * unit), Color.WHITE)
 	if multiplayer_room_code.is_empty():
 		var create_rect := friend_create_rect(viewport_size)
 		draw_style_box(make_box(Color("7655df"), 18.0 * unit), create_rect)
@@ -2909,7 +2972,7 @@ func draw_friend_screen(viewport_size: Vector2) -> void:
 		draw_string(ui_font, panel.position + Vector2(0.0, 190.0) * unit, multiplayer_room_code, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(48.0 * unit), Color("ffe25d"))
 		draw_string(ui_font, panel.position + Vector2(0.0, 235.0) * unit, "שלחו את הקוד לחבר במכשיר השני" if ui_language == "he" else "Send this code to your friend", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(16.0 * unit), Color.WHITE)
 		for i in 2:
-			var player_rect := Rect2(panel.position + Vector2((100.0 + i * 470.0) * unit, 275.0 * unit), Vector2(360.0, 82.0) * unit)
+			var player_rect := friend_player_rect(i, viewport_size)
 			draw_style_box(make_box(Color("1d405b"), 17.0 * unit), player_rect)
 			var player_label := "ממתין לשחקן..." if ui_language == "he" else "Waiting for player..."
 			var ready_label := ""
@@ -2917,13 +2980,72 @@ func draw_friend_screen(viewport_size: Vector2) -> void:
 				var player_data: Dictionary = multiplayer_players[i]
 				player_label = str(player_data.get("name", "Player"))
 				ready_label = ("מוכן" if ui_language == "he" else "READY") if bool(player_data.get("ready", false)) else ("לא מוכן" if ui_language == "he" else "NOT READY")
-			draw_string(ui_font, player_rect.position + Vector2(18.0, 36.0) * unit, player_label, HORIZONTAL_ALIGNMENT_LEFT, player_rect.size.x - 36.0 * unit, int(19.0 * unit), Color.WHITE)
-			draw_string(ui_font, player_rect.position + Vector2(18.0, 63.0) * unit, ready_label, HORIZONTAL_ALIGNMENT_LEFT, player_rect.size.x - 36.0 * unit, int(13.0 * unit), Color("51d995") if ready_label.contains("מוכן") or ready_label == "READY" else Color("a9cde2"))
+				var avatar_index := int(player_data.get("animal", 0))
+				if avatar_index >= 0 and avatar_index < full_body_animal_textures.size():
+					draw_texture_rect(full_body_animal_textures[avatar_index], Rect2(player_rect.position + Vector2(12.0, 12.0) * unit, Vector2(105.0, 130.0) * unit), false)
+				draw_string(ui_font, player_rect.position + Vector2(125.0, 39.0) * unit, player_label, HORIZONTAL_ALIGNMENT_LEFT, 215.0 * unit, int(22.0 * unit), Color.WHITE)
+				draw_string(ui_font, player_rect.position + Vector2(125.0, 70.0) * unit, ("רמה %d" if ui_language == "he" else "LEVEL %d") % int(player_data.get("level", 1)), HORIZONTAL_ALIGNMENT_LEFT, 215.0 * unit, int(15.0 * unit), Color("a9cde2"))
+				draw_string(ui_font, player_rect.position + Vector2(125.0, 96.0) * unit, ui_animal_name(avatar_index) + " • " + ui_ring_name(int(player_data.get("ringColor", 0))), HORIZONTAL_ALIGNMENT_LEFT, 220.0 * unit, int(14.0 * unit), Color("ffe25d"))
+			else:
+				draw_string(ui_font, player_rect.position + Vector2(0.0, 72.0) * unit, player_label, HORIZONTAL_ALIGNMENT_CENTER, player_rect.size.x, int(21.0 * unit), Color.WHITE)
+			draw_string(ui_font, player_rect.position + Vector2(125.0, 127.0) * unit, ready_label, HORIZONTAL_ALIGNMENT_LEFT, 210.0 * unit, int(15.0 * unit), Color("51d995") if ready_label.contains("מוכן") or ready_label == "READY" else Color("a9cde2"))
+			if i == multiplayer_slot:
+				var edit_rect := friend_edit_rect(viewport_size)
+				draw_style_box(make_box(Color("2b91b5"), 11.0 * unit), edit_rect)
+				draw_string(ui_font, edit_rect.position + Vector2(0.0, 24.0) * unit, "החלפה" if ui_language == "he" else "CHANGE", HORIZONTAL_ALIGNMENT_CENTER, edit_rect.size.x, int(14.0 * unit), Color.WHITE)
+			elif i < multiplayer_players.size():
+				draw_string(ui_font, player_rect.position + Vector2(125.0, 151.0) * unit, "לחצו לפרופיל" if ui_language == "he" else "TAP FOR PROFILE", HORIZONTAL_ALIGNMENT_LEFT, 210.0 * unit, int(12.0 * unit), Color("70dfff"))
 		var ready_rect := friend_ready_rect(viewport_size)
 		draw_style_box(make_box(Color("35b96f") if not multiplayer_ready else Color("d49b2f"), 18.0 * unit), ready_rect)
 		draw_string(ui_font, ready_rect.position + Vector2(0.0, 45.0) * unit, ("ביטול מוכנות" if multiplayer_ready else "אני מוכן") if ui_language == "he" else ("NOT READY" if multiplayer_ready else "I'M READY"), HORIZONTAL_ALIGNMENT_CENTER, ready_rect.size.x, int(22.0 * unit), Color.WHITE)
 	if multiplayer_error != "":
 		draw_string(ui_font, panel.position + Vector2(35.0, panel.size.y - 25.0) * unit, multiplayer_error, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 70.0 * unit, int(15.0 * unit), Color("ff8c7a"))
+	if friend_customizer_open:
+		draw_friend_customizer(viewport_size)
+	elif friend_opponent_profile_open:
+		draw_friend_opponent_profile(viewport_size)
+
+func draw_friend_modal_base(viewport_size: Vector2, title: String) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.0, 0.02, 0.05, 0.72))
+	var modal := Rect2(Vector2(270.0, 125.0) * unit, Vector2(740.0, 510.0) * unit)
+	draw_style_box(make_box(Color("09243a"), 28.0 * unit), modal)
+	draw_string(ui_font, modal.position + Vector2(0.0, 65.0) * unit, title, HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(30.0 * unit), Color("ffe25d"))
+	var close := friend_modal_close_rect(viewport_size)
+	draw_style_box(make_box(Color("d75159"), 13.0 * unit), close)
+	draw_string(ui_font, close.position + Vector2(0.0, 33.0) * unit, "סגור" if ui_language == "he" else "CLOSE", HORIZONTAL_ALIGNMENT_CENTER, close.size.x, int(15.0 * unit), Color.WHITE)
+	return modal
+
+func draw_friend_customizer(viewport_size: Vector2) -> void:
+	var modal := draw_friend_modal_base(viewport_size, "בחירת דמות למשחק הזה" if ui_language == "he" else "MATCH CHARACTER")
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_string(ui_font, modal.position + Vector2(0.0, 112.0) * unit, "בחרו דמות" if ui_language == "he" else "CHOOSE AN ANIMAL", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
+	for i in ANIMAL_NAMES.size():
+		var choice := friend_choice_rect(i, false, viewport_size)
+		draw_style_box(make_box(Color("1d405b"), 15.0 * unit), choice)
+		draw_texture_rect(full_body_animal_textures[i], choice.grow(-7.0 * unit), false)
+	draw_string(ui_font, modal.position + Vector2(0.0, 282.0) * unit, "בחרו צבע גלגל" if ui_language == "he" else "CHOOSE A RING COLOR", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
+	for i in RING_COLORS.size():
+		var color_choice := friend_choice_rect(i, true, viewport_size)
+		draw_style_box(make_box(Color("1d405b"), 15.0 * unit), color_choice)
+		draw_circle(color_choice.get_center(), 29.0 * unit, RING_COLORS[i])
+	draw_string(ui_font, modal.position + Vector2(0.0, 475.0) * unit, "השינוי חל רק בחדר ובמשחק הנוכחי" if ui_language == "he" else "This choice applies only to this match", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(16.0 * unit), Color("a9cde2"))
+
+func draw_friend_opponent_profile(viewport_size: Vector2) -> void:
+	var modal := draw_friend_modal_base(viewport_size, "פרופיל היריב" if ui_language == "he" else "OPPONENT PROFILE")
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var opponent_slot := 1 - multiplayer_slot
+	if opponent_slot < 0 or opponent_slot >= multiplayer_players.size():
+		return
+	var data: Dictionary = multiplayer_players[opponent_slot]
+	var animal := int(data.get("animal", 0))
+	draw_texture_rect(full_body_animal_textures[animal], Rect2(modal.position + Vector2(55.0, 105.0) * unit, Vector2(240.0, 300.0) * unit), false)
+	draw_string(ui_font, modal.position + Vector2(330.0, 155.0) * unit, str(data.get("name", "Player")), HORIZONTAL_ALIGNMENT_LEFT, 330.0 * unit, int(30.0 * unit), Color.WHITE)
+	draw_string(ui_font, modal.position + Vector2(330.0, 205.0) * unit, ("רמה: %d" if ui_language == "he" else "Level: %d") % int(data.get("level", 1)), HORIZONTAL_ALIGNMENT_LEFT, 330.0 * unit, int(20.0 * unit), Color("a9cde2"))
+	draw_string(ui_font, modal.position + Vector2(330.0, 250.0) * unit, ("דמות: " if ui_language == "he" else "Animal: ") + ui_animal_name(animal), HORIZONTAL_ALIGNMENT_LEFT, 330.0 * unit, int(20.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, modal.position + Vector2(330.0, 290.0) * unit, ("גלגל: " if ui_language == "he" else "Ring: ") + ui_ring_name(int(data.get("ringColor", 0))), HORIZONTAL_ALIGNMENT_LEFT, 330.0 * unit, int(20.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, modal.position + Vector2(330.0, 350.0) * unit, ("ניצחונות: %d  •  הפסדים: %d" if ui_language == "he" else "Wins: %d  •  Losses: %d") % [int(data.get("wins", 0)), int(data.get("losses", 0))], HORIZONTAL_ALIGNMENT_LEFT, 350.0 * unit, int(19.0 * unit), Color.WHITE)
+	draw_string(ui_font, modal.position + Vector2(0.0, 465.0) * unit, "אפשרויות חברתיות ונתונים נוספים יתווספו בהמשך" if ui_language == "he" else "More social options and stats are coming later", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(16.0 * unit), Color("70dfff"))
 
 func draw_arena_preview(preview: Rect2, arena_index: int, unit: float) -> void:
 	if arena_index == 0:

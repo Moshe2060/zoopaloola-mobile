@@ -31,6 +31,9 @@ function publicPlayer(player) {
     name: player.name,
     animal: player.animal,
     ringColor: player.ringColor,
+    level: player.level,
+    wins: player.wins,
+    losses: player.losses,
     ready: player.ready
   };
 }
@@ -89,6 +92,9 @@ function joinRoom(socket, room, payload) {
     name: String(payload.name || `Player ${room.players.length + 1}`).slice(0, 24),
     animal: Math.max(0, Math.min(5, Number(payload.animal) || 0)),
     ringColor: Math.max(0, Math.min(5, Number(payload.ringColor) || 0)),
+    level: Math.max(1, Math.min(999, Number(payload.level) || 1)),
+    wins: Math.max(0, Math.min(999999, Number(payload.wins) || 0)),
+    losses: Math.max(0, Math.min(999999, Number(payload.losses) || 0)),
     ready: false
   };
   room.players.push(player);
@@ -127,6 +133,14 @@ function handleMessage(socket, payload) {
     return;
   }
   room.updatedAt = Date.now();
+
+  if (payload.type === "update_profile") {
+    if (room.status !== "waiting") return;
+    player.animal = Math.max(0, Math.min(5, Number(payload.animal) || 0));
+    player.ringColor = Math.max(0, Math.min(5, Number(payload.ringColor) || 0));
+    broadcastState(room);
+    return;
+  }
 
   if (payload.type === "ready") {
     player.ready = Boolean(payload.ready);
