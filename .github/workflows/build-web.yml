@@ -41,6 +41,8 @@ jobs:
           mkdir -p zoopaloola_godot_mobile/assets/press_trap
           cp assets/press_trap/industrial-press.svg zoopaloola_godot_mobile/assets/press_trap/industrial-press.svg
           mkdir -p zoopaloola_godot_mobile/assets/ui
+          mkdir -p zoopaloola_godot_mobile/assets/ui/fonts
+          cp assets/ui/fonts/*.ttf zoopaloola_godot_mobile/assets/ui/fonts/
           cp assets/ui/zoopaloola-splash.svg zoopaloola_godot_mobile/assets/ui/zoopaloola-splash.svg
           cp assets/ui/zoopaloola-home-bg-v3.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-home-bg-v3.webp
           cp assets/ui/zoopaloola-loading-team-v1.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-loading-team-v1.webp
