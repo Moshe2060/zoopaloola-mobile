@@ -68,6 +68,7 @@ var board_texture: Texture2D
 var lobby_background_texture: Texture2D
 var loading_team_texture: Texture2D
 var zoopaloola_logo_texture: Texture2D
+var wood_podium_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var full_body_animal_textures: Array[Texture2D] = []
@@ -173,6 +174,7 @@ func _ready() -> void:
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
+	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
@@ -2214,19 +2216,18 @@ func home_character_rect(viewport_size: Vector2) -> Rect2:
 
 func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var card_size := Vector2(142.0, 142.0) * unit
-	var gap := 14.0 * unit
+	var card_size := Vector2(158.0, 150.0) * unit
+	var gap := 12.0 * unit
 	var total_width := card_size.x * 6.0 + gap * 5.0
 	var start_x := (viewport_size.x - total_width) * 0.5
-	return Rect2(Vector2(start_x + float(index) * (card_size.x + gap), viewport_size.y - 178.0 * unit), card_size)
+	return Rect2(Vector2(start_x + float(index) * (card_size.x + gap), viewport_size.y - 174.0 * unit), card_size)
 
 func character_ring_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var size := Vector2(58.0, 58.0) * unit
-	var gap := 15.0 * unit
-	var total_width := size.x * 6.0 + gap * 5.0
-	var start_x := viewport_size.x * 0.63 - total_width * 0.5
-	return Rect2(Vector2(start_x + float(index) * (size.x + gap), 385.0 * unit), size)
+	var size := Vector2(180.0, 78.0) * unit
+	var column := index % 3
+	var row := index / 3
+	return Rect2(Vector2((596.0 + float(column) * 196.0) * unit, (246.0 + float(row) * 94.0) * unit), size)
 
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
@@ -2428,9 +2429,8 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 			draw_circle(Vector2.ZERO, 15.5 * unit, hand_color)
 			draw_arc(Vector2(0.0, 2.0 * unit), 8.0 * unit, 0.18, PI - 0.18, 12, hand_color.lightened(0.24), 2.4 * unit, true)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var change_tag := Rect2(character_area.position + Vector2(42.0 * unit, character_area.size.y - 12.0 * unit), Vector2(206.0, 38.0) * unit)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 16.0), change_tag)
-	draw_string(ThemeDB.fallback_font, change_tag.position + Vector2(0.0, 24.0) * unit, "TAP TO CHANGE  •  " + ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, change_tag.size.x, int(11.0 * unit), Color.WHITE)
+	# The character itself remains tappable; the left CHARACTERS button is the
+	# explicit entry point, so no label is allowed to cover the podium artwork.
 
 	# Top HUD: player identity on the left, currencies and settings on the right.
 	var settings := home_settings_rect(viewport_size)
@@ -2508,38 +2508,18 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 52.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(12.0 * unit), Color.WHITE)
 
 func draw_wood_podium(center: Vector2, scale: float, show_side_steps: bool) -> void:
-	# Chunky timber blocks make the selected animal feel like the current champion.
-	var shadow_width := 300.0 if show_side_steps else 240.0
-	draw_set_transform(center, 0.0, Vector2(1.0, 0.34))
-	draw_circle(Vector2(0.0, 22.0 * scale), shadow_width * 0.48 * scale, Color(0.01, 0.05, 0.08, 0.32))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_set_transform(center, 0.0, Vector2.ONE)
-	var blocks: Array[Rect2] = []
-	if show_side_steps:
-		blocks = [
-			Rect2(Vector2(-148.0, -14.0) * scale, Vector2(94.0, 55.0) * scale),
-			Rect2(Vector2(54.0, -2.0) * scale, Vector2(94.0, 43.0) * scale),
-			Rect2(Vector2(-62.0, -48.0) * scale, Vector2(124.0, 89.0) * scale)
-		]
-	else:
-		blocks = [Rect2(Vector2(-100.0, -32.0) * scale, Vector2(200.0, 73.0) * scale)]
-	for block in blocks:
-		draw_style_box(make_box(Color("8a4b25"), 9.0 * scale), block)
-		var top := PackedVector2Array([
-			block.position,
-			block.position + Vector2(14.0, -11.0) * scale,
-			block.position + Vector2(block.size.x + 14.0 * scale, -11.0 * scale),
-			block.position + Vector2(block.size.x, 0.0)
-		])
-		draw_colored_polygon(top, Color("d3944d"))
-		for grain in 3:
-			var y := block.position.y + (18.0 + float(grain) * 13.0) * scale
-			draw_line(Vector2(block.position.x + 10.0 * scale, y), Vector2(block.end.x - 10.0 * scale, y + sin(float(grain)) * 3.0 * scale), Color(0.25, 0.10, 0.04, 0.34), 2.0 * scale, true)
-	var badge_center := Vector2(0.0, 2.0) * scale
-	draw_circle(badge_center, 23.0 * scale, Color("f7c943"))
-	draw_circle(badge_center, 17.0 * scale, Color("fff0a5"))
-	draw_string(ThemeDB.fallback_font, badge_center + Vector2(-18.0, 8.0) * scale, "1", HORIZONTAL_ALIGNMENT_CENTER, 36.0 * scale, int(23.0 * scale), Color("744018"))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if wood_podium_texture != null:
+		var podium_size := Vector2(390.0, 180.0) * scale if show_side_steps else Vector2(315.0, 150.0) * scale
+		# The usable standing surface is high in the source asset, so the image
+		# extends mostly below the supplied center point.
+		var podium_rect := Rect2(center - Vector2(podium_size.x * 0.5, podium_size.y * 0.37), podium_size)
+		draw_texture_rect(wood_podium_texture, podium_rect, false)
+		return
+	# Minimal fallback used only if the podium asset did not import.
+	var fallback := Rect2(center - Vector2(120.0, 30.0) * scale, Vector2(240.0, 70.0) * scale)
+	draw_style_box(make_box(Color("9b582c"), 12.0 * scale), fallback)
+	draw_circle(center, 21.0 * scale, Color("f7c943"))
+	draw_string(ThemeDB.fallback_font, center + Vector2(-17.0, 8.0) * scale, "1", HORIZONTAL_ALIGNMENT_CENTER, 34.0 * scale, int(22.0 * scale), Color("744018"))
 
 func draw_home_character(animal_index: int, center: Vector2, size: float, phase: float, outfit_color: Color) -> void:
 	if animal_index < 0 or animal_index >= animal_textures.size() or animal_textures[animal_index] == null:
@@ -2581,14 +2561,14 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	draw_frontend_header(viewport_size, "CHOOSE YOUR CHARACTER", "Pick an animal and a lifebuoy color")
 	# Bright aqua showroom inspired by the sea surrounding the Zoopaloola table.
 	draw_rect(Rect2(0.0, 92.0 * unit, viewport_size.x, viewport_size.y - 92.0 * unit), Color(0.16, 0.72, 0.86, 0.20))
-	var display := Rect2(72.0 * unit, 106.0 * unit, 470.0 * unit, 405.0 * unit)
+	var display := Rect2(72.0 * unit, 106.0 * unit, 470.0 * unit, 414.0 * unit)
 	draw_style_box(make_box(Color(0.02, 0.10, 0.17, 0.78), 28.0 * unit), display.grow(5.0 * unit))
 	draw_style_box(make_box(Color("4fcbd5"), 25.0 * unit), display)
 	# A small wooden winner podium grounds the full-body hero.
-	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.86)
+	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.83)
 	draw_wood_podium(podium_center, unit * 0.72, false)
-	var hero_size := Vector2(255.0, 330.0) * unit
-	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.48 + sin(menu_elapsed * 1.4) * 1.5 * unit)
+	var hero_size := Vector2(270.0, 350.0) * unit
+	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.46 + sin(menu_elapsed * 1.4) * 1.5 * unit)
 	var hero_texture: Texture2D = null
 	if player_animal < lifebuoy_hero_textures.size():
 		var colors: Array = lifebuoy_hero_textures[player_animal]
@@ -2598,21 +2578,26 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
 	draw_string(ThemeDB.fallback_font, display.position + Vector2(0.0, display.size.y - 18.0 * unit), ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, display.size.x, int(22.0 * unit), Color.WHITE)
 
-	var info := Rect2(575.0 * unit, 118.0 * unit, 630.0 * unit, 330.0 * unit)
+	var info := Rect2(570.0 * unit, 118.0 * unit, 638.0 * unit, 326.0 * unit)
 	draw_style_box(make_box(Color(0.025, 0.075, 0.14, 0.88), 24.0 * unit), info)
-	draw_string(ThemeDB.fallback_font, info.position + Vector2(28.0, 45.0) * unit, "YOUR ZOOPA", HORIZONTAL_ALIGNMENT_LEFT, info.size.x - 56.0 * unit, int(25.0 * unit), Color("ffe25d"))
-	draw_string(ThemeDB.fallback_font, info.position + Vector2(28.0, 75.0) * unit, "The selected character and ring will appear in every match.", HORIZONTAL_ALIGNMENT_LEFT, info.size.x - 56.0 * unit, int(12.0 * unit), Color("d7f6ff"))
-	draw_string(ThemeDB.fallback_font, info.position + Vector2(28.0, 124.0) * unit, "LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, info.size.x - 56.0 * unit, int(13.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, info.position + Vector2(0.0, 47.0) * unit, "CHOOSE A LIFEBUOY", HORIZONTAL_ALIGNMENT_CENTER, info.size.x, int(24.0 * unit), Color("ffe25d"))
+	draw_string(ThemeDB.fallback_font, info.position + Vector2(0.0, 76.0) * unit, "Your color follows you into every match", HORIZONTAL_ALIGNMENT_CENTER, info.size.x, int(12.0 * unit), Color("d7f6ff"))
 	for i in RING_COLOR_NAMES.size():
 		var ring_button := character_ring_rect(i, viewport_size)
+		var ring_selected := i == player_ring_color
+		draw_style_box(make_box(Color("ffe25d") if ring_selected else Color("173a56"), 17.0 * unit), ring_button.grow((4.0 if ring_selected else 2.0) * unit))
+		draw_style_box(make_box(Color("285b73") if ring_selected else Color("123047"), 14.0 * unit), ring_button)
+		var ring_center := ring_button.position + Vector2(42.0, 39.0) * unit
+		draw_circle(ring_center, 27.0 * unit, RING_COLORS[i])
+		draw_circle(ring_center, 12.0 * unit, Color("14324c"))
+		draw_arc(ring_center, 27.0 * unit, -0.70, 0.15, 10, Color("fff4dc"), 8.0 * unit, true)
+		draw_arc(ring_center, 27.0 * unit, 2.45, 3.30, 10, Color("fff4dc"), 8.0 * unit, true)
+		draw_string(ThemeDB.fallback_font, ring_button.position + Vector2(78.0, 47.0) * unit, RING_COLOR_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, 86.0 * unit, int(12.0 * unit), Color.WHITE)
 		if i == player_ring_color:
-			draw_circle(ring_button.get_center(), 33.0 * unit, Color("ffe25d"))
-		draw_circle(ring_button.get_center(), 25.0 * unit, RING_COLORS[i])
-		draw_circle(ring_button.get_center(), 11.0 * unit, Color("14324c"))
-		if i == player_ring_color:
-			draw_string(ThemeDB.fallback_font, ring_button.position + Vector2(0.0, 38.0) * unit, "✓", HORIZONTAL_ALIGNMENT_CENTER, ring_button.size.x, int(18.0 * unit), Color.WHITE)
+			draw_circle(ring_button.position + Vector2(ring_button.size.x - 14.0 * unit, 14.0 * unit), 13.0 * unit, Color("ffe25d"))
+			draw_string(ThemeDB.fallback_font, ring_button.position + Vector2(ring_button.size.x - 27.0 * unit, 20.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 26.0 * unit, int(13.0 * unit), Color("173249"))
 
-	draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y - 198.0 * unit), "CHOOSE AN ANIMAL", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, Vector2(0.0, viewport_size.y - 194.0 * unit), "CHOOSE AN ANIMAL", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color.WHITE)
 	for i in ANIMAL_NAMES.size():
 		var card := character_card_rect(i, viewport_size)
 		var selected_card := i == player_animal
@@ -2620,10 +2605,10 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		draw_style_box(make_box(Color("35bfc8") if selected_card else Color("244b67"), 16.0 * unit), card)
 		var portrait := full_body_animal_textures[i]
 		if portrait != null:
-			var portrait_rect := Rect2(card.position + Vector2(27.0, 5.0) * unit, Vector2(88.0, 105.0) * unit)
+			var portrait_rect := Rect2(card.position + Vector2(30.0, 2.0) * unit, Vector2(98.0, 116.0) * unit)
 			draw_texture_rect(portrait, portrait_rect, false)
-		draw_rect(Rect2(card.position + Vector2(0.0, 108.0) * unit, Vector2(card.size.x, 34.0 * unit)), Color(0.01, 0.05, 0.10, 0.76))
-		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 132.0) * unit, ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(11.0 * unit), Color.WHITE)
+		draw_rect(Rect2(card.position + Vector2(0.0, 114.0) * unit, Vector2(card.size.x, 36.0 * unit)), Color(0.01, 0.05, 0.10, 0.80))
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 139.0) * unit, ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(12.0 * unit), Color.WHITE)
 		if selected_card:
 			draw_circle(card.position + Vector2(card.size.x - 15.0 * unit, 15.0 * unit), 14.0 * unit, Color("ffe25d"))
 			draw_string(ThemeDB.fallback_font, card.position + Vector2(card.size.x - 29.0 * unit, 21.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 28.0 * unit, int(14.0 * unit), Color("173249"))
