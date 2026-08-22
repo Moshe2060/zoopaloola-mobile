@@ -332,8 +332,10 @@ func _on_resize() -> void:
 	var side_margin := maxf(8.0, viewport_size.x * 0.008)
 	# Grow the entire table uniformly by using more vertical space. Keeping the
 	# source aspect ratio avoids stretching the stones or center circle.
-	var top_margin := 70.0
-	var bottom_margin := 30.0
+	# Balanced framing: enough clear water for the centered turn notice above,
+	# a slim visible water line below, and a large prominent board in between.
+	var top_margin := 54.0
+	var bottom_margin := 10.0
 	var play_position := Vector2(side_margin, top_margin)
 	var available := Vector2(
 		maxf(300.0, viewport_size.x - side_margin * 2.0),
@@ -1095,7 +1097,7 @@ func draw_hud(viewport_size: Vector2) -> void:
 	# Keep the whole HUD on the water strip, with player identity at the edges.
 	draw_match_player_card(Rect2(8.0, 6.0, card_width, 58.0), 0)
 	draw_match_player_card(Rect2(viewport_size.x - card_width - 8.0, 6.0, card_width, 58.0), 1)
-	var turn_rect := Rect2(viewport_size.x * 0.5 - 102.0, 12.0, 204.0, 48.0)
+	var turn_rect := Rect2(viewport_size.x * 0.5 - 102.0, 4.0, 204.0, 46.0)
 	var local_turn := (turn == multiplayer_slot) if game_mode == "online" else turn == 0
 	draw_style_box(make_box(Color("12a96b") if local_turn else Color("7256d8"), 18.0), turn_rect)
 	var turn_text := match_turn_text()
