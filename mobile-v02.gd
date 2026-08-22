@@ -59,6 +59,28 @@ const HERO_HAND_COLORS := [
 	Color("8799a2"), Color("343434"), Color("9b541f"),
 	Color("e49aa2"), Color("777187"), Color("c88938")
 ]
+const UI_TEXT_HE := {
+	"player": "שחקן 1", "level": "רמה 1 • שחקן מתחיל",
+	"choose_mode": "בחרו מצב משחק",
+	"characters": "דמויות", "characters_sub": "בחירת החיה שלכם",
+	"rings": "גלגלים", "rings_sub": "בחירת הצבע שלכם",
+	"shop": "חנות", "shop_sub": "פריטים ושדרוגים",
+	"rewards": "פרסים", "rewards_sub": "מתנות ופרסים",
+	"arena": "זירה אונליין", "arena_sub": "משחק מול יריב אקראי",
+	"friend": "משחק מול חבר", "friend_sub": "משחק פרטי • שני מכשירים",
+	"computer": "משחק מול המחשב", "computer_sub": "שחקן יחיד • נגד המחשב",
+}
+const UI_TEXT_EN := {
+	"player": "PLAYER 1", "level": "LEVEL 1 • ROOKIE EXPLORER",
+	"choose_mode": "CHOOSE A GAME MODE",
+	"characters": "CHARACTERS", "characters_sub": "Choose your animal",
+	"rings": "LIFEBUOYS", "rings_sub": "Choose your color",
+	"shop": "SHOP", "shop_sub": "Items and upgrades",
+	"rewards": "REWARDS", "rewards_sub": "Gifts and prizes",
+	"arena": "ONLINE ARENA", "arena_sub": "Play a random opponent",
+	"friend": "PLAY A FRIEND", "friend_sub": "Private match • two devices",
+	"computer": "PLAY VS COMPUTER", "computer_sub": "Single player • vs AI",
+}
 const APP_SPLASH := 0
 const APP_HOME := 1
 const APP_PROFILE := 2
@@ -149,6 +171,7 @@ var game_mode := "computer"
 var profile_name := "PLAYER 1"
 var player_coins := 1250
 var selected_arena := 0
+var ui_language := "he"
 var player_level := 1
 var player_xp := 100
 var player_next_level_xp := 500
@@ -2202,8 +2225,8 @@ func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	if index == 2:
-		return Rect2(viewport_size.x - 365.0 * unit, viewport_size.y - 170.0 * unit, 330.0 * unit, 112.0 * unit)
-	return Rect2(viewport_size.x - 365.0 * unit, (205.0 + float(index) * 92.0) * unit, 330.0 * unit, 76.0 * unit)
+		return Rect2(viewport_size.x - 385.0 * unit, viewport_size.y - 178.0 * unit, 350.0 * unit, 120.0 * unit)
+	return Rect2(viewport_size.x - 385.0 * unit, (202.0 + float(index) * 98.0) * unit, 350.0 * unit, 82.0 * unit)
 
 func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -2238,7 +2261,7 @@ func home_settings_rect(viewport_size: Vector2) -> Rect2:
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(28.0 * unit, (126.0 + float(index) * 90.0) * unit, 154.0 * unit, 72.0 * unit)
+	return Rect2(20.0 * unit, (126.0 + float(index) * 94.0) * unit, 178.0 * unit, 78.0 * unit)
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -2277,6 +2300,11 @@ func show_menu_notice(text: String) -> void:
 	menu_notice = text
 	menu_notice_time = 2.4
 
+func ui_text(key: String) -> String:
+	if ui_language == "he":
+		return str(UI_TEXT_HE.get(key, UI_TEXT_EN.get(key, key)))
+	return str(UI_TEXT_EN.get(key, key))
+
 func handle_frontend_touch(screen_pos: Vector2) -> void:
 	var viewport_size := get_viewport_rect().size
 	if app_screen == APP_SPLASH:
@@ -2290,7 +2318,8 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			app_screen = APP_PLAYER_PROFILE
 			return
 		if home_settings_rect(viewport_size).has_point(screen_pos):
-			show_menu_notice("SETTINGS PANEL - COMING NEXT")
+			ui_language = "en" if ui_language == "he" else "he"
+			show_menu_notice("English interface" if ui_language == "en" else "הממשק הוחלף לעברית")
 			return
 		for i in 4:
 			if not home_nav_rect(i, viewport_size).has_point(screen_pos):
@@ -2642,12 +2671,8 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var settings := home_settings_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), settings.grow(4.0))
 	draw_style_box(make_box(Color("486889"), 16.0), settings)
-	draw_circle(settings.get_center(), 13.0 * unit, Color("d8f5ff"), false, 4.0 * unit, true)
-	for i in 8:
-		var angle := TAU * float(i) / 8.0
-		var a := settings.get_center() + Vector2(cos(angle), sin(angle)) * 17.0 * unit
-		var b := settings.get_center() + Vector2(cos(angle), sin(angle)) * 22.0 * unit
-		draw_line(a, b, Color("d8f5ff"), 4.0 * unit, true)
+	draw_circle(settings.get_center(), 18.0 * unit, Color("d8f5ff"), false, 3.0 * unit, true)
+	draw_string(ThemeDB.fallback_font, settings.position + Vector2(0.0, 35.0) * unit, "HE" if ui_language == "he" else "EN", HORIZONTAL_ALIGNMENT_CENTER, settings.size.x, int(14.0 * unit), Color.WHITE)
 	var coin_rect := home_coin_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), coin_rect.grow(4.0))
 	draw_style_box(make_box(Color("253e67"), 16.0), coin_rect)
@@ -2667,52 +2692,52 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, RING_COLORS[player_ring_color])
 	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
 		draw_texture_rect(team_piece_textures[0], Rect2(profile.position + Vector2(9.0, 7.0) * unit, Vector2(44.0, 44.0) * unit), false)
-	draw_string(ThemeDB.fallback_font, profile.position + Vector2(65.0, 25.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(17.0 * unit), Color.WHITE)
-	draw_string(ThemeDB.fallback_font, profile.position + Vector2(65.0, 45.0) * unit, "LEVEL 1  •  ROOKIE EXPLORER", HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(10.0 * unit), Color("8cecff"))
+	draw_string(ThemeDB.fallback_font, profile.position + Vector2(65.0, 27.0) * unit, ui_text("player"), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(19.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, profile.position + Vector2(65.0, 47.0) * unit, ui_text("level"), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("8cecff"))
 
 	# Brand title floats above the clear play area.
 	draw_string(ThemeDB.fallback_font, Vector2(viewport_size.x - 390.0 * unit, 132.0 * unit), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(34.0 * unit), Color("ffe25d"))
-	draw_string(ThemeDB.fallback_font, Vector2(viewport_size.x - 390.0 * unit, 158.0 * unit), "CHOOSE YOUR ADVENTURE", HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(12.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, Vector2(viewport_size.x - 390.0 * unit, 161.0 * unit), ui_text("choose_mode"), HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(16.0 * unit), Color.WHITE)
 
 	# Three clearly separated modes: public online matchmaking, a private online
 	# friend match on two devices, and the immediately playable computer mode.
-	var small_titles := ["ONLINE ARENA", "PLAY A FRIEND"]
-	var small_subtitles := ["RANDOM ONLINE OPPONENT", "PRIVATE MATCH • TWO DEVICES"]
+	var small_titles := [ui_text("arena"), ui_text("friend")]
+	var small_subtitles := [ui_text("arena_sub"), ui_text("friend_sub")]
 	var small_colors := [Color("9d59e8"), Color("ff7b43")]
 	for i in 2:
 		var button := home_mode_rect(i, viewport_size)
 		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.84), 18.0), button.grow(5.0 * unit))
 		draw_style_box(make_box(small_colors[i], 16.0), button)
-		draw_circle(button.position + Vector2(38.0, 38.0) * unit, 23.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
-		draw_string(ThemeDB.fallback_font, button.position + Vector2(75.0, 33.0) * unit, small_titles[i], HORIZONTAL_ALIGNMENT_LEFT, button.size.x - 94.0 * unit, int(19.0 * unit), Color.WHITE)
-		draw_string(ThemeDB.fallback_font, button.position + Vector2(75.0, 55.0) * unit, small_subtitles[i], HORIZONTAL_ALIGNMENT_LEFT, button.size.x - 94.0 * unit, int(9.0 * unit), Color("fff5d2"))
-		draw_string(ThemeDB.fallback_font, button.position + Vector2(button.size.x - 33.0 * unit, 48.0 * unit), ">", HORIZONTAL_ALIGNMENT_CENTER, 24.0 * unit, int(22.0 * unit), Color.WHITE)
+		draw_circle(button.position + Vector2(38.0, 41.0) * unit, 24.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(70.0, 36.0) * unit, small_titles[i], HORIZONTAL_ALIGNMENT_CENTER, button.size.x - 102.0 * unit, int(22.0 * unit), Color.WHITE)
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(70.0, 62.0) * unit, small_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, button.size.x - 102.0 * unit, int(11.0 * unit), Color("fff5d2"))
+		draw_string(ThemeDB.fallback_font, button.position + Vector2(button.size.x - 34.0 * unit, 52.0 * unit), ">", HORIZONTAL_ALIGNMENT_CENTER, 24.0 * unit, int(24.0 * unit), Color.WHITE)
 
 	var play_rect := home_mode_rect(2, viewport_size)
 	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 25.0), play_rect.grow((6.0 + pulse * 2.0) * unit))
 	draw_style_box(make_box(Color("6fda18"), 22.0), play_rect)
-	var play_center := play_rect.position + Vector2(58.0, 56.0) * unit
-	draw_circle(play_center, 37.0 * unit, Color("4cb900"))
+	var play_center := play_rect.position + Vector2(58.0, 60.0) * unit
+	draw_circle(play_center, 39.0 * unit, Color("4cb900"))
 	var triangle := PackedVector2Array([
 		play_center + Vector2(-10.0, -18.0) * unit,
 		play_center + Vector2(-10.0, 18.0) * unit,
 		play_center + Vector2(22.0, 0.0) * unit
 	])
 	draw_colored_polygon(triangle, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(108.0, 48.0) * unit, "PLAY VS COMPUTER", HORIZONTAL_ALIGNMENT_LEFT, 205.0 * unit, int(22.0 * unit), Color.WHITE)
-	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(108.0, 77.0) * unit, "SINGLE PLAYER • VS AI", HORIZONTAL_ALIGNMENT_LEFT, 205.0 * unit, int(11.0 * unit), Color("eaffcf"))
+	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(104.0, 53.0) * unit, ui_text("computer"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(25.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(104.0, 84.0) * unit, ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(12.0 * unit), Color("eaffcf"))
 
 	# Collection shortcuts stay close to the hero character.
-	var nav_labels := ["CHARACTERS", "LIFEBUOYS", "SHOP", "REWARDS"]
-	var nav_icons := ["ANIMAL", "RINGS", "STORE", "GIFT"]
+	var nav_labels := [ui_text("characters"), ui_text("rings"), ui_text("shop"), ui_text("rewards")]
+	var nav_subtitles := [ui_text("characters_sub"), ui_text("rings_sub"), ui_text("shop_sub"), ui_text("rewards_sub")]
 	var nav_colors := [Color("2a9bd5"), Color("8e55df"), Color("ff9f24"), Color("e94f78")]
 	for i in 4:
 		var nav := home_nav_rect(i, viewport_size)
 		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.86), 17.0), nav.grow(4.0 * unit))
 		draw_style_box(make_box(nav_colors[i], 15.0), nav)
-		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 28.0) * unit, nav_icons[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(10.0 * unit), Color("fff0a6"))
-		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 52.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(12.0 * unit), Color.WHITE)
+		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 34.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(19.0 * unit), Color.WHITE)
+		draw_string(ThemeDB.fallback_font, nav.position + Vector2(0.0, 61.0) * unit, nav_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(10.0 * unit), Color("fff0c7"))
 
 func draw_wood_podium(center: Vector2, scale: float, show_side_steps: bool) -> void:
 	if wood_podium_texture != null:
