@@ -230,6 +230,8 @@ func _ready() -> void:
 	# Bundled font includes Hebrew and Latin glyphs, so Web/Android render the
 	# same readable interface without depending on fonts installed on the device.
 	ui_font = load("res://assets/ui/fonts/DejaVuSans-Bold.ttf") as Font
+	if ui_font == null:
+		ui_font = ThemeDB.fallback_font
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
@@ -2650,10 +2652,11 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var idle_phase := menu_elapsed * 1.55
 	# Keep the soles slightly inside the visible top plane so the idle motion
 	# never makes the animal appear to float above the wooden stage.
-	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.405)
+	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.425)
 	var hero_size := character_area.size
 	var breathe := 1.0 + sin(idle_phase) * 0.006
-	var gentle_float := sin(idle_phase * 0.72) * 1.2 * unit
+	# Keep only a tiny idle movement so the feet stay planted on the stage.
+	var gentle_float := sin(idle_phase * 0.72) * 0.45 * unit
 	var animated_center := hero_center + Vector2(0.0, gentle_float)
 	var waist_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.58 + gentle_float)
 	var ring_radius := 88.0 * unit
