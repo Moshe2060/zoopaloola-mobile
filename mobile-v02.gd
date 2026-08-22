@@ -221,6 +221,10 @@ var multiplayer_error := ""
 var multiplayer_local_animal := -1
 var multiplayer_local_ring_color := -1
 var room_code_input: LineEdit
+var chat_input: LineEdit
+var exit_confirm_open := false
+var chat_open := false
+var match_chat_messages: Array = []
 
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
@@ -257,6 +261,14 @@ func _ready() -> void:
 	room_code_input.add_theme_font_size_override("font_size", 25)
 	room_code_input.text_changed.connect(_on_room_code_changed)
 	add_child(room_code_input)
+	chat_input = LineEdit.new()
+	chat_input.visible = false
+	chat_input.max_length = 80
+	chat_input.placeholder_text = "כתבו הודעה..." if ui_language == "he" else "Type a message..."
+	chat_input.add_theme_font_override("font", ui_font)
+	chat_input.add_theme_font_size_override("font_size", 20)
+	chat_input.text_submitted.connect(_on_chat_submitted)
+	add_child(chat_input)
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
@@ -372,6 +384,7 @@ func _process(delta: float) -> void:
 	menu_elapsed += delta
 	poll_multiplayer()
 	update_room_code_input()
+	update_chat_input()
 	if app_screen == APP_SPLASH:
 		splash_elapsed += delta
 		if splash_elapsed >= 3.2:
@@ -630,27 +643,33 @@ func pointer_down(screen_pos: Vector2) -> void:
 	if app_screen != APP_GAME:
 		handle_frontend_touch(screen_pos)
 		return
-	if Rect2(8.0, 6.0, 116.0, 42.0).has_point(screen_pos):
-		leave_multiplayer_room()
-		app_screen = APP_HOME
-		selected = -1
-		dragging = false
-		active_effects.clear()
-		queue_redraw()
-		return
-	if game_mode == "online" and Rect2(get_viewport_rect().size.x - 454.0, 6.0, 430.0, 42.0).has_point(screen_pos):
-		return
-	if handle_customizer_touch(screen_pos):
-		return
-	if handle_effect_editor_touch(screen_pos):
-		return
-	if Rect2(get_viewport_rect().size.x - 454.0, 6.0, 105.0, 42.0).has_point(screen_pos):
-		if not any_ball_moving() and effects_allow_next_turn():
-			customizer_open = true
+	var viewport_size := get_viewport_rect().size
+	if exit_confirm_open:
+		if exit_confirm_yes_rect(viewport_size).has_point(screen_pos):
+			exit_current_match()
+		elif exit_confirm_no_rect(viewport_size).has_point(screen_pos):
+			exit_confirm_open = false
 			queue_redraw()
 		return
-	if Rect2(get_viewport_rect().size.x - 174.0, 6.0, 150.0, 42.0).has_point(screen_pos):
-		new_game(); return
+	if chat_open:
+		if chat_close_rect(viewport_size).has_point(screen_pos):
+			chat_open = false
+			chat_input.release_focus()
+		elif chat_send_rect(viewport_size).has_point(screen_pos):
+			send_chat_message()
+		queue_redraw()
+		return
+	if game_back_rect().has_point(screen_pos):
+		exit_confirm_open = true
+		selected = -1
+		dragging = false
+		queue_redraw()
+		return
+	if game_mode == "online" and game_chat_rect(viewport_size).has_point(screen_pos):
+		chat_open = true
+		chat_input.grab_focus()
+		queue_redraw()
+		return
 	if (game_mode == "computer" and turn != 0) or (game_mode == "online" and turn != multiplayer_slot) or any_ball_moving() or not effects_allow_next_turn(): return
 	var board_pos := screen_to_board(screen_pos)
 	for i in balls.size():
@@ -1047,20 +1066,90 @@ func draw_scoreboards() -> void:
 		draw_string(ui_font, Vector2(outer_rect.position.x, baseline), score, HORIZONTAL_ALIGNMENT_CENTER, outer_rect.size.x, font_size, Color.WHITE)
 
 func draw_hud(viewport_size: Vector2) -> void:
-	# Overlay the compact HUD so it no longer reserves valuable board height.
-	draw_rect(Rect2(0, 0, viewport_size.x, 54), Color(0.09, 0.15, 0.23, 0.78))
-	draw_style_box(make_box(Color("172b42"), 12.0), Rect2(8.0, 6.0, 116.0, 42.0))
-	draw_string(ui_font, Vector2(8, 34), "MENU", HORIZONTAL_ALIGNMENT_CENTER, 116, 17, Color("f6d365"))
-	draw_string(ui_font, Vector2(142, 34), status, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 617, 17, Color.WHITE)
-	var choose_rect := Rect2(viewport_size.x - 454.0, 6.0, 105.0, 42.0)
-	draw_style_box(make_box(Color("1b91a8"), 14.0), choose_rect)
-	draw_string(ui_font, choose_rect.position + Vector2(0, 28), "CHOOSE", HORIZONTAL_ALIGNMENT_CENTER, choose_rect.size.x, 15, Color.WHITE)
-	var edit_rect := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
-	draw_style_box(make_box(Color("7256d8") if effect_editor_enabled else Color("34495e"), 14.0), edit_rect)
-	draw_string(ui_font, edit_rect.position + Vector2(19, 28), "EDIT EFFECT", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
-	var button_rect := Rect2(viewport_size.x - 174.0, 6.0, 150.0, 42.0)
-	draw_style_box(make_box(Color("ef5350"), 14.0), button_rect)
-	draw_string(ui_font, button_rect.position + Vector2(25, 28), "NEW GAME", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
+	var back := game_back_rect()
+	draw_style_box(make_box(Color(0.04, 0.09, 0.16, 0.94), 14.0), back)
+	draw_string(ui_font, back.position + Vector2(0.0, 31.0), "‹  חזרה" if ui_language == "he" else "‹  BACK", HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 17, Color.WHITE)
+	var card_width: float = minf(270.0, viewport_size.x * 0.22)
+	draw_match_player_card(Rect2(viewport_size.x * 0.5 - card_width - 112.0, 7.0, card_width, 58.0), 0)
+	draw_match_player_card(Rect2(viewport_size.x * 0.5 + 112.0, 7.0, card_width, 58.0), 1)
+	var turn_rect := Rect2(viewport_size.x * 0.5 - 102.0, 12.0, 204.0, 48.0)
+	var local_turn := (turn == multiplayer_slot) if game_mode == "online" else turn == 0
+	draw_style_box(make_box(Color("12a96b") if local_turn else Color("7256d8"), 18.0), turn_rect)
+	var turn_text := match_turn_text()
+	draw_string(ui_font, turn_rect.position + Vector2(0.0, 31.0), turn_text, HORIZONTAL_ALIGNMENT_CENTER, turn_rect.size.x, 18, Color.WHITE)
+	if game_mode == "online":
+		var chat_rect := game_chat_rect(viewport_size)
+		draw_style_box(make_box(Color("1b91a8"), 14.0), chat_rect)
+		draw_string(ui_font, chat_rect.position + Vector2(0.0, 31.0), "צ׳אט" if ui_language == "he" else "CHAT", HORIZONTAL_ALIGNMENT_CENTER, chat_rect.size.x, 17, Color.WHITE)
+	if exit_confirm_open:
+		draw_exit_confirmation(viewport_size)
+	elif chat_open:
+		draw_match_chat(viewport_size)
+
+func game_back_rect() -> Rect2:
+	return Rect2(10.0, 9.0, 112.0, 48.0)
+
+func game_chat_rect(viewport_size: Vector2) -> Rect2:
+	return Rect2(viewport_size.x - 122.0, 9.0, 112.0, 48.0)
+
+func match_turn_text() -> String:
+	if game_mode == "online":
+		return ("התור שלכם" if turn == multiplayer_slot else "תור היריב") if ui_language == "he" else ("YOUR TURN" if turn == multiplayer_slot else "OPPONENT TURN")
+	if game_mode == "computer":
+		return ("התור שלכם" if turn == 0 else "תור המחשב") if ui_language == "he" else ("YOUR TURN" if turn == 0 else "COMPUTER TURN")
+	return ("תור שחקן " if ui_language == "he" else "PLAYER ") + str(turn + 1)
+
+func match_player_name(team: int) -> String:
+	if game_mode == "online" and team < multiplayer_players.size():
+		return str(multiplayer_players[team].get("name", "שחקן " + str(team + 1)))
+	if team == 0:
+		return profile_name
+	return ("מחשב" if ui_language == "he" else "COMPUTER") if game_mode == "computer" else ("שחקן 2" if ui_language == "he" else "PLAYER 2")
+
+func draw_match_player_card(rect: Rect2, team: int) -> void:
+	var active := turn == team
+	draw_style_box(make_box(Color(0.03, 0.08, 0.14, 0.94), 14.0), rect)
+	if active:
+		draw_rect(rect.grow(2.0), Color("f6d365"), false, 3.0)
+	if team_piece_textures.size() > team and team_piece_textures[team] != null:
+		draw_texture_rect(team_piece_textures[team], Rect2(rect.position + Vector2(7.0, 5.0), Vector2(48.0, 48.0)), false)
+	var animal_index := player_animal if team == 0 else ai_animal
+	draw_string(ui_font, rect.position + Vector2(62.0, 25.0), match_player_name(team), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 16, Color.WHITE)
+	draw_string(ui_font, rect.position + Vector2(62.0, 46.0), ui_text(ANIMAL_FILES[animal_index]) + " • " + str(fallen_count(team)), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 13, RING_COLORS[player_ring_color if team == 0 else ai_ring_color].lightened(0.28))
+
+func exit_confirm_panel(viewport_size: Vector2) -> Rect2:
+	return Rect2((viewport_size - Vector2(520.0, 245.0)) * 0.5, Vector2(520.0, 245.0))
+
+func exit_confirm_yes_rect(viewport_size: Vector2) -> Rect2:
+	var panel := exit_confirm_panel(viewport_size)
+	return Rect2(panel.position + Vector2(45.0, 157.0), Vector2(195.0, 58.0))
+
+func exit_confirm_no_rect(viewport_size: Vector2) -> Rect2:
+	var panel := exit_confirm_panel(viewport_size)
+	return Rect2(panel.position + Vector2(280.0, 157.0), Vector2(195.0, 58.0))
+
+func draw_exit_confirmation(viewport_size: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.06, 0.72))
+	var panel := exit_confirm_panel(viewport_size)
+	draw_style_box(make_box(Color("10283b"), 24.0), panel)
+	draw_string(ui_font, panel.position + Vector2(0.0, 66.0), "לצאת מהמשחק?" if ui_language == "he" else "LEAVE THE MATCH?", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 30, Color("f6d365"))
+	draw_string(ui_font, panel.position + Vector2(0.0, 112.0), "המשחק עדיין מתנהל. האם אתם בטוחים?" if ui_language == "he" else "The match is still in progress. Are you sure?", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 18, Color.WHITE)
+	var yes := exit_confirm_yes_rect(viewport_size)
+	var no := exit_confirm_no_rect(viewport_size)
+	draw_style_box(make_box(Color("ef5350"), 16.0), yes)
+	draw_style_box(make_box(Color("12a96b"), 16.0), no)
+	draw_string(ui_font, yes.position + Vector2(0.0, 37.0), "כן, לצאת" if ui_language == "he" else "LEAVE", HORIZONTAL_ALIGNMENT_CENTER, yes.size.x, 19, Color.WHITE)
+	draw_string(ui_font, no.position + Vector2(0.0, 37.0), "להמשיך לשחק" if ui_language == "he" else "KEEP PLAYING", HORIZONTAL_ALIGNMENT_CENTER, no.size.x, 19, Color.WHITE)
+
+func exit_current_match() -> void:
+	exit_confirm_open = false
+	chat_open = false
+	leave_multiplayer_room()
+	app_screen = APP_HOME
+	selected = -1
+	dragging = false
+	active_effects.clear()
+	queue_redraw()
 
 func draw_hole_effect(hole: int, progress: float) -> void:
 	var center := board_to_screen(SCORING_HOLE_CENTERS[hole])
@@ -2410,6 +2499,62 @@ func update_room_code_input() -> void:
 		room_code_input.position = Vector2(700.0, 260.0) * unit
 		room_code_input.size = Vector2(330.0, 72.0) * unit
 
+func chat_panel(viewport_size: Vector2) -> Rect2:
+	return Rect2((viewport_size - Vector2(650.0, 390.0)) * 0.5, Vector2(650.0, 390.0))
+
+func chat_close_rect(viewport_size: Vector2) -> Rect2:
+	var panel := chat_panel(viewport_size)
+	return Rect2(panel.end.x - 55.0, panel.position.y + 12.0, 42.0, 42.0)
+
+func chat_send_rect(viewport_size: Vector2) -> Rect2:
+	var panel := chat_panel(viewport_size)
+	return Rect2(panel.end.x - 135.0, panel.end.y - 72.0, 112.0, 50.0)
+
+func update_chat_input() -> void:
+	if chat_input == null:
+		return
+	var should_show := app_screen == APP_GAME and game_mode == "online" and chat_open and not exit_confirm_open
+	chat_input.visible = should_show
+	if should_show:
+		var panel := chat_panel(get_viewport_rect().size)
+		chat_input.position = panel.position + Vector2(24.0, panel.size.y - 72.0)
+		chat_input.size = Vector2(panel.size.x - 174.0, 50.0)
+
+func _on_chat_submitted(_value: String) -> void:
+	send_chat_message()
+
+func send_chat_message() -> void:
+	if chat_input == null:
+		return
+	var message := chat_input.text.strip_edges()
+	if message.is_empty():
+		return
+	send_multiplayer({"type":"chat", "message":message.left(80)})
+	chat_input.clear()
+	chat_input.grab_focus()
+
+func draw_match_chat(viewport_size: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.06, 0.68))
+	var panel := chat_panel(viewport_size)
+	draw_style_box(make_box(Color("10283b"), 24.0), panel)
+	draw_string(ui_font, panel.position + Vector2(0.0, 48.0), "צ׳אט עם החבר" if ui_language == "he" else "FRIEND CHAT", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 25, Color("f6d365"))
+	var close := chat_close_rect(viewport_size)
+	draw_style_box(make_box(Color("ef5350"), 12.0), close)
+	draw_string(ui_font, close.position + Vector2(0.0, 29.0), "×", HORIZONTAL_ALIGNMENT_CENTER, close.size.x, 24, Color.WHITE)
+	var first_index: int = maxi(0, match_chat_messages.size() - 6)
+	var row := 0
+	for i in range(first_index, match_chat_messages.size()):
+		var message: Dictionary = match_chat_messages[i]
+		var sender_slot := int(message.get("slot", -1))
+		var sender := str(message.get("name", ""))
+		var line := sender + ": " + str(message.get("message", ""))
+		var color := RING_COLORS[player_ring_color if sender_slot == 0 else ai_ring_color].lightened(0.35)
+		draw_string(ui_font, panel.position + Vector2(28.0, 92.0 + row * 38.0), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 56.0, 18, color)
+		row += 1
+	var send_rect := chat_send_rect(viewport_size)
+	draw_style_box(make_box(Color("12a96b"), 14.0), send_rect)
+	draw_string(ui_font, send_rect.position + Vector2(0.0, 32.0), "שליחה" if ui_language == "he" else "SEND", HORIZONTAL_ALIGNMENT_CENTER, send_rect.size.x, 17, Color.WHITE)
+
 func connect_multiplayer() -> void:
 	if multiplayer_socket.get_ready_state() in [WebSocketPeer.STATE_OPEN, WebSocketPeer.STATE_CONNECTING]:
 		return
@@ -2505,6 +2650,9 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			turn = int(payload.get("turn", 0))
 			game_mode = "online"
 			app_screen = APP_GAME
+			exit_confirm_open = false
+			chat_open = false
+			match_chat_messages.clear()
 			new_game()
 			turn = int(payload.get("turn", 0))
 			status = "התור שלכם" if turn == multiplayer_slot and ui_language == "he" else ("תור היריב" if ui_language == "he" else ("Your turn" if turn == multiplayer_slot else "Opponent's turn"))
@@ -2518,6 +2666,14 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 		"turn":
 			turn = int(payload.get("turn", 0))
 			status = "התור שלכם" if turn == multiplayer_slot and ui_language == "he" else ("תור היריב" if ui_language == "he" else ("Your turn" if turn == multiplayer_slot else "Opponent's turn"))
+		"chat":
+			match_chat_messages.append({
+				"slot": int(payload.get("playerSlot", -1)),
+				"name": str(payload.get("name", "")),
+				"message": str(payload.get("message", ""))
+			})
+			while match_chat_messages.size() > 20:
+				match_chat_messages.pop_front()
 		"opponent_left":
 			app_screen = APP_FRIEND
 			multiplayer_ready = false
@@ -2530,6 +2686,9 @@ func start_selected_mode(mode: String) -> void:
 	game_mode = mode
 	customizer_open = false
 	effect_editor_enabled = false
+	exit_confirm_open = false
+	chat_open = false
+	match_chat_messages.clear()
 	app_screen = APP_GAME
 	new_game()
 	if game_mode == "friend":
