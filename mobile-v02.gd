@@ -64,6 +64,7 @@ const APP_HOME := 1
 const APP_PROFILE := 2
 const APP_SHOP := 3
 const APP_GAME := 4
+const APP_ARENA := 5
 var board_texture: Texture2D
 var lobby_background_texture: Texture2D
 var loading_team_texture: Texture2D
@@ -146,6 +147,7 @@ var menu_elapsed := 0.0
 var game_mode := "computer"
 var profile_name := "PLAYER 1"
 var player_coins := 1250
+var selected_arena := 0
 var menu_notice := ""
 var menu_notice_time := 0.0
 
@@ -2194,6 +2196,17 @@ func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 		return Rect2(viewport_size.x - 365.0 * unit, viewport_size.y - 170.0 * unit, 330.0 * unit, 112.0 * unit)
 	return Rect2(viewport_size.x - 365.0 * unit, (205.0 + float(index) * 92.0) * unit, 330.0 * unit, 76.0 * unit)
 
+func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var card_size := Vector2(350.0, 430.0) * unit
+	var gap := 24.0 * unit
+	var total_width := card_size.x * 3.0 + gap * 2.0
+	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + float(index) * (card_size.x + gap), 142.0 * unit), card_size)
+
+func arena_play_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((viewport_size.x - 290.0 * unit) * 0.5, viewport_size.y - 78.0 * unit), Vector2(290.0, 58.0) * unit)
+
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
@@ -2273,10 +2286,10 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				show_menu_notice("DAILY REWARDS - COMING NEXT")
 			return
 		if home_mode_rect(0, viewport_size).has_point(screen_pos):
-			show_menu_notice("ARENA ONLINE - COMING SOON")
+			app_screen = APP_ARENA
 			return
 		if home_mode_rect(1, viewport_size).has_point(screen_pos):
-			start_selected_mode("friend")
+			show_menu_notice("PRIVATE FRIEND MATCH - TWO DEVICES - COMING SOON")
 			return
 		if home_mode_rect(2, viewport_size).has_point(screen_pos):
 			start_selected_mode("computer")
@@ -2298,6 +2311,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					return
 		elif app_screen == APP_SHOP:
 			show_menu_notice("THE FIRST SHOP COLLECTION IS COMING SOON")
+		elif app_screen == APP_ARENA:
+			for i in 3:
+				if arena_card_rect(i, viewport_size).has_point(screen_pos):
+					selected_arena = i
+					return
+			if arena_play_rect(viewport_size).has_point(screen_pos):
+				show_menu_notice("ONLINE MATCHMAKING FOR THIS ARENA - COMING SOON")
 
 func draw_menu_background(viewport_size: Vector2) -> void:
 	var overlay := Color(0.015, 0.055, 0.11, 0.62)
@@ -2366,10 +2386,84 @@ func draw_frontend(viewport_size: Vector2) -> void:
 	elif app_screen == APP_SHOP:
 		draw_menu_background(viewport_size)
 		draw_shop_screen(viewport_size)
+	elif app_screen == APP_ARENA:
+		if lobby_background_texture != null:
+			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_arena_screen(viewport_size)
 	if menu_notice_time > 0.0:
 		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
 		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
 		draw_string(ThemeDB.fallback_font, toast.position + Vector2(0.0, 29.0), menu_notice, HORIZONTAL_ALIGNMENT_CENTER, toast.size.x, 14, Color("f6d365"))
+
+func draw_arena_preview(preview: Rect2, arena_index: int, unit: float) -> void:
+	if arena_index == 0:
+		draw_rect(preview, Color("f8b7c6"))
+		draw_circle(preview.position + Vector2(preview.size.x * 0.78, preview.size.y * 0.25), 34.0 * unit, Color("ffd884"))
+		draw_rect(Rect2(preview.position + Vector2(0.0, preview.size.y * 0.68), Vector2(preview.size.x, preview.size.y * 0.32)), Color("5eaf72"))
+		var gate_x := preview.position.x + preview.size.x * 0.22
+		var gate_y := preview.position.y + preview.size.y * 0.46
+		draw_line(Vector2(gate_x - 45.0 * unit, gate_y), Vector2(gate_x + 45.0 * unit, gate_y), Color("b92f2f"), 13.0 * unit, true)
+		draw_line(Vector2(gate_x - 31.0 * unit, gate_y), Vector2(gate_x - 31.0 * unit, gate_y + 72.0 * unit), Color("8f2525"), 10.0 * unit, true)
+		draw_line(Vector2(gate_x + 31.0 * unit, gate_y), Vector2(gate_x + 31.0 * unit, gate_y + 72.0 * unit), Color("8f2525"), 10.0 * unit, true)
+		var tree_center := preview.position + Vector2(preview.size.x * 0.73, preview.size.y * 0.49)
+		draw_line(tree_center, tree_center + Vector2(-16.0, 78.0) * unit, Color("70432f"), 15.0 * unit, true)
+		for offset in [Vector2(-42.0, -13.0), Vector2(-8.0, -35.0), Vector2(31.0, -18.0), Vector2(52.0, 9.0), Vector2(8.0, 4.0)]:
+			draw_circle(tree_center + offset * unit, 31.0 * unit, Color("f06f9c"))
+	elif arena_index == 1:
+		draw_rect(preview, Color("8ed17b"))
+		draw_rect(Rect2(preview.position + Vector2(0.0, preview.size.y * 0.72), Vector2(preview.size.x, preview.size.y * 0.28)), Color("b88a4e"))
+		for i in 9:
+			var x := preview.position.x + (22.0 + float(i) * 38.0) * unit
+			var lean := float((i % 3) - 1) * 8.0 * unit
+			draw_line(Vector2(x, preview.position.y - 4.0), Vector2(x + lean, preview.position.y + preview.size.y * 0.86), Color("236c3e"), 13.0 * unit, true)
+			for j in 4:
+				var y := preview.position.y + (34.0 + float(j) * 43.0) * unit
+				draw_line(Vector2(x - 6.0 * unit, y), Vector2(x + 7.0 * unit, y), Color("c1e15d"), 3.0 * unit, true)
+		var platform := preview.position + Vector2(preview.size.x * 0.58, preview.size.y * 0.75)
+		draw_circle(platform, 58.0 * unit, Color("d0a95c"))
+		draw_circle(platform, 45.0 * unit, Color("a47a3d"), false, 4.0 * unit, true)
+	else:
+		draw_rect(preview, Color("30284a"))
+		draw_circle(preview.position + Vector2(preview.size.x * 0.78, preview.size.y * 0.20), 30.0 * unit, Color("ff9954"))
+		var mountain := PackedVector2Array([
+			preview.position + Vector2(0.0, preview.size.y),
+			preview.position + Vector2(preview.size.x * 0.50, preview.size.y * 0.28),
+			preview.end,
+		])
+		draw_colored_polygon(mountain, Color("513841"))
+		var lava_top := preview.position + Vector2(preview.size.x * 0.50, preview.size.y * 0.29)
+		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.43, preview.size.y), Color("ff5b2d"), 20.0 * unit, true)
+		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.57, preview.size.y), Color("ffb12b"), 8.0 * unit, true)
+
+func draw_arena_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.42))
+	draw_frontend_header(viewport_size, "CHOOSE YOUR ARENA", "Select the battleground for your online match")
+	var names := ["SAKURA GARDEN", "BAMBOO GROVE", "VOLCANO TEMPLE"]
+	var entries := [0, 100, 500]
+	var prizes := [100, 250, 1200]
+	var card_colors := [Color("f08aac"), Color("62b55d"), Color("e65b36")]
+	for i in 3:
+		var card := arena_card_rect(i, viewport_size)
+		var selected := i == selected_arena
+		var border := Color("ffe25d") if selected else Color(0.02, 0.07, 0.12, 0.92)
+		draw_style_box(make_box(border, 25.0 * unit), card.grow((8.0 if selected else 5.0) * unit))
+		draw_style_box(make_box(Color("f8f2cf"), 22.0 * unit), card)
+		var preview := Rect2(card.position + Vector2(15.0, 15.0) * unit, Vector2(card.size.x - 30.0 * unit, 205.0 * unit))
+		draw_style_box(make_box(card_colors[i], 17.0 * unit), preview.grow(3.0 * unit))
+		draw_arena_preview(preview, i, unit)
+		var title_rect := Rect2(card.position + Vector2(15.0, 232.0) * unit, Vector2(card.size.x - 30.0 * unit, 54.0 * unit))
+		draw_style_box(make_box(Color("314f22"), 13.0 * unit), title_rect)
+		draw_string(ThemeDB.fallback_font, title_rect.position + Vector2(0.0, 36.0) * unit, names[i], HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, int(21.0 * unit), Color.WHITE)
+		var entry_text := "ENTRY: FREE" if entries[i] == 0 else "ENTRY: " + str(entries[i]) + " COINS"
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(22.0, 325.0) * unit, entry_text, HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(15.0 * unit), Color("354522"))
+		draw_string(ThemeDB.fallback_font, card.position + Vector2(22.0, 363.0) * unit, "WIN PRIZE: " + str(prizes[i]) + " COINS", HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(17.0 * unit), Color("a66013"))
+		if selected:
+			draw_string(ThemeDB.fallback_font, card.position + Vector2(0.0, 408.0) * unit, "SELECTED", HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(15.0 * unit), Color("16845b"))
+	var play := arena_play_rect(viewport_size)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.90), 18.0 * unit), play.grow(5.0 * unit))
+	draw_style_box(make_box(Color("6fda18"), 16.0 * unit), play)
+	draw_string(ThemeDB.fallback_font, play.position + Vector2(0.0, 38.0) * unit, "FIND ONLINE MATCH", HORIZONTAL_ALIGNMENT_CENTER, play.size.x, int(20.0 * unit), Color.WHITE)
 
 func draw_home_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -2470,9 +2564,10 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_string(ThemeDB.fallback_font, Vector2(viewport_size.x - 390.0 * unit, 132.0 * unit), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(34.0 * unit), Color("ffe25d"))
 	draw_string(ThemeDB.fallback_font, Vector2(viewport_size.x - 390.0 * unit, 158.0 * unit), "CHOOSE YOUR ADVENTURE", HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(12.0 * unit), Color.WHITE)
 
-	# Two compact mode cards and one unmistakable primary action.
-	var small_titles := ["ARENA", "PLAY A FRIEND"]
-	var small_subtitles := ["ONLINE LEAGUES • COMING SOON", "TWO PLAYERS • ONE DEVICE"]
+	# Three clearly separated modes: public online matchmaking, a private online
+	# friend match on two devices, and the immediately playable computer mode.
+	var small_titles := ["ONLINE ARENA", "PLAY A FRIEND"]
+	var small_subtitles := ["RANDOM ONLINE OPPONENT", "PRIVATE MATCH • TWO DEVICES"]
 	var small_colors := [Color("9d59e8"), Color("ff7b43")]
 	for i in 2:
 		var button := home_mode_rect(i, viewport_size)
@@ -2495,8 +2590,8 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		play_center + Vector2(22.0, 0.0) * unit
 	])
 	draw_colored_polygon(triangle, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(108.0, 51.0) * unit, "PLAY", HORIZONTAL_ALIGNMENT_LEFT, 190.0 * unit, int(32.0 * unit), Color.WHITE)
-	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(108.0, 80.0) * unit, "VS COMPUTER", HORIZONTAL_ALIGNMENT_LEFT, 190.0 * unit, int(12.0 * unit), Color("eaffcf"))
+	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(108.0, 48.0) * unit, "PLAY VS COMPUTER", HORIZONTAL_ALIGNMENT_LEFT, 205.0 * unit, int(22.0 * unit), Color.WHITE)
+	draw_string(ThemeDB.fallback_font, play_rect.position + Vector2(108.0, 77.0) * unit, "SINGLE PLAYER • VS AI", HORIZONTAL_ALIGNMENT_LEFT, 205.0 * unit, int(11.0 * unit), Color("eaffcf"))
 
 	# Collection shortcuts stay close to the hero character.
 	var nav_labels := ["CHARACTERS", "LIFEBUOYS", "SHOP", "REWARDS"]
