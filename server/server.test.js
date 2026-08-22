@@ -60,10 +60,14 @@ test("two players create, join, ready and relay a shot", async (context) => {
   assert.equal(joinedSecond.slot, 1);
 
   const startedPromise = next(first, "match_started");
+  const secondStartedPromise = next(second, "match_started");
   first.send(JSON.stringify({ type: "ready", ready: true }));
   second.send(JSON.stringify({ type: "ready", ready: true }));
   const started = await startedPromise;
+  const secondStarted = await secondStartedPromise;
   assert.equal(started.turn, 0);
+  assert.equal(started.slot, 0);
+  assert.equal(secondStarted.slot, 1);
 
   const shotPromise = next(second, "shot");
   first.send(JSON.stringify({ type: "shot", ballIndex: 4, pullX: -12, pullY: 8, strength: 18 }));

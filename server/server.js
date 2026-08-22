@@ -134,7 +134,14 @@ function handleMessage(socket, payload) {
       room.status = "playing";
       room.turn = 0;
       room.sequence = 0;
-      broadcast(room, { type: "match_started", roomCode: room.code, turn: room.turn });
+      for (const roomPlayer of room.players) {
+        send(roomPlayer.socket, {
+          type: "match_started",
+          roomCode: room.code,
+          turn: room.turn,
+          slot: roomPlayer.slot
+        });
+      }
     }
     broadcastState(room);
     return;
