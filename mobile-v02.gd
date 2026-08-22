@@ -2647,6 +2647,7 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 				ai_ring_color = int(second_player.get("ringColor", ai_ring_color))
 			rebuild_team_piece_textures()
 		"match_started":
+			multiplayer_slot = int(payload.get("slot", multiplayer_slot))
 			turn = int(payload.get("turn", 0))
 			game_mode = "online"
 			app_screen = APP_GAME
