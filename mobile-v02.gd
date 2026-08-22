@@ -731,8 +731,17 @@ func _draw() -> void:
 	var viewport_size := get_viewport_rect().size
 	draw_ocean(viewport_size)
 	if viewport_size.y > viewport_size.x:
-		draw_string(ui_font, Vector2(0, viewport_size.y * 0.43), "לחצו כדי לפתוח לרוחב" if ui_language == "he" else "TAP TO START IN LANDSCAPE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color("f6d365"))
-		draw_string(ui_font, Vector2(0, viewport_size.y * 0.50), "המשחק יעבור למסך מלא ויסתובב אוטומטית" if ui_language == "he" else "The game will enter fullscreen and rotate automatically", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 17, Color.WHITE)
+		var launch_width := min(viewport_size.x * 0.82, 620.0)
+		var launch_rect := Rect2(
+			(viewport_size.x - launch_width) * 0.5,
+			viewport_size.y * 0.38,
+			launch_width,
+			112.0
+		)
+		draw_style_box(make_box(Color(0.01, 0.04, 0.08, 0.42), 30.0), launch_rect.grow(8.0).translated(Vector2(0.0, 8.0)))
+		draw_style_box(make_box(Color("70df12"), 26.0), launch_rect)
+		draw_string(ui_font, Vector2(launch_rect.position.x, launch_rect.position.y + 67.0), "לחצו כאן" if ui_language == "he" else "TAP HERE", HORIZONTAL_ALIGNMENT_CENTER, launch_rect.size.x, 46, Color.WHITE)
+		draw_string(ui_font, Vector2(0, launch_rect.end.y + 52.0), "המשחק ייפתח לרוחב ובמסך מלא" if ui_language == "he" else "The game will open fullscreen in landscape", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 22, Color.WHITE)
 		return
 	if app_screen == APP_SPLASH:
 		draw_splash_screen(viewport_size)
