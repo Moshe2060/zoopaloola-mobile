@@ -224,6 +224,7 @@ var friend_customizer_open := false
 var friend_opponent_profile_open := false
 var room_code_input: LineEdit
 var chat_input: LineEdit
+var profile_name_input: LineEdit
 var exit_confirm_open := false
 var chat_open := false
 var match_chat_messages: Array = []
@@ -245,6 +246,7 @@ var player_animal := 1
 var player_ring_color := 3
 var ai_animal := 0
 var ai_ring_color := 0
+const PLAYER_PROFILE_PATH := "user://zoopaloola-profile.cfg"
 
 func _ready() -> void:
 	# Smooth the original character art when it is enlarged inside HD balls.
@@ -254,6 +256,7 @@ func _ready() -> void:
 	ui_font = load("res://assets/ui/fonts/DejaVuSans-Bold.ttf") as Font
 	if ui_font == null:
 		ui_font = ThemeDB.fallback_font
+	load_player_profile()
 	room_code_input = LineEdit.new()
 	room_code_input.visible = false
 	room_code_input.max_length = 6
@@ -271,6 +274,16 @@ func _ready() -> void:
 	chat_input.add_theme_font_size_override("font_size", 20)
 	chat_input.text_submitted.connect(_on_chat_submitted)
 	add_child(chat_input)
+	profile_name_input = LineEdit.new()
+	profile_name_input.visible = false
+	profile_name_input.max_length = 20
+	profile_name_input.text = profile_name
+	profile_name_input.placeholder_text = "השם שלכם" if ui_language == "he" else "Your name"
+	profile_name_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	profile_name_input.add_theme_font_override("font", ui_font)
+	profile_name_input.add_theme_font_size_override("font_size", 21)
+	profile_name_input.text_changed.connect(_on_profile_name_changed)
+	add_child(profile_name_input)
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
@@ -387,6 +400,7 @@ func _process(delta: float) -> void:
 	poll_multiplayer()
 	update_room_code_input()
 	update_chat_input()
+	update_profile_name_input()
 	if app_screen == APP_SPLASH:
 		splash_elapsed += delta
 		if splash_elapsed >= 3.2:
@@ -2518,6 +2532,44 @@ func update_room_code_input() -> void:
 		room_code_input.position = Vector2(700.0, 260.0) * unit
 		room_code_input.size = Vector2(330.0, 72.0) * unit
 
+func load_player_profile() -> void:
+	var config := ConfigFile.new()
+	if config.load(PLAYER_PROFILE_PATH) != OK:
+		return
+	profile_name = str(config.get_value("player", "name", profile_name)).strip_edges().left(20)
+	if profile_name.is_empty():
+		profile_name = "PLAYER 1"
+	player_animal = clampi(int(config.get_value("player", "animal", player_animal)), 0, ANIMAL_NAMES.size() - 1)
+	player_ring_color = clampi(int(config.get_value("player", "ring_color", player_ring_color)), 0, RING_COLORS.size() - 1)
+	ui_language = str(config.get_value("settings", "language", ui_language))
+
+func save_player_profile() -> void:
+	var config := ConfigFile.new()
+	config.set_value("player", "name", profile_name)
+	config.set_value("player", "animal", player_animal)
+	config.set_value("player", "ring_color", player_ring_color)
+	config.set_value("settings", "language", ui_language)
+	config.save(PLAYER_PROFILE_PATH)
+
+func _on_profile_name_changed(value: String) -> void:
+	var clean := value.strip_edges().left(20)
+	if clean.is_empty():
+		return
+	profile_name = clean
+	save_player_profile()
+	queue_redraw()
+
+func update_profile_name_input() -> void:
+	if profile_name_input == null:
+		return
+	var should_show := app_screen == APP_PLAYER_PROFILE
+	profile_name_input.visible = should_show
+	if should_show:
+		var viewport_size := get_viewport_rect().size
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		profile_name_input.position = Vector2(602.0, 139.0) * unit
+		profile_name_input.size = Vector2(350.0, 50.0) * unit
+
 func chat_panel(viewport_size: Vector2) -> Rect2:
 	return Rect2((viewport_size - Vector2(650.0, 390.0)) * 0.5, Vector2(650.0, 390.0))
 
@@ -2753,6 +2805,10 @@ func ui_ring_name(index: int) -> String:
 	var keys := ["red", "orange", "blue", "green", "purple", "turquoise"]
 	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
 
+func profile_initial() -> String:
+	var clean := profile_name.strip_edges()
+	return clean.left(1).to_upper() if not clean.is_empty() else "P"
+
 func handle_frontend_touch(screen_pos: Vector2) -> void:
 	var viewport_size := get_viewport_rect().size
 	if app_screen == APP_SPLASH:
@@ -2767,14 +2823,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			return
 		if home_settings_rect(viewport_size).has_point(screen_pos):
 			ui_language = "en" if ui_language == "he" else "he"
+			save_player_profile()
 			show_menu_notice("English interface" if ui_language == "en" else "הממשק הוחלף לעברית")
 			return
-		for i in 4:
+		for i in 2:
 			if not home_nav_rect(i, viewport_size).has_point(screen_pos):
 				continue
-			if i == 0 or i == 1:
-				app_screen = APP_PROFILE
-			elif i == 2:
+			if i == 0:
 				app_screen = APP_SHOP
 			else:
 				show_menu_notice("DAILY REWARDS - COMING NEXT")
@@ -2800,11 +2855,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				if character_card_rect(i, viewport_size).has_point(screen_pos):
 					player_animal = i
 					rebuild_team_piece_textures()
+					save_player_profile()
 					return
 			for i in RING_COLOR_NAMES.size():
 				if character_ring_rect(i, viewport_size).has_point(screen_pos):
 					player_ring_color = i
 					rebuild_team_piece_textures()
+					save_player_profile()
 					return
 		elif app_screen == APP_SHOP:
 			show_menu_notice("THE FIRST SHOP COLLECTION IS COMING SOON")
@@ -2820,11 +2877,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				if player_profile_animal_rect(i, viewport_size).has_point(screen_pos):
 					player_animal = i
 					rebuild_team_piece_textures()
+					save_player_profile()
 					return
 			for i in RING_COLOR_NAMES.size():
 				if player_profile_color_rect(i, viewport_size).has_point(screen_pos):
 					player_ring_color = i
 					rebuild_team_piece_textures()
+					save_player_profile()
 					return
 		elif app_screen == APP_FRIEND:
 			if friend_customizer_open or friend_opponent_profile_open:
@@ -3019,16 +3078,28 @@ func draw_friend_modal_base(viewport_size: Vector2, title: String) -> Rect2:
 func draw_friend_customizer(viewport_size: Vector2) -> void:
 	var modal := draw_friend_modal_base(viewport_size, "בחירת דמות למשחק הזה" if ui_language == "he" else "MATCH CHARACTER")
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var selected_animal: int = player_animal if multiplayer_slot == 0 else ai_animal
+	var selected_ring: int = player_ring_color if multiplayer_slot == 0 else ai_ring_color
 	draw_string(ui_font, modal.position + Vector2(0.0, 112.0) * unit, "בחרו דמות" if ui_language == "he" else "CHOOSE AN ANIMAL", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
 	for i in ANIMAL_NAMES.size():
 		var choice := friend_choice_rect(i, false, viewport_size)
+		if i == selected_animal:
+			draw_style_box(make_box(Color("ffe25d"), 17.0 * unit), choice.grow(6.0 * unit))
 		draw_style_box(make_box(Color("1d405b"), 15.0 * unit), choice)
 		draw_texture_rect(full_body_animal_textures[i], choice.grow(-7.0 * unit), false)
+		if i == selected_animal:
+			draw_circle(choice.position + Vector2(78.0, 14.0) * unit, 12.0 * unit, Color("ffe25d"))
+			draw_string(ui_font, choice.position + Vector2(67.0, 19.0) * unit, "✓", HORIZONTAL_ALIGNMENT_CENTER, 22.0 * unit, int(14.0 * unit), Color("173249"))
 	draw_string(ui_font, modal.position + Vector2(0.0, 282.0) * unit, "בחרו צבע גלגל" if ui_language == "he" else "CHOOSE A RING COLOR", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
 	for i in RING_COLORS.size():
 		var color_choice := friend_choice_rect(i, true, viewport_size)
+		if i == selected_ring:
+			draw_style_box(make_box(Color("ffe25d"), 17.0 * unit), color_choice.grow(6.0 * unit))
 		draw_style_box(make_box(Color("1d405b"), 15.0 * unit), color_choice)
 		draw_circle(color_choice.get_center(), 29.0 * unit, RING_COLORS[i])
+		if i == selected_ring:
+			draw_circle(color_choice.get_center(), 36.0 * unit, Color.WHITE, false, 4.0 * unit, true)
+	draw_string(ui_font, modal.position + Vector2(0.0, 420.0) * unit, ("נבחרו: %s • %s" if ui_language == "he" else "Selected: %s • %s") % [ui_animal_name(selected_animal), ui_ring_name(selected_ring)], HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color("ffe25d"))
 	draw_string(ui_font, modal.position + Vector2(0.0, 475.0) * unit, "השינוי חל רק בחדר ובמשחק הנוכחי" if ui_language == "he" else "This choice applies only to this match", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(16.0 * unit), Color("a9cde2"))
 
 func draw_friend_opponent_profile(viewport_size: Vector2) -> void:
@@ -3167,11 +3238,9 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	var info_panel := Rect2(Vector2(474.0, 102.0) * unit, Vector2(768.0, 570.0) * unit)
 	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.92), 27.0 * unit), info_panel.grow(5.0 * unit))
 	draw_style_box(make_box(Color("eaf8f1"), 24.0 * unit), info_panel)
-	draw_circle(info_panel.position + Vector2(66.0, 69.0) * unit, 45.0 * unit, RING_COLORS[player_ring_color])
-	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
-		draw_texture_rect(team_piece_textures[0], Rect2(info_panel.position + Vector2(27.0, 30.0) * unit, Vector2(78.0, 78.0) * unit), false)
-	draw_string(ui_font, info_panel.position + Vector2(130.0, 58.0) * unit, ui_text("player"), HORIZONTAL_ALIGNMENT_LEFT, 390.0 * unit, int(30.0 * unit), Color("173249"))
-	draw_string(ui_font, info_panel.position + Vector2(130.0, 87.0) * unit, ui_text("level"), HORIZONTAL_ALIGNMENT_LEFT, 390.0 * unit, int(13.0 * unit), Color("2982a6"))
+	draw_circle(info_panel.position + Vector2(66.0, 69.0) * unit, 45.0 * unit, Color("6965d8"))
+	draw_string(ui_font, info_panel.position + Vector2(21.0, 84.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(42.0 * unit), Color.WHITE)
+	draw_string(ui_font, info_panel.position + Vector2(130.0, 32.0) * unit, "שם השחקן" if ui_language == "he" else "PLAYER NAME", HORIZONTAL_ALIGNMENT_LEFT, 350.0 * unit, int(13.0 * unit), Color("2982a6"))
 	var coin_box := Rect2(info_panel.position + Vector2(558.0, 27.0) * unit, Vector2(176.0, 74.0) * unit)
 	draw_style_box(make_box(Color("253e67"), 17.0 * unit), coin_box)
 	draw_circle(coin_box.position + Vector2(35.0, 37.0) * unit, 17.0 * unit, Color("ffc83d"))
@@ -3283,10 +3352,9 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var profile := home_profile_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 19.0), profile.grow(4.0))
 	draw_style_box(make_box(Color("244d70"), 17.0), profile)
-	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, RING_COLORS[player_ring_color])
-	if team_piece_textures.size() > 0 and team_piece_textures[0] != null:
-		draw_texture_rect(team_piece_textures[0], Rect2(profile.position + Vector2(9.0, 7.0) * unit, Vector2(44.0, 44.0) * unit), false)
-	draw_string(ui_font, profile.position + Vector2(65.0, 27.0) * unit, ui_text("player"), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(19.0 * unit), Color.WHITE)
+	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, Color("6965d8"))
+	draw_string(ui_font, profile.position + Vector2(7.0, 38.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(25.0 * unit), Color.WHITE)
+	draw_string(ui_font, profile.position + Vector2(65.0, 27.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(19.0 * unit), Color.WHITE)
 	draw_string(ui_font, profile.position + Vector2(65.0, 47.0) * unit, ui_text("level"), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("8cecff"))
 
 	# Brand title floats above the clear play area.
@@ -3302,7 +3370,9 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		var button := home_mode_rect(i, viewport_size)
 		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.84), 18.0), button.grow(5.0 * unit))
 		draw_style_box(make_box(small_colors[i], 16.0), button)
-		draw_circle(button.position + Vector2(38.0, 41.0) * unit, 24.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
+		var mode_icon_center := button.position + Vector2(38.0, 41.0) * unit
+		draw_circle(mode_icon_center, 27.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
+		draw_home_mode_icon(i, mode_icon_center, unit)
 		draw_string(ui_font, button.position + Vector2(70.0, 36.0) * unit, small_titles[i], HORIZONTAL_ALIGNMENT_CENTER, button.size.x - 102.0 * unit, int(22.0 * unit), Color.WHITE)
 		draw_string(ui_font, button.position + Vector2(70.0, 62.0) * unit, small_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, button.size.x - 102.0 * unit, int(11.0 * unit), Color("fff5d2"))
 		draw_string(ui_font, button.position + Vector2(button.size.x - 34.0 * unit, 52.0 * unit), ">", HORIZONTAL_ALIGNMENT_CENTER, 24.0 * unit, int(24.0 * unit), Color.WHITE)
@@ -3313,25 +3383,55 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color("6fda18"), 22.0), play_rect)
 	var play_center := play_rect.position + Vector2(58.0, 60.0) * unit
 	draw_circle(play_center, 39.0 * unit, Color("4cb900"))
-	var triangle := PackedVector2Array([
-		play_center + Vector2(-10.0, -18.0) * unit,
-		play_center + Vector2(-10.0, 18.0) * unit,
-		play_center + Vector2(22.0, 0.0) * unit
-	])
-	draw_colored_polygon(triangle, Color.WHITE)
+	draw_home_mode_icon(2, play_center, unit * 1.2)
 	draw_string(ui_font, play_rect.position + Vector2(104.0, 53.0) * unit, ui_text("computer"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(25.0 * unit), Color.WHITE)
 	draw_string(ui_font, play_rect.position + Vector2(104.0, 84.0) * unit, ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(12.0 * unit), Color("eaffcf"))
 
 	# Collection shortcuts stay close to the hero character.
-	var nav_labels := [ui_text("characters"), ui_text("rings"), ui_text("shop"), ui_text("rewards")]
-	var nav_subtitles := [ui_text("characters_sub"), ui_text("rings_sub"), ui_text("shop_sub"), ui_text("rewards_sub")]
-	var nav_colors := [Color("2a9bd5"), Color("8e55df"), Color("ff9f24"), Color("e94f78")]
-	for i in 4:
+	var nav_labels := [ui_text("shop"), ui_text("rewards")]
+	var nav_subtitles := [ui_text("shop_sub"), ui_text("rewards_sub")]
+	var nav_colors := [Color("ff9f24"), Color("e94f78")]
+	for i in 2:
 		var nav := home_nav_rect(i, viewport_size)
 		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.86), 17.0), nav.grow(4.0 * unit))
 		draw_style_box(make_box(nav_colors[i], 15.0), nav)
-		draw_string(ui_font, nav.position + Vector2(0.0, 34.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(19.0 * unit), Color.WHITE)
-		draw_string(ui_font, nav.position + Vector2(0.0, 61.0) * unit, nav_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(10.0 * unit), Color("fff0c7"))
+		var nav_icon_center := nav.position + Vector2(31.0, 39.0) * unit
+		draw_circle(nav_icon_center, 23.0 * unit, Color(1.0, 1.0, 1.0, 0.22))
+		draw_home_nav_icon(i, nav_icon_center, unit)
+		draw_string(ui_font, nav.position + Vector2(56.0, 34.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(19.0 * unit), Color.WHITE)
+		draw_string(ui_font, nav.position + Vector2(56.0, 61.0) * unit, nav_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(10.0 * unit), Color("fff0c7"))
+
+func draw_home_mode_icon(kind: int, center: Vector2, unit: float) -> void:
+	if kind == 0:
+		# Arena: a lifebuoy with a small winner star.
+		draw_circle(center, 15.0 * unit, Color.WHITE, false, 5.0 * unit, true)
+		draw_circle(center, 5.0 * unit, Color(1.0, 1.0, 1.0, 0.25))
+		draw_string(ui_font, center + Vector2(-10.0, -10.0) * unit, "★", HORIZONTAL_ALIGNMENT_CENTER, 20.0 * unit, int(12.0 * unit), Color("ffe25d"))
+	elif kind == 1:
+		# Private friend match: two clearly different players.
+		draw_circle(center + Vector2(-8.0, -7.0) * unit, 7.0 * unit, Color.WHITE)
+		draw_circle(center + Vector2(9.0, -7.0) * unit, 7.0 * unit, Color("d8f5ff"))
+		draw_arc(center + Vector2(-8.0, 12.0) * unit, 11.0 * unit, PI, TAU, 14, Color.WHITE, 5.0 * unit, true)
+		draw_arc(center + Vector2(9.0, 12.0) * unit, 11.0 * unit, PI, TAU, 14, Color("d8f5ff"), 5.0 * unit, true)
+	else:
+		# Single player: a player faces a monitor/AI.
+		draw_circle(center + Vector2(-12.0, -4.0) * unit, 7.0 * unit, Color.WHITE)
+		draw_arc(center + Vector2(-12.0, 13.0) * unit, 11.0 * unit, PI, TAU, 14, Color.WHITE, 5.0 * unit, true)
+		var monitor := Rect2(center + Vector2(2.0, -12.0) * unit, Vector2(23.0, 19.0) * unit)
+		draw_rect(monitor, Color("173249"), true)
+		draw_rect(monitor, Color.WHITE, false, 3.0 * unit)
+		draw_line(center + Vector2(13.0, 7.0) * unit, center + Vector2(13.0, 15.0) * unit, Color.WHITE, 3.0 * unit)
+
+func draw_home_nav_icon(kind: int, center: Vector2, unit: float) -> void:
+	if kind == 0:
+		var bag := Rect2(center + Vector2(-12.0, -8.0) * unit, Vector2(24.0, 22.0) * unit)
+		draw_rect(bag, Color.WHITE, false, 4.0 * unit)
+		draw_arc(center + Vector2(0.0, -7.0) * unit, 7.0 * unit, PI, TAU, 12, Color.WHITE, 3.0 * unit, true)
+	else:
+		var gift := Rect2(center + Vector2(-13.0, -8.0) * unit, Vector2(26.0, 22.0) * unit)
+		draw_rect(gift, Color.WHITE, false, 4.0 * unit)
+		draw_line(center + Vector2(0.0, -8.0) * unit, center + Vector2(0.0, 14.0) * unit, Color.WHITE, 3.0 * unit)
+		draw_line(center + Vector2(-13.0, -1.0) * unit, center + Vector2(13.0, -1.0) * unit, Color.WHITE, 3.0 * unit)
 
 func draw_wood_podium(center: Vector2, scale: float, show_side_steps: bool) -> void:
 	if wood_podium_texture != null:
