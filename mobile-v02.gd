@@ -192,6 +192,7 @@ var table_wall_sizes: Array[float] = [1.0, 1.0, 1.0, 1.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
+var landscape_request_sent := false
 var app_screen := APP_HOME
 var splash_elapsed := 0.0
 var menu_elapsed := 0.0
@@ -588,6 +589,11 @@ func update_water_floaters(delta: float) -> void:
 			water_floaters.remove_at(i)
 
 func _input(event: InputEvent) -> void:
+	# Mobile browsers only allow fullscreen and orientation locking after a real
+	# user gesture. The first tap requests both, so Android can rotate the game
+	# automatically without asking the player to rotate the phone manually.
+	if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+		request_landscape_mode()
 	# The game is landscape-only. Ignore touches until the device is rotated.
 	if get_viewport_rect().size.y > get_viewport_rect().size.x:
 		return
@@ -603,6 +609,22 @@ func _input(event: InputEvent) -> void:
 		else: pointer_up(event.position)
 	elif event is InputEventMouseMotion and not touchscreen_input_seen and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		pointer_move(event.position)
+
+func request_landscape_mode() -> void:
+	if landscape_request_sent or not OS.has_feature("web"):
+		return
+	landscape_request_sent = true
+	JavaScriptBridge.eval("""
+		(async () => {
+			try {
+				const root = document.documentElement;
+				if (!document.fullscreenElement && root.requestFullscreen) await root.requestFullscreen();
+			} catch (_) {}
+			try {
+				if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+			} catch (_) {}
+		})();
+	""", true)
 
 func pointer_down(screen_pos: Vector2) -> void:
 	if app_screen != APP_GAME:
@@ -709,8 +731,8 @@ func _draw() -> void:
 	var viewport_size := get_viewport_rect().size
 	draw_ocean(viewport_size)
 	if viewport_size.y > viewport_size.x:
-		draw_string(ui_font, Vector2(0, viewport_size.y * 0.44), "ROTATE YOUR PHONE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color("f6d365"))
-		draw_string(ui_font, Vector2(0, viewport_size.y * 0.50), "Zoopaloola is designed for landscape mode", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 18, Color.WHITE)
+		draw_string(ui_font, Vector2(0, viewport_size.y * 0.43), "לחצו כדי לפתוח לרוחב" if ui_language == "he" else "TAP TO START IN LANDSCAPE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color("f6d365"))
+		draw_string(ui_font, Vector2(0, viewport_size.y * 0.50), "המשחק יעבור למסך מלא ויסתובב אוטומטית" if ui_language == "he" else "The game will enter fullscreen and rotate automatically", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 17, Color.WHITE)
 		return
 	if app_screen == APP_SPLASH:
 		draw_splash_screen(viewport_size)
