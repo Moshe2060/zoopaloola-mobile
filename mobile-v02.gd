@@ -55,6 +55,10 @@ const RING_COLORS := [
 	Color("ef3340"), Color("ff8a00"), Color("1677ff"),
 	Color("12c95b"), Color("8f36dc"), Color("08cbd1")
 ]
+const HERO_HAND_COLORS := [
+	Color("8799a2"), Color("343434"), Color("9b541f"),
+	Color("e49aa2"), Color("777187"), Color("c88938")
+]
 const APP_SPLASH := 0
 const APP_HOME := 1
 const APP_PROFILE := 2
@@ -2360,12 +2364,13 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var gentle_float := sin(idle_phase * 0.72) * 1.2 * unit
 	var animated_center := hero_center + Vector2(0.0, gentle_float)
 	var waist_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.58 + gentle_float)
-	var ring_radius := 66.0 * unit
-	var ring_width := 25.0 * unit
+	var ring_radius := 88.0 * unit
+	var ring_width := 40.0 * unit
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
+	var hand_color: Color = HERO_HAND_COLORS[clampi(player_animal, 0, HERO_HAND_COLORS.size() - 1)]
 	draw_circle(character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.91), 65.0 * unit, Color(0.02, 0.09, 0.14, 0.22))
 	# Back half of the buoy sits behind the torso.
-	draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.56))
+	draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
 	draw_arc(Vector2.ZERO, ring_radius, PI, TAU, 32, ring_color, ring_width, true)
 	draw_arc(Vector2.ZERO, ring_radius, PI + 0.18, PI + 0.60, 10, Color("fff4dc"), ring_width, true)
 	draw_arc(Vector2.ZERO, ring_radius, TAU - 0.60, TAU - 0.18, 10, Color("fff4dc"), ring_width, true)
@@ -2375,11 +2380,19 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		draw_texture_rect(full_body_animal_textures[player_animal], Rect2(-hero_size * 0.5, hero_size), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# Front half passes in front of the waist, making it clear the hero is inside the buoy.
-	draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.56))
+	draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
 	draw_arc(Vector2.ZERO, ring_radius, 0.0, PI, 32, ring_color, ring_width, true)
 	draw_arc(Vector2.ZERO, ring_radius, 0.18, 0.60, 10, Color("fff4dc"), ring_width, true)
 	draw_arc(Vector2.ZERO, ring_radius, PI - 0.60, PI - 0.18, 10, Color("fff4dc"), ring_width, true)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# Two visible paws/hooves sit above the tube and clearly grip it on both sides.
+	for grip_side in [-1.0, 1.0]:
+		var grip_center := waist_center + Vector2(grip_side * ring_radius * 0.72, -ring_radius * 0.18)
+		draw_set_transform(grip_center, grip_side * 0.10, Vector2(0.82, 1.16))
+		draw_circle(Vector2.ZERO, 20.0 * unit, Color("182431"))
+		draw_circle(Vector2.ZERO, 15.5 * unit, hand_color)
+		draw_arc(Vector2(0.0, 2.0 * unit), 8.0 * unit, 0.18, PI - 0.18, 12, hand_color.lightened(0.24), 2.4 * unit, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var change_tag := Rect2(character_area.position + Vector2(42.0 * unit, character_area.size.y - 12.0 * unit), Vector2(206.0, 38.0) * unit)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 16.0), change_tag)
 	draw_string(ThemeDB.fallback_font, change_tag.position + Vector2(0.0, 24.0) * unit, "TAP TO CHANGE  •  " + ANIMAL_NAMES[player_animal], HORIZONTAL_ALIGNMENT_CENTER, change_tag.size.x, int(11.0 * unit), Color.WHITE)
