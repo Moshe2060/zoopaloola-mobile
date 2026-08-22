@@ -2366,7 +2366,7 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
 	var hero_texture: Texture2D = null
 	if player_animal == 2 and not monkey_idle_textures.is_empty():
-		var idle_frame := int(floor(menu_elapsed * 3.2)) % monkey_idle_textures.size()
+		var idle_frame := int(floor(menu_elapsed * 3.0)) % monkey_idle_textures.size()
 		hero_texture = monkey_idle_textures[idle_frame]
 	elif player_animal >= 0 and player_animal < full_body_animal_textures.size():
 		hero_texture = full_body_animal_textures[player_animal]
