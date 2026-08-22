@@ -3,7 +3,7 @@ extends Node2D
 const BOARD_W := 207.0
 const BOARD_H := 208.0
 const RADIUS := 6.0
-const GAME_BALL_VISUAL_SCALE := 1.25
+const GAME_BALL_VISUAL_SCALE := 1.36
 # Releasing inside this short pull distance cancels aiming. A slightly longer
 # pull becomes a shot, giving touch and mouse players a natural way to switch balls.
 const MIN_SHOT_PULL := 6.0
@@ -192,7 +192,6 @@ var table_wall_sizes: Array[float] = [1.0, 1.0, 1.0, 1.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
-var landscape_request_sent := false
 var app_screen := APP_HOME
 var splash_elapsed := 0.0
 var menu_elapsed := 0.0
@@ -330,11 +329,11 @@ func _on_resize() -> void:
 	# the bar. All gameplay coordinates still use board_rect and stay aligned.
 	# Slightly larger than the first ocean layout while retaining a visible water
 	# frame on every side of the floating table.
-	var side_margin := maxf(56.0, viewport_size.x * 0.055)
+	var side_margin := maxf(8.0, viewport_size.x * 0.008)
 	# Grow the entire table uniformly by using more vertical space. Keeping the
 	# source aspect ratio avoids stretching the stones or center circle.
-	var top_margin := 60.0
-	var bottom_margin := 12.0
+	var top_margin := 4.0
+	var bottom_margin := 4.0
 	var play_position := Vector2(side_margin, top_margin)
 	var available := Vector2(
 		maxf(300.0, viewport_size.x - side_margin * 2.0),
@@ -642,14 +641,19 @@ func _input(event: InputEvent) -> void:
 		pointer_move(event.position)
 
 func request_landscape_mode() -> void:
-	if landscape_request_sent or not OS.has_feature("web"):
+	if not OS.has_feature("web"):
 		return
-	landscape_request_sent = true
 	JavaScriptBridge.eval("""
 		(async () => {
 			try {
 				const root = document.documentElement;
-				if (!document.fullscreenElement && root.requestFullscreen) await root.requestFullscreen();
+				if (!document.fullscreenElement && root.requestFullscreen) {
+					try {
+						await root.requestFullscreen({ navigationUI: 'hide' });
+					} catch (_) {
+						await root.requestFullscreen();
+					}
+				}
 			} catch (_) {}
 			try {
 				if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
@@ -1088,8 +1092,9 @@ func draw_hud(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color(0.04, 0.09, 0.16, 0.94), 14.0), back)
 	draw_string(ui_font, back.position + Vector2(0.0, 31.0), "‹  חזרה" if ui_language == "he" else "‹  BACK", HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 17, Color.WHITE)
 	var card_width: float = minf(270.0, viewport_size.x * 0.22)
-	draw_match_player_card(Rect2(viewport_size.x * 0.5 - card_width - 112.0, 7.0, card_width, 58.0), 0)
-	draw_match_player_card(Rect2(viewport_size.x * 0.5 + 112.0, 7.0, card_width, 58.0), 1)
+	# Keep long player names away from the centered turn notice.
+	draw_match_player_card(Rect2(132.0, 7.0, card_width, 58.0), 0)
+	draw_match_player_card(Rect2(viewport_size.x - card_width - 132.0, 7.0, card_width, 58.0), 1)
 	var turn_rect := Rect2(viewport_size.x * 0.5 - 102.0, 12.0, 204.0, 48.0)
 	var local_turn := (turn == multiplayer_slot) if game_mode == "online" else turn == 0
 	draw_style_box(make_box(Color("12a96b") if local_turn else Color("7256d8"), 18.0), turn_rect)
