@@ -53,6 +53,9 @@ jobs:
           cp assets/ui/full_body/lifebuoy/*.png zoopaloola_godot_mobile/assets/ui/full_body/lifebuoy/
           sed -i 's/config\/name="Zoopaloola Mobile Prototype"/config\/name="Zoopaloola"/' zoopaloola_godot_mobile/project.godot
           sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-boot-splash-v2.png"\nboot_splash/fullsize=true\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-splash.svg"' zoopaloola_godot_mobile/project.godot
+          # Start Android fullscreen before Godot draws the boot splash, not only
+          # after the main scene or the game table has received a touch.
+          sed -i '/^window\/size\/viewport_height=720$/a window/size/mode=3' zoopaloola_godot_mobile/project.godot
           mkdir -p zoopaloola_godot_mobile/assets/hammer_trap
           cp assets/hammer_trap/mechanical-hammer-v2.svg zoopaloola_godot_mobile/assets/hammer_trap/mechanical-hammer-v2.svg
           mkdir -p zoopaloola_godot_mobile/assets/hammer_trap/remastered
@@ -83,6 +86,7 @@ jobs:
         run: |
           sed -i 's|gradle_build/use_gradle_build=true|gradle_build/use_gradle_build=false|' export_presets.cfg
           sed -i '/gradle_build.min_sdk=/d; /gradle_build.target_sdk=/d' export_presets.cfg
+          sed -i 's|screen/immersive_mode=false|screen/immersive_mode=true|' export_presets.cfg
           if ! grep -q 'textures/vram_compression/import_etc2_astc=true' project.godot; then
             sed -i '/^\[rendering\]$/a textures/vram_compression/import_etc2_astc=true' project.godot
           fi

@@ -247,6 +247,20 @@ var ai_animal := 0
 var ai_ring_color := 0
 const PLAYER_PROFILE_PATH := "user://zoopaloola-profile.cfg"
 
+func _enter_tree() -> void:
+	# Enter native fullscreen before _ready() and before the first game frame.
+	# Android's immersive export flag normally hides the navigation bar, but
+	# several Samsung devices reveal it again while the activity is starting.
+	if OS.has_feature("android"):
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+func _notification(what: int) -> void:
+	# Android may restore its system bars after the app loses focus (for example
+	# after opening the recent-apps view). Re-apply fullscreen as soon as the game
+	# becomes active instead of waiting until a match starts.
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN and OS.has_feature("android"):
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
 func _ready() -> void:
 	# Smooth the original character art when it is enlarged inside HD balls.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
