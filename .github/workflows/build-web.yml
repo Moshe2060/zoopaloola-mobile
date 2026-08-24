@@ -150,6 +150,7 @@ jobs:
           MANIFEST_PATH="build/web/${EXPORT_NAME}.manifest.json"
           sed -i -E 's#("start_url"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"./"#' "$MANIFEST_PATH"
           grep -Eq '"start_url"[[:space:]]*:[[:space:]]*"\./"' "$MANIFEST_PATH"
+          cp "$GITHUB_WORKSPACE/download.html" build/web/download.html
           touch build/web/.nojekyll
           ls -lh build/web
 
