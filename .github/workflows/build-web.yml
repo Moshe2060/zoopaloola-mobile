@@ -131,6 +131,8 @@ jobs:
 
       - name: Add APK to Pages for phone download
         run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
           curl -fL --retry 5 --retry-delay 2 \
             -o zoopaloola_godot_mobile/build/web/Zoopaloola.apk \
             "https://github.com/Moshe2060/zoopaloola-mobile/releases/latest/download/Zoopaloola.apk"
