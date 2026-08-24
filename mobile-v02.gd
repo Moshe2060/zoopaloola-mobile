@@ -129,8 +129,8 @@ const APP_ARENA := 5
 const APP_PLAYER_PROFILE := 6
 const APP_FRIEND := 7
 const APP_REWARDS := 8
-const ARENA_ENTRY_COSTS := [0, 100, 500]
-const ARENA_WIN_PRIZES := [100, 250, 1200]
+const ARENA_ENTRY_COSTS: Array[int] = [0, 100, 500]
+const ARENA_WIN_PRIZES: Array[int] = [100, 250, 1200]
 const DAILY_REWARD_COINS := 80
 const COMPUTER_WIN_COINS := 40
 const FRIEND_WIN_COINS := 25
@@ -2898,7 +2898,7 @@ func send_find_match() -> void:
 	})
 
 func start_arena_search() -> void:
-	var entry := ARENA_ENTRY_COSTS[clampi(selected_arena, 0, ARENA_ENTRY_COSTS.size() - 1)]
+	var entry: int = ARENA_ENTRY_COSTS[clampi(selected_arena, 0, ARENA_ENTRY_COSTS.size() - 1)]
 	if player_coins < entry:
 		show_menu_notice(ui_text("not_enough_coins"))
 		return
@@ -3020,7 +3020,7 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			game_mode = "online"
 			match_source = str(payload.get("source", "friend"))
 			if match_source == "arena":
-				var entry := ARENA_ENTRY_COSTS[clampi(int(payload.get("arena", selected_arena)), 0, ARENA_ENTRY_COSTS.size() - 1)]
+				var entry: int = ARENA_ENTRY_COSTS[clampi(int(payload.get("arena", selected_arena)), 0, ARENA_ENTRY_COSTS.size() - 1)]
 				player_coins = maxi(0, player_coins - entry)
 				save_player_profile()
 			matchmaking_searching = false

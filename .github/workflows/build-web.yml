@@ -25,24 +25,18 @@ jobs:
 
       - name: Pack project zip for phone download
         run: |
-          python3 - <<'PY'
-          import os
-          import zipfile
-          root = os.environ["GITHUB_WORKSPACE"]
-          out = "/tmp/zoopaloola-improvements.zip"
-          skip_dirs = {".git", "zoopaloola_godot_mobile"}
-          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-              for dirpath, dirnames, filenames in os.walk(root):
-                  dirnames[:] = [d for d in dirnames if d not in skip_dirs]
-                  for name in filenames:
-                      path = os.path.join(dirpath, name)
-                      rel = os.path.relpath(path, root)
-                      zf.write(path, rel)
-          size = os.path.getsize(out)
-          if size < 1000:
-              raise SystemExit(f"zip too small: {size}")
-          print(f"wrote {out} ({size} bytes)")
-          PY
+          if ! command -v zip >/dev/null 2>&1; then
+            apt-get update -qq
+            apt-get install -y -qq zip
+          fi
+          cd "$GITHUB_WORKSPACE"
+          zip -r /tmp/zoopaloola-improvements.zip . \
+            -x '.git/*' \
+            -x '.git/**' \
+            -x 'zoopaloola_godot_mobile/*' \
+            -x 'zoopaloola_godot_mobile/**'
+          test -s /tmp/zoopaloola-improvements.zip
+          ls -lh /tmp/zoopaloola-improvements.zip
 
       - name: Extract Godot project
         run: unzip -q Zoopaloola-Godot-Mobile.zip
