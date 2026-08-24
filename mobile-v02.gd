@@ -2,8 +2,12 @@ extends Node2D
 
 const BOARD_W := 207.0
 const BOARD_H := 208.0
-const RADIUS := 6.0
-const GAME_BALL_VISUAL_SCALE := 1.36
+# Physics used a noticeably smaller circle than the visible animal ring, so
+# balls and rails appeared to overlap before a hit was registered.
+const RADIUS := 7.4
+# Keep the approved artwork size unchanged while enlarging only its collision
+# body. This value is the former 6.0 * 1.36 visual radius in board units.
+const GAME_BALL_VISUAL_RADIUS := 8.16
 # Releasing inside this short pull distance cancels aiming. A slightly longer
 # pull becomes a shot, giving touch and mouse players a natural way to switch balls.
 const MIN_SHOT_PULL := 6.0
@@ -721,7 +725,10 @@ func pointer_down(screen_pos: Vector2) -> void:
 		if match_result_home_rect(viewport_size).has_point(screen_pos):
 			exit_current_match()
 		elif game_mode == "computer" and match_result_again_rect(viewport_size).has_point(screen_pos):
-			start_selected_mode("computer")
+			start_computer_setup()
+		return
+	if customizer_open:
+		handle_customizer_touch(screen_pos)
 		return
 	if exit_confirm_open:
 		if exit_confirm_yes_rect(viewport_size).has_point(screen_pos):
@@ -865,7 +872,7 @@ func _draw() -> void:
 		var ball: Dictionary = balls[i]
 		if not ball.alive: continue
 		var sp := board_to_screen(ball.p)
-		var visual_radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+		var visual_radius := GAME_BALL_VISUAL_RADIUS * board_scale
 		if ball.team == turn and not effect_editor_enabled and not customizer_open:
 			var pulse := (sin(float(Time.get_ticks_msec()) * 0.006) + 1.0) * 0.5
 			var halo_radius := visual_radius * (1.34 + pulse * 0.10)
@@ -958,7 +965,7 @@ func draw_original_style_aim(ball_center: Vector2, pull_point: Vector2) -> void:
 	var physics_direction := physics_shot.normalized()
 	var shot_direction := (board_to_screen(physics_origin + physics_direction) - ball_center).normalized()
 	var pull_direction := -shot_direction
-	var visual_ball_radius := RADIUS * board_scale * GAME_BALL_VISUAL_SCALE
+	var visual_ball_radius := GAME_BALL_VISUAL_RADIUS * board_scale
 	var pull_length := screen_pull.length()
 
 	# Mechanical cue behind the ball: dark outline, silver body, highlight and
@@ -1768,7 +1775,7 @@ func draw_electric_trap(effect: Dictionary) -> void:
 	var top_weapon: Vector2 = points.top
 	var right_weapon: Vector2 = points.right
 	var shock_point: Vector2 = points.capture
-	var radius := trap_ball_radius(ELECTRIC_TRAP_HOLE, RADIUS * board_scale * GAME_BALL_VISUAL_SCALE)
+	var radius := trap_ball_radius(ELECTRIC_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale)
 	var charge := smooth_step(seconds / 0.30)
 	var charge_fade := 1.0 - smooth_step((seconds - 1.12) / 0.28)
 	var beam_power := charge * charge_fade
@@ -2224,13 +2231,16 @@ func draw_customizer(viewport_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.04, 0.08, 0.72))
 	var panel := customizer_panel(viewport_size)
 	draw_style_box(make_box(Color("122337"), 18.0), panel)
-	draw_string(ui_font, panel.position + Vector2(0, 38), "CHOOSE YOUR ANIMAL AND LIFEBUOY", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 22, Color("f6d365"))
-	draw_string(ui_font, panel.position + Vector2(20, 72), "ANIMAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(0, 38), "בחרו דמות וגלגל למשחק" if ui_language == "he" else "CHOOSE YOUR ANIMAL AND LIFEBUOY", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 22, Color("f6d365"))
+	draw_string(ui_font, panel.position + Vector2(20, 72), "דמות" if ui_language == "he" else "ANIMAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 	for i in ANIMAL_NAMES.size():
 		var rect := customizer_animal_rect(i, viewport_size)
 		draw_style_box(make_box(Color("7256d8") if i == player_animal else Color("26384b"), 10.0), rect)
-		draw_string(ui_font, rect.position + Vector2(0, 40), ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 12, Color.WHITE)
-	draw_string(ui_font, panel.position + Vector2(20, 195), "LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+		if i < full_body_animal_textures.size() and full_body_animal_textures[i] != null:
+			var portrait := Rect2(rect.position + Vector2(rect.size.x * 0.5 - 22.0, 4.0), Vector2(44.0, 48.0))
+			draw_texture_rect(full_body_animal_textures[i], portrait, false)
+		draw_string(ui_font, rect.position + Vector2(0, 62), ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(20, 195), "צבע הגלגל" if ui_language == "he" else "LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 	for i in RING_COLOR_NAMES.size():
 		var rect := customizer_color_rect(i, viewport_size)
 		draw_style_box(make_box(RING_COLORS[i], 10.0), rect)
@@ -2239,7 +2249,7 @@ func draw_customizer(viewport_size: Vector2) -> void:
 		draw_string(ui_font, rect.position + Vector2(0, 36), RING_COLOR_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
 	var start_rect := customizer_start_rect(viewport_size)
 	draw_style_box(make_box(Color("12a96b"), 14.0), start_rect)
-	draw_string(ui_font, start_rect.position + Vector2(0, 31), "START GAME", HORIZONTAL_ALIGNMENT_CENTER, start_rect.size.x, 17, Color.WHITE)
+	draw_string(ui_font, start_rect.position + Vector2(0, 31), "התחלת משחק" if ui_language == "he" else "START GAME", HORIZONTAL_ALIGNMENT_CENTER, start_rect.size.x, 17, Color.WHITE)
 
 func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
 	if texture == null: return
@@ -2335,7 +2345,7 @@ func draw_rubber_trap(effect: Dictionary) -> void:
 	# Use exactly the same on-screen radius as the live gameplay piece. The old
 	# fixed effect radius was about 1.5x larger and caused a visible size pop on
 	# the first wrapping frame.
-	var ball_radius := trap_ball_radius(RUBBER_TRAP_HOLE, RADIUS * board_scale * GAME_BALL_VISUAL_SCALE)
+	var ball_radius := trap_ball_radius(RUBBER_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale)
 	# The real gameplay ball has already entered this hole. Start the trap at
 	# the capture point so the V4 preview's staged entry is not replayed.
 	var ball := capture
@@ -3086,6 +3096,14 @@ func start_selected_mode(mode: String) -> void:
 	else:
 		status = "Your turn - touch a red ball, pull back and release"
 
+func start_computer_setup() -> void:
+	# Prepare the board behind the modal, but do not allow a shot until the
+	# player confirms the animal and lifebuoy for this computer match.
+	start_selected_mode("computer")
+	customizer_open = true
+	status = "בחרו דמות וגלגל" if ui_language == "he" else "Choose a character and lifebuoy"
+	queue_redraw()
+
 func show_menu_notice(text: String) -> void:
 	menu_notice = text
 	menu_notice_time = 2.4
@@ -3165,7 +3183,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			connect_multiplayer()
 			return
 		if home_mode_rect(2, viewport_size).has_point(screen_pos):
-			start_selected_mode("computer")
+			start_computer_setup()
 			return
 	else:
 		if frontend_back_rect(viewport_size).has_point(screen_pos):
