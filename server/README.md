@@ -20,12 +20,17 @@ Client messages:
 
 - `{"type":"create_room","name":"Player 1","animal":1,"ringColor":3}`
 - `{"type":"join_room","roomCode":"ABC123","name":"Player 2","animal":0,"ringColor":2}`
+- `{"type":"find_match","name":"Player 1","animal":1,"ringColor":3,"arena":0}`
+- `{"type":"cancel_match"}`
 - `{"type":"ready","ready":true}`
 - `{"type":"shot","ballIndex":4,"pullX":-12.5,"pullY":8.0,"strength":18.0}`
+- `{"type":"match_result","winnerSlot":0}`
 - `{"type":"leave_room"}`
 
-The server returns `joined`, `room_state`, `match_started`, `shot`, `turn`,
-`opponent_left`, and structured `error` messages.
+The server returns `joined`, `room_state`, `searching`, `search_cancelled`,
+`match_started`, `shot`, `turn`, `match_over`, `opponent_left`, and structured
+`error` messages. `find_match` places a player in an in-memory arena queue and
+starts a match as soon as a second player searches the same arena.
 
 ## Render
 

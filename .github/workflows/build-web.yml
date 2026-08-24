@@ -48,41 +48,7 @@ jobs:
         run: unzip -q Zoopaloola-Godot-Mobile.zip
 
       - name: Apply current landscape game files
-        run: |
-          cp mobile-v02.gd zoopaloola_godot_mobile/scripts/main.gd
-          cp board-clean-modular.webp zoopaloola_godot_mobile/assets/board-clean-modular.webp
-          mkdir -p zoopaloola_godot_mobile/assets/remastered_effects
-          cp effect-*.png zoopaloola_godot_mobile/assets/remastered_effects/
-          mkdir -p zoopaloola_godot_mobile/assets/animal_pieces
-          cp animal_pieces/*.png zoopaloola_godot_mobile/assets/animal_pieces/
-          mkdir -p zoopaloola_godot_mobile/assets/rubber_trap/hands
-          mkdir -p zoopaloola_godot_mobile/assets/rubber_launcher
-          cp rubber_launcher/launcher.svg zoopaloola_godot_mobile/assets/rubber_launcher/launcher.svg
-          cp rubber_launcher/wrap-sequence.svg zoopaloola_godot_mobile/assets/rubber_launcher/wrap-sequence.svg
-          mkdir -p zoopaloola_godot_mobile/assets/press_trap
-          cp assets/press_trap/industrial-press.svg zoopaloola_godot_mobile/assets/press_trap/industrial-press.svg
-          mkdir -p zoopaloola_godot_mobile/assets/ui
-          mkdir -p zoopaloola_godot_mobile/assets/ui/fonts
-          cp assets/ui/fonts/*.ttf zoopaloola_godot_mobile/assets/ui/fonts/
-          cp assets/ui/zoopaloola-splash.svg zoopaloola_godot_mobile/assets/ui/zoopaloola-splash.svg
-          cp assets/ui/zoopaloola-home-bg-v3.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-home-bg-v3.webp
-          cp assets/ui/zoopaloola-loading-team-v1.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-loading-team-v1.webp
-          cp assets/ui/zoopaloola-logo-v1.webp zoopaloola_godot_mobile/assets/ui/zoopaloola-logo-v1.webp
-          cp assets/ui/zoopaloola-boot-splash-v2.png zoopaloola_godot_mobile/assets/ui/zoopaloola-boot-splash-v2.png
-          mkdir -p zoopaloola_godot_mobile/assets/ui/full_body
-          cp assets/ui/full_body/*.webp zoopaloola_godot_mobile/assets/ui/full_body/
-          mkdir -p zoopaloola_godot_mobile/assets/ui/full_body/lifebuoy
-          cp assets/ui/full_body/lifebuoy/*.png zoopaloola_godot_mobile/assets/ui/full_body/lifebuoy/
-          sed -i 's/config\/name="Zoopaloola Mobile Prototype"/config\/name="Zoopaloola"/' zoopaloola_godot_mobile/project.godot
-          sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-boot-splash-v2.png"\nboot_splash/fullsize=true\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-splash.svg"' zoopaloola_godot_mobile/project.godot
-          mkdir -p zoopaloola_godot_mobile/assets/fire_trap
-          cp assets/fire_trap/flamethrower-v2.svg zoopaloola_godot_mobile/assets/fire_trap/flamethrower-v2.svg
-          mkdir -p zoopaloola_godot_mobile/assets/hammer_trap
-          cp assets/hammer_trap/mechanical-hammer-v2.svg zoopaloola_godot_mobile/assets/hammer_trap/mechanical-hammer-v2.svg
-          mkdir -p zoopaloola_godot_mobile/assets/hammer_trap/remastered
-          cp assets/hammer_trap/remastered/*.png zoopaloola_godot_mobile/assets/hammer_trap/remastered/
-          cp rubber_trap/rubber-ball.png zoopaloola_godot_mobile/assets/rubber_trap/
-          cp rubber_trap/hands/pose-*.png zoopaloola_godot_mobile/assets/rubber_trap/hands/
+        run: bash scripts/apply-godot-assets.sh
 
       - name: Add Web export preset
         working-directory: zoopaloola_godot_mobile

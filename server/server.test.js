@@ -3,11 +3,21 @@ const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
 const { WebSocket } = require("ws");
 
-const PORT = 11237;
-
-function connect() {
+function startServer(port) {
+  const child = spawn(process.execPath, ["server.js"], {
+    cwd: __dirname,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+    child.once("error", reject);
+    child.stdout.once("data", () => resolve(child));
+  });
+}
+
+function connect(port) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     socket.once("error", reject);
     socket.on("message", function onConnected(buffer) {
       const message = JSON.parse(buffer.toString());
@@ -33,19 +43,12 @@ function next(socket, type, predicate = () => true) {
 }
 
 test("two players create, join, ready and relay a shot", async (context) => {
-  const child = spawn(process.execPath, ["server.js"], {
-    cwd: __dirname,
-    env: { ...process.env, PORT: String(PORT) },
-    stdio: ["ignore", "pipe", "pipe"]
-  });
+  const port = 11237;
+  const child = await startServer(port);
   context.after(() => child.kill("SIGTERM"));
-  await new Promise((resolve, reject) => {
-    child.stdout.once("data", resolve);
-    child.once("error", reject);
-  });
 
-  const first = await connect();
-  const second = await connect();
+  const first = await connect(port);
+  const second = await connect(port);
   context.after(() => first.close());
   context.after(() => second.close());
 
@@ -53,6 +56,7 @@ test("two players create, join, ready and relay a shot", async (context) => {
   first.send(JSON.stringify({ type: "create_room", name: "One", animal: 1, ringColor: 3, level: 7, wins: 12, losses: 4 }));
   const joinedFirst = await joinedFirstPromise;
   assert.match(joinedFirst.roomCode, /^[A-Z2-9]{6}$/);
+  assert.equal(joinedFirst.source, "friend");
 
   const joinedSecondPromise = next(second, "joined");
   second.send(JSON.stringify({ type: "join_room", roomCode: joinedFirst.roomCode, name: "Two" }));
@@ -90,4 +94,59 @@ test("two players create, join, ready and relay a shot", async (context) => {
   assert.equal(chat.playerSlot, 0);
   assert.equal(chat.name, "One");
   assert.equal(chat.message, "Good luck!");
+});
+
+test("arena matchmaking pairs two players and reports a winner", async (context) => {
+  const port = 11238;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const first = await connect(port);
+  const second = await connect(port);
+  context.after(() => first.close());
+  context.after(() => second.close());
+
+  const searchingPromise = next(first, "searching");
+  first.send(JSON.stringify({ type: "find_match", name: "One", animal: 2, ringColor: 1, arena: 0 }));
+  const searching = await searchingPromise;
+  assert.equal(searching.arena, 0);
+
+  const firstStarted = next(first, "match_started");
+  const secondStarted = next(second, "match_started");
+  second.send(JSON.stringify({ type: "find_match", name: "Two", animal: 4, ringColor: 5, arena: 0 }));
+  const startedA = await firstStarted;
+  const startedB = await secondStarted;
+  assert.equal(startedA.source, "arena");
+  assert.equal(startedB.source, "arena");
+  assert.equal(startedA.arena, 0);
+  assert.notEqual(startedA.slot, startedB.slot);
+
+  const overPromise = next(second, "match_over");
+  first.send(JSON.stringify({ type: "match_result", winnerSlot: startedA.slot }));
+  const over = await overPromise;
+  assert.equal(over.winnerSlot, startedA.slot);
+  assert.equal(over.reason, "scored");
+});
+
+test("cancel_match removes a player from the arena queue", async (context) => {
+  const port = 11239;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const first = await connect(port);
+  const second = await connect(port);
+  context.after(() => first.close());
+  context.after(() => second.close());
+
+  await Promise.all([
+    next(first, "searching"),
+    Promise.resolve(first.send(JSON.stringify({ type: "find_match", name: "One", arena: 1 })))
+  ]);
+  const cancelled = next(first, "search_cancelled");
+  first.send(JSON.stringify({ type: "cancel_match" }));
+  await cancelled;
+
+  const searchingSecond = next(second, "searching");
+  second.send(JSON.stringify({ type: "find_match", name: "Two", arena: 1 }));
+  await searchingSecond;
 });

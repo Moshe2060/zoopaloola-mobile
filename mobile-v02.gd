@@ -83,6 +83,13 @@ const UI_TEXT_HE := {
 	"main_character": "הדמות הראשית", "choose_main": "בחרו דמות ראשית", "favorite_color": "צבע גלגל אהוב",
 	"career": "סטטיסטיקות קריירה", "matches": "משחקים", "wins": "ניצחונות", "losses": "הפסדים", "win_rate": "אחוז הצלחה", "best_streak": "רצף שיא", "world_rank": "דירוג עולמי", "current_streak": "רצף ניצחונות נוכחי: ",
 	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים ואפקטים מיוחדים", "effects": "אפקטים", "collection_info": "אוספים נדירים\nעיצובים עונתיים\nאנימציות מיוחדות", "coming_soon": "בקרוב",
+	"searching": "מחפשים יריב בזירה...", "cancel_search": "ביטול חיפוש",
+	"match_win": "ניצחתם!", "match_lose": "הפסדתם", "draw": "תיקו",
+	"play_again": "משחק נוסף", "back_home": "חזרה לבית",
+	"you_won_coins": "הרווחתם ", "not_enough_coins": "אין מספיק מטבעות לזירה הזו",
+	"daily_title": "פרס יומי", "daily_sub": "חזרו כל יום לקבל מטבעות לגלגל ההצלה",
+	"claim": "קבלו 80 מטבעות", "claimed": "הפרס של היום כבר נתקבל",
+	"daily_claimed_toast": "קיבלתם 80 מטבעות!", "search_timeout": "החיפוש בוטל. נסו שוב.",
 }
 const UI_TEXT_EN := {
 	"player": "PLAYER 1", "level": "LEVEL 1 • ROOKIE EXPLORER",
@@ -105,6 +112,13 @@ const UI_TEXT_EN := {
 	"main_character": "MAIN CHARACTER", "choose_main": "CHOOSE YOUR MAIN ANIMAL", "favorite_color": "FAVORITE LIFEBUOY COLOR",
 	"career": "CAREER STATISTICS", "matches": "MATCHES", "wins": "WINS", "losses": "LOSSES", "win_rate": "WIN RATE", "best_streak": "BEST STREAK", "world_rank": "WORLD RANK", "current_streak": "CURRENT WIN STREAK: ",
 	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys and signature effects", "effects": "EFFECTS", "collection_info": "Rare collections\nSeasonal designs\nSpecial animations", "coming_soon": "COMING SOON",
+	"searching": "Finding an arena opponent...", "cancel_search": "CANCEL SEARCH",
+	"match_win": "YOU WIN!", "match_lose": "YOU LOST", "draw": "DRAW",
+	"play_again": "PLAY AGAIN", "back_home": "BACK HOME",
+	"you_won_coins": "You earned ", "not_enough_coins": "Not enough coins for this arena",
+	"daily_title": "DAILY REWARD", "daily_sub": "Come back every day for lifebuoy coins",
+	"claim": "CLAIM 80 COINS", "claimed": "ALREADY CLAIMED TODAY",
+	"daily_claimed_toast": "You claimed 80 coins!", "search_timeout": "Search cancelled. Try again.",
 }
 const APP_SPLASH := 0
 const APP_HOME := 1
@@ -114,6 +128,12 @@ const APP_GAME := 4
 const APP_ARENA := 5
 const APP_PLAYER_PROFILE := 6
 const APP_FRIEND := 7
+const APP_REWARDS := 8
+const ARENA_ENTRY_COSTS := [0, 100, 500]
+const ARENA_WIN_PRIZES := [100, 250, 1200]
+const DAILY_REWARD_COINS := 80
+const COMPUTER_WIN_COINS := 40
+const FRIEND_WIN_COINS := 25
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
 var board_texture: Texture2D
 var ui_font: Font
@@ -201,13 +221,14 @@ var player_coins := 1250
 var selected_arena := 0
 var ui_language := "he"
 var player_level := 1
-var player_xp := 100
+var player_xp := 0
 var player_next_level_xp := 500
-var player_wins := 12
-var player_losses := 4
-var player_best_streak := 5
-var player_current_streak := 3
-var player_world_rank := 6394
+var player_wins := 0
+var player_losses := 0
+var player_best_streak := 0
+var player_current_streak := 0
+var player_world_rank := 0
+var last_daily_claim := ""
 var menu_notice := ""
 var menu_notice_time := 0.0
 var multiplayer_socket := WebSocketPeer.new()
@@ -227,6 +248,14 @@ var profile_name_input: LineEdit
 var exit_confirm_open := false
 var chat_open := false
 var match_chat_messages: Array = []
+var matchmaking_searching := false
+var pending_find_match := false
+var match_source := "computer"
+var match_finished := false
+var match_result_open := false
+var match_result_winner := -1
+var match_result_coins := 0
+var match_result_recorded := false
 
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
@@ -409,6 +438,11 @@ func new_game() -> void:
 			team = inner_index % 2
 			inner_index += 1
 		balls.append({"p":p, "v":Vector2.ZERO, "team":team, "alive":true})
+	match_finished = false
+	match_result_open = false
+	match_result_winner = -1
+	match_result_coins = 0
+	match_result_recorded = false
 	status = "Your turn - touch a red ball, pull back and release"
 	queue_redraw()
 
@@ -435,7 +469,7 @@ func _process(delta: float) -> void:
 		accumulator -= STEP_TIME
 	update_effects(delta)
 	update_water_floaters(delta)
-	if ai_pending and effects_allow_next_turn():
+	if ai_pending and not match_finished and effects_allow_next_turn():
 		ai_timer -= delta
 		if ai_timer <= 0.0 and not any_ball_moving():
 			ai_pending = false
@@ -470,7 +504,7 @@ func physics_step() -> void:
 		for j in range(i + 1, balls.size()):
 			if balls[j].alive:
 				resolve_collision(i, j)
-	if game_mode == "computer" and turn == 1 and not ai_pending and not any_ball_moving() and effects_allow_next_turn():
+	if game_mode == "computer" and turn == 1 and not match_finished and not ai_pending and not any_ball_moving() and effects_allow_next_turn():
 		finish_ai_turn()
 
 func resolve_walls(index: int) -> void:
@@ -566,6 +600,7 @@ func score_ball(index: int, hole: int) -> void:
 	balls[index].v = Vector2.ZERO
 	active_effects.append({"hole":hole, "elapsed":0.0, "team":scored_team, "piece":index})
 	status = "Ball scored!"
+	check_match_end()
 
 func update_effects(delta: float) -> void:
 	for effect in active_effects:
@@ -682,6 +717,12 @@ func pointer_down(screen_pos: Vector2) -> void:
 		handle_frontend_touch(screen_pos)
 		return
 	var viewport_size := get_viewport_rect().size
+	if match_result_open:
+		if match_result_home_rect(viewport_size).has_point(screen_pos):
+			exit_current_match()
+		elif game_mode == "computer" and match_result_again_rect(viewport_size).has_point(screen_pos):
+			start_selected_mode("computer")
+		return
 	if exit_confirm_open:
 		if exit_confirm_yes_rect(viewport_size).has_point(screen_pos):
 			exit_current_match()
@@ -708,7 +749,7 @@ func pointer_down(screen_pos: Vector2) -> void:
 		chat_input.grab_focus()
 		queue_redraw()
 		return
-	if (game_mode == "computer" and turn != 0) or (game_mode == "online" and turn != multiplayer_slot) or any_ball_moving() or not effects_allow_next_turn(): return
+	if match_finished or (game_mode == "computer" and turn != 0) or (game_mode == "online" and turn != multiplayer_slot) or any_ball_moving() or not effects_allow_next_turn(): return
 	var board_pos := screen_to_board(screen_pos)
 	for i in balls.size():
 		if balls[i].alive and balls[i].team == turn and balls[i].p.distance_to(board_pos) <= 16.0:
@@ -1082,6 +1123,125 @@ func fallen_count(team: int) -> int:
 			count += 1
 	return count
 
+func team_alive_count(team: int) -> int:
+	var count := 0
+	for ball in balls:
+		if ball.team == team and ball.alive:
+			count += 1
+	return count
+
+func check_match_end() -> void:
+	if match_finished:
+		return
+	var alive_a := team_alive_count(0)
+	var alive_b := team_alive_count(1)
+	if alive_a > 0 and alive_b > 0:
+		return
+	var winner := 0 if alive_b == 0 else 1
+	if alive_a == 0 and alive_b == 0:
+		winner = 0 if turn == 1 else 1
+	if game_mode == "online":
+		match_finished = true
+		dragging = false
+		selected = -1
+		send_multiplayer({"type": "match_result", "winnerSlot": winner})
+		return
+	finish_match(winner)
+
+func finish_match(winner_team: int) -> void:
+	match_finished = true
+	if match_result_open:
+		return
+	match_result_open = true
+	match_result_winner = winner_team
+	dragging = false
+	selected = -1
+	ai_pending = false
+	chat_open = false
+	record_match_result(local_player_won(winner_team))
+	queue_redraw()
+
+func local_player_won(winner_team: int) -> bool:
+	if game_mode == "online":
+		return winner_team == multiplayer_slot
+	return winner_team == 0
+
+func match_prize_for_win() -> int:
+	if match_source == "arena":
+		return ARENA_WIN_PRIZES[clampi(selected_arena, 0, ARENA_WIN_PRIZES.size() - 1)]
+	if game_mode == "computer":
+		return COMPUTER_WIN_COINS
+	return FRIEND_WIN_COINS
+
+func record_match_result(did_win: bool) -> void:
+	if match_result_recorded:
+		return
+	match_result_recorded = true
+	if did_win:
+		player_wins += 1
+		player_current_streak += 1
+		player_best_streak = maxi(player_best_streak, player_current_streak)
+		player_xp += 80
+		match_result_coins = match_prize_for_win()
+		player_coins += match_result_coins
+	else:
+		player_losses += 1
+		player_current_streak = 0
+		player_xp += 20
+		match_result_coins = 0
+	while player_xp >= player_next_level_xp:
+		player_xp -= player_next_level_xp
+		player_level += 1
+		player_next_level_xp = 500 + (player_level - 1) * 75
+	save_player_profile()
+
+func match_result_panel(viewport_size: Vector2) -> Rect2:
+	return Rect2((viewport_size - Vector2(560.0, 310.0)) * 0.5, Vector2(560.0, 310.0))
+
+func match_result_home_rect(viewport_size: Vector2) -> Rect2:
+	var panel := match_result_panel(viewport_size)
+	if game_mode == "computer":
+		return Rect2(panel.position + Vector2(40.0, 215.0), Vector2(220.0, 58.0))
+	return Rect2(panel.position + Vector2(150.0, 215.0), Vector2(260.0, 58.0))
+
+func match_result_again_rect(viewport_size: Vector2) -> Rect2:
+	var panel := match_result_panel(viewport_size)
+	return Rect2(panel.position + Vector2(300.0, 215.0), Vector2(220.0, 58.0))
+
+func draw_match_result(viewport_size: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.06, 0.74))
+	var panel := match_result_panel(viewport_size)
+	draw_style_box(make_box(Color("10283b"), 26.0), panel)
+	var won := local_player_won(match_result_winner)
+	var title := ui_text("match_win") if won else ui_text("match_lose")
+	draw_string(ui_font, panel.position + Vector2(0.0, 78.0), title, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 36, Color("f6d365") if won else Color("ff8c7a"))
+	var subtitle := match_player_name(match_result_winner) + " • " + str(fallen_count(0)) + " - " + str(fallen_count(1))
+	draw_string(ui_font, panel.position + Vector2(30.0, 128.0), subtitle, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 60.0, 20, Color.WHITE)
+	if won and match_result_coins > 0:
+		draw_string(ui_font, panel.position + Vector2(30.0, 168.0), ui_text("you_won_coins") + str(match_result_coins) + ui_text("coins"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 60.0, 18, Color("ffe25d"))
+	var home := match_result_home_rect(viewport_size)
+	draw_style_box(make_box(Color("1b91a8"), 16.0), home)
+	draw_string(ui_font, home.position + Vector2(0.0, 38.0), ui_text("back_home"), HORIZONTAL_ALIGNMENT_CENTER, home.size.x, 18, Color.WHITE)
+	if game_mode == "computer":
+		var again := match_result_again_rect(viewport_size)
+		draw_style_box(make_box(Color("12a96b"), 16.0), again)
+		draw_string(ui_font, again.position + Vector2(0.0, 38.0), ui_text("play_again"), HORIZONTAL_ALIGNMENT_CENTER, again.size.x, 18, Color.WHITE)
+
+func daily_claim_key() -> String:
+	return Time.get_date_string_from_system()
+
+func can_claim_daily() -> bool:
+	return last_daily_claim != daily_claim_key()
+
+func claim_daily_reward() -> void:
+	if not can_claim_daily():
+		show_menu_notice(ui_text("claimed"))
+		return
+	player_coins += DAILY_REWARD_COINS
+	last_daily_claim = daily_claim_key()
+	save_player_profile()
+	show_menu_notice(ui_text("daily_claimed_toast"))
+
 func draw_scoreboards() -> void:
 	# The blue and purple displays baked into the board art are covered by these
 	# live panels. Their colors follow each player's selected lifebuoy.
@@ -1124,6 +1284,8 @@ func draw_hud(viewport_size: Vector2) -> void:
 		draw_exit_confirmation(viewport_size)
 	elif chat_open:
 		draw_match_chat(viewport_size)
+	if match_result_open:
+		draw_match_result(viewport_size)
 
 func game_back_rect() -> Rect2:
 	return Rect2(286.0, 12.0, 46.0, 44.0)
@@ -2564,6 +2726,14 @@ func load_player_profile() -> void:
 		profile_name = "PLAYER 1"
 	player_animal = clampi(int(config.get_value("player", "animal", player_animal)), 0, ANIMAL_NAMES.size() - 1)
 	player_ring_color = clampi(int(config.get_value("player", "ring_color", player_ring_color)), 0, RING_COLORS.size() - 1)
+	player_coins = maxi(0, int(config.get_value("player", "coins", player_coins)))
+	player_level = clampi(int(config.get_value("player", "level", player_level)), 1, 999)
+	player_xp = maxi(0, int(config.get_value("player", "xp", player_xp)))
+	player_wins = maxi(0, int(config.get_value("player", "wins", player_wins)))
+	player_losses = maxi(0, int(config.get_value("player", "losses", player_losses)))
+	player_best_streak = maxi(0, int(config.get_value("player", "best_streak", player_best_streak)))
+	player_current_streak = maxi(0, int(config.get_value("player", "current_streak", player_current_streak)))
+	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
 	ui_language = str(config.get_value("settings", "language", ui_language))
 
 func save_player_profile() -> void:
@@ -2571,6 +2741,14 @@ func save_player_profile() -> void:
 	config.set_value("player", "name", profile_name)
 	config.set_value("player", "animal", player_animal)
 	config.set_value("player", "ring_color", player_ring_color)
+	config.set_value("player", "coins", player_coins)
+	config.set_value("player", "level", player_level)
+	config.set_value("player", "xp", player_xp)
+	config.set_value("player", "wins", player_wins)
+	config.set_value("player", "losses", player_losses)
+	config.set_value("player", "best_streak", player_best_streak)
+	config.set_value("player", "current_streak", player_current_streak)
+	config.set_value("player", "last_daily_claim", last_daily_claim)
 	config.set_value("settings", "language", ui_language)
 	config.save(PLAYER_PROFILE_PATH)
 
@@ -2657,7 +2835,12 @@ func draw_match_chat(viewport_size: Vector2) -> void:
 		var sender_slot := int(message.get("slot", -1))
 		var sender := str(message.get("name", ""))
 		var line := sender + ": " + str(message.get("message", ""))
-		var color: Color = RING_COLORS[player_ring_color if sender_slot == 0 else ai_ring_color].lightened(0.35)
+		var ring_index := player_ring_color
+		for player_data in multiplayer_players:
+			if int(player_data.get("slot", -1)) == sender_slot:
+				ring_index = int(player_data.get("ringColor", ring_index))
+				break
+		var color: Color = RING_COLORS[clampi(ring_index, 0, RING_COLORS.size() - 1)].lightened(0.35)
 		draw_string(ui_font, panel.position + Vector2(28.0, 92.0 + row * 38.0), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 56.0, 18, color)
 		row += 1
 	var send_rect := chat_send_rect(viewport_size)
@@ -2681,6 +2864,9 @@ func poll_multiplayer() -> void:
 		if multiplayer_state not in ["disconnected", "error"]:
 			multiplayer_state = "disconnected"
 			multiplayer_error = "החיבור לשרת נותק" if ui_language == "he" else "Server connection closed"
+			if matchmaking_searching:
+				matchmaking_searching = false
+				pending_find_match = false
 		return
 	multiplayer_socket.poll()
 	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN and multiplayer_state == "connecting":
@@ -2693,6 +2879,43 @@ func poll_multiplayer() -> void:
 func send_multiplayer(payload: Dictionary) -> void:
 	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		multiplayer_socket.send_text(JSON.stringify(payload))
+
+func send_find_match() -> void:
+	commit_profile_name()
+	pending_find_match = false
+	matchmaking_searching = true
+	multiplayer_local_animal = player_animal
+	multiplayer_local_ring_color = player_ring_color
+	send_multiplayer({
+		"type": "find_match",
+		"name": profile_name,
+		"animal": player_animal,
+		"ringColor": player_ring_color,
+		"level": player_level,
+		"wins": player_wins,
+		"losses": player_losses,
+		"arena": selected_arena
+	})
+
+func start_arena_search() -> void:
+	var entry := ARENA_ENTRY_COSTS[clampi(selected_arena, 0, ARENA_ENTRY_COSTS.size() - 1)]
+	if player_coins < entry:
+		show_menu_notice(ui_text("not_enough_coins"))
+		return
+	pending_find_match = true
+	matchmaking_searching = true
+	match_source = "arena"
+	multiplayer_error = ""
+	if multiplayer_state != "connected":
+		connect_multiplayer()
+		multiplayer_error = "השרת מתעורר, נסו שוב בעוד כמה שניות" if ui_language == "he" else "Server is waking up, try again shortly"
+		return
+	send_find_match()
+
+func cancel_matchmaking() -> void:
+	pending_find_match = false
+	matchmaking_searching = false
+	send_multiplayer({"type": "cancel_match"})
 
 func create_multiplayer_room() -> void:
 	commit_profile_name()
@@ -2749,6 +2972,8 @@ func leave_multiplayer_room() -> void:
 	multiplayer_ready = false
 	friend_customizer_open = false
 	friend_opponent_profile_open = false
+	matchmaking_searching = false
+	pending_find_match = false
 	if multiplayer_local_animal >= 0:
 		player_animal = multiplayer_local_animal
 		player_ring_color = multiplayer_local_ring_color
@@ -2761,10 +2986,22 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 		"connected":
 			multiplayer_state = "connected"
 			multiplayer_error = ""
+			if pending_find_match:
+				send_find_match()
 		"joined":
 			multiplayer_room_code = str(payload.get("roomCode", ""))
 			multiplayer_slot = int(payload.get("slot", -1))
 			multiplayer_ready = false
+			if str(payload.get("source", "")) == "arena":
+				match_source = "arena"
+		"searching":
+			matchmaking_searching = true
+			multiplayer_error = ""
+		"search_cancelled":
+			matchmaking_searching = false
+			pending_find_match = false
+			if str(payload.get("reason", "")) == "timeout":
+				show_menu_notice(ui_text("search_timeout"))
 		"room_state":
 			multiplayer_players = payload.get("players", [])
 			turn = int(payload.get("turn", 0))
@@ -2781,6 +3018,13 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			multiplayer_slot = int(payload.get("slot", multiplayer_slot))
 			turn = int(payload.get("turn", 0))
 			game_mode = "online"
+			match_source = str(payload.get("source", "friend"))
+			if match_source == "arena":
+				var entry := ARENA_ENTRY_COSTS[clampi(int(payload.get("arena", selected_arena)), 0, ARENA_ENTRY_COSTS.size() - 1)]
+				player_coins = maxi(0, player_coins - entry)
+				save_player_profile()
+			matchmaking_searching = false
+			pending_find_match = false
 			app_screen = APP_GAME
 			exit_confirm_open = false
 			chat_open = false
@@ -2806,21 +3050,35 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			})
 			while match_chat_messages.size() > 20:
 				match_chat_messages.pop_front()
+		"match_over":
+			var winner_slot := int(payload.get("winnerSlot", -1))
+			if winner_slot >= 0:
+				finish_match(winner_slot)
 		"opponent_left":
-			app_screen = APP_FRIEND
-			multiplayer_ready = false
-			multiplayer_error = "היריב יצא מהחדר" if ui_language == "he" else "Opponent left the room"
+			if match_finished:
+				pass
+			else:
+				if match_source == "arena":
+					app_screen = APP_ARENA
+					matchmaking_searching = false
+				else:
+					app_screen = APP_FRIEND
+				multiplayer_ready = false
+				multiplayer_error = "היריב יצא מהחדר" if ui_language == "he" else "Opponent left the room"
 		"error":
 			multiplayer_error = str(payload.get("message", "Server error"))
 	queue_redraw()
 
 func start_selected_mode(mode: String) -> void:
 	game_mode = mode
+	match_source = mode
 	customizer_open = false
 	effect_editor_enabled = false
 	exit_confirm_open = false
 	chat_open = false
 	match_chat_messages.clear()
+	matchmaking_searching = false
+	pending_find_match = false
 	app_screen = APP_GAME
 	new_game()
 	if game_mode == "friend":
@@ -2831,6 +3089,31 @@ func start_selected_mode(mode: String) -> void:
 func show_menu_notice(text: String) -> void:
 	menu_notice = text
 	menu_notice_time = 2.4
+
+func player_level_label() -> String:
+	if ui_language == "he":
+		return "רמה %d" % player_level
+	return "LEVEL %d" % player_level
+
+func daily_claim_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((viewport_size.x - 420.0 * unit) * 0.5, viewport_size.y * 0.62), Vector2(420.0, 78.0) * unit)
+
+func draw_rewards_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.48))
+	draw_frontend_header(viewport_size, ui_text("daily_title"), ui_text("daily_sub"))
+	var card := Rect2(Vector2((viewport_size.x - 640.0 * unit) * 0.5, 160.0 * unit), Vector2(640.0, 420.0) * unit)
+	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.92), 28.0 * unit), card.grow(6.0 * unit))
+	draw_style_box(make_box(Color("e94f78"), 24.0 * unit), card)
+	draw_circle(card.position + Vector2(card.size.x * 0.5, 140.0 * unit), 58.0 * unit, Color("ffc83d"))
+	draw_circle(card.position + Vector2(card.size.x * 0.5, 140.0 * unit), 36.0 * unit, Color("e9971b"), false, 8.0 * unit, true)
+	draw_string(ui_font, card.position + Vector2(30.0, 250.0) * unit, "+" + str(DAILY_REWARD_COINS) + ui_text("coins"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 60.0 * unit, int(28.0 * unit), Color.WHITE)
+	draw_string(ui_font, card.position + Vector2(40.0, 292.0) * unit, ("יתרה: %d" if ui_language == "he" else "Balance: %d") % player_coins, HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 80.0 * unit, int(16.0 * unit), Color("fff0c7"))
+	var claim := daily_claim_rect(viewport_size)
+	var ready := can_claim_daily()
+	draw_style_box(make_box(Color("12a96b") if ready else Color("31485d"), 18.0 * unit), claim)
+	draw_string(ui_font, claim.position + Vector2(0.0, 50.0) * unit, ui_text("claim") if ready else ui_text("claimed"), HORIZONTAL_ALIGNMENT_CENTER, claim.size.x, int(22.0 * unit), Color.WHITE)
 
 func ui_text(key: String) -> String:
 	if ui_language == "he":
@@ -2872,7 +3155,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			if i == 0:
 				app_screen = APP_SHOP
 			else:
-				show_menu_notice("DAILY REWARDS - COMING NEXT")
+				app_screen = APP_REWARDS
 			return
 		if home_mode_rect(0, viewport_size).has_point(screen_pos):
 			app_screen = APP_ARENA
@@ -2890,6 +3173,8 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				commit_profile_name()
 			if app_screen == APP_FRIEND:
 				leave_multiplayer_room()
+			if app_screen == APP_ARENA:
+				cancel_matchmaking()
 			app_screen = APP_HOME
 			return
 		if app_screen == APP_PROFILE:
@@ -2913,7 +3198,15 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					selected_arena = i
 					return
 			if arena_play_rect(viewport_size).has_point(screen_pos):
-				show_menu_notice("ONLINE MATCHMAKING FOR THIS ARENA - COMING SOON")
+				if matchmaking_searching:
+					cancel_matchmaking()
+				else:
+					start_arena_search()
+				return
+		elif app_screen == APP_REWARDS:
+			if daily_claim_rect(viewport_size).has_point(screen_pos):
+				claim_daily_reward()
+				return
 		elif app_screen == APP_PLAYER_PROFILE:
 			for i in ANIMAL_NAMES.size():
 				if player_profile_animal_rect(i, viewport_size).has_point(screen_pos):
@@ -3041,6 +3334,10 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		if lobby_background_texture != null:
 			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_friend_screen(viewport_size)
+	elif app_screen == APP_REWARDS:
+		if lobby_background_texture != null:
+			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_rewards_screen(viewport_size)
 	if menu_notice_time > 0.0:
 		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
 		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
@@ -3238,8 +3535,10 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 			draw_string(ui_font, card.position + Vector2(0.0, 408.0) * unit, ui_text("selected"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(15.0 * unit), Color("16845b"))
 	var play := arena_play_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.90), 18.0 * unit), play.grow(5.0 * unit))
-	draw_style_box(make_box(Color("6fda18"), 16.0 * unit), play)
-	draw_string(ui_font, play.position + Vector2(0.0, 38.0) * unit, ui_text("find_match"), HORIZONTAL_ALIGNMENT_CENTER, play.size.x, int(20.0 * unit), Color.WHITE)
+	draw_style_box(make_box(Color("d49b2f") if matchmaking_searching else Color("6fda18"), 16.0 * unit), play)
+	draw_string(ui_font, play.position + Vector2(0.0, 38.0) * unit, ui_text("cancel_search") if matchmaking_searching else ui_text("find_match"), HORIZONTAL_ALIGNMENT_CENTER, play.size.x, int(20.0 * unit), Color.WHITE)
+	if matchmaking_searching:
+		draw_string(ui_font, Vector2(0.0, play.position.y - 28.0 * unit), ui_text("searching"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
 
 func draw_profile_stat_card(rect: Rect2, label: String, value: String, accent: Color, unit: float) -> void:
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 17.0 * unit), rect.grow(3.0 * unit))
@@ -3309,7 +3608,8 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	if total_matches > 0:
 		win_rate = int(round(float(player_wins) * 100.0 / float(total_matches)))
 	var labels := [ui_text("matches"), ui_text("wins"), ui_text("losses"), ui_text("win_rate"), ui_text("best_streak"), ui_text("world_rank")]
-	var values := [str(total_matches), str(player_wins), str(player_losses), str(win_rate) + "%", str(player_best_streak), "#" + str(player_world_rank)]
+	var rank_value := ("—" if player_wins + player_losses == 0 else "#" + str(maxi(1, 9000 - player_wins * 17 + player_losses * 11)))
+	var values := [str(total_matches), str(player_wins), str(player_losses), str(win_rate) + "%", str(player_best_streak), rank_value]
 	var accents := [Color("42b8e8"), Color("49c984"), Color("ef6b65"), Color("ffc83d"), Color("9d59e8"), Color("ff8b3d")]
 	for i in 6:
 		var column := i % 2
@@ -3408,7 +3708,7 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, Color("6965d8"))
 	draw_string(ui_font, profile.position + Vector2(7.0, 38.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(25.0 * unit), Color.WHITE)
 	draw_string(ui_font, profile.position + Vector2(65.0, 27.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(19.0 * unit), Color.WHITE)
-	draw_string(ui_font, profile.position + Vector2(65.0, 47.0) * unit, ui_text("level"), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("8cecff"))
+	draw_string(ui_font, profile.position + Vector2(65.0, 47.0) * unit, player_level_label(), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("8cecff"))
 
 	# Brand title floats above the clear play area.
 	draw_string(ui_font, Vector2(viewport_size.x - 390.0 * unit, 132.0 * unit), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(34.0 * unit), Color("ffe25d"))
