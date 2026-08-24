@@ -25,24 +25,9 @@ jobs:
 
       - name: Pack project zip for phone download
         run: |
-          python3 - <<'PY'
-          import os
-          import zipfile
-          root = os.environ["GITHUB_WORKSPACE"]
-          out = "/tmp/zoopaloola-improvements.zip"
-          skip_dirs = {".git", "zoopaloola_godot_mobile"}
-          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
-              for dirpath, dirnames, filenames in os.walk(root):
-                  dirnames[:] = [d for d in dirnames if d not in skip_dirs]
-                  for name in filenames:
-                      path = os.path.join(dirpath, name)
-                      rel = os.path.relpath(path, root)
-                      zf.write(path, rel)
-          size = os.path.getsize(out)
-          if size < 1000:
-              raise SystemExit(f"zip too small: {size}")
-          print(f"wrote {out} ({size} bytes)")
-          PY
+          git archive --format=zip --output=/tmp/zoopaloola-improvements.zip HEAD
+          test "$(wc -c < /tmp/zoopaloola-improvements.zip)" -ge 1000
+          ls -lh /tmp/zoopaloola-improvements.zip
 
       - name: Extract Godot project
         run: unzip -q Zoopaloola-Godot-Mobile.zip
