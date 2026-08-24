@@ -23,6 +23,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Pack project zip for phone download
+        run: |
+          python3 - <<'PY'
+          import os
+          import zipfile
+          root = os.environ["GITHUB_WORKSPACE"]
+          out = "/tmp/zoopaloola-improvements.zip"
+          skip_dirs = {".git", "zoopaloola_godot_mobile"}
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+              for dirpath, dirnames, filenames in os.walk(root):
+                  dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+                  for name in filenames:
+                      path = os.path.join(dirpath, name)
+                      rel = os.path.relpath(path, root)
+                      zf.write(path, rel)
+          size = os.path.getsize(out)
+          if size < 1000:
+              raise SystemExit(f"zip too small: {size}")
+          print(f"wrote {out} ({size} bytes)")
+          PY
+
       - name: Extract Godot project
         run: unzip -q Zoopaloola-Godot-Mobile.zip
 
@@ -151,6 +172,8 @@ jobs:
           sed -i -E 's#("start_url"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"./"#' "$MANIFEST_PATH"
           grep -Eq '"start_url"[[:space:]]*:[[:space:]]*"\./"' "$MANIFEST_PATH"
           cp "$GITHUB_WORKSPACE/download.html" build/web/download.html
+          cp /tmp/zoopaloola-improvements.zip build/web/zoopaloola-improvements.zip
+          test -s build/web/zoopaloola-improvements.zip
           touch build/web/.nojekyll
           ls -lh build/web
 
