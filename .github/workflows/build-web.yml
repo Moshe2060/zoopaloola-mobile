@@ -25,6 +25,7 @@ jobs:
 
       - name: Pack project zip for phone download
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git archive --format=zip --output=/tmp/zoopaloola-improvements.zip HEAD
           test "$(wc -c < /tmp/zoopaloola-improvements.zip)" -ge 1000
           ls -lh /tmp/zoopaloola-improvements.zip
