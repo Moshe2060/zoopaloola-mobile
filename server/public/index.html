@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zoopaloola — Arena Matchmaking</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #16324a, #07131f 58%);
+      color: #eef7ff;
+      min-height: 100vh;
+    }
+    header { padding: 28px 24px 8px; text-align: center; }
+    h1 { margin: 0; color: #ffe25d; letter-spacing: 0.08em; }
+    p { color: #b7d3e4; }
+    .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); padding: 16px 24px 40px; }
+    .card { background: #10283bcc; border: 1px solid #24506a; border-radius: 22px; padding: 18px; }
+    button, select {
+      width: 100%;
+      margin-top: 8px;
+      border: 0;
+      border-radius: 14px;
+      padding: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .find { background: #6fda18; color: #173249; }
+    .cancel { background: #d49b2f; color: #173249; }
+    pre {
+      background: #07131f;
+      border-radius: 14px;
+      min-height: 180px;
+      padding: 12px;
+      overflow: auto;
+      font-size: 13px;
+      direction: ltr;
+      text-align: left;
+    }
+    .status { font-weight: 700; color: #51d995; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ZOOPALOOLA</h1>
+    <p>בודק שידוך לזירה אונליין. פתחו את שני הכרטיסים, לחצו חיפוש, ותראו אותם נכנסים לאותו משחק.</p>
+    <p class="status" id="health">בודק שרת...</p>
+  </header>
+  <div class="grid">
+    <section class="card" id="p1"></section>
+    <section class="card" id="p2"></section>
+  </div>
+  <script>
+    const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+
+    async function refreshHealth() {
+      try {
+        const data = await (await fetch("/health")).json();
+        document.getElementById("health").textContent =
+          "שרת חי • חיבורים " + data.connections + " • חדרים " + data.rooms + " • בתור " + data.queued;
+      } catch {
+        document.getElementById("health").textContent = "השרת לא זמין";
+      }
+    }
+    refreshHealth();
+    setInterval(refreshHealth, 2000);
+
+    function makePlayer(rootId, name, arena) {
+      const root = document.getElementById(rootId);
+      root.innerHTML = "<h2>" + name + "</h2><div class='status'>מנותק</div><select></select><button class='find'>חיפוש יריב</button><button class='cancel'>ביטול</button><pre></pre>";
+      const status = root.querySelector(".status");
+      const log = root.querySelector("pre");
+      const select = root.querySelector("select");
+      ["גן הסאקורה", "חורשת הבמבוק", "מקדש הגעש"].forEach((label, i) => {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = label;
+        if (i === arena) option.selected = true;
+        select.appendChild(option);
+      });
+      let socket;
+      const write = (msg) => { log.textContent = JSON.stringify(msg, null, 2) + "\n" + log.textContent; refreshHealth(); };
+      function connect() {
+        socket = new WebSocket(wsUrl);
+        socket.onopen = () => { status.textContent = "מחובר"; };
+        socket.onclose = () => { status.textContent = "מנותק"; };
+        socket.onmessage = (event) => write(JSON.parse(event.data));
+      }
+      connect();
+      root.querySelector(".find").onclick = () => {
+        socket.send(JSON.stringify({ type: "find_match", name, animal: 1, ringColor: 3, arena: Number(select.value) }));
+      };
+      root.querySelector(".cancel").onclick = () => socket.send(JSON.stringify({ type: "cancel_match" }));
+    }
+    makePlayer("p1", "Shira", 0);
+    makePlayer("p2", "Noam", 0);
+  </script>
+</body>
+</html>

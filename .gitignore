@@ -1,0 +1,5 @@
+.godot/
+*.import
+server/node_modules/
+*.apk
+build/
