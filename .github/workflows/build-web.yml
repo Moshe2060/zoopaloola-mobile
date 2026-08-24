@@ -154,6 +154,14 @@ jobs:
           touch build/web/.nojekyll
           ls -lh build/web
 
+      - name: Add APK to Pages for phone download
+        run: |
+          curl -fL --retry 5 --retry-delay 2 \
+            -o zoopaloola_godot_mobile/build/web/Zoopaloola.apk \
+            "https://github.com/Moshe2060/zoopaloola-mobile/releases/latest/download/Zoopaloola.apk"
+          test -s zoopaloola_godot_mobile/build/web/Zoopaloola.apk
+          ls -lh zoopaloola_godot_mobile/build/web/Zoopaloola.apk
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
