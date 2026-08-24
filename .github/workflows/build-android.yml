@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-android:
@@ -128,7 +128,8 @@ jobs:
             godot --headless --verbose --path . --export-debug "Android" build/Zoopaloola-debug.apk
           fi
           test -s build/Zoopaloola-debug.apk
-          ls -lh build/Zoopaloola-debug.apk
+          cp build/Zoopaloola-debug.apk build/Zoopaloola.apk
+          ls -lh build/Zoopaloola-debug.apk build/Zoopaloola.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -137,3 +138,24 @@ jobs:
           path: zoopaloola_godot_mobile/build/Zoopaloola-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish phone download
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android
+          name: Zoopaloola לאנדרואיד
+          body: |
+            הורדה ישירה לפלאפון.
+
+            1. לחץ על **Zoopaloola.apk**
+            2. פתח את הקובץ שהורד והתקן
+            3. אם אנדרואיד חוסם: הגדרות → אבטחה → התר התקנה ממקור לא ידוע / מהדפדפן
+
+            אפשר גם לשחק בדפדפן בלי להתקין:
+            https://moshe2060.github.io/zoopaloola-mobile/
+          files: zoopaloola_godot_mobile/build/Zoopaloola.apk
+          fail_on_unmatched_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
