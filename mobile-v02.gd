@@ -2816,10 +2816,10 @@ func start_firebase_auth() -> void:
 	if not firebase_refresh_token.is_empty():
 		var refresh_url := "https://securetoken.googleapis.com/v1/token?key=" + FIREBASE_API_KEY
 		var refresh_body := "grant_type=refresh_token&refresh_token=" + firebase_refresh_token.uri_encode()
-		error = firebase_auth_request.request(refresh_url, ["Content-Type: application/x-www-form-urlencoded"], HTTPClient.METHOD_POST, refresh_body)
+		error = firebase_auth_request.request(refresh_url, ["Content-Type: application/x-www-form-urlencoded", "Accept: application/json"], HTTPClient.METHOD_POST, refresh_body)
 	else:
 		var signup_url := "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + FIREBASE_API_KEY
-		error = firebase_auth_request.request(signup_url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, "{\"returnSecureToken\":true}")
+		error = firebase_auth_request.request(signup_url, ["Content-Type: application/json", "Accept: application/json"], HTTPClient.METHOD_POST, "{\"returnSecureToken\":true}")
 	if error != OK:
 		firebase_auth_busy = false
 		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
@@ -2829,11 +2829,16 @@ func _on_firebase_auth_completed(_result: int, response_code: int, _headers: Pac
 	if response_code < 200 or response_code >= 300:
 		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
 		return
-	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
-	if not parsed is Dictionary:
-		firebase_status = "שגיאת חשבון" if ui_language == "he" else "ACCOUNT ERROR"
+	var response_text := body.get_string_from_utf8().strip_edges()
+	var json := JSON.new()
+	var parse_error := json.parse(response_text)
+	if parse_error != OK or typeof(json.data) != TYPE_DICTIONARY:
+		var diagnostic := response_text.left(32).replace("\n", " ")
+		firebase_status = (("שגיאת חשבון: " if ui_language == "he" else "ACCOUNT ERROR: ") + diagnostic).strip_edges()
+		push_error("Firebase auth response could not be parsed (HTTP %d): %s" % [response_code, response_text.left(240)])
+		queue_redraw()
 		return
-	var response := parsed as Dictionary
+	var response: Dictionary = json.data
 	firebase_uid = str(response.get("localId", response.get("user_id", firebase_uid)))
 	firebase_id_token = str(response.get("idToken", response.get("id_token", "")))
 	firebase_refresh_token = str(response.get("refreshToken", response.get("refresh_token", firebase_refresh_token)))
