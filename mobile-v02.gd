@@ -133,6 +133,7 @@ const APP_ARENA := 5
 const APP_PLAYER_PROFILE := 6
 const APP_FRIEND := 7
 const APP_REWARDS := 8
+const APP_AUTH := 9
 const ARENA_ENTRY_COSTS := [0, 100, 500]
 const ARENA_WIN_PRIZES := [100, 250, 1200]
 const DAILY_REWARD_COINS := 80
@@ -216,7 +217,7 @@ var table_wall_sizes: Array[float] = [1.0, 1.0, 1.0, 1.0]
 # Mobile browsers may emit a synthetic mouse click after every touch.
 # Once real touch input is seen, ignore those duplicate mouse events.
 var touchscreen_input_seen := false
-var app_screen := APP_HOME
+var app_screen := APP_AUTH
 var splash_elapsed := 0.0
 var menu_elapsed := 0.0
 var game_mode := "computer"
@@ -249,6 +250,10 @@ var friend_opponent_profile_open := false
 var room_code_input: LineEdit
 var chat_input: LineEdit
 var profile_name_input: LineEdit
+var auth_email_input: LineEdit
+var auth_password_input: LineEdit
+var auth_email_mode := ""
+var firebase_auth_mode := ""
 var exit_confirm_open := false
 var chat_open := false
 var match_chat_messages: Array = []
@@ -296,7 +301,7 @@ var firebase_profile_dirty := false
 var firebase_sync_delay := 0.0
 var firebase_web_poll_delay := 0.0
 var firebase_status := "מתחבר..."
-const CLIENT_VERSION := "ACCOUNT-4"
+const CLIENT_VERSION := "ACCOUNT-5"
 
 func _enter_tree() -> void:
 	# Enter native fullscreen before _ready() and before the first game frame.
@@ -351,6 +356,22 @@ func _ready() -> void:
 	profile_name_input.text_submitted.connect(_on_profile_name_submitted)
 	profile_name_input.focus_exited.connect(commit_profile_name)
 	add_child(profile_name_input)
+	auth_email_input = LineEdit.new()
+	auth_email_input.visible = false
+	auth_email_input.placeholder_text = "example@gmail.com"
+	auth_email_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	auth_email_input.add_theme_font_override("font", ui_font)
+	auth_email_input.add_theme_font_size_override("font_size", 22)
+	add_child(auth_email_input)
+	auth_password_input = LineEdit.new()
+	auth_password_input.visible = false
+	auth_password_input.placeholder_text = "סיסמה (לפחות 6 תווים)" if ui_language == "he" else "Password (at least 6 characters)"
+	auth_password_input.secret = true
+	auth_password_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	auth_password_input.add_theme_font_override("font", ui_font)
+	auth_password_input.add_theme_font_size_override("font_size", 22)
+	auth_password_input.text_submitted.connect(_on_auth_password_submitted)
+	add_child(auth_password_input)
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
@@ -476,10 +497,11 @@ func _process(delta: float) -> void:
 	update_room_code_input()
 	update_chat_input()
 	update_profile_name_input()
+	update_auth_inputs()
 	if app_screen == APP_SPLASH:
 		splash_elapsed += delta
 		if splash_elapsed >= 3.2:
-			app_screen = APP_HOME
+			app_screen = APP_AUTH
 		queue_redraw()
 		return
 	if app_screen != APP_GAME:
@@ -2817,7 +2839,7 @@ func setup_firebase() -> void:
 	firebase_public_id_request = HTTPRequest.new()
 	firebase_public_id_request.request_completed.connect(_on_firebase_public_id_completed)
 	add_child(firebase_public_id_request)
-	start_firebase_auth()
+	firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
 	if OS.has_feature("web"):
 		setup_firebase_google_web()
 
@@ -2841,13 +2863,72 @@ func start_firebase_auth() -> void:
 		firebase_auth_busy = false
 		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
 
+func begin_guest_sign_in() -> void:
+	var can_resume_guest := firebase_provider == "guest" and not firebase_refresh_token.is_empty()
+	firebase_auth_mode = "guest_resume" if can_resume_guest else "guest"
+	firebase_provider = "guest"
+	firebase_email = ""
+	if can_resume_guest:
+		start_firebase_auth()
+		return
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken')", true)
+	firebase_uid = ""
+	firebase_public_id = ""
+	firebase_id_token = ""
+	firebase_refresh_token = ""
+	firebase_token_expires_at = 0
+	start_firebase_auth()
+
+func start_email_auth(register_account: bool) -> void:
+	if firebase_auth_busy or auth_email_input == null or auth_password_input == null:
+		return
+	var email := auth_email_input.text.strip_edges()
+	var password := auth_password_input.text
+	if not email.contains("@"):
+		firebase_status = "יש להזין כתובת מייל תקינה" if ui_language == "he" else "ENTER A VALID EMAIL"
+		return
+	if password.length() < 6:
+		firebase_status = "הסיסמה חייבת להכיל לפחות 6 תווים" if ui_language == "he" else "PASSWORD MUST HAVE 6 CHARACTERS"
+		return
+	firebase_auth_busy = true
+	firebase_auth_mode = "register" if register_account else "email"
+	firebase_status = "יוצר חשבון..." if register_account else "מתחבר..."
+	var action := "signUp" if register_account else "signInWithPassword"
+	var url := "https://identitytoolkit.googleapis.com/v1/accounts:%s?key=%s" % [action, FIREBASE_API_KEY]
+	var payload := JSON.stringify({"email": email, "password": password, "returnSecureToken": true})
+	if OS.has_feature("web"):
+		var script := """
+window.zpAuthState = {status: 'loading'};
+(async () => {
+  try {
+    const response = await fetch(__URL__, {method:'POST', mode:'cors', credentials:'omit', headers:{'Content-Type':'application/json'}, body:__BODY__});
+    const data = await response.json();
+    if (!response.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
+    localStorage.setItem('zpFirebaseRefreshToken', data.refreshToken || '');
+    window.zpAuthState = {status:'done', localId:data.localId, idToken:data.idToken, refreshToken:data.refreshToken, expiresIn:data.expiresIn || '3600', provider:'email', email:data.email || __EMAIL__};
+  } catch (error) { window.zpAuthState = {status:'error', message:String(error && error.message || error)}; }
+})();
+"""
+		script = script.replace("__URL__", JSON.stringify(url)).replace("__BODY__", JSON.stringify(payload)).replace("__EMAIL__", JSON.stringify(email))
+		JavaScriptBridge.eval(script, true)
+		firebase_web_poll_delay = 0.15
+	else:
+		var error := firebase_auth_request.request(url, ["Content-Type: application/json", "Accept: application/json"], HTTPClient.METHOD_POST, payload)
+		if error != OK:
+			firebase_auth_busy = false
+			firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
+
+func _on_auth_password_submitted(_value: String) -> void:
+	start_email_auth(auth_email_mode == "register")
+
 func start_firebase_web_auth() -> void:
 	var script := """
 window.zpAuthState = {status: 'loading'};
 (async () => {
   try {
     const key = '__API_KEY__';
-    const savedRefresh = localStorage.getItem('zpFirebaseRefreshToken') || '';
+    const savedRefresh = __USE_REFRESH__ ? (localStorage.getItem('zpFirebaseRefreshToken') || '') : '';
     let response;
     if (savedRefresh) {
       response = await fetch('https://securetoken.googleapis.com/v1/token?key=' + key, {
@@ -2875,7 +2956,7 @@ window.zpAuthState = {status: 'loading'};
     window.zpAuthState = {status: 'error', message: String(error && error.message || error)};
   }
 })();
-""".replace("__API_KEY__", FIREBASE_API_KEY)
+""".replace("__API_KEY__", FIREBASE_API_KEY).replace("__USE_REFRESH__", "true" if firebase_auth_mode != "guest" else "false")
 	JavaScriptBridge.eval(script, true)
 	firebase_web_poll_delay = 0.15
 
@@ -2901,15 +2982,6 @@ window.zpGoogleState = {status: 'loading-sdk'};
       authSdk.signInWithPopup(auth, provider).then(async (result) => {
         const user = result.user;
         const idToken = await user.getIdToken(true);
-        if (oldToken && publicUrl) {
-          const mapping = {fields: {uid: {stringValue: user.uid}, name: {stringValue: playerName || 'PLAYER 1'}}};
-          const transfer = await fetch(publicUrl, {
-            method: 'PATCH', mode: 'cors', credentials: 'omit',
-            headers: {'Authorization': 'Bearer ' + oldToken, 'Content-Type': 'application/json'},
-            body: JSON.stringify(mapping)
-          });
-          if (!transfer.ok) console.warn('Public ID transfer returned HTTP ' + transfer.status);
-        }
         localStorage.setItem('zpFirebaseRefreshToken', user.refreshToken || '');
         window.zpGoogleState = {
           status: 'done', localId: user.uid, idToken: idToken,
@@ -2957,17 +3029,36 @@ func _on_firebase_auth_completed(_result: int, response_code: int, _headers: Pac
 
 func apply_firebase_auth_response(response: Dictionary) -> void:
 	firebase_auth_busy = false
+	var previous_uid := firebase_uid
 	firebase_uid = str(response.get("localId", response.get("user_id", firebase_uid)))
+	if response.has("provider"):
+		firebase_provider = str(response.provider)
+	if response.has("email"):
+		firebase_email = str(response.email)
+	elif firebase_auth_mode == "email" or firebase_auth_mode == "register":
+		firebase_provider = "email"
+		firebase_email = auth_email_input.text.strip_edges() if auth_email_input != null else ""
+	elif firebase_auth_mode == "guest" or firebase_auth_mode == "guest_resume":
+		firebase_provider = "guest"
+		firebase_email = ""
 	firebase_id_token = str(response.get("idToken", response.get("id_token", "")))
 	firebase_refresh_token = str(response.get("refreshToken", response.get("refresh_token", firebase_refresh_token)))
 	var expires_in := int(str(response.get("expiresIn", response.get("expires_in", "3600"))))
 	firebase_token_expires_at = int(Time.get_unix_time_from_system()) + maxi(60, expires_in)
-	if firebase_public_id.is_empty() and not firebase_uid.is_empty():
-		firebase_public_id = "ZP-" + firebase_uid.sha256_text().substr(0, 8).to_upper()
+	if not firebase_uid.is_empty():
+		# The public ID is deterministic per Firebase user. This also repairs older
+		# profiles whose anonymous ID was carried into a Google account and caused
+		# Firestore ownership rules to return HTTP 403.
+		var expected_public_id := "ZP-" + firebase_uid.sha256_text().substr(0, 8).to_upper()
+		if firebase_public_id != expected_public_id or previous_uid != firebase_uid:
+			firebase_public_id = expected_public_id
 	save_player_profile(false)
 	firebase_status = "מסונכרן" if ui_language == "he" else "SYNCED"
 	sync_firebase_profile()
 	sync_firebase_public_id()
+	if app_screen == APP_AUTH:
+		auth_email_mode = ""
+		app_screen = APP_HOME
 	queue_redraw()
 
 func update_firebase(delta: float) -> void:
@@ -2976,7 +3067,7 @@ func update_firebase(delta: float) -> void:
 		if firebase_web_poll_delay <= 0.0:
 			firebase_web_poll_delay = 0.25
 			poll_firebase_web_state()
-	if not firebase_refresh_token.is_empty() and not firebase_auth_busy:
+	if app_screen != APP_AUTH and not firebase_refresh_token.is_empty() and not firebase_auth_busy:
 		if firebase_token_expires_at <= int(Time.get_unix_time_from_system()) + 120:
 			start_firebase_auth()
 	if firebase_profile_dirty:
@@ -3145,6 +3236,32 @@ func update_profile_name_input() -> void:
 		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 		profile_name_input.position = Vector2(602.0, 139.0) * unit
 		profile_name_input.size = Vector2(350.0, 50.0) * unit
+
+func update_auth_inputs() -> void:
+	if auth_email_input == null or auth_password_input == null:
+		return
+	var should_show := app_screen == APP_AUTH and not auth_email_mode.is_empty()
+	auth_email_input.visible = should_show
+	auth_password_input.visible = should_show
+	if should_show:
+		var viewport_size := get_viewport_rect().size
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		auth_email_input.position = Vector2(430.0, 278.0) * unit
+		auth_email_input.size = Vector2(420.0, 58.0) * unit
+		auth_password_input.position = Vector2(430.0, 355.0) * unit
+		auth_password_input.size = Vector2(420.0, 58.0) * unit
+
+func auth_choice_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(430.0, 230.0 + float(index) * 78.0) * unit, Vector2(420.0, 62.0) * unit)
+
+func auth_submit_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(430.0, 445.0) * unit, Vector2(420.0, 64.0) * unit)
+
+func auth_cancel_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(500.0, 530.0) * unit, Vector2(280.0, 52.0) * unit)
 
 func chat_panel(viewport_size: Vector2) -> Rect2:
 	return Rect2((viewport_size - Vector2(650.0, 390.0)) * 0.5, Vector2(650.0, 390.0))
@@ -3503,7 +3620,28 @@ func profile_initial() -> String:
 func handle_frontend_touch(screen_pos: Vector2) -> void:
 	var viewport_size := get_viewport_rect().size
 	if app_screen == APP_SPLASH:
-		app_screen = APP_HOME
+		app_screen = APP_AUTH
+		return
+	if app_screen == APP_AUTH:
+		if auth_email_mode.is_empty():
+			if auth_choice_rect(0, viewport_size).has_point(screen_pos):
+				firebase_auth_mode = "google"
+				begin_google_sign_in()
+			elif auth_choice_rect(1, viewport_size).has_point(screen_pos):
+				auth_email_mode = "login"
+				firebase_status = "הזינו מייל וסיסמה" if ui_language == "he" else "ENTER EMAIL AND PASSWORD"
+			elif auth_choice_rect(2, viewport_size).has_point(screen_pos):
+				begin_guest_sign_in()
+			elif auth_choice_rect(3, viewport_size).has_point(screen_pos):
+				auth_email_mode = "register"
+				firebase_status = "צרו חשבון חדש" if ui_language == "he" else "CREATE A NEW ACCOUNT"
+		else:
+			if auth_submit_rect(viewport_size).has_point(screen_pos):
+				start_email_auth(auth_email_mode == "register")
+			elif auth_cancel_rect(viewport_size).has_point(screen_pos):
+				auth_email_mode = ""
+				firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
+		queue_redraw()
 		return
 	if app_screen == APP_HOME:
 		if home_character_rect(viewport_size).has_point(screen_pos):
@@ -3687,7 +3825,11 @@ func draw_splash_screen(viewport_size: Vector2) -> void:
 	draw_string(ui_font, Vector2(0.0, loading_rect.position.y - 12.0 * unit), "LOADING THE ISLAND...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(13.0 * unit), Color.WHITE)
 
 func draw_frontend(viewport_size: Vector2) -> void:
-	if app_screen == APP_HOME:
+	if app_screen == APP_AUTH:
+		if lobby_background_texture != null:
+			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_auth_screen(viewport_size)
+	elif app_screen == APP_HOME:
 		if lobby_background_texture != null:
 			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		else:
@@ -3719,6 +3861,35 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
 		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
 		draw_string(ui_font, toast.position + Vector2(0.0, 29.0), menu_notice, HORIZONTAL_ALIGNMENT_CENTER, toast.size.x, 14, Color("f6d365"))
+
+func draw_auth_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.70))
+	var panel := Rect2(Vector2(350.0, 72.0) * unit, Vector2(580.0, 580.0) * unit)
+	draw_style_box(make_box(Color(0.025, 0.09, 0.16, 0.97), 30.0 * unit), panel)
+	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 70.0 * unit), "ברוכים הבאים ל־ZOOPALOOLA" if ui_language == "he" else "WELCOME TO ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(30.0 * unit), Color("ffd83d"))
+	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 110.0 * unit), ("בחרו איך להיכנס למשחק" if auth_email_mode.is_empty() else ("הרשמה חדשה" if auth_email_mode == "register" else "כניסה עם מייל")) if ui_language == "he" else ("CHOOSE HOW TO SIGN IN" if auth_email_mode.is_empty() else ("CREATE ACCOUNT" if auth_email_mode == "register" else "EMAIL SIGN IN")), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(20.0 * unit), Color.WHITE)
+	if auth_email_mode.is_empty():
+		var labels := ["כניסה עם Gmail", "כניסה עם מייל", "כניסה כאורח", "הרשמה"] if ui_language == "he" else ["CONTINUE WITH GOOGLE", "SIGN IN WITH EMAIL", "CONTINUE AS GUEST", "REGISTER"]
+		var colors := [Color("4285f4"), Color("2f9ed1"), Color("35bd78"), Color("ff9f2e")]
+		var icons := ["G", "@", "☺", "+"]
+		for i in 4:
+			var rect := auth_choice_rect(i, viewport_size)
+			draw_style_box(make_box(colors[i], 16.0 * unit), rect)
+			draw_circle(rect.position + Vector2(37.0, 31.0) * unit, 21.0 * unit, Color(1, 1, 1, 0.22))
+			draw_string(ui_font, rect.position + Vector2(16.0, 40.0) * unit, icons[i], HORIZONTAL_ALIGNMENT_CENTER, 42.0 * unit, int(22.0 * unit), Color.WHITE)
+			draw_string(ui_font, rect.position + Vector2(58.0, 40.0) * unit, labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 78.0 * unit, int(22.0 * unit), Color.WHITE)
+	else:
+		draw_string(ui_font, Vector2(panel.position.x, 248.0 * unit), "כתובת מייל" if ui_language == "he" else "EMAIL ADDRESS", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(15.0 * unit), Color("9fd9ef"))
+		draw_string(ui_font, Vector2(panel.position.x, 326.0 * unit), "סיסמה" if ui_language == "he" else "PASSWORD", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(15.0 * unit), Color("9fd9ef"))
+		var submit := auth_submit_rect(viewport_size)
+		draw_style_box(make_box(Color("35bd78"), 17.0 * unit), submit)
+		draw_string(ui_font, submit.position + Vector2(0.0, 41.0) * unit, ("יצירת חשבון" if auth_email_mode == "register" else "כניסה") if ui_language == "he" else ("CREATE ACCOUNT" if auth_email_mode == "register" else "SIGN IN"), HORIZONTAL_ALIGNMENT_CENTER, submit.size.x, int(23.0 * unit), Color.WHITE)
+		var cancel := auth_cancel_rect(viewport_size)
+		draw_style_box(make_box(Color("203a59"), 14.0 * unit), cancel)
+		draw_string(ui_font, cancel.position + Vector2(0.0, 34.0) * unit, "חזרה לאפשרויות" if ui_language == "he" else "BACK TO OPTIONS", HORIZONTAL_ALIGNMENT_CENTER, cancel.size.x, int(18.0 * unit), Color.WHITE)
+	var status_color := Color("7ee4ae") if not ("שגיא" in firebase_status or "ERROR" in firebase_status) else Color("ff7777")
+	draw_string(ui_font, Vector2(panel.position.x + 20.0 * unit, panel.end.y - 25.0 * unit), firebase_status, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 40.0 * unit, int(15.0 * unit), status_color)
 
 func draw_friend_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
