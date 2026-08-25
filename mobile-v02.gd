@@ -279,6 +279,20 @@ var player_ring_color := 3
 var ai_animal := 0
 var ai_ring_color := 0
 const PLAYER_PROFILE_PATH := "user://zoopaloola-profile.cfg"
+const FIREBASE_API_KEY := "AIzaSyCICtUM65KhCem-mG8H23oNnrM3K-jDSHP"
+const FIREBASE_PROJECT_ID := "zoopaloola-online"
+var firebase_uid := ""
+var firebase_public_id := ""
+var firebase_id_token := ""
+var firebase_refresh_token := ""
+var firebase_token_expires_at := 0
+var firebase_auth_request: HTTPRequest
+var firebase_profile_request: HTTPRequest
+var firebase_public_id_request: HTTPRequest
+var firebase_auth_busy := false
+var firebase_profile_dirty := false
+var firebase_sync_delay := 0.0
+var firebase_status := "מתחבר..."
 
 func _enter_tree() -> void:
 	# Enter native fullscreen before _ready() and before the first game frame.
@@ -303,6 +317,7 @@ func _ready() -> void:
 	if ui_font == null:
 		ui_font = ThemeDB.fallback_font
 	load_player_profile()
+	setup_firebase()
 	room_code_input = LineEdit.new()
 	room_code_input.visible = false
 	room_code_input.max_length = 6
@@ -452,6 +467,7 @@ func new_game() -> void:
 
 func _process(delta: float) -> void:
 	menu_elapsed += delta
+	update_firebase(delta)
 	poll_multiplayer()
 	update_room_code_input()
 	update_chat_input()
@@ -2745,8 +2761,13 @@ func load_player_profile() -> void:
 	player_current_streak = maxi(0, int(config.get_value("player", "current_streak", player_current_streak)))
 	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
 	ui_language = str(config.get_value("settings", "language", ui_language))
+	firebase_uid = str(config.get_value("firebase", "uid", ""))
+	firebase_public_id = str(config.get_value("firebase", "public_id", ""))
+	firebase_id_token = str(config.get_value("firebase", "id_token", ""))
+	firebase_refresh_token = str(config.get_value("firebase", "refresh_token", ""))
+	firebase_token_expires_at = int(config.get_value("firebase", "expires_at", 0))
 
-func save_player_profile() -> void:
+func save_player_profile(sync_cloud: bool = true) -> void:
 	var config := ConfigFile.new()
 	config.set_value("player", "name", profile_name)
 	config.set_value("player", "animal", player_animal)
@@ -2760,7 +2781,128 @@ func save_player_profile() -> void:
 	config.set_value("player", "current_streak", player_current_streak)
 	config.set_value("player", "last_daily_claim", last_daily_claim)
 	config.set_value("settings", "language", ui_language)
+	config.set_value("firebase", "uid", firebase_uid)
+	config.set_value("firebase", "public_id", firebase_public_id)
+	config.set_value("firebase", "id_token", firebase_id_token)
+	config.set_value("firebase", "refresh_token", firebase_refresh_token)
+	config.set_value("firebase", "expires_at", firebase_token_expires_at)
 	config.save(PLAYER_PROFILE_PATH)
+	if sync_cloud and not firebase_uid.is_empty():
+		firebase_profile_dirty = true
+		firebase_sync_delay = 0.8
+
+func setup_firebase() -> void:
+	firebase_auth_request = HTTPRequest.new()
+	firebase_auth_request.request_completed.connect(_on_firebase_auth_completed)
+	add_child(firebase_auth_request)
+	firebase_profile_request = HTTPRequest.new()
+	firebase_profile_request.request_completed.connect(_on_firebase_profile_completed)
+	add_child(firebase_profile_request)
+	firebase_public_id_request = HTTPRequest.new()
+	firebase_public_id_request.request_completed.connect(_on_firebase_public_id_completed)
+	add_child(firebase_public_id_request)
+	start_firebase_auth()
+
+func start_firebase_auth() -> void:
+	if firebase_auth_busy or firebase_auth_request == null:
+		return
+	firebase_auth_busy = true
+	firebase_status = "מתחבר..." if ui_language == "he" else "CONNECTING..."
+	var error := OK
+	if not firebase_refresh_token.is_empty():
+		var refresh_url := "https://securetoken.googleapis.com/v1/token?key=" + FIREBASE_API_KEY
+		var refresh_body := "grant_type=refresh_token&refresh_token=" + firebase_refresh_token.uri_encode()
+		error = firebase_auth_request.request(refresh_url, ["Content-Type: application/x-www-form-urlencoded"], HTTPClient.METHOD_POST, refresh_body)
+	else:
+		var signup_url := "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + FIREBASE_API_KEY
+		error = firebase_auth_request.request(signup_url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, "{\"returnSecureToken\":true}")
+	if error != OK:
+		firebase_auth_busy = false
+		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
+
+func _on_firebase_auth_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	firebase_auth_busy = false
+	if response_code < 200 or response_code >= 300:
+		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
+		return
+	var parsed: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if not parsed is Dictionary:
+		firebase_status = "שגיאת חשבון" if ui_language == "he" else "ACCOUNT ERROR"
+		return
+	var response := parsed as Dictionary
+	firebase_uid = str(response.get("localId", response.get("user_id", firebase_uid)))
+	firebase_id_token = str(response.get("idToken", response.get("id_token", "")))
+	firebase_refresh_token = str(response.get("refreshToken", response.get("refresh_token", firebase_refresh_token)))
+	var expires_in := int(str(response.get("expiresIn", response.get("expires_in", "3600"))))
+	firebase_token_expires_at = int(Time.get_unix_time_from_system()) + maxi(60, expires_in)
+	if firebase_public_id.is_empty() and not firebase_uid.is_empty():
+		firebase_public_id = "ZP-" + firebase_uid.sha256_text().substr(0, 8).to_upper()
+	save_player_profile(false)
+	firebase_status = "מסונכרן" if ui_language == "he" else "SYNCED"
+	sync_firebase_profile()
+	sync_firebase_public_id()
+	queue_redraw()
+
+func update_firebase(delta: float) -> void:
+	if not firebase_refresh_token.is_empty() and not firebase_auth_busy:
+		if firebase_token_expires_at <= int(Time.get_unix_time_from_system()) + 120:
+			start_firebase_auth()
+	if firebase_profile_dirty:
+		firebase_sync_delay -= delta
+		if firebase_sync_delay <= 0.0:
+			sync_firebase_profile()
+
+func firestore_fields(include_public_id: bool = true) -> Dictionary:
+	var fields := {
+		"name": {"stringValue": profile_name},
+		"animal": {"integerValue": str(player_animal)},
+		"ringColor": {"integerValue": str(player_ring_color)},
+		"coins": {"integerValue": str(player_coins)},
+		"level": {"integerValue": str(player_level)},
+		"xp": {"integerValue": str(player_xp)},
+		"wins": {"integerValue": str(player_wins)},
+		"losses": {"integerValue": str(player_losses)},
+		"bestStreak": {"integerValue": str(player_best_streak)},
+		"currentStreak": {"integerValue": str(player_current_streak)}
+	}
+	if include_public_id:
+		fields["publicId"] = {"stringValue": firebase_public_id}
+	return fields
+
+func sync_firebase_profile() -> void:
+	if firebase_uid.is_empty() or firebase_id_token.is_empty() or firebase_profile_request == null:
+		return
+	if firebase_profile_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	firebase_profile_dirty = false
+	firebase_status = "מסנכרן..." if ui_language == "he" else "SYNCING..."
+	var url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/users/%s" % [FIREBASE_PROJECT_ID, firebase_uid]
+	var payload := JSON.stringify({"fields": firestore_fields()})
+	var error := firebase_profile_request.request(url, ["Authorization: Bearer " + firebase_id_token, "Content-Type: application/json"], HTTPClient.METHOD_PATCH, payload)
+	if error != OK:
+		firebase_profile_dirty = true
+		firebase_sync_delay = 5.0
+
+func sync_firebase_public_id() -> void:
+	if firebase_public_id.is_empty() or firebase_id_token.is_empty() or firebase_public_id_request == null:
+		return
+	if firebase_public_id_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	var url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
+	var fields := {"uid": {"stringValue": firebase_uid}, "name": {"stringValue": profile_name}}
+	firebase_public_id_request.request(url, ["Authorization: Bearer " + firebase_id_token, "Content-Type: application/json"], HTTPClient.METHOD_PATCH, JSON.stringify({"fields": fields}))
+
+func _on_firebase_profile_completed(_result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	if response_code >= 200 and response_code < 300:
+		firebase_status = "מסונכרן" if ui_language == "he" else "SYNCED"
+	else:
+		firebase_status = "ממתין לסנכרון" if ui_language == "he" else "SYNC PENDING"
+		firebase_profile_dirty = true
+		firebase_sync_delay = 8.0
+	queue_redraw()
+
+func _on_firebase_public_id_completed(_result: int, _response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	pass
 
 func _on_profile_name_changed(value: String) -> void:
 	var clean := value.strip_edges().left(20)
@@ -3620,6 +3762,9 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	var xp_ratio := clampf(float(player_xp) / float(maxi(1, player_next_level_xp)), 0.0, 1.0)
 	draw_style_box(make_box(Color("49c984"), 9.0 * unit), Rect2(xp_rect.position, Vector2(xp_rect.size.x * xp_ratio, xp_rect.size.y)))
 	draw_string(ui_font, info_panel.position + Vector2(545.0, 121.0) * unit, str(player_xp) + " / " + str(player_next_level_xp) + " XP", HORIZONTAL_ALIGNMENT_LEFT, 170.0 * unit, int(11.0 * unit), Color("526b72"))
+	var account_id_text := ("מזהה אישי: " if ui_language == "he" else "PLAYER ID: ") + (firebase_public_id if not firebase_public_id.is_empty() else "...")
+	draw_string(ui_font, info_panel.position + Vector2(130.0, 148.0) * unit, account_id_text, HORIZONTAL_ALIGNMENT_LEFT, 360.0 * unit, int(13.0 * unit), Color("2982a6"))
+	draw_string(ui_font, info_panel.position + Vector2(500.0, 148.0) * unit, firebase_status, HORIZONTAL_ALIGNMENT_RIGHT, 215.0 * unit, int(12.0 * unit), Color("49a979"))
 	draw_string(ui_font, info_panel.position + Vector2(30.0, 165.0) * unit, ui_text("career"), HORIZONTAL_ALIGNMENT_CENTER, info_panel.size.x - 60.0 * unit, int(20.0 * unit), Color("173249"))
 	var total_matches := player_wins + player_losses
 	var win_rate := 0
