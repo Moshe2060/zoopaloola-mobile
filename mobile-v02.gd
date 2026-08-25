@@ -279,7 +279,7 @@ var player_ring_color := 3
 var ai_animal := 0
 var ai_ring_color := 0
 const PLAYER_PROFILE_PATH := "user://zoopaloola-profile.cfg"
-const FIREBASE_API_KEY := "AIzaSyCICtUM65KhCem-mG8H23oNnrM3K-jDSHP"
+const FIREBASE_API_KEY := "AIzaSyCIcTUM65KhCem-mG8H23oNnrM3K-jDSHQ"
 const FIREBASE_PROJECT_ID := "zoopaloola-online"
 var firebase_uid := ""
 var firebase_public_id := ""
@@ -2656,6 +2656,10 @@ func player_profile_color_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2((70.0 + float(index) * 60.0) * unit, 614.0 * unit), Vector2(44.0, 44.0) * unit)
 
+func player_id_copy_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(1020.0, 620.0) * unit, Vector2(190.0, 42.0) * unit)
+
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
@@ -3368,6 +3372,11 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				claim_daily_reward()
 				return
 		elif app_screen == APP_PLAYER_PROFILE:
+			if player_id_copy_rect(viewport_size).has_point(screen_pos):
+				if not firebase_public_id.is_empty():
+					DisplayServer.clipboard_set(firebase_public_id)
+					show_menu_notice("המזהה הועתק" if ui_language == "he" else "PLAYER ID COPIED")
+				return
 			for i in ANIMAL_NAMES.size():
 				if player_profile_animal_rect(i, viewport_size).has_point(screen_pos):
 					player_animal = i
@@ -3762,9 +3771,8 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	var xp_ratio := clampf(float(player_xp) / float(maxi(1, player_next_level_xp)), 0.0, 1.0)
 	draw_style_box(make_box(Color("49c984"), 9.0 * unit), Rect2(xp_rect.position, Vector2(xp_rect.size.x * xp_ratio, xp_rect.size.y)))
 	draw_string(ui_font, info_panel.position + Vector2(545.0, 121.0) * unit, str(player_xp) + " / " + str(player_next_level_xp) + " XP", HORIZONTAL_ALIGNMENT_LEFT, 170.0 * unit, int(11.0 * unit), Color("526b72"))
-	var account_id_text := ("מזהה אישי: " if ui_language == "he" else "PLAYER ID: ") + (firebase_public_id if not firebase_public_id.is_empty() else "...")
-	draw_string(ui_font, info_panel.position + Vector2(130.0, 148.0) * unit, account_id_text, HORIZONTAL_ALIGNMENT_LEFT, 360.0 * unit, int(13.0 * unit), Color("2982a6"))
-	draw_string(ui_font, info_panel.position + Vector2(500.0, 148.0) * unit, firebase_status, HORIZONTAL_ALIGNMENT_RIGHT, 215.0 * unit, int(12.0 * unit), Color("49a979"))
+	var account_type := "חשבון אורח" if ui_language == "he" else "GUEST ACCOUNT"
+	draw_string(ui_font, info_panel.position + Vector2(130.0, 148.0) * unit, account_type + " • " + firebase_status, HORIZONTAL_ALIGNMENT_LEFT, 585.0 * unit, int(14.0 * unit), Color("2982a6"))
 	draw_string(ui_font, info_panel.position + Vector2(30.0, 165.0) * unit, ui_text("career"), HORIZONTAL_ALIGNMENT_CENTER, info_panel.size.x - 60.0 * unit, int(20.0 * unit), Color("173249"))
 	var total_matches := player_wins + player_losses
 	var win_rate := 0
@@ -3779,7 +3787,14 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 		var row := i / 2
 		var stat_rect := Rect2(info_panel.position + Vector2(30.0 + float(column) * 354.0, 190.0 + float(row) * 112.0) * unit, Vector2(330.0, 88.0) * unit)
 		draw_profile_stat_card(stat_rect, labels[i], values[i], accents[i], unit)
-	draw_string(ui_font, info_panel.position + Vector2(30.0, 548.0) * unit, ui_text("current_streak") + str(player_current_streak), HORIZONTAL_ALIGNMENT_CENTER, info_panel.size.x - 60.0 * unit, int(14.0 * unit), Color("526b72"))
+	var id_box := Rect2(info_panel.position + Vector2(30.0, 518.0) * unit, Vector2(500.0, 42.0) * unit)
+	draw_style_box(make_box(Color("d8eee8"), 12.0 * unit), id_box)
+	var pending_id := "מתחבר..." if ui_language == "he" else "CONNECTING..."
+	var account_id_text := ("מזהה אישי: " if ui_language == "he" else "PLAYER ID: ") + (firebase_public_id if not firebase_public_id.is_empty() else pending_id)
+	draw_string(ui_font, id_box.position + Vector2(16.0, 29.0) * unit, account_id_text, HORIZONTAL_ALIGNMENT_LEFT, id_box.size.x - 32.0 * unit, int(18.0 * unit), Color("173249"))
+	var copy_rect := player_id_copy_rect(viewport_size)
+	draw_style_box(make_box(Color("2982a6") if not firebase_public_id.is_empty() else Color("70858d"), 12.0 * unit), copy_rect)
+	draw_string(ui_font, copy_rect.position + Vector2(0.0, 29.0) * unit, "העתקת מזהה" if ui_language == "he" else "COPY ID", HORIZONTAL_ALIGNMENT_CENTER, copy_rect.size.x, int(16.0 * unit), Color.WHITE)
 
 func draw_home_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
