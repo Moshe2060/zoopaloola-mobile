@@ -286,6 +286,8 @@ var firebase_public_id := ""
 var firebase_id_token := ""
 var firebase_refresh_token := ""
 var firebase_token_expires_at := 0
+var firebase_provider := "guest"
+var firebase_email := ""
 var firebase_auth_request: HTTPRequest
 var firebase_profile_request: HTTPRequest
 var firebase_public_id_request: HTTPRequest
@@ -294,7 +296,7 @@ var firebase_profile_dirty := false
 var firebase_sync_delay := 0.0
 var firebase_web_poll_delay := 0.0
 var firebase_status := "מתחבר..."
-const CLIENT_VERSION := "ACCOUNT-3"
+const CLIENT_VERSION := "ACCOUNT-4"
 
 func _enter_tree() -> void:
 	# Enter native fullscreen before _ready() and before the first game frame.
@@ -2660,7 +2662,11 @@ func player_profile_color_rect(index: int, viewport_size: Vector2) -> Rect2:
 
 func player_id_copy_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(1020.0, 620.0) * unit, Vector2(190.0, 42.0) * unit)
+	return Rect2(Vector2(1060.0, 620.0) * unit, Vector2(150.0, 42.0) * unit)
+
+func player_google_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(870.0, 620.0) * unit, Vector2(175.0, 42.0) * unit)
 
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -2772,6 +2778,8 @@ func load_player_profile() -> void:
 	firebase_id_token = str(config.get_value("firebase", "id_token", ""))
 	firebase_refresh_token = str(config.get_value("firebase", "refresh_token", ""))
 	firebase_token_expires_at = int(config.get_value("firebase", "expires_at", 0))
+	firebase_provider = str(config.get_value("firebase", "provider", firebase_provider))
+	firebase_email = str(config.get_value("firebase", "email", firebase_email))
 
 func save_player_profile(sync_cloud: bool = true) -> void:
 	var config := ConfigFile.new()
@@ -2792,6 +2800,8 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("firebase", "id_token", firebase_id_token)
 	config.set_value("firebase", "refresh_token", firebase_refresh_token)
 	config.set_value("firebase", "expires_at", firebase_token_expires_at)
+	config.set_value("firebase", "provider", firebase_provider)
+	config.set_value("firebase", "email", firebase_email)
 	config.save(PLAYER_PROFILE_PATH)
 	if sync_cloud and not firebase_uid.is_empty():
 		firebase_profile_dirty = true
@@ -2808,6 +2818,8 @@ func setup_firebase() -> void:
 	firebase_public_id_request.request_completed.connect(_on_firebase_public_id_completed)
 	add_child(firebase_public_id_request)
 	start_firebase_auth()
+	if OS.has_feature("web"):
+		setup_firebase_google_web()
 
 func start_firebase_auth() -> void:
 	if firebase_auth_busy or firebase_auth_request == null:
@@ -2866,6 +2878,65 @@ window.zpAuthState = {status: 'loading'};
 """.replace("__API_KEY__", FIREBASE_API_KEY)
 	JavaScriptBridge.eval(script, true)
 	firebase_web_poll_delay = 0.15
+
+func setup_firebase_google_web() -> void:
+	var script := """
+window.zpGoogleState = {status: 'loading-sdk'};
+(async () => {
+  try {
+    const appSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js');
+    const authSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js');
+    const config = {
+      apiKey: '__API_KEY__', authDomain: 'zoopaloola-online.firebaseapp.com',
+      projectId: 'zoopaloola-online', storageBucket: 'zoopaloola-online.firebasestorage.app',
+      messagingSenderId: '386401966312', appId: '1:386401966312:web:0e781cb13c98fd6dc3515d'
+    };
+    const app = appSdk.getApps().length ? appSdk.getApps()[0] : appSdk.initializeApp(config);
+    const auth = authSdk.getAuth(app);
+    await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
+    const provider = new authSdk.GoogleAuthProvider();
+    provider.setCustomParameters({prompt: 'select_account'});
+    window.zpBeginGoogleLink = (oldToken, publicUrl, playerName) => {
+      window.zpGoogleState = {status: 'opening'};
+      authSdk.signInWithPopup(auth, provider).then(async (result) => {
+        const user = result.user;
+        const idToken = await user.getIdToken(true);
+        if (oldToken && publicUrl) {
+          const mapping = {fields: {uid: {stringValue: user.uid}, name: {stringValue: playerName || 'PLAYER 1'}}};
+          const transfer = await fetch(publicUrl, {
+            method: 'PATCH', mode: 'cors', credentials: 'omit',
+            headers: {'Authorization': 'Bearer ' + oldToken, 'Content-Type': 'application/json'},
+            body: JSON.stringify(mapping)
+          });
+          if (!transfer.ok) console.warn('Public ID transfer returned HTTP ' + transfer.status);
+        }
+        localStorage.setItem('zpFirebaseRefreshToken', user.refreshToken || '');
+        window.zpGoogleState = {
+          status: 'done', localId: user.uid, idToken: idToken,
+          refreshToken: user.refreshToken || '', expiresIn: '3600',
+          provider: 'google', email: user.email || '', displayName: user.displayName || ''
+        };
+      }).catch((error) => {
+        window.zpGoogleState = {status: 'error', message: String(error && (error.code || error.message) || error)};
+      });
+    };
+    window.zpGoogleState = {status: 'ready'};
+  } catch (error) {
+    window.zpGoogleState = {status: 'error', message: String(error && error.message || error)};
+  }
+})();
+""".replace("__API_KEY__", FIREBASE_API_KEY)
+	JavaScriptBridge.eval(script, true)
+
+func begin_google_sign_in() -> void:
+	if not OS.has_feature("web"):
+		show_menu_notice("Google login is currently available on the website")
+		return
+	var public_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
+	var call_script := "window.zpBeginGoogleLink && window.zpBeginGoogleLink(%s, %s, %s)" % [JSON.stringify(firebase_id_token), JSON.stringify(public_url), JSON.stringify(profile_name)]
+	JavaScriptBridge.eval(call_script, true)
+	firebase_status = "פותח Google..." if ui_language == "he" else "OPENING GOOGLE..."
+	queue_redraw()
 
 func _on_firebase_auth_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	firebase_auth_busy = false
@@ -2926,6 +2997,20 @@ func poll_firebase_web_state() -> void:
 				firebase_auth_busy = false
 				firebase_status = ("שגיאת חיבור: " if ui_language == "he" else "SIGN-IN ERROR: ") + str(auth_state.get("message", "Unknown error")).left(34)
 				queue_redraw()
+	var google_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpGoogleState || {})", true))
+	var google_data: Variant = JSON.parse_string(google_text)
+	if google_data is Dictionary:
+		var google_state := google_data as Dictionary
+		var google_status := str(google_state.get("status", ""))
+		if google_status == "done":
+			firebase_provider = "google"
+			firebase_email = str(google_state.get("email", ""))
+			apply_firebase_auth_response(google_state)
+			JavaScriptBridge.eval("window.zpGoogleState = {status: 'connected'}", true)
+		elif google_status == "error":
+			firebase_status = ("שגיאת Google: " if ui_language == "he" else "GOOGLE ERROR: ") + str(google_state.get("message", "Unknown error")).left(34)
+			JavaScriptBridge.eval("window.zpGoogleState = {status: 'ready'}", true)
+			queue_redraw()
 	var profile_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpProfileState || {})", true))
 	var profile_data: Variant = JSON.parse_string(profile_text)
 	if profile_data is Dictionary:
@@ -3491,6 +3576,10 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				claim_daily_reward()
 				return
 		elif app_screen == APP_PLAYER_PROFILE:
+			if player_google_rect(viewport_size).has_point(screen_pos):
+				if firebase_provider != "google":
+					begin_google_sign_in()
+				return
 			if player_id_copy_rect(viewport_size).has_point(screen_pos):
 				if not firebase_public_id.is_empty():
 					DisplayServer.clipboard_set(firebase_public_id)
@@ -3890,7 +3979,7 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	var xp_ratio := clampf(float(player_xp) / float(maxi(1, player_next_level_xp)), 0.0, 1.0)
 	draw_style_box(make_box(Color("49c984"), 9.0 * unit), Rect2(xp_rect.position, Vector2(xp_rect.size.x * xp_ratio, xp_rect.size.y)))
 	draw_string(ui_font, info_panel.position + Vector2(545.0, 121.0) * unit, str(player_xp) + " / " + str(player_next_level_xp) + " XP", HORIZONTAL_ALIGNMENT_LEFT, 170.0 * unit, int(11.0 * unit), Color("526b72"))
-	var account_type := "חשבון אורח" if ui_language == "he" else "GUEST ACCOUNT"
+	var account_type := ("Google: " + firebase_email) if firebase_provider == "google" else ("חשבון אורח" if ui_language == "he" else "GUEST ACCOUNT")
 	draw_string(ui_font, info_panel.position + Vector2(130.0, 148.0) * unit, account_type + " • " + firebase_status + " • " + CLIENT_VERSION, HORIZONTAL_ALIGNMENT_LEFT, 585.0 * unit, int(14.0 * unit), Color("2982a6"))
 	draw_string(ui_font, info_panel.position + Vector2(30.0, 165.0) * unit, ui_text("career"), HORIZONTAL_ALIGNMENT_CENTER, info_panel.size.x - 60.0 * unit, int(20.0 * unit), Color("173249"))
 	var total_matches := player_wins + player_losses
@@ -3906,14 +3995,19 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 		var row := i / 2
 		var stat_rect := Rect2(info_panel.position + Vector2(30.0 + float(column) * 354.0, 190.0 + float(row) * 112.0) * unit, Vector2(330.0, 88.0) * unit)
 		draw_profile_stat_card(stat_rect, labels[i], values[i], accents[i], unit)
-	var id_box := Rect2(info_panel.position + Vector2(30.0, 518.0) * unit, Vector2(500.0, 42.0) * unit)
+	var id_box := Rect2(info_panel.position + Vector2(30.0, 518.0) * unit, Vector2(350.0, 42.0) * unit)
 	draw_style_box(make_box(Color("d8eee8"), 12.0 * unit), id_box)
 	var pending_id := "מתחבר..." if ui_language == "he" else "CONNECTING..."
 	var account_id_text := ("מזהה אישי: " if ui_language == "he" else "PLAYER ID: ") + (firebase_public_id if not firebase_public_id.is_empty() else pending_id)
 	draw_string(ui_font, id_box.position + Vector2(16.0, 29.0) * unit, account_id_text, HORIZONTAL_ALIGNMENT_LEFT, id_box.size.x - 32.0 * unit, int(18.0 * unit), Color("173249"))
+	var google_rect := player_google_rect(viewport_size)
+	var google_connected := firebase_provider == "google"
+	draw_style_box(make_box(Color("4c9a68") if google_connected else Color("4285f4"), 12.0 * unit), google_rect)
+	var google_label := ("Google מחובר" if ui_language == "he" else "GOOGLE LINKED") if google_connected else ("חיבור Google" if ui_language == "he" else "CONNECT GOOGLE")
+	draw_string(ui_font, google_rect.position + Vector2(0.0, 29.0) * unit, google_label, HORIZONTAL_ALIGNMENT_CENTER, google_rect.size.x, int(15.0 * unit), Color.WHITE)
 	var copy_rect := player_id_copy_rect(viewport_size)
 	draw_style_box(make_box(Color("2982a6") if not firebase_public_id.is_empty() else Color("70858d"), 12.0 * unit), copy_rect)
-	draw_string(ui_font, copy_rect.position + Vector2(0.0, 29.0) * unit, "העתקת מזהה" if ui_language == "he" else "COPY ID", HORIZONTAL_ALIGNMENT_CENTER, copy_rect.size.x, int(16.0 * unit), Color.WHITE)
+	draw_string(ui_font, copy_rect.position + Vector2(0.0, 29.0) * unit, "העתקה" if ui_language == "he" else "COPY ID", HORIZONTAL_ALIGNMENT_CENTER, copy_rect.size.x, int(16.0 * unit), Color.WHITE)
 
 func draw_home_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
