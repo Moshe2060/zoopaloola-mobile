@@ -292,7 +292,9 @@ var firebase_public_id_request: HTTPRequest
 var firebase_auth_busy := false
 var firebase_profile_dirty := false
 var firebase_sync_delay := 0.0
+var firebase_web_poll_delay := 0.0
 var firebase_status := "מתחבר..."
+const CLIENT_VERSION := "ACCOUNT-3"
 
 func _enter_tree() -> void:
 	# Enter native fullscreen before _ready() and before the first game frame.
@@ -2812,6 +2814,9 @@ func start_firebase_auth() -> void:
 		return
 	firebase_auth_busy = true
 	firebase_status = "מתחבר..." if ui_language == "he" else "CONNECTING..."
+	if OS.has_feature("web"):
+		start_firebase_web_auth()
+		return
 	var error := OK
 	if not firebase_refresh_token.is_empty():
 		var refresh_url := "https://securetoken.googleapis.com/v1/token?key=" + FIREBASE_API_KEY
@@ -2823,6 +2828,44 @@ func start_firebase_auth() -> void:
 	if error != OK:
 		firebase_auth_busy = false
 		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
+
+func start_firebase_web_auth() -> void:
+	var script := """
+window.zpAuthState = {status: 'loading'};
+(async () => {
+  try {
+    const key = '__API_KEY__';
+    const savedRefresh = localStorage.getItem('zpFirebaseRefreshToken') || '';
+    let response;
+    if (savedRefresh) {
+      response = await fetch('https://securetoken.googleapis.com/v1/token?key=' + key, {
+        method: 'POST', mode: 'cors', credentials: 'omit',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(savedRefresh)
+      });
+    } else {
+      response = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + key, {
+        method: 'POST', mode: 'cors', credentials: 'omit',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({returnSecureToken: true})
+      });
+    }
+    const data = await response.json();
+    if (!response.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
+    const refreshToken = data.refreshToken || data.refresh_token || savedRefresh;
+    localStorage.setItem('zpFirebaseRefreshToken', refreshToken);
+    window.zpAuthState = {
+      status: 'done', localId: data.localId || data.user_id,
+      idToken: data.idToken || data.id_token, refreshToken: refreshToken,
+      expiresIn: data.expiresIn || data.expires_in || '3600'
+    };
+  } catch (error) {
+    window.zpAuthState = {status: 'error', message: String(error && error.message || error)};
+  }
+})();
+""".replace("__API_KEY__", FIREBASE_API_KEY)
+	JavaScriptBridge.eval(script, true)
+	firebase_web_poll_delay = 0.15
 
 func _on_firebase_auth_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	firebase_auth_busy = false
@@ -2839,6 +2882,10 @@ func _on_firebase_auth_completed(_result: int, response_code: int, _headers: Pac
 		queue_redraw()
 		return
 	var response: Dictionary = json.data
+	apply_firebase_auth_response(response)
+
+func apply_firebase_auth_response(response: Dictionary) -> void:
+	firebase_auth_busy = false
 	firebase_uid = str(response.get("localId", response.get("user_id", firebase_uid)))
 	firebase_id_token = str(response.get("idToken", response.get("id_token", "")))
 	firebase_refresh_token = str(response.get("refreshToken", response.get("refresh_token", firebase_refresh_token)))
@@ -2853,13 +2900,45 @@ func _on_firebase_auth_completed(_result: int, response_code: int, _headers: Pac
 	queue_redraw()
 
 func update_firebase(delta: float) -> void:
+	if OS.has_feature("web"):
+		firebase_web_poll_delay -= delta
+		if firebase_web_poll_delay <= 0.0:
+			firebase_web_poll_delay = 0.25
+			poll_firebase_web_state()
 	if not firebase_refresh_token.is_empty() and not firebase_auth_busy:
 		if firebase_token_expires_at <= int(Time.get_unix_time_from_system()) + 120:
 			start_firebase_auth()
 	if firebase_profile_dirty:
 		firebase_sync_delay -= delta
 		if firebase_sync_delay <= 0.0:
-			sync_firebase_profile()
+				sync_firebase_profile()
+
+func poll_firebase_web_state() -> void:
+	if firebase_auth_busy:
+		var auth_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpAuthState || {})", true))
+		var auth_data: Variant = JSON.parse_string(auth_text)
+		if auth_data is Dictionary:
+			var auth_state := auth_data as Dictionary
+			var auth_status := str(auth_state.get("status", ""))
+			if auth_status == "done":
+				apply_firebase_auth_response(auth_state)
+			elif auth_status == "error":
+				firebase_auth_busy = false
+				firebase_status = ("שגיאת חיבור: " if ui_language == "he" else "SIGN-IN ERROR: ") + str(auth_state.get("message", "Unknown error")).left(34)
+				queue_redraw()
+	var profile_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpProfileState || {})", true))
+	var profile_data: Variant = JSON.parse_string(profile_text)
+	if profile_data is Dictionary:
+		var profile_state := profile_data as Dictionary
+		var profile_status := str(profile_state.get("status", ""))
+		if profile_status == "done":
+			firebase_status = "מסונכרן" if ui_language == "he" else "SYNCED"
+			JavaScriptBridge.eval("window.zpProfileState = {}", true)
+			queue_redraw()
+		elif profile_status == "error":
+			firebase_status = ("שגיאת סנכרון: " if ui_language == "he" else "SYNC ERROR: ") + str(profile_state.get("message", "Unknown error")).left(28)
+			JavaScriptBridge.eval("window.zpProfileState = {}", true)
+			queue_redraw()
 
 func firestore_fields(include_public_id: bool = true) -> Dictionary:
 	var fields := {
@@ -2881,6 +2960,39 @@ func firestore_fields(include_public_id: bool = true) -> Dictionary:
 func sync_firebase_profile() -> void:
 	if firebase_uid.is_empty() or firebase_id_token.is_empty() or firebase_profile_request == null:
 		return
+	if OS.has_feature("web"):
+		firebase_profile_dirty = false
+		firebase_status = "מסנכרן..." if ui_language == "he" else "SYNCING..."
+		var profile_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/users/%s" % [FIREBASE_PROJECT_ID, firebase_uid]
+		var public_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
+		var profile_payload := JSON.stringify({"fields": firestore_fields()})
+		var public_fields := {"uid": {"stringValue": firebase_uid}, "name": {"stringValue": profile_name}}
+		var public_payload := JSON.stringify({"fields": public_fields})
+		var web_script := """
+window.zpProfileState = {status: 'loading'};
+(async () => {
+  try {
+    const headers = {'Authorization': 'Bearer ' + __TOKEN__, 'Content-Type': 'application/json'};
+    const responses = await Promise.all([
+      fetch(__PROFILE_URL__, {method: 'PATCH', mode: 'cors', credentials: 'omit', headers, body: __PROFILE_BODY__}),
+      fetch(__PUBLIC_URL__, {method: 'PATCH', mode: 'cors', credentials: 'omit', headers, body: __PUBLIC_BODY__})
+    ]);
+    for (const response of responses) {
+      if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text()).slice(0, 80));
+    }
+    window.zpProfileState = {status: 'done'};
+  } catch (error) {
+    window.zpProfileState = {status: 'error', message: String(error && error.message || error)};
+  }
+})();
+"""
+		web_script = web_script.replace("__TOKEN__", JSON.stringify(firebase_id_token))
+		web_script = web_script.replace("__PROFILE_URL__", JSON.stringify(profile_url))
+		web_script = web_script.replace("__PUBLIC_URL__", JSON.stringify(public_url))
+		web_script = web_script.replace("__PROFILE_BODY__", JSON.stringify(profile_payload))
+		web_script = web_script.replace("__PUBLIC_BODY__", JSON.stringify(public_payload))
+		JavaScriptBridge.eval(web_script, true)
+		return
 	if firebase_profile_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 		return
 	firebase_profile_dirty = false
@@ -2893,6 +3005,8 @@ func sync_firebase_profile() -> void:
 		firebase_sync_delay = 5.0
 
 func sync_firebase_public_id() -> void:
+	if OS.has_feature("web"):
+		return
 	if firebase_public_id.is_empty() or firebase_id_token.is_empty() or firebase_public_id_request == null:
 		return
 	if firebase_public_id_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
@@ -3777,7 +3891,7 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color("49c984"), 9.0 * unit), Rect2(xp_rect.position, Vector2(xp_rect.size.x * xp_ratio, xp_rect.size.y)))
 	draw_string(ui_font, info_panel.position + Vector2(545.0, 121.0) * unit, str(player_xp) + " / " + str(player_next_level_xp) + " XP", HORIZONTAL_ALIGNMENT_LEFT, 170.0 * unit, int(11.0 * unit), Color("526b72"))
 	var account_type := "חשבון אורח" if ui_language == "he" else "GUEST ACCOUNT"
-	draw_string(ui_font, info_panel.position + Vector2(130.0, 148.0) * unit, account_type + " • " + firebase_status, HORIZONTAL_ALIGNMENT_LEFT, 585.0 * unit, int(14.0 * unit), Color("2982a6"))
+	draw_string(ui_font, info_panel.position + Vector2(130.0, 148.0) * unit, account_type + " • " + firebase_status + " • " + CLIENT_VERSION, HORIZONTAL_ALIGNMENT_LEFT, 585.0 * unit, int(14.0 * unit), Color("2982a6"))
 	draw_string(ui_font, info_panel.position + Vector2(30.0, 165.0) * unit, ui_text("career"), HORIZONTAL_ALIGNMENT_CENTER, info_panel.size.x - 60.0 * unit, int(20.0 * unit), Color("173249"))
 	var total_matches := player_wins + player_losses
 	var win_rate := 0
