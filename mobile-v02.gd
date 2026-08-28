@@ -2659,9 +2659,13 @@ func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 
 func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	if index == 0:
+		return Rect2(24.0 * unit, 132.0 * unit, 178.0 * unit, 86.0 * unit)
+	if index == 1:
+		return Rect2(viewport_size.x - 174.0 * unit, 300.0 * unit, 150.0 * unit, 88.0 * unit)
 	if index == 2:
-		return Rect2(viewport_size.x - 385.0 * unit, viewport_size.y - 178.0 * unit, 350.0 * unit, 120.0 * unit)
-	return Rect2(viewport_size.x - 385.0 * unit, (202.0 + float(index) * 98.0) * unit, 350.0 * unit, 82.0 * unit)
+		return Rect2(viewport_size.x - 370.0 * unit, viewport_size.y - 132.0 * unit, 342.0 * unit, 96.0 * unit)
+	return Rect2()
 
 func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -2704,11 +2708,11 @@ func home_settings_rect(viewport_size: Vector2) -> Rect2:
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(20.0 * unit, (126.0 + float(index) * 94.0) * unit, 178.0 * unit, 78.0 * unit)
+	return Rect2(24.0 * unit, (232.0 + float(index) * 100.0) * unit, 178.0 * unit, 86.0 * unit)
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(viewport_size.x * 0.29, viewport_size.y * 0.16), Vector2(280.0, 410.0) * unit)
+	return Rect2(Vector2(viewport_size.x * 0.31, viewport_size.y * 0.115), Vector2(360.0, 480.0) * unit)
 
 func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -4182,10 +4186,12 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 
 func draw_home_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	# Readability gradients preserve the illustrated island while separating the controls.
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.05))
-	draw_rect(Rect2(0.0, 0.0, 205.0 * unit, viewport_size.y), Color(0.02, 0.06, 0.12, 0.36))
-	draw_rect(Rect2(viewport_size.x - 395.0 * unit, 92.0 * unit, 395.0 * unit, viewport_size.y - 92.0 * unit), Color(0.02, 0.06, 0.12, 0.18))
+	# Compact game HUD, a large mascot and small action islands around it.
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.04))
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, 94.0 * unit), Color(0.015, 0.055, 0.12, 0.92))
+	draw_rect(Rect2(0.0, 90.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
+	draw_rect(Rect2(0.0, 94.0 * unit, 226.0 * unit, viewport_size.y - 94.0 * unit), Color(0.01, 0.05, 0.10, 0.16))
+	draw_rect(Rect2(viewport_size.x - 205.0 * unit, 94.0 * unit, 205.0 * unit, viewport_size.y - 94.0 * unit), Color(0.01, 0.05, 0.10, 0.11))
 
 	# Full-body hero with the selected lifebuoy wrapped around its waist.
 	var character_area := home_character_rect(viewport_size)
@@ -4194,14 +4200,14 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	# never makes the animal appear to float above the wooden stage.
 	var hero_size := character_area.size
 	var ground_offset: float = hero_size.y * float(HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)])
-	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.425 + 10.0 * unit + ground_offset)
+	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.425 + 12.0 * unit + ground_offset)
 	var breathe := 1.0 + sin(idle_phase) * 0.006
 	# Keep only a tiny idle movement so the feet stay planted on the stage.
 	var gentle_float := sin(idle_phase * 0.72) * 0.45 * unit
 	var animated_center := hero_center + Vector2(0.0, gentle_float)
 	var waist_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.58 + gentle_float)
-	var ring_radius := 88.0 * unit
-	var ring_width := 40.0 * unit
+	var ring_radius := 96.0 * unit
+	var ring_width := 42.0 * unit
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
 	var hand_color: Color = HERO_HAND_COLORS[clampi(player_animal, 0, HERO_HAND_COLORS.size() - 1)]
 	var podium_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.94)
@@ -4271,36 +4277,36 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_string(ui_font, profile.position + Vector2(7.0, 38.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(25.0 * unit), Color.WHITE)
 	draw_string(ui_font, profile.position + Vector2(65.0, 27.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(19.0 * unit), Color.WHITE)
 	draw_string(ui_font, profile.position + Vector2(65.0, 47.0) * unit, player_level_label(), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("8cecff"))
+	var progress_bg := Rect2(profile.position + Vector2(65.0, 49.0) * unit, Vector2(profile.size.x - 84.0 * unit, 6.0 * unit))
+	draw_style_box(make_box(Color("162c49"), 3.0 * unit), progress_bg)
+	draw_style_box(make_box(Color("5f78ff"), 3.0 * unit), Rect2(progress_bg.position, Vector2(progress_bg.size.x * 0.62, progress_bg.size.y)))
 
-	# Brand title floats above the clear play area.
-	draw_string(ui_font, Vector2(viewport_size.x - 390.0 * unit, 132.0 * unit), "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(34.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, Vector2(viewport_size.x - 390.0 * unit, 161.0 * unit), ui_text("choose_mode"), HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(16.0 * unit), Color.WHITE)
+	# Arena/ranking is the first shortcut on the left.
+	var arena_button := home_mode_rect(0, viewport_size)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), arena_button.grow(5.0 * unit))
+	draw_style_box(make_box(Color("7258df"), 16.0), arena_button)
+	var arena_icon := arena_button.position + Vector2(42.0, 38.0) * unit
+	draw_circle(arena_icon, 27.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
+	draw_home_mode_icon(0, arena_icon, unit)
+	draw_string(ui_font, arena_button.position + Vector2(8.0, 77.0) * unit, ui_text("arena"), HORIZONTAL_ALIGNMENT_CENTER, arena_button.size.x - 16.0 * unit, int(17.0 * unit), Color.WHITE)
 
-	# Three clearly separated modes: public online matchmaking, a private online
-	# friend match on two devices, and the immediately playable computer mode.
-	var small_titles := [ui_text("arena"), ui_text("friend")]
-	var small_subtitles := [ui_text("arena_sub"), ui_text("friend_sub")]
-	var small_colors := [Color("9d59e8"), Color("ff7b43")]
-	for i in 2:
-		var button := home_mode_rect(i, viewport_size)
-		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.84), 18.0), button.grow(5.0 * unit))
-		draw_style_box(make_box(small_colors[i], 16.0), button)
-		var mode_icon_center := button.position + Vector2(38.0, 41.0) * unit
-		draw_circle(mode_icon_center, 27.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
-		draw_home_mode_icon(i, mode_icon_center, unit)
-		draw_string(ui_font, button.position + Vector2(70.0, 36.0) * unit, small_titles[i], HORIZONTAL_ALIGNMENT_CENTER, button.size.x - 102.0 * unit, int(22.0 * unit), Color.WHITE)
-		draw_string(ui_font, button.position + Vector2(70.0, 62.0) * unit, small_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, button.size.x - 102.0 * unit, int(11.0 * unit), Color("fff5d2"))
-		draw_string(ui_font, button.position + Vector2(button.size.x - 34.0 * unit, 52.0 * unit), ">", HORIZONTAL_ALIGNMENT_CENTER, 24.0 * unit, int(24.0 * unit), Color.WHITE)
+	# Friends stays isolated on the right side of the mascot.
+	var friend_button := home_mode_rect(1, viewport_size)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), friend_button.grow(5.0 * unit))
+	draw_style_box(make_box(Color("315fd0"), 16.0), friend_button)
+	var friend_icon := friend_button.position + Vector2(friend_button.size.x * 0.5, 35.0 * unit)
+	draw_home_mode_icon(1, friend_icon, unit * 1.08)
+	draw_string(ui_font, friend_button.position + Vector2(5.0, 78.0) * unit, ui_text("friend"), HORIZONTAL_ALIGNMENT_CENTER, friend_button.size.x - 10.0 * unit, int(15.0 * unit), Color.WHITE)
 
 	var play_rect := home_mode_rect(2, viewport_size)
 	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 25.0), play_rect.grow((6.0 + pulse * 2.0) * unit))
-	draw_style_box(make_box(Color("6fda18"), 22.0), play_rect)
+	draw_style_box(make_box(Color("f6aa20"), 22.0), play_rect)
 	var play_center := play_rect.position + Vector2(58.0, 60.0) * unit
-	draw_circle(play_center, 39.0 * unit, Color("4cb900"))
+	draw_circle(play_center, 34.0 * unit, Color("df7b12"))
 	draw_home_mode_icon(2, play_center, unit * 1.2)
-	draw_string(ui_font, play_rect.position + Vector2(104.0, 53.0) * unit, ui_text("computer"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(25.0 * unit), Color.WHITE)
-	draw_string(ui_font, play_rect.position + Vector2(104.0, 84.0) * unit, ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(12.0 * unit), Color("eaffcf"))
+	draw_string(ui_font, play_rect.position + Vector2(100.0, 59.0) * unit, "שחק" if ui_language == "he" else "PLAY", HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(34.0 * unit), Color.WHITE)
+	draw_string(ui_font, play_rect.position + Vector2(100.0, 82.0) * unit, ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(11.0 * unit), Color("fff4cf"))
 
 	# Collection shortcuts stay close to the hero character.
 	var nav_labels := [ui_text("shop"), ui_text("rewards")]
@@ -4313,8 +4319,8 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		var nav_icon_center := nav.position + Vector2(31.0, 39.0) * unit
 		draw_circle(nav_icon_center, 23.0 * unit, Color(1.0, 1.0, 1.0, 0.22))
 		draw_home_nav_icon(i, nav_icon_center, unit)
-		draw_string(ui_font, nav.position + Vector2(56.0, 34.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(19.0 * unit), Color.WHITE)
-		draw_string(ui_font, nav.position + Vector2(56.0, 61.0) * unit, nav_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(10.0 * unit), Color("fff0c7"))
+		draw_string(ui_font, nav.position + Vector2(56.0, 38.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(19.0 * unit), Color.WHITE)
+		draw_string(ui_font, nav.position + Vector2(56.0, 66.0) * unit, nav_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(10.0 * unit), Color("fff0c7"))
 
 func draw_home_mode_icon(kind: int, center: Vector2, unit: float) -> void:
 	if kind == 0:
