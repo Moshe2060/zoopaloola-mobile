@@ -243,6 +243,7 @@ var multiplayer_slot := -1
 var multiplayer_players: Array = []
 var multiplayer_ready := false
 var multiplayer_error := ""
+var pending_shared_room_code := ""
 var multiplayer_local_animal := -1
 var multiplayer_local_ring_color := -1
 var friend_customizer_open := false
@@ -335,8 +336,8 @@ func _ready() -> void:
 	setup_firebase()
 	room_code_input = LineEdit.new()
 	room_code_input.visible = false
-	room_code_input.max_length = 6
-	room_code_input.placeholder_text = "ABC123"
+	room_code_input.max_length = 4
+	room_code_input.placeholder_text = "ABCD"
 	room_code_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	room_code_input.add_theme_font_override("font", ui_font)
 	room_code_input.add_theme_font_size_override("font_size", 25)
@@ -414,6 +415,7 @@ func _ready() -> void:
 	new_game()
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
+	initialize_saved_session()
 
 func _on_resize() -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
@@ -2808,6 +2810,10 @@ func friend_ready_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2(475.0, 570.0) * unit, Vector2(330.0, 72.0) * unit)
 
+func friend_share_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(840.0, 250.0) * unit, Vector2(205.0, 62.0) * unit)
+
 func friend_player_rect(slot: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2((210.0 + float(slot) * 500.0) * unit, 345.0 * unit), Vector2(360.0, 165.0) * unit)
@@ -2831,8 +2837,58 @@ func _on_room_code_changed(value: String) -> void:
 		if "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(character):
 			clean += character
 	if clean != value:
-		room_code_input.text = clean.left(6)
+		room_code_input.text = clean.left(4)
 		room_code_input.caret_column = room_code_input.text.length()
+
+func initialize_saved_session() -> void:
+	if OS.has_feature("web"):
+		var shared_value: String = str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('room') || ''", true))
+		for character in shared_value.to_upper():
+			if "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(character):
+				pending_shared_room_code += character
+		pending_shared_room_code = pending_shared_room_code.left(4)
+		if firebase_refresh_token.is_empty():
+			firebase_refresh_token = str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseRefreshToken') || ''", true))
+	if firebase_refresh_token.is_empty():
+		return
+	# A saved refresh token means this device has already chosen an account.
+	# Refresh it silently and take the player straight into the game menu.
+	app_screen = APP_HOME
+	firebase_auth_mode = "resume"
+	start_firebase_auth()
+
+func open_pending_shared_room() -> void:
+	if pending_shared_room_code.is_empty() or room_code_input == null:
+		return
+	app_screen = APP_FRIEND
+	room_code_input.text = pending_shared_room_code
+	connect_multiplayer()
+	if multiplayer_state == "connected":
+		var shared_code: String = pending_shared_room_code
+		pending_shared_room_code = ""
+		room_code_input.text = shared_code
+		join_multiplayer_room()
+
+func share_friend_room() -> void:
+	if multiplayer_room_code.is_empty():
+		return
+	if OS.has_feature("web"):
+		var share_text: String = "בואו לשחק איתי Zoopaloola!" if ui_language == "he" else "Join my Zoopaloola game!"
+		var script := """
+(() => {
+  const url = new URL(window.location.href);
+  url.searchParams.set('room', __ROOM__);
+  const data = {title: 'Zoopaloola', text: __TEXT__, url: url.toString()};
+  if (navigator.share) navigator.share(data).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(data.text + ' ' + data.url);
+})();
+"""
+		script = script.replace("__ROOM__", JSON.stringify(multiplayer_room_code)).replace("__TEXT__", JSON.stringify(share_text))
+		JavaScriptBridge.eval(script, true)
+		show_menu_notice("נפתח תפריט השיתוף" if ui_language == "he" else "SHARE MENU OPENED")
+	else:
+		DisplayServer.clipboard_set(multiplayer_room_code)
+		show_menu_notice("קוד החדר הועתק" if ui_language == "he" else "ROOM CODE COPIED")
 
 func update_room_code_input() -> void:
 	if room_code_input == null:
@@ -2946,6 +3002,9 @@ func begin_guest_sign_in() -> void:
 	firebase_id_token = ""
 	firebase_refresh_token = ""
 	firebase_token_expires_at = 0
+	profile_name = ("אורח-" if ui_language == "he" else "Guest-") + str(randi_range(1000, 9999))
+	if profile_name_input != null:
+		profile_name_input.text = profile_name
 	start_firebase_auth()
 
 func start_email_auth(register_account: bool) -> void:
@@ -3082,6 +3141,9 @@ func _on_firebase_auth_completed(_result: int, response_code: int, _headers: Pac
 	firebase_auth_busy = false
 	if response_code < 200 or response_code >= 300:
 		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
+		if firebase_auth_mode == "resume":
+			firebase_refresh_token = ""
+			app_screen = APP_AUTH
 		return
 	var response_text := body.get_string_from_utf8().strip_edges()
 	var json := JSON.new()
@@ -3127,6 +3189,8 @@ func apply_firebase_auth_response(response: Dictionary) -> void:
 	if app_screen == APP_AUTH:
 		auth_email_mode = ""
 		app_screen = APP_HOME
+	if not pending_shared_room_code.is_empty():
+		open_pending_shared_room()
 	queue_redraw()
 
 func update_firebase(delta: float) -> void:
@@ -3155,6 +3219,10 @@ func poll_firebase_web_state() -> void:
 			elif auth_status == "error":
 				firebase_auth_busy = false
 				firebase_status = ("שגיאת חיבור: " if ui_language == "he" else "SIGN-IN ERROR: ") + str(auth_state.get("message", "Unknown error")).left(34)
+				if firebase_auth_mode == "resume":
+					firebase_refresh_token = ""
+					JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken')", true)
+					app_screen = APP_AUTH
 				queue_redraw()
 	var google_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpGoogleState || {})", true))
 	var google_data: Variant = JSON.parse_string(google_text)
@@ -3164,6 +3232,11 @@ func poll_firebase_web_state() -> void:
 		if google_status == "done":
 			firebase_provider = "google"
 			firebase_email = str(google_state.get("email", ""))
+			var google_name: String = str(google_state.get("displayName", "")).strip_edges().left(20)
+			if not google_name.is_empty():
+				profile_name = google_name
+				if profile_name_input != null:
+					profile_name_input.text = profile_name
 			apply_firebase_auth_response(google_state)
 			JavaScriptBridge.eval("window.zpGoogleState = {status: 'connected'}", true)
 		elif google_status == "error":
@@ -3475,8 +3548,8 @@ func create_multiplayer_room() -> void:
 func join_multiplayer_room() -> void:
 	commit_profile_name()
 	var code := room_code_input.text.strip_edges().to_upper()
-	if code.length() != 6:
-		multiplayer_error = "הכניסו קוד חדר בן 6 תווים" if ui_language == "he" else "Enter a 6-character room code"
+	if code.length() != 4:
+		multiplayer_error = "הכניסו קוד חדר בן 4 תווים" if ui_language == "he" else "Enter a 4-character room code"
 		return
 	if multiplayer_state != "connected":
 		connect_multiplayer()
@@ -3531,7 +3604,12 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 		"connected":
 			multiplayer_state = "connected"
 			multiplayer_error = ""
-			if pending_find_match:
+			if not pending_shared_room_code.is_empty():
+				var shared_code: String = pending_shared_room_code
+				pending_shared_room_code = ""
+				room_code_input.text = shared_code
+				join_multiplayer_room()
+			elif pending_find_match:
 				send_find_match()
 		"joined":
 			multiplayer_room_code = str(payload.get("roomCode", ""))
@@ -3826,6 +3904,9 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					join_multiplayer_room()
 					return
 			else:
+				if friend_share_rect(viewport_size).has_point(screen_pos):
+					share_friend_room()
+					return
 				var local_slot := multiplayer_slot if multiplayer_slot >= 0 else 0
 				if friend_player_rect(local_slot, viewport_size).has_point(screen_pos):
 					friend_customizer_open = true
@@ -3985,7 +4066,9 @@ func draw_friend_screen(viewport_size: Vector2) -> void:
 	else:
 		draw_string(ui_font, panel.position + Vector2(0.0, 125.0) * unit, "קוד החדר" if ui_language == "he" else "ROOM CODE", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(18.0 * unit), Color("a9cde2"))
 		draw_string(ui_font, panel.position + Vector2(0.0, 190.0) * unit, multiplayer_room_code, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(48.0 * unit), Color("ffe25d"))
-		draw_string(ui_font, panel.position + Vector2(0.0, 235.0) * unit, "שלחו את הקוד לחבר במכשיר השני" if ui_language == "he" else "Send this code to your friend", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(16.0 * unit), Color.WHITE)
+		var share_rect := friend_share_rect(viewport_size)
+		draw_style_box(make_box(Color("1f9fd0"), 16.0 * unit), share_rect)
+		draw_string(ui_font, share_rect.position + Vector2(0.0, 40.0) * unit, "שיתוף לחבר" if ui_language == "he" else "SHARE INVITE", HORIZONTAL_ALIGNMENT_CENTER, share_rect.size.x, int(18.0 * unit), Color.WHITE)
 		for i in 2:
 			var player_rect := friend_player_rect(i, viewport_size)
 			draw_style_box(make_box(Color("1d405b"), 17.0 * unit), player_rect)
