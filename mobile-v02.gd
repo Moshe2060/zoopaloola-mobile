@@ -311,6 +311,9 @@ func _enter_tree() -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		handle_system_back()
+		return
 	# Android may restore its system bars after the app loses focus (for example
 	# after opening the recent-apps view). Re-apply fullscreen as soon as the game
 	# becomes active instead of waiting until a match starts.
@@ -318,6 +321,9 @@ func _notification(what: int) -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 func _ready() -> void:
+	# Android's system Back button is application navigation. Disable SceneTree's
+	# default immediate quit so each screen can decide what "back" means.
+	get_tree().quit_on_go_back = false
 	# Smooth the original character art when it is enlarged inside HD balls.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	# Bundled font includes Hebrew and Latin glyphs, so Web/Android render the
@@ -714,6 +720,64 @@ func update_water_floaters(delta: float) -> void:
 	for i in range(water_floaters.size() - 1, -1, -1):
 		if water_floaters[i].elapsed >= WATER_FLOAT_TIME:
 			water_floaters.remove_at(i)
+
+func handle_system_back() -> void:
+	# Close the innermost game overlay before navigating away from the match.
+	if app_screen == APP_GAME:
+		if match_result_open:
+			exit_current_match()
+		elif customizer_open:
+			customizer_open = false
+		elif chat_open:
+			chat_open = false
+			if chat_input != null:
+				chat_input.release_focus()
+		elif exit_confirm_open:
+			exit_confirm_open = false
+		else:
+			# Match back never quits immediately; it uses the same confirmation
+			# dialog as the on-screen arrow.
+			exit_confirm_open = true
+			selected = -1
+			dragging = false
+		queue_redraw()
+		return
+
+	# The email/password form is a child step of the authentication screen.
+	if app_screen == APP_AUTH and not auth_email_mode.is_empty():
+		auth_email_mode = ""
+		firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
+		if auth_email_input != null:
+			auth_email_input.release_focus()
+		if auth_password_input != null:
+			auth_password_input.release_focus()
+		update_auth_inputs()
+		queue_redraw()
+		return
+
+	# Every secondary menu returns to the home screen and performs the same
+	# cleanup as its visible Back button.
+	if app_screen not in [APP_HOME, APP_AUTH, APP_SPLASH]:
+		if app_screen == APP_PLAYER_PROFILE:
+			commit_profile_name()
+		if app_screen == APP_FRIEND:
+			leave_multiplayer_room()
+		if app_screen == APP_ARENA:
+			cancel_matchmaking()
+		app_screen = APP_HOME
+		update_room_code_input()
+		update_profile_name_input()
+		queue_redraw()
+		return
+
+	if app_screen == APP_SPLASH:
+		app_screen = APP_AUTH
+		queue_redraw()
+		return
+
+	# Home and the root authentication chooser are the only true app roots.
+	# Back from either root keeps Android's expected behavior and exits.
+	get_tree().quit()
 
 func _input(event: InputEvent) -> void:
 	# Mobile browsers only allow fullscreen and orientation locking after a real
