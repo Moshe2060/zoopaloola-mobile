@@ -55,7 +55,7 @@ test("two players create, join, ready and relay a shot", async (context) => {
   const joinedFirstPromise = next(first, "joined");
   first.send(JSON.stringify({ type: "create_room", name: "One", animal: 1, ringColor: 3, level: 7, wins: 12, losses: 4 }));
   const joinedFirst = await joinedFirstPromise;
-  assert.match(joinedFirst.roomCode, /^[A-Z2-9]{6}$/);
+  assert.match(joinedFirst.roomCode, /^[A-Z2-9]{4}$/);
   assert.equal(joinedFirst.source, "friend");
 
   const joinedSecondPromise = next(second, "joined");
