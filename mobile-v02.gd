@@ -4125,7 +4125,7 @@ func draw_arena_preview(preview: Rect2, arena_index: int, unit: float) -> void:
 		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.57, preview.size.y), Color("ffb12b"), 8.0 * unit, true)
 
 func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float) -> void:
-	var accent := RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)] if is_local_player else Color("3fb6df")
+	var accent: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)] if is_local_player else Color("3fb6df")
 	draw_style_box(make_box(Color(0.01, 0.04, 0.08, 0.94), 24.0 * unit), rect.grow(7.0 * unit))
 	draw_style_box(make_box(Color("f5f2df"), 20.0 * unit), rect)
 	var portrait := Rect2(rect.position + Vector2(15.0, 15.0) * unit, Vector2(rect.size.x - 30.0 * unit, rect.size.y - 96.0 * unit))
