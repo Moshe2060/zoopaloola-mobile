@@ -4124,8 +4124,76 @@ func draw_arena_preview(preview: Rect2, arena_index: int, unit: float) -> void:
 		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.43, preview.size.y), Color("ff5b2d"), 20.0 * unit, true)
 		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.57, preview.size.y), Color("ffb12b"), 8.0 * unit, true)
 
+func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float) -> void:
+	var accent := RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)] if is_local_player else Color("3fb6df")
+	draw_style_box(make_box(Color(0.01, 0.04, 0.08, 0.94), 24.0 * unit), rect.grow(7.0 * unit))
+	draw_style_box(make_box(Color("f5f2df"), 20.0 * unit), rect)
+	var portrait := Rect2(rect.position + Vector2(15.0, 15.0) * unit, Vector2(rect.size.x - 30.0 * unit, rect.size.y - 96.0 * unit))
+	draw_style_box(make_box(accent.darkened(0.42), 16.0 * unit), portrait)
+	# A soft pool glow makes both cards feel like parts of the same search.
+	draw_circle(portrait.get_center(), 112.0 * unit, Color(accent, 0.23))
+	if is_local_player:
+		var hero: Texture2D = null
+		if player_animal >= 0 and player_animal < lifebuoy_hero_textures.size():
+			var colors: Array = lifebuoy_hero_textures[player_animal]
+			if player_ring_color >= 0 and player_ring_color < colors.size():
+				hero = colors[player_ring_color] as Texture2D
+		if hero != null:
+			var hero_size := Vector2(210.0, 270.0) * unit
+			draw_texture_rect(hero, Rect2(portrait.get_center() - hero_size * 0.5 + Vector2(0.0, 8.0) * unit, hero_size), false)
+		elif full_body_animal_textures[player_animal] != null:
+			draw_texture_rect(full_body_animal_textures[player_animal], portrait.grow(-22.0 * unit), false)
+	else:
+		# Cycle silhouettes while searching to suggest many possible opponents,
+		# but never pretend that a specific player has already been found.
+		var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
+		var preview_texture: Texture2D = full_body_animal_textures[preview_animal]
+		if preview_texture != null:
+			var silhouette_size := Vector2(190.0, 250.0) * unit
+			draw_texture_rect(preview_texture, Rect2(portrait.get_center() - silhouette_size * 0.5 + Vector2(0.0, 12.0) * unit, silhouette_size), false, Color(0.04, 0.12, 0.18, 0.72))
+		draw_circle(portrait.get_center() + Vector2(0.0, 5.0) * unit, 40.0 * unit, Color(0.03, 0.08, 0.12, 0.78))
+		draw_string(ui_font, portrait.get_center() + Vector2(-31.0, 20.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, 62.0 * unit, int(54.0 * unit), Color.WHITE)
+	var name_bar := Rect2(rect.position + Vector2(0.0, rect.size.y - 70.0 * unit), Vector2(rect.size.x, 70.0 * unit))
+	draw_style_box(make_box(Color("ffffff"), 0.0), name_bar)
+	var card_name := profile_name if is_local_player else ("מחפשים..." if ui_language == "he" else "SEARCHING...")
+	draw_string(ui_font, name_bar.position + Vector2(10.0, 31.0) * unit, card_name, HORIZONTAL_ALIGNMENT_CENTER, name_bar.size.x - 20.0 * unit, int(21.0 * unit), Color("173249"))
+	var detail := player_level_label() if is_local_player else ("יריב מתאים יצטרף בקרוב" if ui_language == "he" else "A MATCHED OPPONENT WILL APPEAR")
+	draw_string(ui_font, name_bar.position + Vector2(10.0, 54.0) * unit, detail, HORIZONTAL_ALIGNMENT_CENTER, name_bar.size.x - 20.0 * unit, int(11.0 * unit), Color("5f7180"))
+	var badge_center := rect.position + Vector2(24.0, 24.0) * unit
+	draw_circle(badge_center, 23.0 * unit, Color("ffe25d") if is_local_player else Color("59d7f0"))
+	draw_string(ui_font, badge_center + Vector2(-18.0, 7.0) * unit, str(player_level) if is_local_player else "?", HORIZONTAL_ALIGNMENT_CENTER, 36.0 * unit, int(17.0 * unit), Color("173249"))
+
+func draw_arena_search_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.005, 0.035, 0.07, 0.70))
+	draw_frontend_header(viewport_size, "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT", "זירה אונליין" if ui_language == "he" else "ONLINE ARENA")
+	var card_size := Vector2(300.0, 390.0) * unit
+	var gap := 105.0 * unit
+	var total_width := card_size.x * 2.0 + gap
+	var start_x := (viewport_size.x - total_width) * 0.5
+	var card_y := 132.0 * unit
+	var local_card := Rect2(Vector2(start_x, card_y), card_size)
+	var opponent_card := Rect2(Vector2(start_x + card_size.x + gap, card_y), card_size)
+	draw_matchmaking_card(local_card, true, unit)
+	draw_matchmaking_card(opponent_card, false, unit)
+	var vs_center := Vector2(viewport_size.x * 0.5, card_y + card_size.y * 0.48)
+	draw_circle(vs_center, (62.0 + sin(menu_elapsed * 3.0) * 4.0) * unit, Color(0.02, 0.08, 0.13, 0.92))
+	draw_circle(vs_center, 55.0 * unit, Color("7bdc1f"), false, 7.0 * unit, true)
+	draw_string(ui_font, vs_center + Vector2(-58.0, 20.0) * unit, "VS", HORIZONTAL_ALIGNMENT_CENTER, 116.0 * unit, int(48.0 * unit), Color("b6f13f"))
+	var dots: String = [".", "..", "..."][int(menu_elapsed * 2.2) % 3]
+	draw_string(ui_font, Vector2(0.0, 566.0 * unit), ("מחפשים יריב מתאים" if ui_language == "he" else "SEARCHING FOR A MATCH") + dots, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(22.0 * unit), Color("ffe25d"))
+	var arena_names := [ui_text("sakura"), ui_text("bamboo"), ui_text("volcano")]
+	draw_string(ui_font, Vector2(0.0, 598.0 * unit), ("הזירה שנבחרה: " if ui_language == "he" else "SELECTED ARENA: ") + arena_names[clampi(selected_arena, 0, 2)], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(14.0 * unit), Color("c9edf7"))
+	var cancel := arena_play_rect(viewport_size)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.92), 18.0 * unit), cancel.grow(5.0 * unit))
+	draw_style_box(make_box(Color("d94b45"), 16.0 * unit), cancel)
+	draw_string(ui_font, cancel.position + Vector2(0.0, 38.0) * unit, ui_text("cancel_search"), HORIZONTAL_ALIGNMENT_CENTER, cancel.size.x, int(20.0 * unit), Color.WHITE)
+
 func draw_arena_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	if matchmaking_searching:
+		draw_arena_search_screen(viewport_size)
+		return
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.42))
 	draw_frontend_header(viewport_size, ui_text("arena_title"), ui_text("arena_title_sub"))
 	var names := [ui_text("sakura"), ui_text("bamboo"), ui_text("volcano")]
