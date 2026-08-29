@@ -88,12 +88,8 @@ const UI_TEXT_HE := {
 	"career": "סטטיסטיקות קריירה", "matches": "משחקים", "wins": "ניצחונות", "losses": "הפסדים", "win_rate": "אחוז הצלחה", "best_streak": "רצף שיא", "world_rank": "דירוג עולמי", "current_streak": "רצף ניצחונות נוכחי: ",
 	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים, אפקטים ושולחנות משחק", "effects": "אפקטים", "collection_info": "אוספים נדירים • עיצובים עונתיים • אנימציות מיוחדות", "coming_soon": "בקרוב",
 	"boards": "שולחנות", "boards_sub": "עיצובי מגרש", "boards_section": "שולחנות משחק", "boards_section_sub": "בחרו את עיצוב המגרש לקרב הבא", "board_equipped": "מוגדר למשחק", "board_selected_toast": "שולחן חדש הוגדר!",
-<<<<<<< HEAD
 	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה", "board_candy": "עולם הממתקים",
-=======
-	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה",
-	"free_item": "חינם", "locked_item": "נעול", "buy_item": "קנה", "owned_item": "שלך", "purchase_success": "נרכש בהצלחה!", "unlock_in_shop": "ניתן לרכוש בחנות", "shop_unlocks_sub": "רכשו דמויות וגלגלים נוספים במטבעות",
->>>>>>> 3592d28 (Add paid character and ring unlocks with coin economy reset)
+	"free_item": "חינם", "locked_item": "נעול", "buy_item": "קנה", "owned_item": "שלך", "purchase_success": "נרכש בהצלחה!", "unlock_in_shop": "ניתן לרכוש בחנות", "shop_unlocks_sub": "רכשו דמויות וגלגלים נוספים במטבעות", "host_board_only": "רק מארח החדר בוחר שולחן", "guest_board_locked": "שולחן המארח", "arena_board_fixed": "שולחן הזירה",
 	"searching": "מחפשים יריב בזירה...", "cancel_search": "ביטול חיפוש",
 	"match_win": "ניצחתם!", "match_lose": "הפסדתם", "draw": "תיקו",
 	"play_again": "משחק נוסף", "back_home": "חזרה לבית",
@@ -148,12 +144,8 @@ const UI_TEXT_EN := {
 	"career": "CAREER STATISTICS", "matches": "MATCHES", "wins": "WINS", "losses": "LOSSES", "win_rate": "WIN RATE", "best_streak": "BEST STREAK", "world_rank": "WORLD RANK", "current_streak": "CURRENT WIN STREAK: ",
 	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections • Seasonal designs • Special animations", "coming_soon": "COMING SOON",
 	"boards": "TABLES", "boards_sub": "Board skins", "boards_section": "GAME TABLES", "boards_section_sub": "Choose the look of your next match", "board_equipped": "EQUIPPED", "board_selected_toast": "New table equipped!",
-<<<<<<< HEAD
 	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA", "board_candy": "CANDY WORLD",
-=======
-	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA",
-	"free_item": "FREE", "locked_item": "LOCKED", "buy_item": "BUY", "owned_item": "OWNED", "purchase_success": "Purchased!", "unlock_in_shop": "Buy this in the shop", "shop_unlocks_sub": "Unlock more animals and lifebuoys with coins",
->>>>>>> 3592d28 (Add paid character and ring unlocks with coin economy reset)
+	"free_item": "FREE", "locked_item": "LOCKED", "buy_item": "BUY", "owned_item": "OWNED", "purchase_success": "Purchased!", "unlock_in_shop": "Buy this in the shop", "shop_unlocks_sub": "Unlock more animals and lifebuoys with coins", "host_board_only": "Only the room host picks the table", "guest_board_locked": "Host's table", "arena_board_fixed": "Arena table",
 	"searching": "Finding an arena opponent...", "cancel_search": "CANCEL SEARCH",
 	"match_win": "YOU WIN!", "match_lose": "YOU LOST", "draw": "DRAW",
 	"play_again": "PLAY AGAIN", "back_home": "BACK HOME",
@@ -196,6 +188,7 @@ const APP_PLAYER_PROFILE := 6
 const APP_FRIEND := 7
 const APP_REWARDS := 8
 const APP_AUTH := 9
+const ARENA_BOARD_THEMES := [0, 2, 3]
 const ARENA_ENTRY_COSTS := [0, 100, 500]
 const ARENA_WIN_PRIZES := [100, 250, 1200]
 const DAILY_REWARD_COINS := 80
@@ -321,6 +314,8 @@ var shop_tab := 0
 var selected_arena := 0
 const BOARD_THEME_COUNT := 5
 var selected_board_theme := 0
+var match_board_theme := 0
+var room_board_theme := 0
 var ui_language := "he"
 var player_level := 1
 var player_xp := 0
@@ -620,6 +615,10 @@ func apply_match_started(payload: Dictionary) -> void:
 	exit_confirm_open = false
 	chat_open = false
 	match_chat_messages.clear()
+	if payload.has("boardTheme"):
+		sync_match_board_from_payload(payload)
+	elif match_source == "arena":
+		sync_match_board_from_payload({"boardTheme": arena_board_theme_for_level(int(payload.get("arena", selected_arena)))})
 	new_game()
 	turn = int(payload.get("turn", 0))
 	turn_shot_committed = false
@@ -861,6 +860,8 @@ func _on_resize() -> void:
 	queue_redraw()
 
 func new_game() -> void:
+	if game_mode != "online":
+		match_board_theme = selected_board_theme
 	balls.clear()
 	active_effects.clear()
 	water_floaters.clear()
@@ -1591,7 +1592,7 @@ func _draw() -> void:
 	draw_water_floaters(viewport_size)
 	# Each table theme keeps the exact approved gameplay geometry while using
 	# its own production texture.
-	var active_board_texture := board_theme_texture(selected_board_theme)
+	var active_board_texture := board_theme_texture(active_board_theme())
 	if active_board_texture != null:
 		draw_texture_rect(active_board_texture, board_rect, false)
 	draw_scoreboards()
@@ -2004,13 +2005,16 @@ func draw_scoreboards() -> void:
 		board_rect.position + Vector2(board_rect.size.x * 0.289, board_rect.size.y * 0.052),
 		board_rect.position + Vector2(board_rect.size.x * 0.683, board_rect.size.y * 0.052)
 	]
-	var colors := [RING_COLORS[player_ring_color], RING_COLORS[ai_ring_color]]
+	var colors := [RING_COLORS[team_ring_color_index(0)], RING_COLORS[team_ring_color_index(1)]]
 	var panel_size := Vector2(board_rect.size.x * 0.075, board_rect.size.y * 0.060)
 	var corner := maxf(5.0, board_rect.size.y * 0.012)
+	var shared_rings := teams_share_ring_color()
 	for team in 2:
 		var outer_rect := Rect2(centers[team] - panel_size * 0.5, panel_size)
 		draw_style_box(make_box(Color(0.08, 0.13, 0.14, 0.96), corner + 3.0), outer_rect.grow(4.0))
 		draw_style_box(make_box(colors[team].darkened(0.16), corner), outer_rect)
+		if shared_rings:
+			draw_style_box(make_box(team_marker_color(team), corner), Rect2(outer_rect.position + Vector2(2.0, 2.0), Vector2(outer_rect.size.x - 4.0, 4.0)))
 		var shine_rect := Rect2(outer_rect.position + Vector2(3.0, 3.0), Vector2(outer_rect.size.x - 6.0, outer_rect.size.y * 0.28))
 		draw_style_box(make_box(Color(1.0, 1.0, 1.0, 0.20), corner * 0.55), shine_rect)
 		var score := str(fallen_count(team))
@@ -2064,6 +2068,8 @@ func draw_match_player_card(rect: Rect2, team: int) -> void:
 		var glow_rect := rect.grow(4.0 + pulse * 3.0)
 		draw_style_box(make_box(Color(0.94, 0.82, 0.39, 0.20 + pulse * 0.10), 16.0), glow_rect)
 	draw_style_box(make_box(Color(0.03, 0.08, 0.14, 0.94), 14.0), rect)
+	if teams_share_ring_color():
+		draw_style_box(make_box(team_marker_color(team), 10.0), Rect2(rect.position + Vector2(0.0, 6.0), Vector2(5.0, rect.size.y - 12.0)))
 	if active:
 		draw_rect(rect.grow(2.0 + pulse * 2.0), Color("f6d365"), false, 3.0 + pulse)
 		var badge := ui_text("your_turn_badge") if is_local_player_team(team) else ("תור היריב" if ui_language == "he" else "THEIR TURN")
@@ -2080,7 +2086,7 @@ func draw_match_player_card(rect: Rect2, team: int) -> void:
 		team_rating = int(pdata.get("rating", team_rating))
 		team_league = int(pdata.get("leagueTier", team_league))
 	draw_string(ui_font, rect.position + Vector2(62.0, 25.0), match_player_name(team), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 16, Color.WHITE)
-	draw_string(ui_font, rect.position + Vector2(62.0, 46.0), league_name(team_league) + " • " + str(team_rating), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 11, RING_COLORS[player_ring_color if team == 0 else ai_ring_color].lightened(0.28))
+	draw_string(ui_font, rect.position + Vector2(62.0, 46.0), league_name(team_league) + " • " + str(team_rating), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 11, RING_COLORS[team_ring_color_index(team)].lightened(0.28))
 
 func is_local_player_team(team: int) -> bool:
 	if game_mode == "online":
@@ -2923,6 +2929,11 @@ func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: i
 	var size := Vector2.ONE * radius * 2.34
 	draw_circle(position + Vector2(radius * 0.09, radius * 0.15), radius * 1.08, Color(0, 0, 0, 0.30 * alpha), true, -1.0, true)
 	draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, alpha))
+	if teams_share_ring_color():
+		var marker := team_marker_color(team)
+		draw_arc(position, radius * 1.16, 0.0, TAU, 36, marker, maxf(2.5, radius * 0.16), true)
+		draw_circle(position + Vector2(radius * 0.72, -radius * 0.72), radius * 0.22, marker)
+		draw_string(ui_font, position + Vector2(radius * 0.56, -radius * 0.58), str(team + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 0.45, maxi(10, int(radius * 0.42)), Color("173249"))
 
 func rebuild_team_piece_textures() -> void:
 	team_piece_textures.clear()
@@ -4408,6 +4419,50 @@ func update_room_code_input() -> void:
 		room_code_input.position = Vector2(700.0, 260.0) * unit
 		room_code_input.size = Vector2(330.0, 72.0) * unit
 
+func team_ring_color_index(team: int) -> int:
+	if game_mode == "online" and team >= 0 and team < multiplayer_players.size():
+		return int(multiplayer_players[team].get("ringColor", 0))
+	return player_ring_color if team == 0 else ai_ring_color
+
+func teams_share_ring_color() -> bool:
+	return team_ring_color_index(0) == team_ring_color_index(1)
+
+func team_marker_color(team: int) -> Color:
+	return Color("ffd447") if team == 0 else Color("4ad9ff")
+
+func active_board_theme() -> int:
+	if game_mode == "online":
+		return match_board_theme
+	return selected_board_theme
+
+func is_friend_room_host() -> bool:
+	return multiplayer_slot == 0
+
+func sync_match_board_from_payload(payload: Dictionary) -> void:
+	if not payload.has("boardTheme"):
+		return
+	var theme := clampi(int(payload.boardTheme), 0, BOARD_THEME_COUNT - 1)
+	room_board_theme = theme
+	match_board_theme = theme
+	if multiplayer_slot == 0:
+		selected_board_theme = theme
+
+func update_match_board(theme_index: int) -> void:
+	if multiplayer_slot != 0:
+		show_menu_notice(ui_text("guest_board_locked"))
+		return
+	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
+	selected_board_theme = theme
+	room_board_theme = theme
+	match_board_theme = theme
+	save_player_profile()
+	send_multiplayer({"type": "update_profile", "boardTheme": theme})
+	play_sound("ui")
+	queue_redraw()
+
+func arena_board_theme_for_level(arena_index: int) -> int:
+	return ARENA_BOARD_THEMES[clampi(arena_index, 0, ARENA_BOARD_THEMES.size() - 1)]
+
 func initialize_owned_collections() -> void:
 	owned_animals.clear()
 	owned_rings.clear()
@@ -5344,6 +5399,7 @@ func create_multiplayer_room() -> void:
 		"name":profile_name,
 		"animal":player_animal,
 		"ringColor":player_ring_color,
+		"boardTheme":selected_board_theme,
 		"level":player_level,
 		"wins":player_wins,
 		"losses":player_losses,
@@ -5555,6 +5611,7 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 		"room_state":
 			multiplayer_players = payload.get("players", [])
 			turn = int(payload.get("turn", 0))
+			sync_match_board_from_payload(payload)
 			if arena_fx_phase == "found":
 				arena_matched_opponent = arena_opponent_data()
 			if multiplayer_players.size() > 0:
@@ -5883,13 +5940,6 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				if arena_card_rect(i, viewport_size).has_point(screen_pos):
 					selected_arena = i
 					return
-			for i in BOARD_THEME_COUNT:
-				if arena_board_rect(i, viewport_size).has_point(screen_pos):
-					selected_board_theme = i
-					save_player_profile()
-					play_sound("ui")
-					queue_redraw()
-					return
 			if arena_play_rect(viewport_size).has_point(screen_pos):
 				if matchmaking_searching:
 					cancel_matchmaking()
@@ -5947,10 +5997,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 							return
 					for i in BOARD_THEME_COUNT:
 						if friend_board_rect(i, viewport_size).has_point(screen_pos):
-							selected_board_theme = i
-							save_player_profile()
-							play_sound("ui")
-							queue_redraw()
+							update_match_board(i)
 							return
 				return
 			if multiplayer_room_code.is_empty():
@@ -6223,10 +6270,16 @@ func draw_friend_customizer(viewport_size: Vector2) -> void:
 		draw_collection_lock_overlay(color_choice, i, true, unit)
 		if i == selected_ring:
 			draw_circle(color_choice.get_center(), 36.0 * unit, Color.WHITE, false, 4.0 * unit, true)
-	draw_string(ui_font, modal.position + Vector2(0.0, 332.0) * unit, ui_text("choose_board"), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
+	draw_string(ui_font, modal.position + Vector2(0.0, 332.0) * unit, ui_text("choose_board") if is_friend_room_host() else ui_text("guest_board_locked"), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
+	var display_board := selected_board_theme if is_friend_room_host() else room_board_theme
 	for i in BOARD_THEME_COUNT:
-		draw_board_theme_card(i, friend_board_rect(i, viewport_size), i == selected_board_theme, unit)
-	draw_string(ui_font, modal.position + Vector2(0.0, 518.0) * unit, ("נבחרו: %s • %s • %s" if ui_language == "he" else "Selected: %s • %s • %s") % [ui_animal_name(selected_animal), ui_ring_name(selected_ring), board_theme_name(selected_board_theme)], HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(18.0 * unit), Color("ffe25d"))
+		var board_rect_item := friend_board_rect(i, viewport_size)
+		draw_board_theme_card(i, board_rect_item, i == display_board, unit)
+		if not is_friend_room_host():
+			draw_rect(board_rect_item, Color(0.01, 0.03, 0.08, 0.35))
+	if not is_friend_room_host():
+		draw_string(ui_font, modal.position + Vector2(0.0, 500.0) * unit, ui_text("host_board_only"), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(14.0 * unit), Color("a9cde2"))
+	draw_string(ui_font, modal.position + Vector2(0.0, 518.0) * unit, ("נבחרו: %s • %s • %s" if ui_language == "he" else "Selected: %s • %s • %s") % [ui_animal_name(selected_animal), ui_ring_name(selected_ring), board_theme_name(display_board)], HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(18.0 * unit), Color("ffe25d"))
 	draw_string(ui_font, modal.position + Vector2(0.0, 548.0) * unit, "השינוי חל רק בחדר ובמשחק הנוכחי" if ui_language == "he" else "This choice applies only to this match", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(16.0 * unit), Color("a9cde2"))
 
 func draw_friend_opponent_profile(viewport_size: Vector2) -> void:
@@ -6452,11 +6505,9 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 		var entry_text := ui_text("entry_free") if entries[i] == 0 else ui_text("entry") + str(entries[i]) + ui_text("coins")
 		draw_string(ui_font, card.position + Vector2(22.0, 325.0) * unit, entry_text, HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(15.0 * unit), Color("354522"))
 		draw_string(ui_font, card.position + Vector2(22.0, 363.0) * unit, ui_text("prize") + str(prizes[i]) + ui_text("coins"), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(17.0 * unit), Color("a66013"))
+		draw_string(ui_font, card.position + Vector2(22.0, 392.0) * unit, ui_text("arena_board_fixed") + ": " + board_theme_name(arena_board_theme_for_level(i)), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(13.0 * unit), Color("2982a6"))
 		if selected:
 			draw_string(ui_font, card.position + Vector2(0.0, 408.0) * unit, ui_text("selected"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(15.0 * unit), Color("16845b"))
-	draw_string(ui_font, Vector2(0.0, 538.0 * unit), ui_text("choose_board"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
-	for i in BOARD_THEME_COUNT:
-		draw_board_theme_card(i, arena_board_rect(i, viewport_size), i == selected_board_theme, unit)
 	var play := arena_play_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.90), 18.0 * unit), play.grow(5.0 * unit))
 	draw_style_box(make_box(Color("d49b2f") if matchmaking_searching else Color("6fda18"), 16.0 * unit), play)
@@ -6957,12 +7008,8 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		draw_circle(ring_center, 12.0 * unit, Color("14324c"))
 		draw_arc(ring_center, 27.0 * unit, -0.70, 0.15, 10, Color("fff4dc"), 8.0 * unit, true)
 		draw_arc(ring_center, 27.0 * unit, 2.45, 3.30, 10, Color("fff4dc"), 8.0 * unit, true)
-<<<<<<< HEAD
-		draw_string(ui_font, ring_button.position + Vector2(63.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, ring_button.size.x - 69.0 * unit, int(11.0 * unit), Color.WHITE)
-=======
 		draw_collection_lock_overlay(ring_button, i, true, unit)
-		draw_string(ui_font, ring_button.position + Vector2(78.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, 86.0 * unit, int(12.0 * unit), Color.WHITE)
->>>>>>> 3592d28 (Add paid character and ring unlocks with coin economy reset)
+		draw_string(ui_font, ring_button.position + Vector2(63.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, ring_button.size.x - 69.0 * unit, int(11.0 * unit), Color.WHITE)
 		if i == player_ring_color:
 			draw_circle(ring_button.position + Vector2(ring_button.size.x - 14.0 * unit, 14.0 * unit), 13.0 * unit, Color("ffe25d"))
 			draw_string(ui_font, ring_button.position + Vector2(ring_button.size.x - 27.0 * unit, 20.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 26.0 * unit, int(13.0 * unit), Color("173249"))

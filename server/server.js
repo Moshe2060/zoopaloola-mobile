@@ -20,6 +20,7 @@ const incomingFriendRequests = new Map();
 const outgoingFriendRequests = new Map();
 const knownPlayers = new Map();
 const INVITE_TTL_MS = 15 * 60 * 1000;
+const ARENA_BOARD_THEMES = [0, 2, 3];
 const FRIEND_REQUEST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LEADERBOARD_LIMIT = 80;
 const FCM_TOKEN_LIMIT = 4;
@@ -426,6 +427,7 @@ function roomState(room) {
     sequence: room.sequence,
     source: room.source,
     arena: room.arena,
+    boardTheme: room.boardTheme ?? 0,
     players: room.players.map(publicPlayer)
   };
 }
@@ -526,7 +528,8 @@ function startMatch(room) {
       turn: room.turn,
       slot: roomPlayer.slot,
       source: room.source,
-      arena: room.arena
+      arena: room.arena,
+      boardTheme: room.boardTheme ?? 0
     });
   }
   broadcastState(room);
@@ -553,7 +556,8 @@ function findMatch(socket, payload) {
       sequence: 0,
       updatedAt: Date.now(),
       source: "arena",
-      arena
+      arena,
+      boardTheme: ARENA_BOARD_THEMES[arena] ?? 0
     };
     rooms.set(code, room);
     joinRoom(opponent.socket, room, opponent.payload);
@@ -807,7 +811,8 @@ function handleMessage(socket, payload) {
       sequence: 0,
       updatedAt: Date.now(),
       source: "friend",
-      arena: -1
+      arena: -1,
+      boardTheme: clampInt(payload.boardTheme, 0, 5, 0)
     };
     rooms.set(code, room);
     joinRoom(socket, room, payload);
@@ -849,6 +854,9 @@ function handleMessage(socket, payload) {
     if (room.status !== "waiting") return;
     player.animal = clampInt(payload.animal, 0, 6, player.animal);
     player.ringColor = clampInt(payload.ringColor, 0, 6, player.ringColor);
+    if (payload.boardTheme !== undefined && player.slot === 0) {
+      room.boardTheme = clampInt(payload.boardTheme, 0, 5, room.boardTheme ?? 0);
+    }
     broadcastState(room);
     return;
   }
