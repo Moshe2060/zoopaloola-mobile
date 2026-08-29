@@ -52,19 +52,19 @@ const RUBBER_FALL_TIME := TRAP_FALL_TIME
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
 const WATER_FLOAT_TIME := 5.8
 const WATER_DRIFT_DELAY := 1.8
-const ANIMAL_NAMES := ["ELEPHANT", "ZEBRA", "MONKEY", "HIPPO", "RHINO", "GIRAFFE"]
-const ANIMAL_FILES := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe"]
+const ANIMAL_NAMES := ["ELEPHANT", "ZEBRA", "MONKEY", "HIPPO", "RHINO", "GIRAFFE", "TIGER"]
+const ANIMAL_FILES := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe", "tiger"]
 # The elephant artwork has about 8.6% transparent padding below its soles.
 # Compensate when grounding the large hero so every animal meets the stage.
-const HERO_GROUND_OFFSETS := [0.086, 0.0, 0.0, 0.0, 0.0, 0.0]
-const RING_COLOR_NAMES := ["RED", "ORANGE", "BLUE", "GREEN", "PURPLE", "TURQUOISE"]
+const HERO_GROUND_OFFSETS := [0.086, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+const RING_COLOR_NAMES := ["RED", "ORANGE", "BLUE", "GREEN", "PURPLE", "TURQUOISE", "PINK"]
 const RING_COLORS := [
 	Color("ef3340"), Color("ff8a00"), Color("1677ff"),
-	Color("12c95b"), Color("8f36dc"), Color("08cbd1")
+	Color("12c95b"), Color("8f36dc"), Color("08cbd1"), Color("f22888")
 ]
 const HERO_HAND_COLORS := [
 	Color("8799a2"), Color("343434"), Color("9b541f"),
-	Color("e49aa2"), Color("777187"), Color("c88938")
+	Color("e49aa2"), Color("777187"), Color("c88938"), Color("e28a42")
 ]
 const UI_TEXT_HE := {
 	"player": "שחקן 1", "level": "רמה 1 • שחקן מתחיל",
@@ -78,8 +78,8 @@ const UI_TEXT_HE := {
 	"computer": "משחק מול המחשב", "computer_sub": "שחקן יחיד • נגד המחשב",
 	"back": "חזרה", "choose_character": "בחירת דמות", "choose_character_sub": "בחרו חיה וצבע גלגל הצלה",
 	"choose_ring": "בחרו גלגל הצלה", "choose_ring_sub": "הצבע שבחרתם יופיע בכל משחק",
-	"choose_animal": "בחרו חיה", "choose_board": "בחרו שולחן משחק", "choose_setup": "בחרו דמות, גלגל ושולחן", "restoring_session": "מחזירים את ההתחברות שלכם...", "red": "אדום", "orange": "כתום", "blue": "כחול", "green": "ירוק", "purple": "סגול", "turquoise": "טורקיז",
-	"elephant": "פיל", "zebra": "זברה", "monkey": "קוף", "hippo": "היפופוטם", "rhino": "קרנף", "giraffe": "ג׳ירפה",
+	"choose_animal": "בחרו חיה", "choose_board": "בחרו שולחן משחק", "choose_setup": "בחרו דמות, גלגל ושולחן", "restoring_session": "מחזירים את ההתחברות שלכם...", "red": "אדום", "orange": "כתום", "blue": "כחול", "green": "ירוק", "purple": "סגול", "turquoise": "טורקיז", "pink": "ורוד",
+	"elephant": "פיל", "zebra": "זברה", "monkey": "קוף", "hippo": "היפופוטם", "rhino": "קרנף", "giraffe": "ג׳ירפה", "tiger": "טיגריס",
 	"arena_title": "בחירת זירה", "arena_title_sub": "בחרו את מגרש המשחק לקרב האונליין",
 	"sakura": "גן הסאקורה", "bamboo": "חורשת הבמבוק", "volcano": "מקדש הגעש",
 	"entry_free": "כניסה: חינם", "entry": "דמי כניסה: ", "coins": " מטבעות", "prize": "פרס ניצחון: ", "selected": "נבחר", "find_match": "חיפוש יריב אונליין",
@@ -88,7 +88,7 @@ const UI_TEXT_HE := {
 	"career": "סטטיסטיקות קריירה", "matches": "משחקים", "wins": "ניצחונות", "losses": "הפסדים", "win_rate": "אחוז הצלחה", "best_streak": "רצף שיא", "world_rank": "דירוג עולמי", "current_streak": "רצף ניצחונות נוכחי: ",
 	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים, אפקטים ושולחנות משחק", "effects": "אפקטים", "collection_info": "אוספים נדירים • עיצובים עונתיים • אנימציות מיוחדות", "coming_soon": "בקרוב",
 	"boards": "שולחנות", "boards_sub": "עיצובי מגרש", "boards_section": "שולחנות משחק", "boards_section_sub": "בחרו את עיצוב המגרש לקרב הבא", "board_equipped": "מוגדר למשחק", "board_selected_toast": "שולחן חדש הוגדר!",
-	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה",
+	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה", "board_candy": "עולם הממתקים",
 	"searching": "מחפשים יריב בזירה...", "cancel_search": "ביטול חיפוש",
 	"match_win": "ניצחתם!", "match_lose": "הפסדתם", "draw": "תיקו",
 	"play_again": "משחק נוסף", "back_home": "חזרה לבית",
@@ -133,8 +133,8 @@ const UI_TEXT_EN := {
 	"computer": "PLAY VS COMPUTER", "computer_sub": "Single player • vs AI",
 	"back": "BACK", "choose_character": "CHOOSE YOUR CHARACTER", "choose_character_sub": "Pick an animal and a lifebuoy color",
 	"choose_ring": "CHOOSE A LIFEBUOY", "choose_ring_sub": "Your color follows you into every match",
-	"choose_animal": "CHOOSE AN ANIMAL", "choose_board": "CHOOSE A GAME TABLE", "choose_setup": "Choose animal, ring and table", "restoring_session": "Restoring your sign-in...", "red": "RED", "orange": "ORANGE", "blue": "BLUE", "green": "GREEN", "purple": "PURPLE", "turquoise": "TURQUOISE",
-	"elephant": "ELEPHANT", "zebra": "ZEBRA", "monkey": "MONKEY", "hippo": "HIPPO", "rhino": "RHINO", "giraffe": "GIRAFFE",
+	"choose_animal": "CHOOSE AN ANIMAL", "choose_board": "CHOOSE A GAME TABLE", "choose_setup": "Choose animal, ring and table", "restoring_session": "Restoring your sign-in...", "red": "RED", "orange": "ORANGE", "blue": "BLUE", "green": "GREEN", "purple": "PURPLE", "turquoise": "TURQUOISE", "pink": "PINK",
+	"elephant": "ELEPHANT", "zebra": "ZEBRA", "monkey": "MONKEY", "hippo": "HIPPO", "rhino": "RHINO", "giraffe": "GIRAFFE", "tiger": "TIGER",
 	"arena_title": "CHOOSE YOUR ARENA", "arena_title_sub": "Select the battleground for your online match",
 	"sakura": "SAKURA GARDEN", "bamboo": "BAMBOO GROVE", "volcano": "VOLCANO TEMPLE",
 	"entry_free": "ENTRY: FREE", "entry": "ENTRY: ", "coins": " COINS", "prize": "WIN PRIZE: ", "selected": "SELECTED", "find_match": "FIND ONLINE MATCH",
@@ -143,7 +143,7 @@ const UI_TEXT_EN := {
 	"career": "CAREER STATISTICS", "matches": "MATCHES", "wins": "WINS", "losses": "LOSSES", "win_rate": "WIN RATE", "best_streak": "BEST STREAK", "world_rank": "WORLD RANK", "current_streak": "CURRENT WIN STREAK: ",
 	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections • Seasonal designs • Special animations", "coming_soon": "COMING SOON",
 	"boards": "TABLES", "boards_sub": "Board skins", "boards_section": "GAME TABLES", "boards_section_sub": "Choose the look of your next match", "board_equipped": "EQUIPPED", "board_selected_toast": "New table equipped!",
-	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA",
+	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA", "board_candy": "CANDY WORLD",
 	"searching": "Finding an arena opponent...", "cancel_search": "CANCEL SEARCH",
 	"match_win": "YOU WIN!", "match_lose": "YOU LOST", "draw": "DRAW",
 	"play_again": "PLAY AGAIN", "back_home": "BACK HOME",
@@ -302,7 +302,7 @@ var game_mode := "computer"
 var profile_name := "PLAYER 1"
 var player_coins := 1250
 var selected_arena := 0
-const BOARD_THEME_COUNT := 4
+const BOARD_THEME_COUNT := 5
 var selected_board_theme := 0
 var ui_language := "he"
 var player_level := 1
@@ -768,6 +768,7 @@ func _ready() -> void:
 		load("res://assets/boards/board-ice.webp") as Texture2D,
 		load("res://assets/boards/board-jungle.webp") as Texture2D,
 		load("res://assets/boards/board-lava.webp") as Texture2D,
+		load("res://assets/boards/board-candy.webp") as Texture2D,
 	]
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
@@ -2933,19 +2934,19 @@ func customizer_panel(viewport_size: Vector2) -> Rect2:
 func customizer_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := customizer_panel(viewport_size)
 	var gap := 8.0
-	var width := (panel.size.x - 40.0 - gap * 5.0) / 6.0
+	var width := (panel.size.x - 40.0 - gap * float(ANIMAL_NAMES.size() - 1)) / float(ANIMAL_NAMES.size())
 	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 82.0), Vector2(width, 68.0))
 
 func customizer_color_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := customizer_panel(viewport_size)
 	var gap := 8.0
-	var width := (panel.size.x - 40.0 - gap * 5.0) / 6.0
+	var width := (panel.size.x - 40.0 - gap * float(RING_COLOR_NAMES.size() - 1)) / float(RING_COLOR_NAMES.size())
 	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 205.0), Vector2(width, 58.0))
 
 func customizer_board_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := customizer_panel(viewport_size)
 	var gap := 10.0
-	var width := (panel.size.x - 40.0 - gap * 3.0) / 4.0
+	var width := (panel.size.x - 40.0 - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT)
 	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 262.0), Vector2(width, 76.0))
 
 func customizer_difficulty_rect(index: int, viewport_size: Vector2) -> Rect2:
@@ -3482,8 +3483,8 @@ func arena_play_rect(viewport_size: Vector2) -> Rect2:
 func arena_board_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var gap := 14.0 * unit
-	var card_w := minf(200.0 * unit, (viewport_size.x - 100.0 * unit - gap * 3.0) / 4.0)
-	var total_w := card_w * 4.0 + gap * 3.0
+	var card_w := minf(200.0 * unit, (viewport_size.x - 100.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
+	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
 	var start_x := (viewport_size.x - total_w) * 0.5
 	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 556.0 * unit), Vector2(card_w, 72.0 * unit))
 
@@ -4215,18 +4216,19 @@ func invite_friend_to_play(index: int) -> void:
 
 func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var card_size := Vector2(158.0, 150.0) * unit
+	var card_width := minf(158.0, (viewport_size.x / unit - 30.0 - 12.0 * float(ANIMAL_NAMES.size() - 1)) / float(ANIMAL_NAMES.size()))
+	var card_size := Vector2(card_width, 150.0) * unit
 	var gap := 12.0 * unit
-	var total_width := card_size.x * 6.0 + gap * 5.0
+	var total_width := card_size.x * float(ANIMAL_NAMES.size()) + gap * float(ANIMAL_NAMES.size() - 1)
 	var start_x := (viewport_size.x - total_width) * 0.5
 	return Rect2(Vector2(start_x + float(index) * (card_size.x + gap), viewport_size.y - 174.0 * unit), card_size)
 
 func character_ring_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var size := Vector2(180.0, 78.0) * unit
-	var column := index % 3
-	var row := index / 3
-	return Rect2(Vector2((596.0 + float(column) * 196.0) * unit, (246.0 + float(row) * 94.0) * unit), size)
+	var size := Vector2(140.0, 78.0) * unit
+	var column := index % 4
+	var row := index / 4
+	return Rect2(Vector2((590.0 + float(column) * 151.0) * unit, (246.0 + float(row) * 94.0) * unit), size)
 
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
@@ -4263,8 +4265,8 @@ func friend_choice_rect(index: int, colors: bool, viewport_size: Vector2) -> Rec
 func friend_board_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var gap := 12.0 * unit
-	var card_w := minf(158.0 * unit, (viewport_size.x - 90.0 * unit - gap * 3.0) / 4.0)
-	var total_w := card_w * 4.0 + gap * 3.0
+	var card_w := minf(158.0 * unit, (viewport_size.x - 90.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
+	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
 	var start_x := (viewport_size.x - total_w) * 0.5
 	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 418.0 * unit), Vector2(card_w, 82.0 * unit))
 
@@ -6747,12 +6749,12 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		var ring_selected := i == player_ring_color
 		draw_style_box(make_box(Color("ffe25d") if ring_selected else Color("173a56"), 17.0 * unit), ring_button.grow((4.0 if ring_selected else 2.0) * unit))
 		draw_style_box(make_box(Color("285b73") if ring_selected else Color("123047"), 14.0 * unit), ring_button)
-		var ring_center := ring_button.position + Vector2(42.0, 39.0) * unit
+		var ring_center := ring_button.position + Vector2(34.0, 39.0) * unit
 		draw_circle(ring_center, 27.0 * unit, RING_COLORS[i])
 		draw_circle(ring_center, 12.0 * unit, Color("14324c"))
 		draw_arc(ring_center, 27.0 * unit, -0.70, 0.15, 10, Color("fff4dc"), 8.0 * unit, true)
 		draw_arc(ring_center, 27.0 * unit, 2.45, 3.30, 10, Color("fff4dc"), 8.0 * unit, true)
-		draw_string(ui_font, ring_button.position + Vector2(78.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, 86.0 * unit, int(12.0 * unit), Color.WHITE)
+		draw_string(ui_font, ring_button.position + Vector2(63.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, ring_button.size.x - 69.0 * unit, int(11.0 * unit), Color.WHITE)
 		if i == player_ring_color:
 			draw_circle(ring_button.position + Vector2(ring_button.size.x - 14.0 * unit, 14.0 * unit), 13.0 * unit, Color("ffe25d"))
 			draw_string(ui_font, ring_button.position + Vector2(ring_button.size.x - 27.0 * unit, 20.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 26.0 * unit, int(13.0 * unit), Color("173249"))
@@ -6774,7 +6776,7 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 			draw_string(ui_font, card.position + Vector2(card.size.x - 29.0 * unit, 21.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 28.0 * unit, int(14.0 * unit), Color("173249"))
 
 func board_theme_name(index: int) -> String:
-	var keys := ["board_classic", "board_ice", "board_jungle", "board_volcano"]
+	var keys := ["board_classic", "board_ice", "board_jungle", "board_volcano", "board_candy"]
 	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
 
 func board_theme_texture(index: int) -> Texture2D:
@@ -6784,7 +6786,7 @@ func board_theme_texture(index: int) -> Texture2D:
 	return texture if texture != null else board_texture
 
 func board_theme_accent(index: int) -> Color:
-	var accents := [Color("58c9e8"), Color("8cecff"), Color("6fda18"), Color("ff7b43")]
+	var accents := [Color("58c9e8"), Color("8cecff"), Color("6fda18"), Color("ff7b43"), Color("ff78b7")]
 	return accents[clampi(index, 0, accents.size() - 1)]
 
 func board_theme_modulate(index: int) -> Color:
@@ -6821,8 +6823,8 @@ func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
 func shop_board_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var gap := 16.0 * unit
-	var card_w := minf(220.0 * unit, (viewport_size.x - 110.0 * unit - gap * 3.0) / 4.0)
-	var total_w := card_w * 4.0 + gap * 3.0
+	var card_w := minf(220.0 * unit, (viewport_size.x - 110.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
+	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
 	var start_x := (viewport_size.x - total_w) * 0.5
 	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 430.0 * unit), Vector2(card_w, 210.0 * unit))
 

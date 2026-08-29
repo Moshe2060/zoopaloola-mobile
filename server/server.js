@@ -490,8 +490,8 @@ function joinRoom(socket, room, payload) {
     socket,
     slot: room.players.length,
     name: String(payload.name || `Player ${room.players.length + 1}`).slice(0, 24),
-    animal: clampInt(payload.animal, 0, 5, 0),
-    ringColor: clampInt(payload.ringColor, 0, 5, 0),
+    animal: clampInt(payload.animal, 0, 6, 0),
+    ringColor: clampInt(payload.ringColor, 0, 6, 0),
     level: clampInt(payload.level, 1, 999, 1),
     wins: clampInt(payload.wins, 0, 999999, 0),
     losses: clampInt(payload.losses, 0, 999999, 0),
@@ -847,8 +847,8 @@ function handleMessage(socket, payload) {
 
   if (payload.type === "update_profile") {
     if (room.status !== "waiting") return;
-    player.animal = clampInt(payload.animal, 0, 5, player.animal);
-    player.ringColor = clampInt(payload.ringColor, 0, 5, player.ringColor);
+    player.animal = clampInt(payload.animal, 0, 6, player.animal);
+    player.ringColor = clampInt(payload.ringColor, 0, 6, player.ringColor);
     broadcastState(room);
     return;
   }

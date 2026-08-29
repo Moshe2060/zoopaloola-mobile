@@ -24,6 +24,7 @@ mkdir -p "$PROJECT/assets/boards"
 cp "$ROOT/assets/boards/board-ice.webp" "$PROJECT/assets/boards/board-ice.webp"
 cp "$ROOT/assets/boards/board-jungle.webp" "$PROJECT/assets/boards/board-jungle.webp"
 cp "$ROOT/assets/boards/board-lava.webp" "$PROJECT/assets/boards/board-lava.webp"
+cp "$ROOT/assets/boards/board-candy.webp" "$PROJECT/assets/boards/board-candy.webp"
 
 mkdir -p "$PROJECT/assets/remastered_effects"
 cp "$ROOT"/effect-*.png "$PROJECT/assets/remastered_effects/"
