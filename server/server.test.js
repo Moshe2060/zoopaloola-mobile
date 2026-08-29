@@ -88,6 +88,21 @@ test("two players create, join, ready and relay a shot", async (context) => {
   assert.equal(shot.ballIndex, 4);
   assert.equal(shot.playerSlot, 0);
 
+  const turnAfterMissPromise = next(second, "turn", (message) => message.continueTurn === false);
+  first.send(JSON.stringify({ type: "resolve_turn", continueTurn: false }));
+  const turnAfterMiss = await turnAfterMissPromise;
+  assert.equal(turnAfterMiss.turn, 1);
+
+  const shotTwoPromise = next(first, "shot");
+  second.send(JSON.stringify({ type: "shot", ballIndex: 6, pullX: 10, pullY: -6, strength: 16 }));
+  const shotTwo = await shotTwoPromise;
+  assert.equal(shotTwo.playerSlot, 1);
+
+  const extraTurnPromise = next(first, "turn", (message) => message.continueTurn === true);
+  second.send(JSON.stringify({ type: "resolve_turn", continueTurn: true }));
+  const extraTurn = await extraTurnPromise;
+  assert.equal(extraTurn.turn, 1);
+
   const chatPromise = next(second, "chat");
   first.send(JSON.stringify({ type: "chat", message: "Good luck!" }));
   const chat = await chatPromise;

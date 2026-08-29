@@ -472,6 +472,8 @@ function leaveRoom(socket) {
   }
   room.status = room.status === "finished" ? "finished" : "waiting";
   room.turn = 0;
+  room.awaitingTurnResolve = false;
+  room.activeShooter = null;
   room.players.forEach((player, index) => {
     player.slot = index;
     player.ready = false;
@@ -520,6 +522,8 @@ function startMatch(room) {
   room.status = "playing";
   room.turn = 0;
   room.sequence = 0;
+  room.awaitingTurnResolve = false;
+  room.activeShooter = null;
   for (const roomPlayer of room.players) {
     roomPlayer.ready = true;
     send(roomPlayer.socket, {
@@ -886,8 +890,33 @@ function handleMessage(socket, payload) {
       pullY: Number(payload.pullY),
       strength: Number(payload.strength)
     });
-    room.turn = 1 - room.turn;
-    broadcast(room, { type: "turn", turn: room.turn, sequence: room.sequence });
+    room.awaitingTurnResolve = true;
+    room.activeShooter = player.slot;
+    return;
+  }
+
+  if (payload.type === "resolve_turn") {
+    if (room.status !== "playing" || !room.awaitingTurnResolve) {
+      send(socket, { type: "error", code: "INVALID_TURN_RESOLVE", message: "No shot to resolve" });
+      return;
+    }
+    if (player.slot !== room.activeShooter) {
+      send(socket, { type: "error", code: "NOT_YOUR_TURN", message: "Only the shooter can resolve the turn" });
+      return;
+    }
+    const continueTurn = Boolean(payload.continueTurn);
+    room.awaitingTurnResolve = false;
+    room.activeShooter = null;
+    if (!continueTurn) {
+      room.turn = 1 - player.slot;
+    }
+    room.sequence += 1;
+    broadcast(room, {
+      type: "turn",
+      turn: room.turn,
+      continueTurn,
+      sequence: room.sequence
+    });
     return;
   }
 

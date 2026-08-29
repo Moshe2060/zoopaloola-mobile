@@ -107,7 +107,7 @@ const UI_TEXT_HE := {
 	"friend_invite_offline": "החבר לא מחובר כרגע",
 	"lobby_chat_title": "צ׳אט הלובי", "lobby_chat_hint": "כתבו הודעה לקהילה...",
 	"online_players": "שחקנים מחוברים", 	"friend_added": "חבר נוסף!", "friend_exists": "החבר כבר ברשימה",
-	"friend_not_found": "מזהה לא תקין", "remove_friend": "הסרה", "your_turn_badge": "התור שלך",
+	"friend_not_found": "מזהה לא תקין", "remove_friend": "הסרה", "your_turn_badge": "התור שלך", "extra_turn": "תור נוסף! הכניסו עוד כדור יריב",
 	"friend_profile_title": "פרופיל חבר", "friend_online": "מחובר עכשיו", "friend_offline": "לא מחובר",
 	"friend_added_you": "%s אישר/ה את בקשת החברות!", "friend_must_open": "בקשו מהחבר לפתוח את המשחק פעם אחת",
 	"friend_view_profile": "צפייה בפרופיל", "friend_id_short": "ZP-XXXXXXXX",
@@ -163,7 +163,7 @@ const UI_TEXT_EN := {
 	"friend_invite_offline": "Friend is offline right now",
 	"lobby_chat_title": "LOBBY CHAT", "lobby_chat_hint": "Say hello to the community...",
 	"online_players": "players online", "friend_added": "Friend added!", "friend_exists": "Friend already added",
-	"friend_not_found": "Invalid player ID", "remove_friend": "REMOVE", "your_turn_badge": "YOUR TURN",
+	"friend_not_found": "Invalid player ID", "remove_friend": "REMOVE", "your_turn_badge": "YOUR TURN", "extra_turn": "EXTRA TURN! Pocket another enemy ball",
 	"friend_profile_title": "FRIEND PROFILE", "friend_online": "Online now", "friend_offline": "Offline",
 	"friend_added_you": "%s accepted your friend request!", "friend_must_open": "Ask your friend to open the game once",
 	"friend_view_profile": "View profile", "friend_id_short": "ZP-XXXXXXXX",
@@ -213,7 +213,7 @@ const TUTORIAL_STEPS_HE := [
 	{"title": "איך יורים?", "body": "בתור שלכם — געו בכדור שלכם, גררו אחורה ושחררו.\nככל שתמשכו רחוק יותר, הכדור יעוף חזק יותר.\nמשיכה קצרה מבטלת את הירייה.", "art": "shoot"},
 	{"title": "מה המטרה?", "body": "דחפו את כדורי היריב לחורים בפינות הלוח.\nכדור שנכנס לחור יוצא מהמשחק — מי שמוריד את כל כדורי היריב קודם, מנצח!", "art": "goal"},
 	{"title": "חורים מיוחדים", "body": "חלק מהחורים מפעילים נשקים: גומי, מקש, חשמל, אש, קרח ועוד.\nהם יוצרים רגעים מטורפים — נסו לתכנן סביבם!", "art": "weapons"},
-	{"title": "תורות", "body": "כל שחקן יורה פעם אחת בתורו.\nכרטיס השחקן הפעיל מודגש בזהב עם תגית \"התור שלך\".\nהכדור שלכם זוהר רק לפני הירייה הראשונה בתור.", "art": "turns"},
+	{"title": "תורות", "body": "כל שחקן יורה פעם אחת בתורו.\nאם הכנסתם כדור של היריב לחור — מקבלים תור נוסף!\nהתור עובר רק כשלא הצלחתם להכניס כדור יריב.", "art": "turns"},
 	{"title": "מצבי משחק", "body": "שחק — משחק נגד המחשב (מומלץ להתחיל כאן).\nחבר — חדר פרטי עם קוד לשני מכשירים.\nזירה — משחק אונליין מול יריב אקראי עם דירוג ומטבעות.", "art": "modes"},
 	{"title": "מסך הבית", "body": "פרופיל — שם, דמות וסטטיסטיקות.\nמועדון שחקנים — חברים, צ׳אט לובי וליגה.\nפרס יומי — מטבעות חינם כל יום.\nהעתיקו את מזהה ZP- שלכם כדי להוסיף חברים.", "art": "hub"},
 	{"title": "מוכנים לשחק!", "body": "התחילו במשחק נגד המחשב כדי להתרגל.\nאפשר לפתוח את המדריך שוב בכל עת מכפתור ? בפינה.\nבהצלחה בזירה!", "art": "ready"},
@@ -223,7 +223,7 @@ const TUTORIAL_STEPS_EN := [
 	{"title": "HOW TO SHOOT", "body": "On your turn, touch your ball, pull back, and release.\nThe farther you pull, the harder the shot.\nA tiny pull cancels the shot.", "art": "shoot"},
 	{"title": "THE GOAL", "body": "Knock your opponent's balls into the corner holes.\nA ball that falls in is out — clear all enemy balls first to win!", "art": "goal"},
 	{"title": "SPECIAL HOLES", "body": "Some holes trigger weapons: rubber, press, electric, fire, ice, and more.\nThey create wild moments — plan around them!", "art": "weapons"},
-	{"title": "TURNS", "body": "Each player shoots once per turn.\nThe active player's card glows gold with a \"YOUR TURN\" badge.\nYour ball glows only before your first shot each turn.", "art": "turns"},
+	{"title": "TURNS", "body": "Each player shoots once per turn.\nPocket an enemy ball and you shoot again!\nYour turn ends only when you fail to pocket an enemy ball.", "art": "turns"},
 	{"title": "GAME MODES", "body": "PLAY — vs computer (best place to start).\nFRIEND — private room with a 4-letter code.\nARENA — online random match with rating and coins.", "art": "modes"},
 	{"title": "HOME SCREEN", "body": "Profile — name, character, and stats.\nPlayer Club — friends, lobby chat, and league.\nDaily reward — free coins every day.\nCopy your ZP- ID to add friends.", "art": "hub"},
 	{"title": "READY TO PLAY!", "body": "Start with a computer match to practice.\nReopen this guide anytime with the ? button.\nGood luck in the arena!", "art": "ready"},
@@ -386,6 +386,8 @@ var match_result_winner := -1
 var match_result_coins := 0
 var match_result_recorded := false
 var turn_shot_committed := false
+var turn_pending_resolve := false
+var turn_opponent_scored := false
 var friends_list: Array = []
 var incoming_friend_requests: Array = []
 var outgoing_friend_requests: Array = []
@@ -626,6 +628,8 @@ func apply_match_started(payload: Dictionary) -> void:
 	new_game()
 	turn = int(payload.get("turn", 0))
 	turn_shot_committed = false
+	turn_pending_resolve = false
+	turn_opponent_scored = false
 
 func update_arena_fx(delta: float) -> void:
 	if arena_fx_phase == "idle":
@@ -912,6 +916,8 @@ func new_game() -> void:
 	match_result_coins = 0
 	match_result_recorded = false
 	turn_shot_committed = false
+	turn_pending_resolve = false
+	turn_opponent_scored = false
 	status = "Your turn - touch a red ball, pull back and release"
 	queue_redraw()
 
@@ -981,8 +987,9 @@ func physics_step() -> void:
 			if balls[j].alive:
 				resolve_collision(i, j)
 	if game_mode == "computer" and turn == 1 and not match_finished and not ai_pending and ai_committed_shot and not any_ball_moving() and effects_allow_next_turn():
-		ai_committed_shot = false
-		finish_ai_turn()
+		resolve_pending_turn()
+	elif not match_finished and turn_pending_resolve and not any_ball_moving() and effects_allow_next_turn():
+		resolve_pending_turn()
 
 func resolve_walls(index: int) -> void:
 	var ball: Dictionary = balls[index]
@@ -1073,6 +1080,8 @@ func resolve_collision(a_index: int, b_index: int) -> void:
 
 func score_ball(index: int, hole: int) -> void:
 	var scored_team: int = balls[index].team
+	if scored_team != turn:
+		turn_opponent_scored = true
 	balls[index].alive = false
 	balls[index].v = Vector2.ZERO
 	active_effects.append({"hole":hole, "elapsed":0.0, "team":scored_team, "piece":index})
@@ -1321,25 +1330,20 @@ func pointer_up(screen_pos: Vector2) -> void:
 	var strength: float = clampf(pull_distance, MIN_SHOT_PULL, 30.0)
 	if pull_distance >= MIN_SHOT_PULL:
 		turn_shot_committed = true
+		turn_pending_resolve = true
+		turn_opponent_scored = false
 		play_sound("shot")
 		if game_mode == "online":
 			send_multiplayer({"type":"shot", "ballIndex":selected, "pullX":pull.x, "pullY":pull.y, "strength":strength})
 			status = "שולח את הזריקה..." if ui_language == "he" else "Sending shot..."
 		elif game_mode == "computer":
 			balls[selected].v = pull.normalized() * (strength * 0.078)
-			turn = 1
-			turn_shot_committed = false
 			ai_committed_shot = false
-			ai_pending = true
-			var think := ai_think_delay()
-			ai_timer = think
-			status = "Computer's turn"
+			status = "מחכים לתוצאת הזריקה..." if ui_language == "he" else "Waiting for the shot to settle..."
 		else:
 			balls[selected].v = pull.normalized() * (strength * 0.078)
-			turn = 1 - turn
-			turn_shot_committed = false
 			ai_pending = false
-			status = ("Red" if turn == 0 else "Blue") + " player's turn"
+			status = "מחכים לתוצאת הזריקה..." if ui_language == "he" else "Waiting for the shot to settle..."
 	else:
 		status = "Aim cancelled - choose another ball"
 	dragging = false
@@ -1513,6 +1517,8 @@ func ai_apply_shot(shot: Dictionary, settings: Dictionary) -> void:
 	var strength: float = clampf(base_strength + randf_range(-power_error, power_error) * 12.0, MIN_SHOT_PULL, 30.0)
 	balls[shooter_index].v = direction * (strength * 0.078)
 	turn_shot_committed = true
+	turn_pending_resolve = true
+	turn_opponent_scored = false
 	ai_committed_shot = true
 	play_sound("shot")
 	status = "Blue player shot..." if ui_language != "he" else "המחשב יורה..."
@@ -1531,7 +1537,57 @@ func ai_shot() -> void:
 func finish_ai_turn() -> void:
 	turn = 0
 	turn_shot_committed = false
+	turn_pending_resolve = false
+	turn_opponent_scored = false
 	status = "Your turn - touch a red ball, pull back and release"
+
+func resolve_pending_turn() -> void:
+	if match_finished or not turn_pending_resolve or any_ball_moving() or not effects_allow_next_turn():
+		return
+	var continue_turn := turn_opponent_scored
+	turn_opponent_scored = false
+	if game_mode == "online":
+		if turn == multiplayer_slot:
+			send_multiplayer({"type": "resolve_turn", "continueTurn": continue_turn})
+		return
+	apply_turn_after_shot(continue_turn)
+
+func apply_turn_after_shot(continue_turn: bool) -> void:
+	turn_pending_resolve = false
+	turn_shot_committed = false
+	if continue_turn:
+		if game_mode == "computer" and turn == 1:
+			ai_committed_shot = false
+			ai_pending = true
+			ai_timer = ai_think_delay()
+			status = ui_text("extra_turn")
+		else:
+			status = ui_text("extra_turn")
+		return
+	if game_mode == "computer":
+		if turn == 0:
+			turn = 1
+			ai_committed_shot = false
+			ai_pending = true
+			ai_timer = ai_think_delay()
+			status = ("תור המחשב" if ui_language == "he" else "Computer's turn")
+		else:
+			finish_ai_turn()
+	elif game_mode == "online":
+		pass
+	else:
+		turn = 1 - turn
+		status = ("תור שחקן " if ui_language == "he" else "Player ") + str(turn + 1)
+
+func update_turn_status_from_server(continued: bool) -> void:
+	if continued:
+		status = ui_text("extra_turn")
+		return
+	if game_mode == "online":
+		if turn == multiplayer_slot:
+			status = "התור שלכם" if ui_language == "he" else "Your turn"
+		else:
+			status = "תור היריב" if ui_language == "he" else "Opponent's turn"
 
 func any_ball_moving() -> bool:
 	for ball in balls:
@@ -5640,9 +5696,14 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 				if pull.length_squared() > 0.0:
 					balls[ball_index].v = pull.normalized() * (strength * 0.078)
 					turn_shot_committed = true
+					turn_pending_resolve = true
+					turn_opponent_scored = false
 		"turn":
 			turn = int(payload.get("turn", 0))
 			turn_shot_committed = false
+			turn_pending_resolve = false
+			turn_opponent_scored = false
+			update_turn_status_from_server(bool(payload.get("continueTurn", false)))
 		"chat":
 			match_chat_messages.append({
 				"slot": int(payload.get("playerSlot", -1)),
