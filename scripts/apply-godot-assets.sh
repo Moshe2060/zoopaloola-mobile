@@ -52,12 +52,12 @@ cp "$ROOT/assets/ui/zoopaloola-home-bg-v3.webp" "$PROJECT/assets/ui/zoopaloola-h
 cp "$ROOT/assets/ui/zoopaloola-loading-team-v1.webp" "$PROJECT/assets/ui/zoopaloola-loading-team-v1.webp"
 cp "$ROOT/assets/ui/zoopaloola-logo-v1.webp" "$PROJECT/assets/ui/zoopaloola-logo-v1.webp"
 cp "$ROOT/assets/ui/zoopaloola-boot-splash-v2.png" "$PROJECT/assets/ui/zoopaloola-boot-splash-v2.png"
-cp "$ROOT/assets/ui/zoopaloola-app-icon-v2.png" "$PROJECT/assets/ui/zoopaloola-app-icon-v2.png"
+cp "$ROOT/assets/ui/zoopaloola-app-icon-v2.jpg" "$PROJECT/assets/ui/zoopaloola-app-icon-v2.jpg"
 cp "$ROOT"/assets/ui/full_body/*.webp "$PROJECT/assets/ui/full_body/"
 cp "$ROOT"/assets/ui/full_body/lifebuoy/*.png "$PROJECT/assets/ui/full_body/lifebuoy/"
 
 sed -i 's/config\/name="Zoopaloola Mobile Prototype"/config\/name="Zoopaloola"/' "$PROJECT/project.godot"
-sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-boot-splash-v2.png"\nboot_splash/fullsize=true\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-app-icon-v2.png"' "$PROJECT/project.godot"
+sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-boot-splash-v2.png"\nboot_splash/fullsize=true\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-app-icon-v2.jpg"' "$PROJECT/project.godot"
 
 if [[ "$ANDROID_FULLSCREEN" == "1" ]]; then
   # Start Android fullscreen before Godot draws the boot splash, not only
