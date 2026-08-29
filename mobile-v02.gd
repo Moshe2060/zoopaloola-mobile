@@ -3436,17 +3436,18 @@ func home_profile_rect(viewport_size: Vector2) -> Rect2:
 func home_top_control_rects(viewport_size: Vector2) -> Dictionary:
 	var layout := home_layout(viewport_size)
 	var unit: float = layout.unit
-	var y := 22.0 * unit
-	var h := 54.0 * unit
-	var gap := 8.0 * unit
-	var coin_w := 154.0 * unit
-	var gem_w := 120.0 * unit
-	var small_w := 54.0 * unit
-	var coin_x := layout.right_x - coin_w - gap
-	var gem_x := coin_x - gem_w - gap
-	var sound_x := gem_x - small_w - gap
-	var help_x := sound_x - small_w - gap
-	var settings_x := help_x - small_w - gap
+	var right_x: float = layout.right_x
+	var y: float = 22.0 * unit
+	var h: float = 54.0 * unit
+	var gap: float = 8.0 * unit
+	var coin_w: float = 154.0 * unit
+	var gem_w: float = 120.0 * unit
+	var small_w: float = 54.0 * unit
+	var coin_x: float = right_x - coin_w - gap
+	var gem_x: float = coin_x - gem_w - gap
+	var sound_x: float = gem_x - small_w - gap
+	var help_x: float = sound_x - small_w - gap
+	var settings_x: float = help_x - small_w - gap
 	return {
 		"coin": Rect2(coin_x, y, coin_w, h),
 		"gems": Rect2(gem_x, y, gem_w, h),
@@ -3632,16 +3633,20 @@ func draw_tutorial_overlay(viewport_size: Vector2) -> void:
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var layout := home_layout(viewport_size)
-	var y := layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index + 1)
+	var y: float = layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index + 1)
 	return Rect2(layout.left_x, y, layout.left_w, layout.rail_button_h)
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var layout := home_layout(viewport_size)
 	var unit: float = layout.unit
-	var char_w := minf(300.0 * unit, layout.center_w * 0.88)
-	var char_h := minf(390.0 * unit, (layout.content_bottom - layout.content_top) * 0.72)
-	var char_x := layout.center_left + (layout.center_w - char_w) * 0.5
-	var char_y := layout.content_top + 6.0 * unit
+	var center_left: float = layout.center_left
+	var center_w: float = layout.center_w
+	var content_top: float = layout.content_top
+	var content_bottom: float = layout.content_bottom
+	var char_w: float = minf(300.0 * unit, center_w * 0.88)
+	var char_h: float = minf(390.0 * unit, (content_bottom - content_top) * 0.72)
+	var char_x: float = center_left + (center_w - char_w) * 0.5
+	var char_y: float = content_top + 6.0 * unit
 	return Rect2(char_x, char_y, char_w, char_h)
 
 func draw_home_ambient_effects(viewport_size: Vector2) -> void:
@@ -5847,7 +5852,7 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.10))
 	draw_rect(Rect2(0.0, 0.0, viewport_size.x, layout.header_h), Color(0.015, 0.055, 0.12, 0.94))
 	draw_rect(Rect2(0.0, layout.header_h - 4.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
-	var left_bg_w := layout.left_x + layout.left_w + 10.0 * unit
+	var left_bg_w: float = layout.left_x + layout.left_w + 10.0 * unit
 	draw_rect(Rect2(0.0, layout.header_h, left_bg_w, viewport_size.y - layout.header_h), Color(0.01, 0.05, 0.10, 0.20))
 	var stats_strip := home_stats_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.90), 16.0 * unit), stats_strip)
@@ -5947,6 +5952,9 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var progress_bg := Rect2(profile.position + Vector2(65.0, 49.0) * unit, Vector2(profile.size.x - 84.0 * unit, 6.0 * unit))
 	draw_style_box(make_box(Color("162c49"), 3.0 * unit), progress_bg)
 	draw_style_box(make_box(Color("5f78ff"), 3.0 * unit), Rect2(progress_bg.position, Vector2(progress_bg.size.x * 0.62, progress_bg.size.y)))
+
+	var bottom_bar := Rect2(layout.center_left - 8.0 * unit, layout.bottom_y - 8.0 * unit, layout.center_w + 16.0 * unit, layout.bottom_button_h + 16.0 * unit)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.55), 18.0 * unit), bottom_bar)
 
 	# Arena/ranking is the first shortcut on the left.
 	var arena_button := home_mode_rect(0, viewport_size)
