@@ -86,7 +86,9 @@ const UI_TEXT_HE := {
 	"profile_title": "פרופיל שחקן", "profile_sub": "הדמות, הצבע האהוב וסטטיסטיקות הקריירה שלכם",
 	"main_character": "הדמות הראשית", "choose_main": "בחרו דמות ראשית", "favorite_color": "צבע גלגל אהוב",
 	"career": "סטטיסטיקות קריירה", "matches": "משחקים", "wins": "ניצחונות", "losses": "הפסדים", "win_rate": "אחוז הצלחה", "best_streak": "רצף שיא", "world_rank": "דירוג עולמי", "current_streak": "רצף ניצחונות נוכחי: ",
-	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים ואפקטים מיוחדים", "effects": "אפקטים", "collection_info": "אוספים נדירים\nעיצובים עונתיים\nאנימציות מיוחדות", "coming_soon": "בקרוב",
+	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים, אפקטים ושולחנות משחק", "effects": "אפקטים", "collection_info": "אוספים נדירים • עיצובים עונתיים • אנימציות מיוחדות", "coming_soon": "בקרוב",
+	"boards": "שולחנות", "boards_sub": "עיצובי מגרש", "boards_section": "שולחנות משחק", "boards_section_sub": "בחרו את עיצוב המגרש לקרב הבא", "board_equipped": "מוגדר למשחק", "board_selected_toast": "שולחן חדש הוגדר!",
+	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "הר געש",
 	"searching": "מחפשים יריב בזירה...", "cancel_search": "ביטול חיפוש",
 	"match_win": "ניצחתם!", "match_lose": "הפסדתם", "draw": "תיקו",
 	"play_again": "משחק נוסף", "back_home": "חזרה לבית",
@@ -139,7 +141,9 @@ const UI_TEXT_EN := {
 	"profile_title": "PLAYER PROFILE", "profile_sub": "Your character, favorite color and career statistics",
 	"main_character": "MAIN CHARACTER", "choose_main": "CHOOSE YOUR MAIN ANIMAL", "favorite_color": "FAVORITE LIFEBUOY COLOR",
 	"career": "CAREER STATISTICS", "matches": "MATCHES", "wins": "WINS", "losses": "LOSSES", "win_rate": "WIN RATE", "best_streak": "BEST STREAK", "world_rank": "WORLD RANK", "current_streak": "CURRENT WIN STREAK: ",
-	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys and signature effects", "effects": "EFFECTS", "collection_info": "Rare collections\nSeasonal designs\nSpecial animations", "coming_soon": "COMING SOON",
+	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections • Seasonal designs • Special animations", "coming_soon": "COMING SOON",
+	"boards": "TABLES", "boards_sub": "Board skins", "boards_section": "GAME TABLES", "boards_section_sub": "Choose the look of your next match", "board_equipped": "EQUIPPED", "board_selected_toast": "New table equipped!",
+	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "VOLCANO",
 	"searching": "Finding an arena opponent...", "cancel_search": "CANCEL SEARCH",
 	"match_win": "YOU WIN!", "match_lose": "YOU LOST", "draw": "DRAW",
 	"play_again": "PLAY AGAIN", "back_home": "BACK HOME",
@@ -297,6 +301,8 @@ var game_mode := "computer"
 var profile_name := "PLAYER 1"
 var player_coins := 1250
 var selected_arena := 0
+const BOARD_THEME_COUNT := 4
+var selected_board_theme := 0
 var ui_language := "he"
 var player_level := 1
 var player_xp := 0
@@ -1553,7 +1559,8 @@ func _draw() -> void:
 	# the surrounding water.
 	draw_water_floaters(viewport_size)
 	# Approved faithful remaster, created natively in landscape.
-	draw_texture_rect(board_texture, board_rect, false)
+	draw_texture_rect(board_texture, board_rect, false, board_theme_modulate(selected_board_theme))
+	draw_board_theme_overlay(selected_board_theme)
 	draw_scoreboards()
 	draw_rubber_launchers_idle()
 	draw_press_weapons_idle()
@@ -4313,6 +4320,7 @@ func load_player_profile() -> void:
 	sound_enabled = bool(config.get_value("settings", "sound_enabled", sound_enabled))
 	tutorial_completed = bool(config.get_value("settings", "tutorial_completed", tutorial_completed))
 	computer_difficulty = clampi(int(config.get_value("settings", "computer_difficulty", computer_difficulty)), 0, 2)
+	selected_board_theme = clampi(int(config.get_value("settings", "board_theme", selected_board_theme)), 0, BOARD_THEME_COUNT - 1)
 	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
 	ui_language = str(config.get_value("settings", "language", ui_language))
 	friends_list = config.get_value("social", "friends", [])
@@ -4351,6 +4359,7 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("settings", "sound_enabled", sound_enabled)
 	config.set_value("settings", "tutorial_completed", tutorial_completed)
 	config.set_value("settings", "computer_difficulty", computer_difficulty)
+	config.set_value("settings", "board_theme", selected_board_theme)
 	config.set_value("settings", "language", ui_language)
 	config.set_value("social", "friends", friends_list)
 	config.set_value("social", "incoming_requests", incoming_friend_requests)
@@ -5506,7 +5515,14 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					save_player_profile()
 					return
 		elif app_screen == APP_SHOP:
-			show_menu_notice("THE FIRST SHOP COLLECTION IS COMING SOON")
+			for i in BOARD_THEME_COUNT:
+				if shop_board_rect(i, viewport_size).has_point(screen_pos):
+					selected_board_theme = i
+					save_player_profile()
+					show_menu_notice(ui_text("board_selected_toast"))
+					play_sound("ui")
+					queue_redraw()
+					return
 		elif app_screen == APP_ARENA:
 			for i in 3:
 				if arena_card_rect(i, viewport_size).has_point(screen_pos):
@@ -5666,7 +5682,8 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		draw_menu_background(viewport_size)
 		draw_profile_screen(viewport_size)
 	elif app_screen == APP_SHOP:
-		draw_menu_background(viewport_size)
+		if lobby_background_texture != null:
+			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_shop_screen(viewport_size)
 	elif app_screen == APP_ARENA:
 		if lobby_background_texture != null:
@@ -6579,22 +6596,155 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 			draw_circle(card.position + Vector2(card.size.x - 15.0 * unit, 15.0 * unit), 14.0 * unit, Color("ffe25d"))
 			draw_string(ui_font, card.position + Vector2(card.size.x - 29.0 * unit, 21.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 28.0 * unit, int(14.0 * unit), Color("173249"))
 
+func board_theme_name(index: int) -> String:
+	var keys := ["board_classic", "board_ice", "board_jungle", "board_volcano"]
+	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
+
+func board_theme_accent(index: int) -> Color:
+	var accents := [Color("58c9e8"), Color("8cecff"), Color("6fda18"), Color("ff7b43")]
+	return accents[clampi(index, 0, accents.size() - 1)]
+
+func board_theme_modulate(index: int) -> Color:
+	match clampi(index, 0, BOARD_THEME_COUNT - 1):
+		1:
+			return Color(0.86, 0.95, 1.0)
+		2:
+			return Color(0.92, 1.0, 0.88)
+		3:
+			return Color(1.0, 0.90, 0.82)
+		_:
+			return Color.WHITE
+
+func draw_board_theme_overlay(theme_index: int) -> void:
+	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
+	if theme == 0:
+		return
+	var unit := board_scale
+	if theme == 1:
+		for i in 10:
+			var px := board_rect.position.x + board_rect.size.x * (0.08 + float(i % 5) * 0.18)
+			var py := board_rect.position.y + board_rect.size.y * (0.12 + float(i / 5) * 0.34)
+			draw_circle(Vector2(px, py), (5.0 + float(i % 3) * 2.0) * unit, Color(1.0, 1.0, 1.0, 0.22))
+		draw_rect(board_rect.grow(-4.0 * unit), Color("8cecff", 0.08), false, maxf(2.0, 3.0 * unit))
+	elif theme == 2:
+		for i in 6:
+			var vine_x := board_rect.position.x + board_rect.size.x * (0.1 + float(i) * 0.14)
+			draw_line(Vector2(vine_x, board_rect.position.y - 6.0 * unit), Vector2(vine_x + 8.0 * unit, board_rect.end.y + 4.0 * unit), Color("3f8f3a", 0.35), 4.0 * unit, true)
+		draw_rect(board_rect, Color("6fda18", 0.06))
+	elif theme == 3:
+		draw_rect(board_rect, Color("ff5b2d", 0.07))
+		for i in 8:
+			var ember := board_rect.position + Vector2(board_rect.size.x * (0.1 + float(i) * 0.1), board_rect.size.y * (0.15 + float(i % 4) * 0.18))
+			draw_circle(ember, (3.0 + float(i % 3)) * unit, Color("ffb12b", 0.25 + sin(menu_elapsed * 4.0 + float(i)) * 0.12))
+
+func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var gap := 18.0 * unit
+	var card_w := minf(250.0 * unit, (viewport_size.x - 120.0 * unit - gap * 2.0) / 3.0)
+	var total_w := card_w * 3.0 + gap * 2.0
+	var start_x := (viewport_size.x - total_w) * 0.5
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 118.0 * unit), Vector2(card_w, 250.0 * unit))
+
+func shop_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var gap := 16.0 * unit
+	var card_w := minf(220.0 * unit, (viewport_size.x - 110.0 * unit - gap * 3.0) / 4.0)
+	var total_w := card_w * 4.0 + gap * 3.0
+	var start_x := (viewport_size.x - total_w) * 0.5
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 430.0 * unit), Vector2(card_w, 210.0 * unit))
+
+func draw_shop_category_icon(kind: int, center: Vector2, size: float, unit: float) -> void:
+	draw_circle(center, size * 0.52, Color(1.0, 1.0, 1.0, 0.10))
+	if kind == 0:
+		if full_body_animal_textures.size() > 0 and full_body_animal_textures[0] != null:
+			var portrait_size := Vector2(size * 0.95, size * 1.15)
+			draw_texture_rect(full_body_animal_textures[0], Rect2(center - portrait_size * 0.5, portrait_size), false)
+		else:
+			draw_circle(center + Vector2(0.0, -size * 0.08), size * 0.22, Color("f2c9a0"))
+			draw_circle(center + Vector2(0.0, size * 0.18), size * 0.30, Color("f2c9a0"))
+	elif kind == 1:
+		draw_set_transform(center, 0.0, Vector2(1.0, 0.55))
+		draw_arc(Vector2.ZERO, size * 0.42, 0.0, TAU, 36, Color("ff7b43"), size * 0.16, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_circle(center, size * 0.14, Color("173249"))
+	elif kind == 2:
+		for i in 6:
+			var angle := float(i) * TAU / 6.0 + menu_elapsed * 0.4
+			var spark := center + Vector2(cos(angle), sin(angle)) * size * 0.34
+			draw_circle(spark, size * 0.08, Color("ffe25d", 0.85))
+		draw_circle(center, size * 0.16, Color("9a58dc", 0.55))
+		draw_circle(center, size * 0.08, Color.WHITE)
+
+func draw_shop_board_preview(theme_index: int, preview: Rect2, unit: float) -> void:
+	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
+	var accent := board_theme_accent(theme)
+	draw_style_box(make_box(Color(0.02, 0.06, 0.11, 0.92), 14.0 * unit), preview.grow(3.0 * unit))
+	draw_style_box(make_box(accent.darkened(0.55), 12.0 * unit), preview)
+	var inner := preview.grow(-10.0 * unit)
+	draw_rect(inner, Color("1a3048"))
+	if board_texture != null:
+		draw_texture_rect(board_texture, inner, false, board_theme_modulate(theme))
+	draw_board_theme_overlay_on_rect(theme, inner, unit)
+	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.35), 10.0 * unit), Rect2(inner.position, Vector2(inner.size.x, 3.0 * unit)))
+
+func draw_board_theme_overlay_on_rect(theme_index: int, rect: Rect2, unit: float) -> void:
+	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
+	if theme == 0:
+		draw_rect(rect, Color("58c9e8", 0.05))
+	elif theme == 1:
+		draw_rect(rect, Color("8cecff", 0.12))
+		for i in 5:
+			draw_circle(rect.position + Vector2(rect.size.x * (0.15 + float(i) * 0.16), rect.size.y * (0.2 + float(i % 2) * 0.35)), 5.0 * unit, Color(1.0, 1.0, 1.0, 0.35))
+		for i in 4:
+			var crystal := rect.position + Vector2(rect.size.x * (0.2 + float(i) * 0.18), rect.size.y * 0.78)
+			draw_colored_polygon(PackedVector2Array([crystal + Vector2(0.0, -10.0) * unit, crystal + Vector2(8.0, 0.0) * unit, crystal + Vector2(0.0, 12.0) * unit, crystal + Vector2(-8.0, 0.0) * unit]), Color("d8f8ff", 0.75))
+	elif theme == 2:
+		draw_rect(rect, Color("6fda18", 0.10))
+		for i in 4:
+			var x := rect.position.x + rect.size.x * (0.12 + float(i) * 0.2)
+			draw_line(Vector2(x, rect.position.y), Vector2(x + 6.0 * unit, rect.end.y), Color("3f8f3a", 0.55), 3.0 * unit, true)
+	else:
+		draw_rect(rect, Color("ff5b2d", 0.12))
+		var lava := PackedVector2Array([rect.position + Vector2(0.0, rect.size.y), rect.position + Vector2(rect.size.x * 0.5, rect.size.y * 0.35), rect.end])
+		draw_colored_polygon(lava, Color("ff5b2d", 0.28))
+
 func draw_shop_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.55))
 	draw_frontend_header(viewport_size, ui_text("shop_title"), ui_text("shop_title_sub"))
 	var categories := [ui_text("characters"), ui_text("rings"), ui_text("effects")]
-	var colors := [Color("24b889"), Color("467ce8"), Color("9a58dc")]
+	var category_colors := [Color("24b889"), Color("467ce8"), Color("9a58dc")]
+	var category_subs := [ui_text("characters_sub"), ui_text("rings_sub"), ui_text("effects")]
 	for i in 3:
-		var card := frontend_mode_rect(i, viewport_size)
-		card.position.y = viewport_size.y * 0.28
-		card.size.y = viewport_size.y * 0.50
-		draw_style_box(make_box(Color(0.035, 0.075, 0.13, 0.97), 22.0), card)
-		draw_circle(card.position + Vector2(card.size.x * 0.5, 82.0), 48.0, Color(colors[i], 0.30))
-		draw_circle(card.position + Vector2(card.size.x * 0.5, 82.0), 32.0, colors[i], false, 8.0, true)
-		draw_string(ui_font, card.position + Vector2(0.0, 160.0), categories[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 22, Color.WHITE)
-		draw_string(ui_font, card.position + Vector2(20.0, 198.0), ui_text("collection_info"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 40.0, 14, Color(0.74, 0.86, 0.94))
-		var button := Rect2(card.position + Vector2(24.0, card.size.y - 62.0), Vector2(card.size.x - 48.0, 42.0))
-		draw_style_box(make_box(colors[i], 13.0), button)
-		draw_string(ui_font, button.position + Vector2(0.0, 27.0), ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, button.size.x, 14, Color.WHITE)
+		var card := shop_category_rect(i, viewport_size)
+		var accent: Color = category_colors[i]
+		draw_style_box(make_box(Color(0.02, 0.06, 0.12, 0.94), 22.0 * unit), card.grow(4.0 * unit))
+		draw_style_box(make_box(accent.darkened(0.62), 18.0 * unit), card)
+		draw_rect(Rect2(card.position + Vector2(10.0 * unit, 10.0 * unit), Vector2(card.size.x - 20.0 * unit, 3.0 * unit)), Color(accent.lightened(0.25), 0.55))
+		var icon_center := card.position + Vector2(card.size.x * 0.5, 78.0 * unit)
+		draw_shop_category_icon(i, icon_center, 54.0 * unit, unit)
+		draw_string(ui_font, card.position + Vector2(0.0, 148.0 * unit), categories[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(22.0 * unit), Color.WHITE)
+		draw_string(ui_font, card.position + Vector2(14.0 * unit, 176.0 * unit), category_subs[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 28.0 * unit, int(11.0 * unit), Color("d7f6ff"))
+		var badge := Rect2(card.position + Vector2(card.size.x * 0.5 - 52.0 * unit, 196.0 * unit), Vector2(104.0 * unit, 28.0 * unit))
+		draw_style_box(make_box(Color("253e67"), 10.0 * unit), badge)
+		draw_string(ui_font, badge.position + Vector2(0.0, 20.0) * unit, ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, int(12.0 * unit), Color("ffe25d"))
+
+	var section := Rect2(viewport_size.x * 0.05, 388.0 * unit, viewport_size.x * 0.90, 34.0 * unit)
+	draw_string(ui_font, section.position + Vector2(0.0, 24.0) * unit, ui_text("boards_section"), HORIZONTAL_ALIGNMENT_LEFT, section.size.x * 0.55, int(20.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, section.position + Vector2(section.size.x * 0.42, 24.0) * unit, ui_text("boards_section_sub"), HORIZONTAL_ALIGNMENT_LEFT, section.size.x * 0.58, int(11.0 * unit), Color("8cecff"))
+
+	for i in BOARD_THEME_COUNT:
+		var board_card := shop_board_rect(i, viewport_size)
+		var selected := i == selected_board_theme
+		var accent := board_theme_accent(i)
+		draw_style_box(make_box(Color("ffe25d") if selected else Color(0.02, 0.06, 0.12, 0.90), 18.0 * unit), board_card.grow((5.0 if selected else 3.0) * unit))
+		var preview := Rect2(board_card.position + Vector2(12.0 * unit, 12.0 * unit), Vector2(board_card.size.x - 24.0 * unit, board_card.size.y - 58.0 * unit))
+		draw_shop_board_preview(i, preview, unit)
+		draw_string(ui_font, board_card.position + Vector2(0.0, board_card.size.y - 22.0 * unit), board_theme_name(i), HORIZONTAL_ALIGNMENT_CENTER, board_card.size.x, int(15.0 * unit), Color.WHITE)
+		if selected:
+			var equipped := Rect2(board_card.position.x + board_card.size.x - 78.0 * unit, board_card.position.y + 8.0 * unit, 70.0 * unit, 22.0 * unit)
+			draw_style_box(make_box(Color("35b96f"), 8.0 * unit), equipped)
+			draw_string(ui_font, equipped.position + Vector2(0.0, 16.0) * unit, ui_text("board_equipped"), HORIZONTAL_ALIGNMENT_CENTER, equipped.size.x, int(10.0 * unit), Color.WHITE)
 
 func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
