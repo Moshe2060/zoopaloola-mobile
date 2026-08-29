@@ -3381,10 +3381,14 @@ func home_layout(viewport_size: Vector2) -> Dictionary:
 	var rail_start_y := content_top + stats_h + 10.0 * unit
 	var bottom_y := viewport_size.y - bottom_bar_h - 4.0 * unit
 	var bottom_button_h := 78.0 * unit
-	var play_w := minf(292.0 * unit, center_w * 0.52)
-	var friend_w := minf(196.0 * unit, center_w * 0.34)
-	var play_x := center_right - play_w
-	var friend_x := center_left + maxf(0.0, (center_w - friend_w - play_w - 18.0 * unit) * 0.5)
+	var bottom_gap := 10.0 * unit
+	var bottom_avail_w := center_w - bottom_gap * 2.0
+	var arena_w := bottom_avail_w * 0.30
+	var friend_w := bottom_avail_w * 0.32
+	var play_w := bottom_avail_w * 0.38
+	var arena_x := center_left
+	var friend_x := arena_x + arena_w + bottom_gap
+	var play_x := friend_x + friend_w + bottom_gap
 	return {
 		"unit": unit,
 		"header_h": header_h,
@@ -3403,10 +3407,12 @@ func home_layout(viewport_size: Vector2) -> Dictionary:
 		"rail_start_y": rail_start_y,
 		"bottom_y": bottom_y,
 		"bottom_button_h": bottom_button_h,
-		"play_w": play_w,
+		"arena_w": arena_w,
 		"friend_w": friend_w,
-		"play_x": play_x,
+		"play_w": play_w,
+		"arena_x": arena_x,
 		"friend_x": friend_x,
+		"play_x": play_x,
 	}
 
 func home_stats_rect(viewport_size: Vector2) -> Rect2:
@@ -3416,7 +3422,7 @@ func home_stats_rect(viewport_size: Vector2) -> Rect2:
 func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var layout := home_layout(viewport_size)
 	if index == 0:
-		return Rect2(layout.left_x, layout.rail_start_y, layout.left_w, layout.rail_button_h)
+		return Rect2(layout.arena_x, layout.bottom_y, layout.arena_w, layout.bottom_button_h)
 	if index == 1:
 		return Rect2(layout.friend_x, layout.bottom_y, layout.friend_w, layout.bottom_button_h)
 	if index == 2:
@@ -3654,7 +3660,7 @@ func draw_tutorial_overlay(viewport_size: Vector2) -> void:
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var layout := home_layout(viewport_size)
-	var y: float = layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index + 1)
+	var y: float = layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index)
 	return Rect2(layout.left_x, y, layout.left_w, layout.rail_button_h)
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
@@ -6388,16 +6394,14 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var bottom_bar := Rect2(layout.center_left - 8.0 * unit, layout.bottom_y - 8.0 * unit, layout.center_w + 16.0 * unit, layout.bottom_button_h + 16.0 * unit)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.55), 18.0 * unit), bottom_bar)
 
-	# Arena/ranking is the first shortcut on the left.
+	# Bottom row: online arena, friend match, then vs computer.
 	var arena_button := home_mode_rect(0, viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), arena_button.grow(5.0 * unit))
 	draw_style_box(make_box(Color("7258df"), 16.0), arena_button)
-	var arena_icon := arena_button.position + Vector2(arena_button.size.x * 0.24, arena_button.size.y * 0.42)
-	draw_circle(arena_icon, 24.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
+	var arena_icon := arena_button.position + Vector2(arena_button.size.x * 0.5, arena_button.size.y * 0.38)
 	draw_home_mode_icon(0, arena_icon, unit)
-	draw_string(ui_font, arena_button.position + Vector2(8.0, arena_button.size.y * 0.78), ui_text("arena"), HORIZONTAL_ALIGNMENT_CENTER, arena_button.size.x - 16.0 * unit, int(15.0 * unit), Color.WHITE)
+	draw_string(ui_font, arena_button.position + Vector2(6.0, arena_button.size.y * 0.72), ui_text("arena"), HORIZONTAL_ALIGNMENT_CENTER, arena_button.size.x - 12.0 * unit, int(13.0 * unit), Color.WHITE)
 
-	# Friends stays isolated on the right side of the mascot.
 	var friend_button := home_mode_rect(1, viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), friend_button.grow(5.0 * unit))
 	draw_style_box(make_box(Color("315fd0"), 16.0), friend_button)
@@ -6409,12 +6413,12 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 22.0), play_rect.grow((5.0 + pulse * 2.0) * unit))
 	draw_style_box(make_box(Color("f6aa20"), 20.0), play_rect)
-	var play_center := play_rect.position + Vector2(52.0, play_rect.size.y * 0.5)
-	draw_circle(play_center, 30.0 * unit, Color("df7b12"))
-	draw_home_mode_icon(2, play_center, unit * 1.1)
-	var play_text_x := play_rect.position.x + 96.0 * unit
-	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.46), "שחק" if ui_language == "he" else "PLAY", HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x - 104.0 * unit, int(28.0 * unit), Color.WHITE)
-	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.72), ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x - 104.0 * unit, int(10.0 * unit), Color("fff4cf"))
+	var play_center := play_rect.position + Vector2(play_rect.size.x * 0.22, play_rect.size.y * 0.42)
+	draw_circle(play_center, 24.0 * unit, Color("df7b12"))
+	draw_home_mode_icon(2, play_center, unit)
+	var play_text_x := play_rect.position.x + play_rect.size.x * 0.40
+	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.44), "שחק" if ui_language == "he" else "PLAY", HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x * 0.56, int(24.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.72), ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x * 0.56, int(9.0 * unit), Color("fff4cf"))
 
 	# Collection shortcuts stay close to the hero character.
 	var nav_labels := [ui_text("shop"), ui_text("rewards")]
