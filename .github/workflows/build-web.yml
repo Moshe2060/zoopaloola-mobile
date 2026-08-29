@@ -124,6 +124,7 @@ jobs:
           sed -i -E 's#("start_url"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"./"#' "$MANIFEST_PATH"
           grep -Eq '"start_url"[[:space:]]*:[[:space:]]*"\./"' "$MANIFEST_PATH"
           cp "$GITHUB_WORKSPACE/download.html" build/web/download.html
+          cp "$GITHUB_WORKSPACE/firebase-messaging-sw.js" build/web/firebase-messaging-sw.js
           cp /tmp/zoopaloola-improvements.zip build/web/zoopaloola-improvements.zip
           test -s build/web/zoopaloola-improvements.zip
           touch build/web/.nojekyll

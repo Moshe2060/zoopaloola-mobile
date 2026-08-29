@@ -14,8 +14,48 @@ const LOBBY_CHAT_LIMIT = 40;
 const presenceByPublicId = new Map();
 const leaderboard = new Map();
 const pendingInvites = new Map();
+const fcmTokens = new Map();
 const INVITE_TTL_MS = 15 * 60 * 1000;
 const LEADERBOARD_LIMIT = 80;
+const FCM_TOKEN_LIMIT = 4;
+
+async function sendFcmPush(publicId, notification, data = {}) {
+  const serverKey = process.env.FCM_SERVER_KEY;
+  if (!serverKey) return;
+  const tokens = fcmTokens.get(publicId) || [];
+  if (!tokens.length) return;
+  const body = JSON.stringify({
+    registration_ids: tokens,
+    notification,
+    data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
+    priority: "high"
+  });
+  try {
+    const response = await fetch("https://fcm.googleapis.com/fcm/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `key=${serverKey}`
+      },
+      body
+    });
+    if (!response.ok) return;
+    const result = await response.json();
+    const invalid = new Set();
+    if (Array.isArray(result.results)) {
+      result.results.forEach((item, index) => {
+        if (item.error === "NotRegistered" || item.error === "InvalidRegistration") {
+          invalid.add(tokens[index]);
+        }
+      });
+    }
+    if (invalid.size > 0) {
+      fcmTokens.set(publicId, tokens.filter((token) => !invalid.has(token)));
+    }
+  } catch {
+    // Push delivery is best-effort; offline invites are still queued in memory.
+  }
+}
 
 function normalizePublicId(value) {
   const raw = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
@@ -287,6 +327,21 @@ function handleMessage(socket, payload) {
     return;
   }
 
+  if (payload.type === "register_fcm_token") {
+    const publicId = normalizePublicId(payload.publicId || session.publicId);
+    const token = String(payload.token || "").trim().slice(0, 512);
+    if (!publicId || token.length < 20) {
+      send(socket, { type: "error", code: "INVALID_FCM_TOKEN", message: "Invalid FCM token" });
+      return;
+    }
+    session.publicId = publicId;
+    const existing = fcmTokens.get(publicId) || [];
+    const next = [token, ...existing.filter((item) => item !== token)].slice(0, FCM_TOKEN_LIMIT);
+    fcmTokens.set(publicId, next);
+    send(socket, { type: "fcm_registered", publicId, tokenCount: next.length });
+    return;
+  }
+
   if (payload.type === "register_presence") {
     const publicId = normalizePublicId(payload.publicId);
     if (!publicId) return;
@@ -333,6 +388,19 @@ function handleMessage(socket, payload) {
       queue.push(invite);
       pendingInvites.set(targetPublicId, queue.filter((item) => Date.now() - item.at <= INVITE_TTL_MS).slice(-5));
       send(socket, { type: "invite_sent", targetPublicId, online: false });
+      void sendFcmPush(
+        targetPublicId,
+        {
+          title: "Zoopaloola",
+          body: `${invite.fromName} invited you to play!`
+        },
+        {
+          type: "friend_invite",
+          roomCode: invite.roomCode,
+          fromName: invite.fromName,
+          fromPublicId: invite.fromPublicId
+        }
+      );
     }
     return;
   }

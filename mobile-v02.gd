@@ -105,6 +105,7 @@ const UI_TEXT_HE := {
 	"rating_label": "דירוג", "invite_received": "הזמנה למשחק מ-", "join_invite": "הצטרפות",
 	"invite_sent_online": "ההזמנה נשלחה!", "invite_sent_offline": "ההזמנה ממתינה לחבר",
 	"room_chat": "צ׳אט חדר", "sound_on": "צלילים", "promoted_league": "עליתם לליגה חדשה!",
+	"match_found": "נמצא יריב!", "entering_arena": "נכנסים לזירה...",
 }
 const UI_TEXT_EN := {
 	"player": "PLAYER 1", "level": "LEVEL 1 • ROOKIE EXPLORER",
@@ -145,6 +146,7 @@ const UI_TEXT_EN := {
 	"rating_label": "RATING", "invite_received": "Game invite from ", "join_invite": "JOIN",
 	"invite_sent_online": "Invite sent!", "invite_sent_offline": "Invite queued for friend",
 	"room_chat": "ROOM CHAT", "sound_on": "SOUND", "promoted_league": "You reached a new league!",
+	"match_found": "MATCH FOUND!", "entering_arena": "ENTERING ARENA...",
 }
 const APP_SPLASH := 0
 const APP_HOME := 1
@@ -164,6 +166,8 @@ const FRIEND_WIN_COINS := 25
 const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
 const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
+const ARENA_MATCH_FOUND_DURATION := 2.2
+const FIREBASE_WEB_VAPID_KEY := ""
 var board_texture: Texture2D
 var ui_font: Font
 var lobby_background_texture: Texture2D
@@ -296,6 +300,12 @@ var match_chat_messages: Array = []
 var matchmaking_searching := false
 var pending_find_match := false
 var match_source := "computer"
+var arena_fx_phase := "idle"
+var arena_fx_elapsed := 0.0
+var pending_arena_match: Dictionary = {}
+var arena_matched_opponent: Dictionary = {}
+var fcm_token_registered := ""
+var push_setup_done := false
 var match_finished := false
 var match_result_open := false
 var match_result_winner := -1
@@ -408,6 +418,140 @@ func sync_player_presence() -> void:
 		"leagueTier": player_league_tier
 	})
 	send_multiplayer({"type": "get_leaderboard"})
+	register_fcm_token_with_server()
+
+func setup_push_notifications_web() -> void:
+	if not OS.has_feature("web") or push_setup_done:
+		return
+	push_setup_done = true
+	var vapid := FIREBASE_WEB_VAPID_KEY
+	var script := """
+window.zpPushState = {status: 'loading'};
+window.zpShowNotification = (title, body, data) => {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const note = new Notification(title, {
+      body: body,
+      icon: './zoopaloola-boot-splash-v2.png',
+      badge: './zoopaloola-boot-splash-v2.png',
+      data: data || {}
+    });
+    note.onclick = () => {
+      if (data && data.roomCode) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('room', data.roomCode);
+        window.location.href = url.toString();
+      }
+      window.focus();
+      note.close();
+    };
+  } catch (error) {}
+};
+(async () => {
+  try {
+    if (!('Notification' in window)) {
+      window.zpPushState = {status: 'unsupported'};
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    window.zpPushState = {status: permission};
+    const vapidKey = '__VAPID__';
+    if (!vapidKey || !('serviceWorker' in navigator)) return;
+    const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+    const appSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js');
+    const messagingSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-messaging.js');
+    const config = {
+      apiKey: '__API_KEY__', authDomain: 'zoopaloola-online.firebaseapp.com',
+      projectId: 'zoopaloola-online', storageBucket: 'zoopaloola-online.firebasestorage.app',
+      messagingSenderId: '386401966312', appId: '1:386401966312:web:0e781cb13c98fd6dc3515d'
+    };
+    const app = appSdk.getApps().length ? appSdk.getApps()[0] : appSdk.initializeApp(config);
+    const messaging = messagingSdk.getMessaging(app);
+    const token = await messagingSdk.getToken(messaging, {vapidKey, serviceWorkerRegistration: registration});
+    if (token) {
+      window.zpFcmToken = token;
+      window.zpPushState.fcmToken = token;
+    }
+  } catch (error) {
+    window.zpPushState = {status: 'error', message: String(error && error.message || error)};
+  }
+})();
+""".replace("__API_KEY__", FIREBASE_API_KEY).replace("__VAPID__", vapid)
+	JavaScriptBridge.eval(script, true)
+
+func register_fcm_token_with_server() -> void:
+	if not OS.has_feature("web") or firebase_public_id.is_empty() or multiplayer_state != "connected":
+		return
+	var token := str(JavaScriptBridge.eval("window.zpFcmToken || ''", true)).strip_edges()
+	if token.is_empty() or token == fcm_token_registered:
+		return
+	send_multiplayer({
+		"type": "register_fcm_token",
+		"publicId": firebase_public_id,
+		"token": token,
+		"platform": "web"
+	})
+	fcm_token_registered = token
+
+func show_web_notification(title: String, body: String, data: Dictionary = {}) -> void:
+	if not OS.has_feature("web"):
+		return
+	var payload := JSON.stringify(data)
+	JavaScriptBridge.eval(
+		"window.zpShowNotification && window.zpShowNotification(%s, %s, %s)" % [
+			JSON.stringify(title), JSON.stringify(body), payload
+		],
+		true
+	)
+
+func arena_opponent_data() -> Dictionary:
+	var opponent_slot := 1 - multiplayer_slot if multiplayer_slot >= 0 else 1
+	if opponent_slot >= 0 and opponent_slot < multiplayer_players.size():
+		return multiplayer_players[opponent_slot]
+	return {}
+
+func begin_arena_match_found(payload: Dictionary) -> void:
+	pending_arena_match = payload.duplicate()
+	multiplayer_slot = int(payload.get("slot", multiplayer_slot))
+	turn = int(payload.get("turn", 0))
+	match_source = "arena"
+	matchmaking_searching = false
+	pending_find_match = false
+	arena_fx_phase = "found"
+	arena_fx_elapsed = 0.0
+	arena_matched_opponent = arena_opponent_data()
+	play_sound("invite")
+	queue_redraw()
+
+func apply_match_started(payload: Dictionary) -> void:
+	multiplayer_slot = int(payload.get("slot", multiplayer_slot))
+	turn = int(payload.get("turn", 0))
+	game_mode = "online"
+	match_source = str(payload.get("source", "friend"))
+	if match_source == "arena":
+		var entry: int = int(ARENA_ENTRY_COSTS[clampi(int(payload.get("arena", selected_arena)), 0, ARENA_ENTRY_COSTS.size() - 1)])
+		player_coins = maxi(0, player_coins - entry)
+		save_player_profile()
+	matchmaking_searching = false
+	pending_find_match = false
+	arena_fx_phase = "idle"
+	arena_fx_elapsed = 0.0
+	pending_arena_match = {}
+	arena_matched_opponent = {}
+	app_screen = APP_GAME
+	exit_confirm_open = false
+	chat_open = false
+	match_chat_messages.clear()
+	new_game()
+	turn = int(payload.get("turn", 0))
+	turn_shot_committed = false
+
+func update_arena_fx(delta: float) -> void:
+	if arena_fx_phase == "idle":
+		return
+	arena_fx_elapsed += delta
+	if arena_fx_phase == "found" and arena_fx_elapsed >= ARENA_MATCH_FOUND_DURATION and not pending_arena_match.is_empty():
+		apply_match_started(pending_arena_match)
 
 func multiplayer_payload_stats() -> Dictionary:
 	return {
@@ -484,6 +628,8 @@ func _ready() -> void:
 	load_player_profile()
 	setup_firebase()
 	setup_sound()
+	if OS.has_feature("web"):
+		setup_push_notifications_web()
 	init_home_ambient_particles()
 	update_player_league_tier()
 	room_code_input = LineEdit.new()
@@ -686,6 +832,7 @@ func _process(delta: float) -> void:
 		return
 	if app_screen != APP_GAME:
 		ensure_home_connected()
+		update_arena_fx(delta)
 		if app_screen == APP_HOME:
 			update_home_social_inputs()
 		if menu_notice_time > 0.0:
@@ -3987,6 +4134,10 @@ func poll_multiplayer() -> void:
 			if matchmaking_searching:
 				matchmaking_searching = false
 				pending_find_match = false
+				arena_fx_phase = "idle"
+				arena_fx_elapsed = 0.0
+				pending_arena_match = {}
+				arena_matched_opponent = {}
 		return
 	multiplayer_socket.poll()
 	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN and multiplayer_state == "connecting":
@@ -4028,6 +4179,8 @@ func start_arena_search() -> void:
 	pending_find_match = true
 	matchmaking_searching = true
 	match_source = "arena"
+	arena_fx_phase = "searching"
+	arena_fx_elapsed = 0.0
 	multiplayer_error = ""
 	if multiplayer_state != "connected":
 		connect_multiplayer()
@@ -4038,6 +4191,10 @@ func start_arena_search() -> void:
 func cancel_matchmaking() -> void:
 	pending_find_match = false
 	matchmaking_searching = false
+	arena_fx_phase = "idle"
+	arena_fx_elapsed = 0.0
+	pending_arena_match = {}
+	arena_matched_opponent = {}
 	send_multiplayer({"type": "cancel_match"})
 
 func create_multiplayer_room() -> void:
@@ -4152,6 +4309,9 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			elif pending_find_match:
 				send_find_match()
 			sync_player_presence()
+			register_fcm_token_with_server()
+		"fcm_registered":
+			pass
 		"leaderboard":
 			global_leaderboard = payload.get("entries", [])
 			for i in global_leaderboard.size():
@@ -4167,6 +4327,11 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			}
 			play_sound("invite")
 			show_menu_notice(ui_text("invite_received") + pending_friend_invite.fromName)
+			show_web_notification(
+				"Zoopaloola",
+				ui_text("invite_received") + str(pending_friend_invite.get("fromName", "")),
+				{"roomCode": str(pending_friend_invite.get("roomCode", "")), "type": "friend_invite"}
+			)
 		"invite_sent":
 			var online := bool(payload.get("online", false))
 			show_menu_notice(ui_text("invite_sent_online") if online else ui_text("invite_sent_offline"))
@@ -4195,11 +4360,17 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 		"search_cancelled":
 			matchmaking_searching = false
 			pending_find_match = false
+			arena_fx_phase = "idle"
+			arena_fx_elapsed = 0.0
+			pending_arena_match = {}
+			arena_matched_opponent = {}
 			if str(payload.get("reason", "")) == "timeout":
 				show_menu_notice(ui_text("search_timeout"))
 		"room_state":
 			multiplayer_players = payload.get("players", [])
 			turn = int(payload.get("turn", 0))
+			if arena_fx_phase == "found":
+				arena_matched_opponent = arena_opponent_data()
 			if multiplayer_players.size() > 0:
 				var first_player: Dictionary = multiplayer_players[0]
 				player_animal = int(first_player.get("animal", player_animal))
@@ -4210,23 +4381,10 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 				ai_ring_color = int(second_player.get("ringColor", ai_ring_color))
 			rebuild_team_piece_textures()
 		"match_started":
-			multiplayer_slot = int(payload.get("slot", multiplayer_slot))
-			turn = int(payload.get("turn", 0))
-			game_mode = "online"
-			match_source = str(payload.get("source", "friend"))
-			if match_source == "arena":
-				var entry: int = int(ARENA_ENTRY_COSTS[clampi(int(payload.get("arena", selected_arena)), 0, ARENA_ENTRY_COSTS.size() - 1)])
-				player_coins = maxi(0, player_coins - entry)
-				save_player_profile()
-			matchmaking_searching = false
-			pending_find_match = false
-			app_screen = APP_GAME
-			exit_confirm_open = false
-			chat_open = false
-			match_chat_messages.clear()
-			new_game()
-			turn = int(payload.get("turn", 0))
-			turn_shot_committed = false
+			if str(payload.get("source", "friend")) == "arena":
+				begin_arena_match_found(payload)
+			else:
+				apply_match_started(payload)
 		"shot":
 			var ball_index := int(payload.get("ballIndex", -1))
 			if ball_index >= 0 and ball_index < balls.size() and balls[ball_index].alive:
@@ -4850,13 +5008,49 @@ func draw_arena_preview(preview: Rect2, arena_index: int, unit: float) -> void:
 		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.43, preview.size.y), Color("ff5b2d"), 20.0 * unit, true)
 		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.57, preview.size.y), Color("ffb12b"), 8.0 * unit, true)
 
-func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float) -> void:
+func draw_arena_tunnel_fx(viewport_size: Vector2, intensity: float) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var center := viewport_size * 0.5
+	for ring in 8:
+		var phase := arena_fx_elapsed * (1.4 + float(ring) * 0.18) + float(ring) * 0.7
+		var radius := fmod(phase, 1.0) * maxf(viewport_size.x, viewport_size.y) * 0.62
+		var alpha := (1.0 - fmod(phase, 1.0)) * 0.14 * intensity
+		draw_arc(center, radius, 0.0, TAU, 72, Color("8cecff", alpha), 3.0 * unit, true)
+	for ray in 12:
+		var angle := arena_fx_elapsed * 0.9 + float(ray) * TAU / 12.0
+		var length := maxf(viewport_size.x, viewport_size.y) * 0.55
+		var end := center + Vector2(cos(angle), sin(angle)) * length
+		draw_line(center, end, Color("ffe25d", 0.03 * intensity), 2.0 * unit, true)
+
+func draw_arena_match_found_flash(viewport_size: Vector2) -> void:
+	if arena_fx_phase != "found":
+		return
+	var progress := clampf(arena_fx_elapsed / ARENA_MATCH_FOUND_DURATION, 0.0, 1.0)
+	var flash := 0.0
+	if progress < 0.18:
+		flash = 1.0 - progress / 0.18
+	elif progress > 0.82:
+		flash = (progress - 0.82) / 0.18
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(1.0, 0.96, 0.72, flash * 0.42))
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var banner := Rect2(viewport_size.x * 0.22, 34.0 * unit, viewport_size.x * 0.56, 72.0 * unit)
+	var pulse := 0.92 + sin(arena_fx_elapsed * 8.0) * 0.08
+	draw_style_box(make_box(Color("ffe25d", 0.92 * pulse), 20.0 * unit), banner)
+	draw_string(ui_font, banner.position + Vector2(0.0, 48.0) * unit, ui_text("match_found"), HORIZONTAL_ALIGNMENT_CENTER, banner.size.x, int(34.0 * unit), Color("173249"))
+	if progress > 0.45:
+		draw_string(ui_font, Vector2(0.0, banner.end.y + 18.0 * unit), ui_text("entering_arena"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
+
+func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float, opponent: Dictionary = {}) -> void:
 	var accent: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)] if is_local_player else Color("3fb6df")
-	draw_style_box(make_box(Color(0.01, 0.04, 0.08, 0.94), 24.0 * unit), rect.grow(7.0 * unit))
+	if not is_local_player and not opponent.is_empty():
+		accent = RING_COLORS[clampi(int(opponent.get("ringColor", 2)), 0, RING_COLORS.size() - 1)]
+	var card_glow := 7.0
+	if not is_local_player and arena_fx_phase == "found":
+		card_glow = 7.0 + sin(arena_fx_elapsed * 7.0) * 4.0
+	draw_style_box(make_box(Color(0.01, 0.04, 0.08, 0.94), 24.0 * unit), rect.grow(card_glow * unit))
 	draw_style_box(make_box(Color("f5f2df"), 20.0 * unit), rect)
 	var portrait := Rect2(rect.position + Vector2(15.0, 15.0) * unit, Vector2(rect.size.x - 30.0 * unit, rect.size.y - 96.0 * unit))
 	draw_style_box(make_box(accent.darkened(0.42), 16.0 * unit), portrait)
-	# A soft pool glow makes both cards feel like parts of the same search.
 	draw_circle(portrait.get_center(), 112.0 * unit, Color(accent, 0.23))
 	if is_local_player:
 		var hero: Texture2D = null
@@ -4870,54 +5064,91 @@ func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float) -> v
 		elif full_body_animal_textures[player_animal] != null:
 			draw_texture_rect(full_body_animal_textures[player_animal], portrait.grow(-22.0 * unit), false)
 	else:
-		# Cycle silhouettes while searching to suggest many possible opponents,
-		# but never pretend that a specific player has already been found.
-		var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
-		var preview_texture: Texture2D = full_body_animal_textures[preview_animal]
-		if preview_texture != null:
-			var silhouette_size := Vector2(190.0, 250.0) * unit
-			draw_texture_rect(preview_texture, Rect2(portrait.get_center() - silhouette_size * 0.5 + Vector2(0.0, 12.0) * unit, silhouette_size), false, Color(0.04, 0.12, 0.18, 0.72))
-		draw_circle(portrait.get_center() + Vector2(0.0, 5.0) * unit, 40.0 * unit, Color(0.03, 0.08, 0.12, 0.78))
-		draw_string(ui_font, portrait.get_center() + Vector2(-31.0, 20.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, 62.0 * unit, int(54.0 * unit), Color.WHITE)
+		var matched := not opponent.is_empty()
+		if matched:
+			var opponent_animal := clampi(int(opponent.get("animal", 0)), 0, ANIMAL_NAMES.size() - 1)
+			var opponent_ring := clampi(int(opponent.get("ringColor", 0)), 0, RING_COLORS.size() - 1)
+			var hero: Texture2D = null
+			if opponent_animal >= 0 and opponent_animal < lifebuoy_hero_textures.size():
+				var colors: Array = lifebuoy_hero_textures[opponent_animal]
+				if opponent_ring >= 0 and opponent_ring < colors.size():
+					hero = colors[opponent_ring] as Texture2D
+			if hero != null:
+				var hero_size := Vector2(210.0, 270.0) * unit
+				draw_texture_rect(hero, Rect2(portrait.get_center() - hero_size * 0.5 + Vector2(0.0, 8.0) * unit, hero_size), false)
+			elif opponent_animal < full_body_animal_textures.size() and full_body_animal_textures[opponent_animal] != null:
+				draw_texture_rect(full_body_animal_textures[opponent_animal], portrait.grow(-22.0 * unit), false)
+		else:
+			# Cycle silhouettes while searching to suggest many possible opponents,
+			# but never pretend that a specific player has already been found.
+			var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
+			var preview_texture: Texture2D = full_body_animal_textures[preview_animal]
+			if preview_texture != null:
+				var silhouette_size := Vector2(190.0, 250.0) * unit
+				draw_texture_rect(preview_texture, Rect2(portrait.get_center() - silhouette_size * 0.5 + Vector2(0.0, 12.0) * unit, silhouette_size), false, Color(0.04, 0.12, 0.18, 0.72))
+			draw_circle(portrait.get_center() + Vector2(0.0, 5.0) * unit, 40.0 * unit, Color(0.03, 0.08, 0.12, 0.78))
+			draw_string(ui_font, portrait.get_center() + Vector2(-31.0, 20.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, 62.0 * unit, int(54.0 * unit), Color.WHITE)
 	var name_bar := Rect2(rect.position + Vector2(0.0, rect.size.y - 70.0 * unit), Vector2(rect.size.x, 70.0 * unit))
 	draw_style_box(make_box(Color("ffffff"), 0.0), name_bar)
 	var card_name := profile_name if is_local_player else ("מחפשים..." if ui_language == "he" else "SEARCHING...")
+	if not is_local_player and not opponent.is_empty():
+		card_name = str(opponent.get("name", card_name))
 	draw_string(ui_font, name_bar.position + Vector2(10.0, 31.0) * unit, card_name, HORIZONTAL_ALIGNMENT_CENTER, name_bar.size.x - 20.0 * unit, int(21.0 * unit), Color("173249"))
 	var detail := player_level_label() if is_local_player else ("יריב מתאים יצטרף בקרוב" if ui_language == "he" else "A MATCHED OPPONENT WILL APPEAR")
+	if not is_local_player and not opponent.is_empty():
+		detail = ("דירוג: %d" if ui_language == "he" else "RATING: %d") % int(opponent.get("rating", 1000))
 	draw_string(ui_font, name_bar.position + Vector2(10.0, 54.0) * unit, detail, HORIZONTAL_ALIGNMENT_CENTER, name_bar.size.x - 20.0 * unit, int(11.0 * unit), Color("5f7180"))
 	var badge_center := rect.position + Vector2(24.0, 24.0) * unit
 	draw_circle(badge_center, 23.0 * unit, Color("ffe25d") if is_local_player else Color("59d7f0"))
-	draw_string(ui_font, badge_center + Vector2(-18.0, 7.0) * unit, str(player_level) if is_local_player else "?", HORIZONTAL_ALIGNMENT_CENTER, 36.0 * unit, int(17.0 * unit), Color("173249"))
+	var badge_value := str(player_level) if is_local_player else "?"
+	if not is_local_player and not opponent.is_empty():
+		badge_value = str(int(opponent.get("level", 1)))
+	draw_string(ui_font, badge_center + Vector2(-18.0, 7.0) * unit, badge_value, HORIZONTAL_ALIGNMENT_CENTER, 36.0 * unit, int(17.0 * unit), Color("173249"))
 
 func draw_arena_search_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_arena_tunnel_fx(viewport_size, 1.0 if arena_fx_phase == "searching" else 1.35)
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.005, 0.035, 0.07, 0.70))
-	draw_frontend_header(viewport_size, "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT", "זירה אונליין" if ui_language == "he" else "ONLINE ARENA")
+	var header_title := "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT"
+	if arena_fx_phase == "found":
+		header_title = ui_text("match_found")
+	draw_frontend_header(viewport_size, header_title, "זירה אונליין" if ui_language == "he" else "ONLINE ARENA")
 	var card_size := Vector2(300.0, 390.0) * unit
 	var gap := 105.0 * unit
 	var total_width := card_size.x * 2.0 + gap
 	var start_x := (viewport_size.x - total_width) * 0.5
 	var card_y := 132.0 * unit
+	if arena_fx_phase == "found":
+		var snap := 1.0 - pow(1.0 - clampf(arena_fx_elapsed / 0.45, 0.0, 1.0), 3.0)
+		card_y = lerpf(180.0 * unit, 132.0 * unit, snap)
 	var local_card := Rect2(Vector2(start_x, card_y), card_size)
 	var opponent_card := Rect2(Vector2(start_x + card_size.x + gap, card_y), card_size)
+	var opponent_data := arena_matched_opponent if arena_fx_phase == "found" else {}
 	draw_matchmaking_card(local_card, true, unit)
-	draw_matchmaking_card(opponent_card, false, unit)
+	draw_matchmaking_card(opponent_card, false, unit, opponent_data)
 	var vs_center := Vector2(viewport_size.x * 0.5, card_y + card_size.y * 0.48)
-	draw_circle(vs_center, (62.0 + sin(menu_elapsed * 3.0) * 4.0) * unit, Color(0.02, 0.08, 0.13, 0.92))
-	draw_circle(vs_center, 55.0 * unit, Color("7bdc1f"), false, 7.0 * unit, true)
+	var vs_pulse := 62.0 + sin(menu_elapsed * 3.0) * 4.0
+	if arena_fx_phase == "found":
+		vs_pulse = 68.0 + sin(arena_fx_elapsed * 9.0) * 8.0
+	draw_circle(vs_center, vs_pulse * unit, Color(0.02, 0.08, 0.13, 0.92))
+	draw_circle(vs_center, 55.0 * unit, Color("7bdc1f") if arena_fx_phase != "found" else Color("ffe25d"), false, 7.0 * unit, true)
 	draw_string(ui_font, vs_center + Vector2(-58.0, 20.0) * unit, "VS", HORIZONTAL_ALIGNMENT_CENTER, 116.0 * unit, int(48.0 * unit), Color("b6f13f"))
 	var dots: String = [".", "..", "..."][int(menu_elapsed * 2.2) % 3]
-	draw_string(ui_font, Vector2(0.0, 566.0 * unit), ("מחפשים יריב מתאים" if ui_language == "he" else "SEARCHING FOR A MATCH") + dots, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(22.0 * unit), Color("ffe25d"))
+	var status_line := ("מחפשים יריב מתאים" if ui_language == "he" else "SEARCHING FOR A MATCH") + dots
+	if arena_fx_phase == "found":
+		status_line = str(opponent_data.get("name", "")) + (" מוכן לקרב!" if ui_language == "he" else " is ready!")
+	draw_string(ui_font, Vector2(0.0, 566.0 * unit), status_line, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(22.0 * unit), Color("ffe25d"))
 	var arena_names := [ui_text("sakura"), ui_text("bamboo"), ui_text("volcano")]
 	draw_string(ui_font, Vector2(0.0, 598.0 * unit), ("הזירה שנבחרה: " if ui_language == "he" else "SELECTED ARENA: ") + arena_names[clampi(selected_arena, 0, 2)], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(14.0 * unit), Color("c9edf7"))
 	var cancel := arena_play_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.92), 18.0 * unit), cancel.grow(5.0 * unit))
 	draw_style_box(make_box(Color("d94b45"), 16.0 * unit), cancel)
 	draw_string(ui_font, cancel.position + Vector2(0.0, 38.0) * unit, ui_text("cancel_search"), HORIZONTAL_ALIGNMENT_CENTER, cancel.size.x, int(20.0 * unit), Color.WHITE)
+	draw_arena_match_found_flash(viewport_size)
 
 func draw_arena_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	if matchmaking_searching:
+	if matchmaking_searching or arena_fx_phase == "found":
 		draw_arena_search_screen(viewport_size)
 		return
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.42))
@@ -4929,9 +5160,12 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 	for i in 3:
 		var card := arena_card_rect(i, viewport_size)
 		var selected := i == selected_arena
+		var pulse := sin(menu_elapsed * 4.2 + float(i) * 0.8) * 3.0 if selected else 0.0
 		var border := Color("ffe25d") if selected else Color(0.02, 0.07, 0.12, 0.92)
-		draw_style_box(make_box(border, 25.0 * unit), card.grow((8.0 if selected else 5.0) * unit))
+		draw_style_box(make_box(border, 25.0 * unit), card.grow((8.0 + pulse if selected else 5.0) * unit))
 		draw_style_box(make_box(Color("f8f2cf"), 22.0 * unit), card)
+		if selected:
+			draw_style_box(make_box(Color("ffe25d", 0.18 + sin(menu_elapsed * 5.0) * 0.08), 24.0 * unit), card.grow(10.0 * unit))
 		var preview := Rect2(card.position + Vector2(15.0, 15.0) * unit, Vector2(card.size.x - 30.0 * unit, 205.0 * unit))
 		draw_style_box(make_box(card_colors[i], 17.0 * unit), preview.grow(3.0 * unit))
 		draw_arena_preview(preview, i, unit)

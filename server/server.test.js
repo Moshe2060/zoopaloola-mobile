@@ -225,6 +225,25 @@ test("invite_friend delivers to online player", async (context) => {
   assert.equal(invite.fromName, "Host");
 });
 
+test("register_fcm_token stores token for offline push delivery", async (context) => {
+  const port = 11244;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const client = await connect(port);
+  context.after(() => client.close());
+
+  const registeredPromise = next(client, "fcm_registered");
+  client.send(JSON.stringify({
+    type: "register_fcm_token",
+    publicId: "ZP-PUSHTEST",
+    token: "fcm-token-abcdefghijklmnopqrstuvwxyz"
+  }));
+  const registered = await registeredPromise;
+  assert.equal(registered.publicId, "ZP-PUSHTEST");
+  assert.equal(registered.tokenCount, 1);
+});
+
 test("browser securely returns Google auth to the waiting Android client", async (context) => {
   const port = 11240;
   const child = await startServer(port);
