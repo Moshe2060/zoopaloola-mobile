@@ -3390,10 +3390,6 @@ func home_settings_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(viewport_size.x - 78.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
 
-func home_settings_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(viewport_size.x - 78.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
-
 func home_help_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(viewport_size.x - 198.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
