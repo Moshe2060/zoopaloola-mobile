@@ -15,9 +15,11 @@ const presenceByPublicId = new Map();
 const leaderboard = new Map();
 const pendingInvites = new Map();
 const fcmTokens = new Map();
+const friendsByPublicId = new Map();
 const INVITE_TTL_MS = 15 * 60 * 1000;
 const LEADERBOARD_LIMIT = 80;
 const FCM_TOKEN_LIMIT = 4;
+const FRIENDS_LIMIT = 30;
 
 async function sendFcmPush(publicId, notification, data = {}) {
   const serverKey = process.env.FCM_SERVER_KEY;
@@ -88,6 +90,84 @@ function leaderboardSnapshot(limit = 10) {
     .sort((a, b) => b.rating - a.rating || b.wins - a.wins)
     .slice(0, limit)
     .map((item, index) => ({ rank: index + 1, ...item }));
+}
+
+function friendIds(publicId) {
+  if (!friendsByPublicId.has(publicId)) friendsByPublicId.set(publicId, new Set());
+  return friendsByPublicId.get(publicId);
+}
+
+function friendProfile(publicId) {
+  const normalized = normalizePublicId(publicId);
+  const entry = leaderboard.get(normalized);
+  return {
+    id: normalized,
+    name: entry?.name || normalized,
+    rating: entry?.rating ?? 1000,
+    wins: entry?.wins ?? 0,
+    losses: entry?.losses ?? 0,
+    leagueTier: entry?.leagueTier ?? 0,
+    online: presenceByPublicId.has(normalized)
+  };
+}
+
+function friendsSnapshot(publicId) {
+  return [...friendIds(publicId)].map((friendId) => friendProfile(friendId));
+}
+
+function sendFriendsList(socket, publicId) {
+  send(socket, { type: "friends_list", friends: friendsSnapshot(publicId) });
+}
+
+function addFriendship(fromPublicId, targetPublicId) {
+  const fromId = normalizePublicId(fromPublicId);
+  const targetId = normalizePublicId(targetPublicId);
+  if (!fromId || !targetId || fromId === targetId) return { ok: false, code: "INVALID" };
+  if (!leaderboard.has(targetId) && !presenceByPublicId.has(targetId)) {
+    return { ok: false, code: "NOT_FOUND" };
+  }
+  const fromFriends = friendIds(fromId);
+  const targetFriends = friendIds(targetId);
+  if (fromFriends.has(targetId)) return { ok: false, code: "EXISTS" };
+  if (fromFriends.size >= FRIENDS_LIMIT) return { ok: false, code: "LIMIT" };
+  fromFriends.add(targetId);
+  targetFriends.add(fromId);
+  return { ok: true, friend: friendProfile(targetId) };
+}
+
+function removeFriendship(publicId, targetPublicId) {
+  const fromId = normalizePublicId(publicId);
+  const targetId = normalizePublicId(targetPublicId);
+  if (!fromId || !targetId) return false;
+  const removed = friendIds(fromId).delete(targetId);
+  friendIds(targetId).delete(fromId);
+  return removed;
+}
+
+function notifyFriendAdded(targetPublicId, friendPublicId, fromName) {
+  const targetSocket = presenceByPublicId.get(normalizePublicId(targetPublicId));
+  if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+    sendFriendsList(targetSocket, targetPublicId);
+    send(targetSocket, {
+      type: "friend_added_notify",
+      friend: friendProfile(friendPublicId),
+      fromName: String(fromName || friendProfile(friendPublicId).name).slice(0, 24)
+    });
+    return true;
+  }
+  void sendFcmPush(
+    normalizePublicId(targetPublicId),
+    {
+      title: "Zoopaloola",
+      body: `${String(fromName || "A player").slice(0, 24)} added you as a friend!`
+    },
+    {
+      type: "friend_added",
+      fromPublicId: normalizePublicId(friendPublicId),
+      fromName: String(fromName || "Player").slice(0, 24)
+    }
+  );
+  return false;
 }
 
 function deliverPendingInvites(socket, publicId) {
@@ -357,6 +437,65 @@ function handleMessage(socket, payload) {
     });
     deliverPendingInvites(socket, publicId);
     send(socket, { type: "leaderboard", entries: leaderboardSnapshot(12) });
+    sendFriendsList(socket, publicId);
+    return;
+  }
+
+  if (payload.type === "get_friends") {
+    const publicId = normalizePublicId(payload.publicId || session.publicId);
+    if (!publicId) return;
+    sendFriendsList(socket, publicId);
+    return;
+  }
+
+  if (payload.type === "add_friend") {
+    const fromPublicId = normalizePublicId(payload.fromPublicId || session.publicId);
+    const targetPublicId = normalizePublicId(payload.targetPublicId);
+    const fromName = String(payload.fromName || "Player").slice(0, 24);
+    if (!fromPublicId || !targetPublicId) {
+      send(socket, { type: "friend_add_result", ok: false, code: "INVALID" });
+      return;
+    }
+    upsertLeaderboard({
+      publicId: fromPublicId,
+      name: fromName,
+      rating: payload.rating,
+      wins: payload.wins,
+      losses: payload.losses,
+      leagueTier: payload.leagueTier
+    });
+    const result = addFriendship(fromPublicId, targetPublicId);
+    if (!result.ok) {
+      send(socket, { type: "friend_add_result", ok: false, code: result.code, targetPublicId });
+      return;
+    }
+    sendFriendsList(socket, fromPublicId);
+    send(socket, { type: "friend_add_result", ok: true, friend: result.friend });
+    notifyFriendAdded(targetPublicId, fromPublicId, fromName);
+    return;
+  }
+
+  if (payload.type === "remove_friend") {
+    const fromPublicId = normalizePublicId(payload.fromPublicId || session.publicId);
+    const targetPublicId = normalizePublicId(payload.targetPublicId);
+    if (!fromPublicId || !targetPublicId) return;
+    if (removeFriendship(fromPublicId, targetPublicId)) {
+      sendFriendsList(socket, fromPublicId);
+      const targetSocket = presenceByPublicId.get(targetPublicId);
+      if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+        sendFriendsList(targetSocket, targetPublicId);
+      }
+    }
+    return;
+  }
+
+  if (payload.type === "get_friend_profile") {
+    const publicId = normalizePublicId(payload.publicId);
+    if (!publicId || !leaderboard.has(publicId)) {
+      send(socket, { type: "friend_profile", ok: false, publicId });
+      return;
+    }
+    send(socket, { type: "friend_profile", ok: true, profile: friendProfile(publicId) });
     return;
   }
 

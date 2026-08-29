@@ -225,6 +225,47 @@ test("invite_friend delivers to online player", async (context) => {
   assert.equal(invite.fromName, "Host");
 });
 
+test("add_friend syncs both players and delivers friend list", async (context) => {
+  const port = 11245;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const first = await connect(port);
+  const second = await connect(port);
+  context.after(() => first.close());
+  context.after(() => second.close());
+
+  first.send(JSON.stringify({ type: "register_presence", publicId: "ZP-PLAYER01", name: "Moshe", rating: 1200, wins: 3, losses: 1 }));
+  await next(first, "leaderboard");
+  second.send(JSON.stringify({ type: "register_presence", publicId: "ZP-PLAYER02", name: "Friend", rating: 1100, wins: 2, losses: 2 }));
+  await next(second, "leaderboard");
+
+  const firstListPromise = next(first, "friends_list");
+  const resultPromise = next(first, "friend_add_result");
+  const secondListPromise = next(second, "friends_list");
+  const notifyPromise = next(second, "friend_added_notify");
+  first.send(JSON.stringify({
+    type: "add_friend",
+    fromPublicId: "ZP-PLAYER01",
+    targetPublicId: "ZP-PLAYER02",
+    fromName: "Moshe",
+    rating: 1200,
+    wins: 3,
+    losses: 1,
+    leagueTier: 1
+  }));
+  const firstList = await firstListPromise;
+  const result = await resultPromise;
+  const secondList = await secondListPromise;
+  const notify = await notifyPromise;
+  assert.equal(firstList.friends.length, 1);
+  assert.equal(result.ok, true);
+  assert.equal(result.friend.name, "Friend");
+  assert.equal(notify.friend.name, "Moshe");
+  assert.equal(secondList.friends.length, 1);
+  assert.equal(secondList.friends[0].name, "Moshe");
+});
+
 test("register_fcm_token stores token for offline push delivery", async (context) => {
   const port = 11244;
   const child = await startServer(port);
