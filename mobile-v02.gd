@@ -3364,27 +3364,28 @@ func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 
 func home_layout(viewport_size: Vector2) -> Dictionary:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var header_h := 96.0 * unit
-	var left_x := 18.0 * unit
-	var left_w := 164.0 * unit
-	var right_w := 258.0 * unit
-	var right_x := viewport_size.x - right_w - 14.0 * unit
-	var bottom_bar_h := 88.0 * unit
-	var content_top := header_h + 10.0 * unit
-	var content_bottom := viewport_size.y - bottom_bar_h - 12.0 * unit
-	var center_left := left_x + left_w + 16.0 * unit
-	var center_right := right_x - 16.0 * unit
-	var center_w := maxf(140.0 * unit, center_right - center_left)
-	var stats_h := 58.0 * unit
-	var rail_button_h := 74.0 * unit
-	var rail_gap := 10.0 * unit
-	var rail_start_y := content_top + stats_h + 10.0 * unit
+	var header_h := 78.0 * unit
+	var left_x := 10.0 * unit
+	var left_w := 82.0 * unit
+	var right_w := 252.0 * unit
+	var right_x := viewport_size.x - right_w - 8.0 * unit
+	var bottom_bar_h := 104.0 * unit
+	var dock_h := 54.0 * unit
+	var content_top := header_h + 6.0 * unit
+	var content_bottom := viewport_size.y - bottom_bar_h - 10.0 * unit
+	var center_left := left_x + left_w + 12.0 * unit
+	var center_right := right_x - 10.0 * unit
+	var center_w := maxf(160.0 * unit, center_right - center_left)
+	var stats_h := 52.0 * unit
+	var rail_button_h := 68.0 * unit
+	var rail_gap := 8.0 * unit
+	var rail_start_y := content_top + stats_h + 6.0 * unit
 	var bottom_y := viewport_size.y - bottom_bar_h - 4.0 * unit
-	var bottom_button_h := 78.0 * unit
-	var play_w := minf(292.0 * unit, center_w * 0.52)
-	var friend_w := minf(196.0 * unit, center_w * 0.34)
+	var bottom_button_h := 90.0 * unit
+	var play_w := minf(348.0 * unit, center_w * 0.56)
+	var friend_w := minf(188.0 * unit, center_w * 0.30)
 	var play_x := center_right - play_w
-	var friend_x := center_left + maxf(0.0, (center_w - friend_w - play_w - 18.0 * unit) * 0.5)
+	var friend_x := play_x - friend_w - 12.0 * unit
 	return {
 		"unit": unit,
 		"header_h": header_h,
@@ -3403,6 +3404,7 @@ func home_layout(viewport_size: Vector2) -> Dictionary:
 		"rail_start_y": rail_start_y,
 		"bottom_y": bottom_y,
 		"bottom_button_h": bottom_button_h,
+		"dock_h": dock_h,
 		"play_w": play_w,
 		"friend_w": friend_w,
 		"play_x": play_x,
@@ -3452,7 +3454,7 @@ func player_google_rect(viewport_size: Vector2) -> Rect2:
 
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
+	return Rect2(12.0 * unit, 14.0 * unit, 300.0 * unit, 62.0 * unit)
 
 func home_top_control_rects(viewport_size: Vector2) -> Dictionary:
 	var layout := home_layout(viewport_size)
@@ -3654,8 +3656,12 @@ func draw_tutorial_overlay(viewport_size: Vector2) -> void:
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var layout := home_layout(viewport_size)
-	var y: float = layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index + 1)
-	return Rect2(layout.left_x, y, layout.left_w, layout.rail_button_h)
+	var unit: float = layout.unit
+	var dock_y: float = layout.bottom_y - layout.dock_h - 10.0 * unit
+	var button_w: float = 124.0 * unit
+	var gap: float = 10.0 * unit
+	var start_x: float = layout.center_left + 6.0 * unit
+	return Rect2(start_x + float(index) * (button_w + gap), dock_y, button_w, layout.dock_h)
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var layout := home_layout(viewport_size)
@@ -3664,10 +3670,10 @@ func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var center_w: float = layout.center_w
 	var content_top: float = layout.content_top
 	var content_bottom: float = layout.content_bottom
-	var char_w: float = minf(300.0 * unit, center_w * 0.88)
-	var char_h: float = minf(390.0 * unit, (content_bottom - content_top) * 0.72)
-	var char_x: float = center_left + (center_w - char_w) * 0.5
-	var char_y: float = content_top + 6.0 * unit
+	var char_w: float = minf(400.0 * unit, center_w * 1.02)
+	var char_h: float = minf(480.0 * unit, (content_bottom - content_top) * 0.92)
+	var char_x: float = center_left + center_w * 0.06
+	var char_y: float = content_top + 2.0 * unit
 	return Rect2(char_x, char_y, char_w, char_h)
 
 func draw_home_ambient_effects(viewport_size: Vector2) -> void:
@@ -3690,8 +3696,8 @@ func draw_pending_invite_banner(viewport_size: Vector2) -> void:
 	if pending_friend_invite.is_empty():
 		return
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var banner := Rect2(viewport_size.x * 0.28, 102.0 * unit, viewport_size.x * 0.44, 54.0 * unit)
-	draw_style_box(make_box(Color("e94f78"), 16.0 * unit), banner)
+	var banner := Rect2(viewport_size.x * 0.26, 88.0 * unit, viewport_size.x * 0.48, 56.0 * unit)
+	draw_ml_glass_panel(banner, Color("e94f78"), unit, 0.88)
 	var text := ui_text("invite_received") + str(pending_friend_invite.get("fromName", ""))
 	draw_string(ui_font, banner.position + Vector2(16.0 * unit, 22.0 * unit), text, HORIZONTAL_ALIGNMENT_LEFT, banner.size.x - 130.0 * unit, int(14.0 * unit), Color.WHITE)
 	var join_rect := Rect2(banner.end.x - 112.0 * unit, banner.position.y + 10.0 * unit, 96.0 * unit, 34.0 * unit)
@@ -3702,7 +3708,7 @@ func home_invite_join_rect(viewport_size: Vector2) -> Rect2:
 	if pending_friend_invite.is_empty():
 		return Rect2()
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var banner := Rect2(viewport_size.x * 0.28, 102.0 * unit, viewport_size.x * 0.44, 54.0 * unit)
+	var banner := Rect2(viewport_size.x * 0.26, 88.0 * unit, viewport_size.x * 0.48, 56.0 * unit)
 	return Rect2(banner.end.x - 112.0 * unit, banner.position.y + 10.0 * unit, 96.0 * unit, 34.0 * unit)
 
 func accept_pending_friend_invite() -> void:
@@ -5461,6 +5467,9 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			else:
 				app_screen = APP_REWARDS
 			return
+		if home_rail_promo_rect(viewport_size).has_point(screen_pos):
+			app_screen = APP_REWARDS
+			return
 		if home_mode_rect(0, viewport_size).has_point(screen_pos):
 			app_screen = APP_ARENA
 			return
@@ -6152,9 +6161,8 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 func draw_home_social_panel(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var panel := home_social_panel_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.13, 0.93), 22.0 * unit), panel.grow(5.0 * unit))
-	draw_style_box(make_box(Color(0.04, 0.12, 0.20, 0.97), 20.0 * unit), panel)
-	draw_string(ui_font, panel.position + Vector2(0.0, 34.0) * unit, ui_text("social_hub"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(18.0 * unit), Color("f6d365"))
+	draw_ml_glass_panel(panel, Color("f6d365"), unit, 0.80)
+	draw_string(ui_font, panel.position + Vector2(0.0, 30.0) * unit, ui_text("social_hub"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(17.0 * unit), Color("ffe25d"))
 	for tab in 3:
 		var tab_rect := home_social_tab_rect(tab, viewport_size)
 		var selected := tab == home_social_tab
@@ -6278,28 +6286,16 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var layout := home_layout(viewport_size)
 	var unit: float = layout.unit
 	draw_home_ambient_effects(viewport_size)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.10))
-	draw_rect(Rect2(0.0, 0.0, viewport_size.x, layout.header_h), Color(0.015, 0.055, 0.12, 0.94))
-	draw_rect(Rect2(0.0, layout.header_h - 4.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
-	var left_bg_w: float = layout.left_x + layout.left_w + 10.0 * unit
-	draw_rect(Rect2(0.0, layout.header_h, left_bg_w, viewport_size.y - layout.header_h), Color(0.01, 0.05, 0.10, 0.20))
-	var stats_strip := home_stats_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.90), 16.0 * unit), stats_strip)
-	draw_string(ui_font, stats_strip.position + Vector2(12.0, 22.0) * unit, ("ניצחונות: %d" if ui_language == "he" else "WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(13.0 * unit), Color.WHITE)
-	draw_string(ui_font, stats_strip.position + Vector2(12.0, 40.0) * unit, ("רצף: %d" if ui_language == "he" else "STREAK: %d") % player_current_streak, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(12.0 * unit), Color("8cecff"))
-	draw_string(ui_font, stats_strip.position + Vector2(12.0, 54.0) * unit, league_name(player_league_tier) + " • " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(11.0 * unit), Color("ffe25d"))
+	draw_home_ml_vignette(viewport_size, unit)
 
-	# Full-body hero with the selected lifebuoy wrapped around its waist.
+	# Hero stage — large character like Mobile Legends lobby.
 	var character_area := home_character_rect(viewport_size)
 	var idle_phase := menu_elapsed * 1.55
-	# Keep the soles slightly inside the visible top plane so the idle motion
-	# never makes the animal appear to float above the wooden stage.
 	var hero_size := character_area.size
 	var ground_offset: float = hero_size.y * float(HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)])
 	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.425 + 12.0 * unit + ground_offset)
-	var breathe := 1.0 + sin(idle_phase) * 0.006
-	# Keep only a tiny idle movement so the feet stay planted on the stage.
-	var gentle_float := sin(idle_phase * 0.72) * 0.45 * unit
+	var breathe := 1.0 + sin(idle_phase) * 0.008
+	var gentle_float := sin(idle_phase * 0.72) * 0.55 * unit
 	var animated_center := hero_center + Vector2(0.0, gentle_float)
 	var waist_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.58 + gentle_float)
 	var ring_radius := 96.0 * unit
@@ -6307,128 +6303,73 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
 	var hand_color: Color = HERO_HAND_COLORS[clampi(player_animal, 0, HERO_HAND_COLORS.size() - 1)]
 	var podium_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.94)
-	draw_wood_podium(podium_center, unit, true)
+	draw_circle(podium_center + Vector2(0.0, 18.0 * unit), 120.0 * unit, Color(0.02, 0.06, 0.12, 0.35))
+	draw_wood_podium(podium_center, unit * 1.05, true)
 	var integrated_hero: Texture2D = null
 	if player_animal >= 0 and player_animal < lifebuoy_hero_textures.size():
 		var hero_colors: Array = lifebuoy_hero_textures[player_animal]
 		if player_ring_color >= 0 and player_ring_color < hero_colors.size():
 			integrated_hero = hero_colors[player_ring_color] as Texture2D
 	if integrated_hero != null:
-		# This sprite contains the real pose: both arms reach the tube and both
-		# hands curl over it. Every animal and ring color has a dedicated asset.
 		draw_set_transform(animated_center, 0.0, Vector2.ONE * breathe)
 		draw_texture_rect(integrated_hero, Rect2(-hero_size * 0.5, hero_size), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	else:
-		# Back half of the buoy sits behind the torso.
 		draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
 		draw_arc(Vector2.ZERO, ring_radius, PI, TAU, 32, ring_color, ring_width, true)
-		draw_arc(Vector2.ZERO, ring_radius, PI + 0.18, PI + 0.60, 10, Color("fff4dc"), ring_width, true)
-		draw_arc(Vector2.ZERO, ring_radius, TAU - 0.60, TAU - 0.18, 10, Color("fff4dc"), ring_width, true)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
 			draw_set_transform(animated_center, 0.0, Vector2.ONE * breathe)
 			draw_texture_rect(full_body_animal_textures[player_animal], Rect2(-hero_size * 0.5, hero_size), false)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		# Front half passes in front of the waist, making it clear the hero is inside the buoy.
-		draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
-		draw_arc(Vector2.ZERO, ring_radius, 0.0, PI, 32, ring_color, ring_width, true)
-		draw_arc(Vector2.ZERO, ring_radius, 0.18, 0.60, 10, Color("fff4dc"), ring_width, true)
-		draw_arc(Vector2.ZERO, ring_radius, PI - 0.60, PI - 0.18, 10, Color("fff4dc"), ring_width, true)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		# Fallback grip marks for combinations that do not yet have a dedicated pose.
-		for grip_side in [-1.0, 1.0]:
-			var grip_center := waist_center + Vector2(grip_side * ring_radius * 0.72, -ring_radius * 0.18)
-			draw_set_transform(grip_center, grip_side * 0.10, Vector2(0.82, 1.16))
-			draw_circle(Vector2.ZERO, 20.0 * unit, Color("182431"))
-			draw_circle(Vector2.ZERO, 15.5 * unit, hand_color)
-			draw_arc(Vector2(0.0, 2.0 * unit), 8.0 * unit, 0.18, PI - 0.18, 12, hand_color.lightened(0.24), 2.4 * unit, true)
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# The character itself remains tappable; the left CHARACTERS button is the
-	# explicit entry point, so no label is allowed to cover the podium artwork.
 
-	# Top HUD: player identity on the left, currencies and settings on the right.
-	var settings := home_settings_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), settings.grow(4.0))
-	draw_style_box(make_box(Color("486889"), 16.0), settings)
-	draw_circle(settings.get_center(), 18.0 * unit, Color("d8f5ff"), false, 3.0 * unit, true)
-	draw_string(ui_font, settings.position + Vector2(0.0, 35.0) * unit, "HE" if ui_language == "he" else "EN", HORIZONTAL_ALIGNMENT_CENTER, settings.size.x, int(14.0 * unit), Color.WHITE)
-	var sound_toggle := home_sound_toggle_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), sound_toggle.grow(4.0))
-	draw_style_box(make_box(Color("35b96f") if sound_enabled else Color("5a6675"), 16.0), sound_toggle)
-	draw_string(ui_font, sound_toggle.position + Vector2(0.0, 35.0) * unit, "♪" if sound_enabled else "×", HORIZONTAL_ALIGNMENT_CENTER, sound_toggle.size.x, int(18.0 * unit), Color.WHITE)
-	var coin_rect := home_coin_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), coin_rect.grow(4.0))
-	draw_style_box(make_box(Color("253e67"), 16.0), coin_rect)
-	draw_circle(coin_rect.position + Vector2(29.0, 27.0) * unit, 15.0 * unit, Color("ffc83d"))
-	draw_circle(coin_rect.position + Vector2(29.0, 27.0) * unit, 9.0 * unit, Color("e9971b"), false, 3.0 * unit, true)
-	draw_string(ui_font, coin_rect.position + Vector2(54.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 82.0 * unit, int(20.0 * unit), Color.WHITE)
-	var gems := home_gems_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), gems.grow(4.0))
-	draw_style_box(make_box(Color("253e67"), 16.0), gems)
-	var gem_center := gems.position + Vector2(28.0, 27.0) * unit
-	var gem_shape := PackedVector2Array([gem_center + Vector2(0.0, -15.0) * unit, gem_center + Vector2(14.0, -3.0) * unit, gem_center + Vector2(8.0, 14.0) * unit, gem_center + Vector2(-8.0, 14.0) * unit, gem_center + Vector2(-14.0, -3.0) * unit])
-	draw_colored_polygon(gem_shape, Color("42e4ff"))
-	draw_string(ui_font, gems.position + Vector2(52.0, 35.0) * unit, "0", HORIZONTAL_ALIGNMENT_LEFT, 52.0 * unit, int(20.0 * unit), Color.WHITE)
-	var profile := home_profile_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 19.0), profile.grow(4.0))
-	draw_style_box(make_box(Color("244d70"), 17.0), profile)
-	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, Color("6965d8"))
-	draw_string(ui_font, profile.position + Vector2(7.0, 38.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(25.0 * unit), Color.WHITE)
-	draw_string(ui_font, profile.position + Vector2(65.0, 27.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(19.0 * unit), Color.WHITE)
-	draw_string(ui_font, profile.position + Vector2(65.0, 47.0) * unit, player_level_label(), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("8cecff"))
-	var progress_bg := Rect2(profile.position + Vector2(65.0, 49.0) * unit, Vector2(profile.size.x - 84.0 * unit, 6.0 * unit))
-	draw_style_box(make_box(Color("162c49"), 3.0 * unit), progress_bg)
-	draw_style_box(make_box(Color("5f78ff"), 3.0 * unit), Rect2(progress_bg.position, Vector2(progress_bg.size.x * 0.62, progress_bg.size.y)))
-
-	var bottom_bar := Rect2(layout.center_left - 8.0 * unit, layout.bottom_y - 8.0 * unit, layout.center_w + 16.0 * unit, layout.bottom_button_h + 16.0 * unit)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.55), 18.0 * unit), bottom_bar)
-
-	# Arena/ranking is the first shortcut on the left.
+	# Left icon rail (arena, rewards).
+	var stats_strip := home_stats_rect(viewport_size)
+	draw_ml_glass_panel(stats_strip, Color("8cecff"), unit, 0.78)
+	draw_string(ui_font, stats_strip.position + Vector2(8.0, 18.0) * unit, str(player_rating), HORIZONTAL_ALIGNMENT_CENTER, stats_strip.size.x - 16.0 * unit, int(16.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, stats_strip.position + Vector2(8.0, 36.0) * unit, league_name(player_league_tier).substr(0, 6), HORIZONTAL_ALIGNMENT_CENTER, stats_strip.size.x - 16.0 * unit, int(9.0 * unit), Color("8cecff"))
 	var arena_button := home_mode_rect(0, viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), arena_button.grow(5.0 * unit))
-	draw_style_box(make_box(Color("7258df"), 16.0), arena_button)
-	var arena_icon := arena_button.position + Vector2(arena_button.size.x * 0.24, arena_button.size.y * 0.42)
-	draw_circle(arena_icon, 24.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
-	draw_home_mode_icon(0, arena_icon, unit)
-	draw_string(ui_font, arena_button.position + Vector2(8.0, arena_button.size.y * 0.78), ui_text("arena"), HORIZONTAL_ALIGNMENT_CENTER, arena_button.size.x - 16.0 * unit, int(15.0 * unit), Color.WHITE)
+	draw_ml_rail_button(arena_button, Color("7258df"), ui_text("arena"), unit, 0)
+	var rewards_rail := home_rail_promo_rect(viewport_size)
+	var daily_badge := 1 if can_claim_daily() else 0
+	draw_ml_rail_button(rewards_rail, Color("e94f78"), ui_text("rewards"), unit, 3, daily_badge)
 
-	# Friends stays isolated on the right side of the mascot.
-	var friend_button := home_mode_rect(1, viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), friend_button.grow(5.0 * unit))
-	draw_style_box(make_box(Color("315fd0"), 16.0), friend_button)
-	var friend_icon := friend_button.position + Vector2(friend_button.size.x * 0.5, friend_button.size.y * 0.38)
-	draw_home_mode_icon(1, friend_icon, unit)
-	draw_string(ui_font, friend_button.position + Vector2(6.0, friend_button.size.y * 0.72), ui_text("friend"), HORIZONTAL_ALIGNMENT_CENTER, friend_button.size.x - 12.0 * unit, int(13.0 * unit), Color.WHITE)
+	# Top HUD — profile chip + currencies + quick controls.
+	draw_ml_profile_chip(home_profile_rect(viewport_size), unit)
+	draw_ml_currency_chip(home_coin_rect(viewport_size), "coins", str(player_coins), unit)
+	draw_ml_currency_chip(home_gems_rect(viewport_size), "gems", "0", unit)
+	var settings := home_settings_rect(viewport_size)
+	draw_ml_glass_panel(settings, Color("8cecff"), unit, 0.80)
+	draw_string(ui_font, settings.position + Vector2(0.0, settings.size.y * 0.62), "HE" if ui_language == "he" else "EN", HORIZONTAL_ALIGNMENT_CENTER, settings.size.x, int(14.0 * unit), Color.WHITE)
+	var sound_toggle := home_sound_toggle_rect(viewport_size)
+	draw_ml_glass_panel(sound_toggle, Color("35b96f") if sound_enabled else Color("5a6675"), unit, 0.80)
+	draw_string(ui_font, sound_toggle.position + Vector2(0.0, sound_toggle.size.y * 0.62), "♪" if sound_enabled else "×", HORIZONTAL_ALIGNMENT_CENTER, sound_toggle.size.x, int(18.0 * unit), Color.WHITE)
+	var help_toggle := home_help_rect(viewport_size)
+	draw_ml_glass_panel(help_toggle, Color("35b96f") if tutorial_open else Color("2982a6"), unit, 0.80)
+	draw_string(ui_font, help_toggle.position + Vector2(0.0, help_toggle.size.y * 0.62), "?", HORIZONTAL_ALIGNMENT_CENTER, help_toggle.size.x, int(20.0 * unit), Color.WHITE)
 
-	var play_rect := home_mode_rect(2, viewport_size)
-	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 22.0), play_rect.grow((5.0 + pulse * 2.0) * unit))
-	draw_style_box(make_box(Color("f6aa20"), 20.0), play_rect)
-	var play_center := play_rect.position + Vector2(52.0, play_rect.size.y * 0.5)
-	draw_circle(play_center, 30.0 * unit, Color("df7b12"))
-	draw_home_mode_icon(2, play_center, unit * 1.1)
-	var play_text_x := play_rect.position.x + 96.0 * unit
-	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.46), "שחק" if ui_language == "he" else "PLAY", HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x - 104.0 * unit, int(28.0 * unit), Color.WHITE)
-	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.72), ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x - 104.0 * unit, int(10.0 * unit), Color("fff4cf"))
-
-	# Collection shortcuts stay close to the hero character.
+	# Bottom dock — shop shortcuts + main actions.
+	var dock_bg := Rect2(layout.center_left - 6.0 * unit, layout.bottom_y - layout.dock_h - 14.0 * unit, layout.center_w + 12.0 * unit, layout.dock_h + layout.bottom_button_h + 20.0 * unit)
+	draw_ml_glass_panel(dock_bg, Color("58c9e8"), unit, 0.42)
 	var nav_labels := [ui_text("shop"), ui_text("rewards")]
 	var nav_subtitles := [ui_text("shop_sub"), ui_text("rewards_sub")]
 	var nav_colors := [Color("ff9f24"), Color("e94f78")]
 	for i in 2:
 		var nav := home_nav_rect(i, viewport_size)
-		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.86), 17.0), nav.grow(4.0 * unit))
-		draw_style_box(make_box(nav_colors[i], 15.0), nav)
-		var nav_icon_center := nav.position + Vector2(nav.size.x * 0.18, nav.size.y * 0.42)
-		draw_circle(nav_icon_center, 20.0 * unit, Color(1.0, 1.0, 1.0, 0.22))
-		draw_home_nav_icon(i, nav_icon_center, unit)
-		draw_string(ui_font, nav.position + Vector2(nav.size.x * 0.34, nav.size.y * 0.38), nav_labels[i], HORIZONTAL_ALIGNMENT_LEFT, nav.size.x * 0.58, int(17.0 * unit), Color.WHITE)
-		draw_string(ui_font, nav.position + Vector2(nav.size.x * 0.34, nav.size.y * 0.72), nav_subtitles[i], HORIZONTAL_ALIGNMENT_LEFT, nav.size.x * 0.58, int(9.0 * unit), Color("fff0c7"))
+		draw_ml_dock_button(nav, nav_colors[i], nav_labels[i], nav_subtitles[i], unit, i)
+
+	var friend_button := home_mode_rect(1, viewport_size)
+	draw_ml_glass_panel(friend_button, Color("315fd0"), unit, 0.80)
+	var friend_icon := friend_button.position + Vector2(friend_button.size.x * 0.5, friend_button.size.y * 0.36)
+	draw_home_mode_icon(1, friend_icon, unit)
+	draw_string(ui_font, friend_button.position + Vector2(6.0, friend_button.size.y * 0.62), ui_text("friend"), HORIZONTAL_ALIGNMENT_CENTER, friend_button.size.x - 12.0 * unit, int(14.0 * unit), Color.WHITE)
+	draw_string(ui_font, friend_button.position + Vector2(6.0, friend_button.size.y * 0.82), ui_text("friend_sub"), HORIZONTAL_ALIGNMENT_CENTER, friend_button.size.x - 12.0 * unit, int(9.0 * unit), Color("d8f5ff"))
+
+	var play_rect := home_mode_rect(2, viewport_size)
+	var play_title := "קלאסי" if ui_language == "he" else "CLASSIC"
+	draw_ml_play_cta(play_rect, unit, play_title, ui_text("computer_sub"))
+
 	draw_home_social_panel(viewport_size)
-	var help_toggle := home_help_rect(viewport_size)
-	draw_style_box(make_box(Color("35b96f") if tutorial_open else Color("2982a6"), 16.0 * unit), help_toggle)
-	draw_string(ui_font, help_toggle.position + Vector2(0.0, 35.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, help_toggle.size.x, int(22.0 * unit), Color.WHITE)
 	draw_home_friend_profile(viewport_size)
 	draw_tutorial_overlay(viewport_size)
 
@@ -6596,3 +6537,94 @@ func make_box(color: Color, radius: float) -> StyleBoxFlat:
 	box.corner_radius_bottom_left = int(radius)
 	box.corner_radius_bottom_right = int(radius)
 	return box
+
+func draw_ml_glass_panel(rect: Rect2, accent: Color, unit: float, fill_alpha: float = 0.74) -> void:
+	var glow := rect.grow(3.0 * unit)
+	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.28), 18.0 * unit), glow)
+	draw_style_box(make_box(Color(0.02, 0.05, 0.11, fill_alpha), 16.0 * unit), rect)
+	draw_rect(Rect2(rect.position.x + 4.0 * unit, rect.position.y + 2.0 * unit, rect.size.x - 8.0 * unit, 2.0 * unit), Color(accent.r, accent.g, accent.b, 0.50))
+
+func draw_home_ml_vignette(viewport_size: Vector2, unit: float) -> void:
+	for i in 14:
+		var t := float(i) / 14.0
+		var w := viewport_size.x * 0.24 * (1.0 - t)
+		draw_rect(Rect2(0.0, 0.0, w, viewport_size.y), Color(0.01, 0.02, 0.07, 0.58 * t))
+	for i in 14:
+		var t := float(i) / 14.0
+		var w := viewport_size.x * 0.22 * (1.0 - t)
+		draw_rect(Rect2(viewport_size.x - w, 0.0, w, viewport_size.y), Color(0.01, 0.02, 0.07, 0.52 * t))
+	draw_rect(Rect2(0.0, viewport_size.y - 156.0 * unit, viewport_size.x, 156.0 * unit), Color(0.01, 0.03, 0.08, 0.48))
+
+func draw_ml_profile_chip(rect: Rect2, unit: float) -> void:
+	draw_ml_glass_panel(rect, Color("ffe25d"), unit, 0.82)
+	var avatar_center := rect.position + Vector2(36.0, rect.size.y * 0.5)
+	draw_circle(avatar_center, 28.0 * unit, Color("ffe25d", 0.55), false, 3.0 * unit, true)
+	draw_circle(avatar_center, 24.0 * unit, Color("6965d8"))
+	draw_string(ui_font, avatar_center + Vector2(-16.0, 10.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 32.0 * unit, int(24.0 * unit), Color.WHITE)
+	var level_badge := Rect2(rect.position.x + 52.0 * unit, rect.position.y + 6.0 * unit, 34.0 * unit, 22.0 * unit)
+	draw_style_box(make_box(Color("ffd54a"), 8.0 * unit), level_badge)
+	draw_string(ui_font, level_badge.position + Vector2(0.0, 17.0) * unit, str(player_level), HORIZONTAL_ALIGNMENT_CENTER, level_badge.size.x, int(12.0 * unit), Color("4a3200"))
+	draw_string(ui_font, rect.position + Vector2(92.0, 30.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 104.0 * unit, int(18.0 * unit), Color.WHITE)
+	var progress_bg := Rect2(rect.position + Vector2(92.0, 38.0) * unit, Vector2(rect.size.x - 104.0 * unit, 8.0 * unit))
+	draw_style_box(make_box(Color("162c49"), 4.0 * unit), progress_bg)
+	var xp_ratio := clampf(float(player_xp) / float(maxi(1, player_next_level_xp)), 0.0, 1.0)
+	draw_style_box(make_box(Color("5f78ff"), 4.0 * unit), Rect2(progress_bg.position, Vector2(progress_bg.size.x * xp_ratio, progress_bg.size.y)))
+	draw_string(ui_font, rect.position + Vector2(92.0, 52.0) * unit, player_level_label(), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 104.0 * unit, int(10.0 * unit), Color("8cecff"))
+
+func draw_ml_currency_chip(rect: Rect2, kind: String, value: String, unit: float) -> void:
+	var accent := Color("42e4ff") if kind == "gems" else Color("ffc83d")
+	draw_ml_glass_panel(rect, accent, unit, 0.80)
+	var icon_center := rect.position + Vector2(28.0, rect.size.y * 0.5)
+	if kind == "gems":
+		var gem_shape := PackedVector2Array([icon_center + Vector2(0.0, -14.0) * unit, icon_center + Vector2(13.0, -2.0) * unit, icon_center + Vector2(7.0, 13.0) * unit, icon_center + Vector2(-7.0, 13.0) * unit, icon_center + Vector2(-13.0, -2.0) * unit])
+		draw_colored_polygon(gem_shape, Color("42e4ff"))
+	else:
+		draw_circle(icon_center, 15.0 * unit, Color("ffc83d"))
+		draw_circle(icon_center, 9.0 * unit, Color("e9971b"), false, 3.0 * unit, true)
+	draw_string(ui_font, rect.position + Vector2(52.0, rect.size.y * 0.62), value, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 62.0 * unit, int(19.0 * unit), Color.WHITE)
+	var plus_rect := Rect2(rect.end.x - 30.0 * unit, rect.position.y + 10.0 * unit, 22.0 * unit, 22.0 * unit)
+	draw_style_box(make_box(Color("35b96f"), 6.0 * unit), plus_rect)
+	draw_string(ui_font, plus_rect.position + Vector2(0.0, 17.0) * unit, "+", HORIZONTAL_ALIGNMENT_CENTER, plus_rect.size.x, int(16.0 * unit), Color.WHITE)
+
+func draw_ml_rail_button(rect: Rect2, accent: Color, label: String, unit: float, icon_kind: int = -1, badge: int = 0) -> void:
+	draw_ml_glass_panel(rect, accent, unit, 0.76)
+	var icon_center := rect.position + Vector2(rect.size.x * 0.5, rect.size.y * 0.40)
+	draw_circle(icon_center, 24.0 * unit, Color(accent.r, accent.g, accent.b, 0.30))
+	if icon_kind >= 0:
+		if icon_kind == 0:
+			draw_home_mode_icon(0, icon_center, unit * 0.9)
+		elif icon_kind == 3:
+			draw_home_nav_icon(1, icon_center, unit * 0.9)
+		else:
+			draw_home_nav_icon(icon_kind, icon_center, unit * 0.9)
+	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y * 0.78), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(10.0 * unit), Color.WHITE)
+	if badge > 0:
+		var badge_center := rect.position + Vector2(rect.size.x - 12.0 * unit, 12.0 * unit)
+		draw_circle(badge_center, 10.0 * unit, Color("e94f78"))
+		draw_string(ui_font, badge_center + Vector2(-8.0, 5.0) * unit, str(badge), HORIZONTAL_ALIGNMENT_CENTER, 16.0 * unit, int(11.0 * unit), Color.WHITE)
+
+func draw_ml_play_cta(rect: Rect2, unit: float, title: String, subtitle: String) -> void:
+	var pulse := (sin(menu_elapsed * 3.6) + 1.0) * 0.5
+	var glow := rect.grow((10.0 + pulse * 8.0) * unit)
+	draw_style_box(make_box(Color("ffe25d", 0.12 + pulse * 0.14), 26.0 * unit), glow)
+	draw_style_box(make_box(Color(0.02, 0.04, 0.09, 0.92), 22.0 * unit), rect.grow(4.0 * unit))
+	draw_style_box(make_box(Color("f0a020"), 20.0 * unit), rect)
+	draw_rect(Rect2(rect.position, Vector2(rect.size.x, rect.size.y * 0.42)), Color(1.0, 0.94, 0.55, 0.22))
+	var icon_center := rect.position + Vector2(58.0 * unit, rect.size.y * 0.5)
+	draw_circle(icon_center, 32.0 * unit, Color("df7b12"))
+	draw_home_mode_icon(2, icon_center, unit * 1.15)
+	var text_x := rect.position.x + 108.0 * unit
+	draw_string(ui_font, Vector2(text_x, rect.position.y + rect.size.y * 0.44), title, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 118.0 * unit, int(30.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(text_x, rect.position.y + rect.size.y * 0.70), subtitle, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 118.0 * unit, int(10.0 * unit), Color("fff4cf"))
+
+func draw_ml_dock_button(rect: Rect2, accent: Color, label: String, subtitle: String, unit: float, icon_kind: int) -> void:
+	draw_ml_glass_panel(rect, accent, unit, 0.78)
+	var icon_center := rect.position + Vector2(rect.size.x * 0.16, rect.size.y * 0.42)
+	draw_circle(icon_center, 18.0 * unit, Color(accent.r, accent.g, accent.b, 0.35))
+	draw_home_nav_icon(icon_kind, icon_center, unit * 0.85)
+	draw_string(ui_font, rect.position + Vector2(rect.size.x * 0.30, rect.size.y * 0.40), label, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x * 0.64, int(15.0 * unit), Color.WHITE)
+	draw_string(ui_font, rect.position + Vector2(rect.size.x * 0.30, rect.size.y * 0.72), subtitle, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x * 0.64, int(9.0 * unit), Color("fff0c7"))
+
+func home_rail_promo_rect(viewport_size: Vector2) -> Rect2:
+	var layout := home_layout(viewport_size)
+	return Rect2(layout.left_x, layout.rail_start_y + layout.rail_button_h + layout.rail_gap, layout.left_w, layout.rail_button_h)
