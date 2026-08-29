@@ -8,6 +8,7 @@ const PORT = Number(process.env.PORT || 10000);
 const rooms = new Map();
 const clients = new Map();
 const queues = new Map();
+const authHandoffs = new Map();
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) {
@@ -208,6 +209,38 @@ function handleMessage(socket, payload) {
   if (!payload || typeof payload.type !== "string") return;
   const session = clients.get(socket);
 
+  if (payload.type === "create_auth_handoff") {
+    const token = crypto.randomBytes(24).toString("hex");
+    authHandoffs.set(token, { socket, createdAt: Date.now() });
+    send(socket, {
+      type: "auth_handoff",
+      url: `https://moshe2060.github.io/zoopaloola-mobile/?androidAuth=${token}`
+    });
+    return;
+  }
+
+  if (payload.type === "complete_auth_handoff") {
+    const token = String(payload.handoffToken || "").toLowerCase();
+    const handoff = /^[0-9a-f]{48}$/.test(token) ? authHandoffs.get(token) : null;
+    if (!handoff || handoff.socket.readyState !== WebSocket.OPEN) {
+      send(socket, { type: "error", code: "AUTH_HANDOFF_EXPIRED", message: "Android sign-in request expired" });
+      return;
+    }
+    send(handoff.socket, {
+      type: "auth_handoff_complete",
+      localId: String(payload.localId || "").slice(0, 128),
+      idToken: String(payload.idToken || "").slice(0, 4096),
+      refreshToken: String(payload.refreshToken || "").slice(0, 1024),
+      expiresIn: String(payload.expiresIn || "3600").slice(0, 12),
+      provider: "google",
+      email: String(payload.email || "").slice(0, 254),
+      displayName: String(payload.displayName || "").slice(0, 24)
+    });
+    authHandoffs.delete(token);
+    send(socket, { type: "auth_handoff_delivered" });
+    return;
+  }
+
   if (payload.type === "create_room") {
     leaveQueue(socket);
     const code = roomCode();
@@ -380,6 +413,9 @@ wss.on("connection", (socket) => {
     leaveQueue(socket);
     leaveRoom(socket);
     clients.delete(socket);
+	for (const [token, handoff] of authHandoffs.entries()) {
+	  if (handoff.socket === socket) authHandoffs.delete(token);
+	}
   });
 });
 
@@ -409,6 +445,10 @@ const heartbeat = setInterval(() => {
     if (next.length > 0) queues.set(arena, next);
     else queues.delete(arena);
   }
+	const authBefore = Date.now() - 10 * 60 * 1000;
+	for (const [token, handoff] of authHandoffs.entries()) {
+	  if (handoff.createdAt < authBefore) authHandoffs.delete(token);
+	}
 }, 30000);
 
 server.listen(PORT, "0.0.0.0", () => {
