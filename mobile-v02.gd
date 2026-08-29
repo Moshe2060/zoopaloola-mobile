@@ -882,9 +882,9 @@ func _process(delta: float) -> void:
 		accumulator -= STEP_TIME
 	update_effects(delta)
 	update_water_floaters(delta)
-	if ai_pending and not match_finished and effects_allow_next_turn():
+	if ai_pending and not match_finished and effects_allow_next_turn() and not any_ball_moving():
 		ai_timer -= delta
-		if ai_timer <= 0.0 and not any_ball_moving():
+		if ai_timer <= 0.0:
 			ai_pending = false
 			ai_shot()
 	queue_redraw()
