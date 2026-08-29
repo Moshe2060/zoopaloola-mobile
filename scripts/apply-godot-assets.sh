@@ -62,4 +62,13 @@ if [[ "$ANDROID_FULLSCREEN" == "1" ]]; then
   # Start Android fullscreen before Godot draws the boot splash, not only
   # after the main scene or the game table has received a touch.
   sed -i '/^window\/size\/viewport_height=720$/a window/size/mode=3' "$PROJECT/project.godot"
+
+  # HTTPRequest and Firebase authentication need Android's INTERNET manifest
+  # permission. The original prototype preset omitted it, so native builds
+  # reported "Cloud offline" even while the phone itself was online.
+  if grep -q '^permissions/internet=' "$PROJECT/export_presets.cfg"; then
+    sed -i 's/^permissions\/internet=.*/permissions\/internet=true/' "$PROJECT/export_presets.cfg"
+  else
+    sed -i '/^permissions\/custom_permissions=/i permissions/internet=true' "$PROJECT/export_presets.cfg"
+  fi
 fi
