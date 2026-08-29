@@ -1,0 +1,16 @@
+{
+  "name": "Zoopaloola",
+  "install": "cd server && npm ci",
+  "terminals": [
+    {
+      "name": "match-server",
+      "command": "cd server && npm start"
+    }
+  ],
+  "ports": [
+    {
+      "name": "match-server",
+      "port": 10000
+    }
+  ]
+}
