@@ -168,6 +168,63 @@ test("lobby chat broadcasts to connected clients", async (context) => {
   assert.equal(chat.message, "Hello lobby!");
 });
 
+test("friend room chat works while waiting", async (context) => {
+  const port = 11242;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const host = await connect(port);
+  const guest = await connect(port);
+  context.after(() => host.close());
+  context.after(() => guest.close());
+
+  const joinedHost = next(host, "joined");
+  host.send(JSON.stringify({ type: "create_room", name: "Host", animal: 0, ringColor: 0 }));
+  const hostJoined = await joinedHost;
+
+  const joinedGuest = next(guest, "joined");
+  guest.send(JSON.stringify({ type: "join_room", roomCode: hostJoined.roomCode, name: "Guest" }));
+  await joinedGuest;
+
+  const chatPromise = next(host, "chat");
+  guest.send(JSON.stringify({ type: "chat", message: "Ready when you are" }));
+  const chat = await chatPromise;
+  assert.equal(chat.message, "Ready when you are");
+  assert.equal(chat.name, "Guest");
+});
+
+test("invite_friend delivers to online player", async (context) => {
+  const port = 11243;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const host = await connect(port);
+  const target = await connect(port);
+  context.after(() => host.close());
+  context.after(() => target.close());
+
+  host.send(JSON.stringify({ type: "register_presence", publicId: "ZP-HOSTTEST", name: "Host", rating: 1200 }));
+  target.send(JSON.stringify({ type: "register_presence", publicId: "ZP-TARGET01", name: "Target", rating: 1100 }));
+  await next(host, "leaderboard");
+  await next(target, "leaderboard");
+
+  const joined = next(host, "joined");
+  host.send(JSON.stringify({ type: "create_room", name: "Host", animal: 0, ringColor: 0, publicId: "ZP-HOSTTEST" }));
+  const hostJoined = await joined;
+
+  const invitePromise = next(target, "friend_invite");
+  host.send(JSON.stringify({
+    type: "invite_friend",
+    targetPublicId: "ZP-TARGET01",
+    roomCode: hostJoined.roomCode,
+    fromName: "Host",
+    fromPublicId: "ZP-HOSTTEST"
+  }));
+  const invite = await invitePromise;
+  assert.equal(invite.roomCode, hostJoined.roomCode);
+  assert.equal(invite.fromName, "Host");
+});
+
 test("browser securely returns Google auth to the waiting Android client", async (context) => {
   const port = 11240;
   const child = await startServer(port);

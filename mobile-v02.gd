@@ -100,6 +100,11 @@ const UI_TEXT_HE := {
 	"lobby_chat_title": "צ׳אט הלובי", "lobby_chat_hint": "כתבו הודעה לקהילה...",
 	"online_players": "שחקנים מחוברים", "friend_added": "חבר נוסף!", "friend_exists": "החבר כבר ברשימה",
 	"friend_not_found": "שחקן לא נמצא", "remove_friend": "הסרה", "your_turn_badge": "התור שלך",
+	"league_tab": "ליגה", "leaderboard_title": "טבלת מובילים", "league_rookie": "מתחיל",
+	"league_amateur": "חובבן", "league_pro": "מקצוען", "league_elite": "עילית", "league_legend": "אגדה",
+	"rating_label": "דירוג", "invite_received": "הזמנה למשחק מ-", "join_invite": "הצטרפות",
+	"invite_sent_online": "ההזמנה נשלחה!", "invite_sent_offline": "ההזמנה ממתינה לחבר",
+	"room_chat": "צ׳אט חדר", "sound_on": "צלילים", "promoted_league": "עליתם לליגה חדשה!",
 }
 const UI_TEXT_EN := {
 	"player": "PLAYER 1", "level": "LEVEL 1 • ROOKIE EXPLORER",
@@ -135,6 +140,11 @@ const UI_TEXT_EN := {
 	"lobby_chat_title": "LOBBY CHAT", "lobby_chat_hint": "Say hello to the community...",
 	"online_players": "players online", "friend_added": "Friend added!", "friend_exists": "Friend already added",
 	"friend_not_found": "Player not found", "remove_friend": "REMOVE", "your_turn_badge": "YOUR TURN",
+	"league_tab": "LEAGUE", "leaderboard_title": "LEADERBOARD", "league_rookie": "ROOKIE",
+	"league_amateur": "AMATEUR", "league_pro": "PRO", "league_elite": "ELITE", "league_legend": "LEGEND",
+	"rating_label": "RATING", "invite_received": "Game invite from ", "join_invite": "JOIN",
+	"invite_sent_online": "Invite sent!", "invite_sent_offline": "Invite queued for friend",
+	"room_chat": "ROOM CHAT", "sound_on": "SOUND", "promoted_league": "You reached a new league!",
 }
 const APP_SPLASH := 0
 const APP_HOME := 1
@@ -151,6 +161,8 @@ const ARENA_WIN_PRIZES := [100, 250, 1200]
 const DAILY_REWARD_COINS := 80
 const COMPUTER_WIN_COINS := 40
 const FRIEND_WIN_COINS := 25
+const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
+const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
 var board_texture: Texture2D
 var ui_font: Font
@@ -245,6 +257,14 @@ var player_losses := 0
 var player_best_streak := 0
 var player_current_streak := 0
 var player_world_rank := 0
+var player_rating := 1000
+var player_league_tier := 0
+var global_leaderboard: Array = []
+var pending_friend_invite: Dictionary = {}
+var friend_room_chat_open := false
+var home_ambient_particles: Array = []
+var sound_enabled := true
+var sfx_player: AudioStreamPlayer
 var last_daily_claim := ""
 var menu_notice := ""
 var menu_notice_time := 0.0
@@ -289,6 +309,112 @@ var friend_id_input: LineEdit
 var lobby_chat_input: LineEdit
 var friend_lookup_request: HTTPRequest
 var pending_friend_lookup_id := ""
+
+func init_home_ambient_particles() -> void:
+	if not home_ambient_particles.is_empty():
+		return
+	for i in 28:
+		home_ambient_particles.append({
+			"x": randf(),
+			"y": randf(),
+			"speed": randf_range(0.04, 0.14),
+			"size": randf_range(3.0, 11.0),
+			"phase": randf() * TAU,
+			"kind": i % 3
+		})
+
+func make_tone_stream(freq: float, duration: float, volume: float = 0.22) -> AudioStreamWAV:
+	var sample_rate := 22050
+	var frames := maxi(1, int(sample_rate * duration))
+	var data := PackedByteArray()
+	data.resize(frames * 2)
+	for i in frames:
+		var t := float(i) / float(sample_rate)
+		var envelope := 1.0 - float(i) / float(frames)
+		var sample := sin(TAU * freq * t) * volume * envelope
+		var s16 := int(clampf(sample * 32767.0, -32768.0, 32767.0))
+		data[i * 2] = s16 & 0xFF
+		data[i * 2 + 1] = (s16 >> 8) & 0xFF
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.stereo = false
+	stream.mix_rate = sample_rate
+	stream.data = data
+	return stream
+
+func setup_sound() -> void:
+	sfx_player = AudioStreamPlayer.new()
+	sfx_player.bus = "Master"
+	add_child(sfx_player)
+
+func play_sound(kind: String) -> void:
+	if not sound_enabled or sfx_player == null:
+		return
+	var stream: AudioStreamWAV = null
+	match kind:
+		"ui":
+			stream = make_tone_stream(660.0, 0.06, 0.16)
+		"shot":
+			stream = make_tone_stream(240.0, 0.10, 0.20)
+		"score":
+			stream = make_tone_stream(880.0, 0.14, 0.18)
+		"invite":
+			stream = make_tone_stream(520.0, 0.18, 0.20)
+		"win":
+			stream = make_tone_stream(740.0, 0.22, 0.22)
+		_:
+			stream = make_tone_stream(440.0, 0.08, 0.14)
+	sfx_player.stream = stream
+	sfx_player.play()
+
+func league_tier_for_rating(rating: int) -> int:
+	var tier := 0
+	for i in LEAGUE_RATING_THRESHOLDS.size():
+		if rating >= LEAGUE_RATING_THRESHOLDS[i]:
+			tier = i
+	return clampi(tier, 0, LEAGUE_NAME_KEYS.size() - 1)
+
+func league_name(tier: int) -> String:
+	return ui_text(LEAGUE_NAME_KEYS[clampi(tier, 0, LEAGUE_NAME_KEYS.size() - 1)])
+
+func league_color(tier: int) -> Color:
+	var colors := [Color("8cecff"), Color("51d995"), Color("ffe25d"), Color("ff9f24"), Color("e94f78"), Color("c77dff")]
+	return colors[clampi(tier, 0, colors.size() - 1)]
+
+func update_player_league_tier() -> void:
+	player_league_tier = league_tier_for_rating(player_rating)
+
+func apply_rating_change(did_win: bool, opponent_rating: int = 1000) -> void:
+	var expected := 1.0 / (1.0 + pow(10.0, float(opponent_rating - player_rating) / 400.0))
+	var score := 1.0 if did_win else 0.0
+	var k := 28.0 if player_rating < 1200 else 22.0
+	var old_tier := player_league_tier
+	player_rating = clampi(int(round(float(player_rating) + k * (score - expected))), 100, 9999)
+	update_player_league_tier()
+	if player_league_tier > old_tier:
+		show_menu_notice(ui_text("promoted_league") + " " + league_name(player_league_tier))
+		play_sound("win")
+
+func sync_player_presence() -> void:
+	if multiplayer_state != "connected" or firebase_public_id.is_empty():
+		return
+	send_multiplayer({
+		"type": "register_presence",
+		"publicId": firebase_public_id,
+		"name": profile_name,
+		"rating": player_rating,
+		"wins": player_wins,
+		"losses": player_losses,
+		"leagueTier": player_league_tier
+	})
+	send_multiplayer({"type": "get_leaderboard"})
+
+func multiplayer_payload_stats() -> Dictionary:
+	return {
+		"rating": player_rating,
+		"leagueTier": player_league_tier,
+		"publicId": firebase_public_id
+	}
 
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
@@ -357,6 +483,9 @@ func _ready() -> void:
 		ui_font = ThemeDB.fallback_font
 	load_player_profile()
 	setup_firebase()
+	setup_sound()
+	init_home_ambient_particles()
+	update_player_league_tier()
 	room_code_input = LineEdit.new()
 	room_code_input.visible = false
 	room_code_input.max_length = 4
@@ -700,6 +829,7 @@ func score_ball(index: int, hole: int) -> void:
 	balls[index].v = Vector2.ZERO
 	active_effects.append({"hole":hole, "elapsed":0.0, "team":scored_team, "piece":index})
 	status = "Ball scored!"
+	play_sound("score")
 	check_match_end()
 
 func update_effects(delta: float) -> void:
@@ -934,6 +1064,7 @@ func pointer_up(screen_pos: Vector2) -> void:
 	var strength: float = clampf(pull_distance, MIN_SHOT_PULL, 30.0)
 	if pull_distance >= MIN_SHOT_PULL:
 		turn_shot_committed = true
+		play_sound("shot")
 		if game_mode == "online":
 			send_multiplayer({"type":"shot", "ballIndex":selected, "pullX":pull.x, "pullY":pull.y, "strength":strength})
 			status = "שולח את הזריקה..." if ui_language == "he" else "Sending shot..."
@@ -1375,6 +1506,19 @@ func record_match_result(did_win: bool) -> void:
 		player_xp -= player_next_level_xp
 		player_level += 1
 		player_next_level_xp = 500 + (player_level - 1) * 75
+	if game_mode == "online":
+		var opponent_rating := 1000
+		if multiplayer_players.size() > 1:
+			var opponent_slot := 1 - multiplayer_slot if multiplayer_slot >= 0 else 1
+			for player_data in multiplayer_players:
+				if int(player_data.get("slot", -1)) == opponent_slot:
+					opponent_rating = int(player_data.get("rating", 1000))
+					break
+		apply_rating_change(did_win, opponent_rating)
+	elif game_mode == "computer":
+		apply_rating_change(did_win, 980 + player_level * 8)
+	if did_win:
+		play_sound("win")
 	save_player_profile()
 
 func match_result_panel(viewport_size: Vector2) -> Rect2:
@@ -1500,8 +1644,14 @@ func draw_match_player_card(rect: Rect2, team: int) -> void:
 	if team_piece_textures.size() > team and team_piece_textures[team] != null:
 		draw_texture_rect(team_piece_textures[team], Rect2(rect.position + Vector2(7.0, 5.0), Vector2(48.0, 48.0)), false)
 	var animal_index := player_animal if team == 0 else ai_animal
+	var team_rating := player_rating if team == 0 else 1000
+	var team_league := player_league_tier if team == 0 else 0
+	if game_mode == "online" and team < multiplayer_players.size():
+		var pdata: Dictionary = multiplayer_players[team]
+		team_rating = int(pdata.get("rating", team_rating))
+		team_league = int(pdata.get("leagueTier", team_league))
 	draw_string(ui_font, rect.position + Vector2(62.0, 25.0), match_player_name(team), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 16, Color.WHITE)
-	draw_string(ui_font, rect.position + Vector2(62.0, 46.0), ui_text(ANIMAL_FILES[animal_index]) + " • " + str(fallen_count(team)), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 13, RING_COLORS[player_ring_color if team == 0 else ai_ring_color].lightened(0.28))
+	draw_string(ui_font, rect.position + Vector2(62.0, 46.0), league_name(team_league) + " • " + str(team_rating), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 11, RING_COLORS[player_ring_color if team == 0 else ai_ring_color].lightened(0.28))
 
 func is_local_player_team(team: int) -> bool:
 	if game_mode == "online":
@@ -2857,6 +3007,65 @@ func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2(viewport_size.x * 0.24, viewport_size.y * 0.115), Vector2(360.0, 480.0) * unit)
 
+func draw_home_ambient_effects(viewport_size: Vector2) -> void:
+	init_home_ambient_particles()
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	for particle in home_ambient_particles:
+		var px: float = float(particle.x) * viewport_size.x
+		var py: float = fmod(float(particle.y) + menu_elapsed * float(particle.speed), 1.08) * viewport_size.y - viewport_size.y * 0.04
+		var pulse := 0.55 + sin(menu_elapsed * 2.2 + float(particle.phase)) * 0.25
+		var size: float = float(particle.size) * unit * pulse
+		var color := Color("8cecff", 0.10 + pulse * 0.08) if int(particle.kind) == 0 else Color("ffe25d", 0.08 + pulse * 0.07)
+		if int(particle.kind) == 2:
+			color = Color("c77dff", 0.07 + pulse * 0.06)
+		draw_circle(Vector2(px, py), size, color)
+	var ray_alpha := 0.05 + sin(menu_elapsed * 0.7) * 0.02
+	draw_rect(Rect2(viewport_size.x * 0.18, 0.0, viewport_size.x * 0.22, viewport_size.y), Color(1.0, 1.0, 1.0, ray_alpha))
+	draw_rect(Rect2(viewport_size.x * 0.62, 0.0, viewport_size.x * 0.16, viewport_size.y), Color("8cecff", ray_alpha * 0.8))
+
+func draw_pending_invite_banner(viewport_size: Vector2) -> void:
+	if pending_friend_invite.is_empty():
+		return
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var banner := Rect2(viewport_size.x * 0.28, 102.0 * unit, viewport_size.x * 0.44, 54.0 * unit)
+	draw_style_box(make_box(Color("e94f78"), 16.0 * unit), banner)
+	var text := ui_text("invite_received") + str(pending_friend_invite.get("fromName", ""))
+	draw_string(ui_font, banner.position + Vector2(16.0 * unit, 22.0 * unit), text, HORIZONTAL_ALIGNMENT_LEFT, banner.size.x - 130.0 * unit, int(14.0 * unit), Color.WHITE)
+	var join_rect := Rect2(banner.end.x - 112.0 * unit, banner.position.y + 10.0 * unit, 96.0 * unit, 34.0 * unit)
+	draw_style_box(make_box(Color("35b96f"), 12.0 * unit), join_rect)
+	draw_string(ui_font, join_rect.position + Vector2(0.0, 23.0) * unit, ui_text("join_invite"), HORIZONTAL_ALIGNMENT_CENTER, join_rect.size.x, int(14.0 * unit), Color.WHITE)
+
+func home_invite_join_rect(viewport_size: Vector2) -> Rect2:
+	if pending_friend_invite.is_empty():
+		return Rect2()
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var banner := Rect2(viewport_size.x * 0.28, 102.0 * unit, viewport_size.x * 0.44, 54.0 * unit)
+	return Rect2(banner.end.x - 112.0 * unit, banner.position.y + 10.0 * unit, 96.0 * unit, 34.0 * unit)
+
+func accept_pending_friend_invite() -> void:
+	if pending_friend_invite.is_empty():
+		return
+	var code := str(pending_friend_invite.get("roomCode", ""))
+	pending_friend_invite = {}
+	if code.is_empty():
+		return
+	app_screen = APP_FRIEND
+	room_code_input.text = code
+	connect_multiplayer()
+	if multiplayer_state == "connected":
+		join_multiplayer_room()
+	else:
+		pending_shared_room_code = code
+	play_sound("ui")
+
+func friend_room_chat_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(840.0, 320.0) * unit, Vector2(205.0, 48.0) * unit)
+
+func home_sound_toggle_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(viewport_size.x - 136.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
+
 func home_social_panel_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(viewport_size.x - 318.0 * unit, 104.0 * unit, 294.0 * unit, viewport_size.y - 118.0 * unit)
@@ -2864,8 +3073,8 @@ func home_social_panel_rect(viewport_size: Vector2) -> Rect2:
 func home_social_tab_rect(tab: int, viewport_size: Vector2) -> Rect2:
 	var panel := home_social_panel_rect(viewport_size)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var width := (panel.size.x - 18.0 * unit) * 0.5
-	return Rect2(panel.position + Vector2(9.0 * unit + float(tab) * (width + 4.0 * unit), 14.0 * unit), Vector2(width, 38.0 * unit))
+	var width := (panel.size.x - 22.0 * unit) / 3.0
+	return Rect2(panel.position + Vector2(9.0 * unit + float(tab) * (width + 2.0 * unit), 14.0 * unit), Vector2(width, 38.0 * unit))
 
 func home_add_friend_rect(viewport_size: Vector2) -> Rect2:
 	var panel := home_social_panel_rect(viewport_size)
@@ -3008,11 +3217,24 @@ func remove_friend_at(index: int) -> void:
 func invite_friend_to_play(index: int) -> void:
 	if index < 0 or index >= friends_list.size():
 		return
+	play_sound("ui")
 	app_screen = APP_FRIEND
 	connect_multiplayer()
-	if multiplayer_room_code.is_empty() and multiplayer_state == "connected":
+	if multiplayer_room_code.is_empty():
 		create_multiplayer_room()
-	show_menu_notice(("הזמנה ל" if ui_language == "he" else "Invite sent to ") + str(friends_list[index].get("name", "")))
+	var friend_entry: Dictionary = friends_list[index]
+	var target_id := str(friend_entry.get("id", ""))
+	if target_id.is_empty():
+		return
+	if multiplayer_state == "connected" and not multiplayer_room_code.is_empty():
+		send_multiplayer({
+			"type": "invite_friend",
+			"targetPublicId": target_id,
+			"roomCode": multiplayer_room_code,
+			"fromName": profile_name,
+			"fromPublicId": firebase_public_id
+		})
+	show_menu_notice(("הזמנה ל" if ui_language == "he" else "Invite sent to ") + str(friend_entry.get("name", "")))
 
 func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -3156,11 +3378,15 @@ func load_player_profile() -> void:
 	player_losses = maxi(0, int(config.get_value("player", "losses", player_losses)))
 	player_best_streak = maxi(0, int(config.get_value("player", "best_streak", player_best_streak)))
 	player_current_streak = maxi(0, int(config.get_value("player", "current_streak", player_current_streak)))
+	player_rating = clampi(int(config.get_value("player", "rating", player_rating)), 100, 9999)
+	player_league_tier = clampi(int(config.get_value("player", "league_tier", player_league_tier)), 0, LEAGUE_NAME_KEYS.size() - 1)
+	sound_enabled = bool(config.get_value("settings", "sound_enabled", sound_enabled))
 	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
 	ui_language = str(config.get_value("settings", "language", ui_language))
 	friends_list = config.get_value("social", "friends", [])
 	if typeof(friends_list) != TYPE_ARRAY:
 		friends_list = []
+	update_player_league_tier()
 	firebase_uid = str(config.get_value("firebase", "uid", ""))
 	firebase_public_id = str(config.get_value("firebase", "public_id", ""))
 	firebase_id_token = str(config.get_value("firebase", "id_token", ""))
@@ -3181,7 +3407,10 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("player", "losses", player_losses)
 	config.set_value("player", "best_streak", player_best_streak)
 	config.set_value("player", "current_streak", player_current_streak)
+	config.set_value("player", "rating", player_rating)
+	config.set_value("player", "league_tier", player_league_tier)
 	config.set_value("player", "last_daily_claim", last_daily_claim)
+	config.set_value("settings", "sound_enabled", sound_enabled)
 	config.set_value("settings", "language", ui_language)
 	config.set_value("social", "friends", friends_list)
 	config.set_value("firebase", "uid", firebase_uid)
@@ -3538,7 +3767,9 @@ func firestore_fields(include_public_id: bool = true) -> Dictionary:
 		"wins": {"integerValue": str(player_wins)},
 		"losses": {"integerValue": str(player_losses)},
 		"bestStreak": {"integerValue": str(player_best_streak)},
-		"currentStreak": {"integerValue": str(player_current_streak)}
+		"currentStreak": {"integerValue": str(player_current_streak)},
+		"rating": {"integerValue": str(player_rating)},
+		"leagueTier": {"integerValue": str(player_league_tier)}
 	}
 	if include_public_id:
 		fields["publicId"] = {"stringValue": firebase_public_id}
@@ -3688,7 +3919,7 @@ func chat_send_rect(viewport_size: Vector2) -> Rect2:
 func update_chat_input() -> void:
 	if chat_input == null:
 		return
-	var should_show := app_screen == APP_GAME and game_mode == "online" and chat_open and not exit_confirm_open
+	var should_show := (app_screen == APP_GAME and game_mode == "online" and chat_open and not exit_confirm_open) or (app_screen == APP_FRIEND and friend_room_chat_open and not multiplayer_room_code.is_empty())
 	chat_input.visible = should_show
 	if should_show:
 		var panel := chat_panel(get_viewport_rect().size)
@@ -3707,6 +3938,7 @@ func send_chat_message() -> void:
 	send_multiplayer({"type":"chat", "message":message.left(80)})
 	chat_input.clear()
 	chat_input.grab_focus()
+	play_sound("ui")
 
 func draw_match_chat(viewport_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.06, 0.68))
@@ -3782,7 +4014,10 @@ func send_find_match() -> void:
 		"level": player_level,
 		"wins": player_wins,
 		"losses": player_losses,
-		"arena": selected_arena
+		"arena": selected_arena,
+		"rating": player_rating,
+		"leagueTier": player_league_tier,
+		"publicId": firebase_public_id
 	})
 
 func start_arena_search() -> void:
@@ -3813,7 +4048,18 @@ func create_multiplayer_room() -> void:
 		return
 	multiplayer_local_animal = player_animal
 	multiplayer_local_ring_color = player_ring_color
-	send_multiplayer({"type":"create_room", "name":profile_name, "animal":player_animal, "ringColor":player_ring_color, "level":player_level, "wins":player_wins, "losses":player_losses})
+	send_multiplayer({
+		"type":"create_room",
+		"name":profile_name,
+		"animal":player_animal,
+		"ringColor":player_ring_color,
+		"level":player_level,
+		"wins":player_wins,
+		"losses":player_losses,
+		"rating":player_rating,
+		"leagueTier":player_league_tier,
+		"publicId":firebase_public_id
+	})
 
 func join_multiplayer_room() -> void:
 	commit_profile_name()
@@ -3827,7 +4073,19 @@ func join_multiplayer_room() -> void:
 		return
 	multiplayer_local_animal = player_animal
 	multiplayer_local_ring_color = player_ring_color
-	send_multiplayer({"type":"join_room", "roomCode":code, "name":profile_name, "animal":player_animal, "ringColor":player_ring_color, "level":player_level, "wins":player_wins, "losses":player_losses})
+	send_multiplayer({
+		"type":"join_room",
+		"roomCode":code,
+		"name":profile_name,
+		"animal":player_animal,
+		"ringColor":player_ring_color,
+		"level":player_level,
+		"wins":player_wins,
+		"losses":player_losses,
+		"rating":player_rating,
+		"leagueTier":player_league_tier,
+		"publicId":firebase_public_id
+	})
 
 func update_match_character(animal: int = -1, ring_color: int = -1) -> void:
 	if multiplayer_slot < 0:
@@ -3893,6 +4151,25 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 				join_multiplayer_room()
 			elif pending_find_match:
 				send_find_match()
+			sync_player_presence()
+		"leaderboard":
+			global_leaderboard = payload.get("entries", [])
+			for i in global_leaderboard.size():
+				var entry: Dictionary = global_leaderboard[i]
+				if str(entry.get("publicId", "")) == firebase_public_id:
+					player_world_rank = int(entry.get("rank", 0))
+					break
+		"friend_invite":
+			pending_friend_invite = {
+				"fromName": str(payload.get("fromName", "")),
+				"fromPublicId": str(payload.get("fromPublicId", "")),
+				"roomCode": str(payload.get("roomCode", ""))
+			}
+			play_sound("invite")
+			show_menu_notice(ui_text("invite_received") + pending_friend_invite.fromName)
+		"invite_sent":
+			var online := bool(payload.get("online", false))
+			show_menu_notice(ui_text("invite_sent_online") if online else ui_text("invite_sent_offline"))
 		"auth_handoff":
 			var auth_url: String = str(payload.get("url", ""))
 			if OS.has_feature("android") and auth_url.begins_with("https://moshe2060.github.io/zoopaloola-mobile/"):
@@ -4106,6 +4383,20 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				friend_id_input.release_focus()
 			queue_redraw()
 			return
+		if home_social_tab_rect(2, viewport_size).has_point(screen_pos):
+			home_social_tab = 2
+			send_multiplayer({"type": "get_leaderboard"})
+			queue_redraw()
+			return
+		if home_invite_join_rect(viewport_size).has_point(screen_pos):
+			accept_pending_friend_invite()
+			return
+		if home_sound_toggle_rect(viewport_size).has_point(screen_pos):
+			sound_enabled = not sound_enabled
+			save_player_profile()
+			play_sound("ui")
+			queue_redraw()
+			return
 		if home_social_tab == 0:
 			if home_add_friend_button_rect(viewport_size).has_point(screen_pos):
 				if friend_id_input != null:
@@ -4148,6 +4439,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			connect_multiplayer()
 			return
 		if home_mode_rect(2, viewport_size).has_point(screen_pos):
+			play_sound("ui")
 			start_computer_setup()
 			return
 	else:
@@ -4213,6 +4505,15 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					save_player_profile()
 					return
 		elif app_screen == APP_FRIEND:
+			if friend_room_chat_open:
+				if chat_close_rect(viewport_size).has_point(screen_pos):
+					friend_room_chat_open = false
+					if chat_input != null:
+						chat_input.release_focus()
+					return
+				if chat_send_rect(viewport_size).has_point(screen_pos):
+					send_chat_message()
+					return
 			if friend_customizer_open or friend_opponent_profile_open:
 				if friend_modal_close_rect(viewport_size).has_point(screen_pos):
 					friend_customizer_open = false
@@ -4237,6 +4538,12 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			else:
 				if friend_share_rect(viewport_size).has_point(screen_pos):
 					share_friend_room()
+					return
+				if friend_room_chat_rect(viewport_size).has_point(screen_pos):
+					friend_room_chat_open = true
+					if chat_input != null:
+						chat_input.grab_focus()
+					play_sound("ui")
 					return
 				var local_slot := multiplayer_slot if multiplayer_slot >= 0 else 0
 				if friend_player_rect(local_slot, viewport_size).has_point(screen_pos):
@@ -4428,12 +4735,17 @@ func draw_friend_screen(viewport_size: Vector2) -> void:
 		var ready_rect := friend_ready_rect(viewport_size)
 		draw_style_box(make_box(Color("35b96f") if not multiplayer_ready else Color("d49b2f"), 18.0 * unit), ready_rect)
 		draw_string(ui_font, ready_rect.position + Vector2(0.0, 45.0) * unit, ("ביטול מוכנות" if multiplayer_ready else "אני מוכן") if ui_language == "he" else ("NOT READY" if multiplayer_ready else "I'M READY"), HORIZONTAL_ALIGNMENT_CENTER, ready_rect.size.x, int(22.0 * unit), Color.WHITE)
+		var chat_rect := friend_room_chat_rect(viewport_size)
+		draw_style_box(make_box(Color("1b91a8"), 14.0 * unit), chat_rect)
+		draw_string(ui_font, chat_rect.position + Vector2(0.0, 31.0) * unit, ui_text("room_chat"), HORIZONTAL_ALIGNMENT_CENTER, chat_rect.size.x, int(15.0 * unit), Color.WHITE)
 	if multiplayer_error != "":
 		draw_string(ui_font, panel.position + Vector2(35.0, panel.size.y - 25.0) * unit, multiplayer_error, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 70.0 * unit, int(15.0 * unit), Color("ff8c7a"))
 	if friend_customizer_open:
 		draw_friend_customizer(viewport_size)
 	elif friend_opponent_profile_open:
 		draw_friend_opponent_profile(viewport_size)
+	elif friend_room_chat_open:
+		draw_match_chat(viewport_size)
 
 func draw_small_lifebuoy(center: Vector2, color_index: int, radius: float) -> void:
 	var ring_color: Color = RING_COLORS[clampi(color_index, 0, RING_COLORS.size() - 1)]
@@ -4708,7 +5020,7 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	if total_matches > 0:
 		win_rate = int(round(float(player_wins) * 100.0 / float(total_matches)))
 	var labels := [ui_text("matches"), ui_text("wins"), ui_text("losses"), ui_text("win_rate"), ui_text("best_streak"), ui_text("world_rank")]
-	var rank_value := ("—" if player_wins + player_losses == 0 else "#" + str(maxi(1, 9000 - player_wins * 17 + player_losses * 11)))
+	var rank_value := ("—" if player_world_rank <= 0 else "#" + str(player_world_rank)) if player_wins + player_losses > 0 else str(player_rating)
 	var values := [str(total_matches), str(player_wins), str(player_losses), str(win_rate) + "%", str(player_best_streak), rank_value]
 	var accents := [Color("42b8e8"), Color("49c984"), Color("ef6b65"), Color("ffc83d"), Color("9d59e8"), Color("ff8b3d")]
 	for i in 6:
@@ -4736,11 +5048,16 @@ func draw_home_social_panel(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color(0.02, 0.07, 0.13, 0.93), 22.0 * unit), panel.grow(5.0 * unit))
 	draw_style_box(make_box(Color(0.04, 0.12, 0.20, 0.97), 20.0 * unit), panel)
 	draw_string(ui_font, panel.position + Vector2(0.0, 34.0) * unit, ui_text("social_hub"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(18.0 * unit), Color("f6d365"))
-	for tab in 2:
+	for tab in 3:
 		var tab_rect := home_social_tab_rect(tab, viewport_size)
 		var selected := tab == home_social_tab
 		draw_style_box(make_box(Color("315fd0") if selected else Color("1d405b"), 14.0 * unit), tab_rect)
-		draw_string(ui_font, tab_rect.position + Vector2(0.0, 26.0) * unit, ui_text("friends_tab") if tab == 0 else ui_text("chat_tab"), HORIZONTAL_ALIGNMENT_CENTER, tab_rect.size.x, int(15.0 * unit), Color.WHITE)
+		var tab_label := ui_text("friends_tab")
+		if tab == 1:
+			tab_label = ui_text("chat_tab")
+		elif tab == 2:
+			tab_label = ui_text("league_tab")
+		draw_string(ui_font, tab_rect.position + Vector2(0.0, 26.0) * unit, tab_label, HORIZONTAL_ALIGNMENT_CENTER, tab_rect.size.x, int(13.0 * unit), Color.WHITE)
 	if home_social_tab == 0:
 		var visible_count := mini(4, friends_list.size())
 		if visible_count == 0:
@@ -4760,7 +5077,7 @@ func draw_home_social_panel(viewport_size: Vector2) -> void:
 		draw_style_box(make_box(Color("10283b"), 12.0 * unit), home_add_friend_rect(viewport_size))
 		draw_style_box(make_box(Color("7655df"), 14.0 * unit), home_add_friend_button_rect(viewport_size))
 		draw_string(ui_font, home_add_friend_button_rect(viewport_size).position + Vector2(0.0, 24.0) * unit, ui_text("add_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_add_friend_button_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
-	else:
+	elif home_social_tab == 1:
 		draw_string(ui_font, panel.position + Vector2(0.0, 72.0) * unit, ui_text("lobby_chat_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(14.0 * unit), Color("a9cde2"))
 		var first_index: int = maxi(0, lobby_chat_messages.size() - 7)
 		var row := 0
@@ -4773,9 +5090,28 @@ func draw_home_social_panel(viewport_size: Vector2) -> void:
 		draw_style_box(make_box(Color("10283b"), 12.0 * unit), input_bg)
 		draw_style_box(make_box(Color("12a96b"), 12.0 * unit), home_lobby_send_rect(viewport_size))
 		draw_string(ui_font, home_lobby_send_rect(viewport_size).position + Vector2(0.0, 24.0) * unit, "שליחה" if ui_language == "he" else "SEND", HORIZONTAL_ALIGNMENT_CENTER, home_lobby_send_rect(viewport_size).size.x, int(14.0 * unit), Color.WHITE)
+	else:
+		draw_string(ui_font, panel.position + Vector2(0.0, 72.0) * unit, ui_text("leaderboard_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(14.0 * unit), Color("a9cde2"))
+		var league_rect := Rect2(panel.position + Vector2(14.0 * unit, 88.0 * unit), Vector2(panel.size.x - 28.0 * unit, 52.0 * unit))
+		draw_style_box(make_box(league_color(player_league_tier), 14.0 * unit), league_rect)
+		draw_string(ui_font, league_rect.position + Vector2(14.0, 22.0) * unit, league_name(player_league_tier), HORIZONTAL_ALIGNMENT_LEFT, league_rect.size.x - 28.0 * unit, int(16.0 * unit), Color.WHITE)
+		draw_string(ui_font, league_rect.position + Vector2(14.0, 42.0) * unit, ui_text("rating_label") + ": " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, league_rect.size.x - 28.0 * unit, int(12.0 * unit), Color("173249"))
+		var board_count := mini(5, global_leaderboard.size())
+		if board_count == 0:
+			draw_string(ui_font, panel.position + Vector2(0.0, 210.0) * unit, "..." if ui_language == "he" else "Loading rankings...", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(13.0 * unit), Color("8cecff"))
+		for i in board_count:
+			var entry: Dictionary = global_leaderboard[i]
+			var row_y := 154.0 + float(i) * 46.0
+			var row := Rect2(panel.position + Vector2(14.0 * unit, row_y * unit), Vector2(panel.size.x - 28.0 * unit, 40.0 * unit))
+			var is_me := str(entry.get("publicId", "")) == firebase_public_id
+			draw_style_box(make_box(Color("ffe6a8") if is_me else Color("173249"), 12.0 * unit), row)
+			var row_color := Color("173249") if is_me else Color.WHITE
+			draw_string(ui_font, row.position + Vector2(10.0, 26.0) * unit, "#" + str(entry.get("rank", i + 1)) + " " + str(entry.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 90.0 * unit, int(13.0 * unit), row_color)
+			draw_string(ui_font, row.position + Vector2(row.size.x - 72.0 * unit, 26.0) * unit, str(entry.get("rating", 0)), HORIZONTAL_ALIGNMENT_CENTER, 62.0 * unit, int(13.0 * unit), row_color)
 
 func draw_home_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_home_ambient_effects(viewport_size)
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.10))
 	draw_rect(Rect2(0.0, 0.0, viewport_size.x, 98.0 * unit), Color(0.015, 0.055, 0.12, 0.94))
 	draw_rect(Rect2(0.0, 94.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
@@ -4784,7 +5120,10 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.90), 16.0 * unit), stats_strip)
 	draw_string(ui_font, stats_strip.position + Vector2(14.0, 24.0) * unit, ("ניצחונות: %d" if ui_language == "he" else "WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(14.0 * unit), Color.WHITE)
 	draw_string(ui_font, stats_strip.position + Vector2(14.0, 46.0) * unit, ("רצף: %d" if ui_language == "he" else "STREAK: %d") % player_current_streak, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(13.0 * unit), Color("8cecff"))
-	draw_string(ui_font, stats_strip.position + Vector2(14.0, 64.0) * unit, ("חברים: %d" if ui_language == "he" else "FRIENDS: %d") % friends_list.size(), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(12.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, stats_strip.position + Vector2(14.0, 64.0) * unit, league_name(player_league_tier) + " • " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(12.0 * unit), Color("ffe25d"))
+	var board_panel := Rect2(24.0 * unit, 188.0 * unit, 210.0 * unit, minf(250.0 * unit, viewport_size.y - 250.0 * unit))
+	draw_home_leaderboard(board_panel)
+	draw_pending_invite_banner(viewport_size)
 
 	# Full-body hero with the selected lifebuoy wrapped around its waist.
 	var character_area := home_character_rect(viewport_size)
@@ -4850,6 +5189,10 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color("486889"), 16.0), settings)
 	draw_circle(settings.get_center(), 18.0 * unit, Color("d8f5ff"), false, 3.0 * unit, true)
 	draw_string(ui_font, settings.position + Vector2(0.0, 35.0) * unit, "HE" if ui_language == "he" else "EN", HORIZONTAL_ALIGNMENT_CENTER, settings.size.x, int(14.0 * unit), Color.WHITE)
+	var sound_toggle := home_sound_toggle_rect(viewport_size)
+	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), sound_toggle.grow(4.0))
+	draw_style_box(make_box(Color("35b96f") if sound_enabled else Color("5a6675"), 16.0), sound_toggle)
+	draw_string(ui_font, sound_toggle.position + Vector2(0.0, 35.0) * unit, "♪" if sound_enabled else "×", HORIZONTAL_ALIGNMENT_CENTER, sound_toggle.size.x, int(18.0 * unit), Color.WHITE)
 	var coin_rect := home_coin_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), coin_rect.grow(4.0))
 	draw_style_box(make_box(Color("253e67"), 16.0), coin_rect)
@@ -4976,19 +5319,19 @@ func draw_home_character(animal_index: int, center: Vector2, size: float, phase:
 func draw_home_leaderboard(panel: Rect2) -> void:
 	draw_style_box(make_box(Color(0.025, 0.075, 0.13, 0.92), 24.0), panel.grow(4.0))
 	draw_style_box(make_box(Color("eaf8f1"), 21.0), panel)
-	draw_string(ui_font, panel.position + Vector2(0.0, 36.0), "LEADERBOARD", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 20, Color("173249"))
-	draw_string(ui_font, panel.position + Vector2(0.0, 57.0), "WEEKLY", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 11, Color("2982a6"))
-	var names := ["WaveRider", "JungleJoe", "SplashCat", "RhinoKing", profile_name]
-	var scores := [1280, 1140, 980, 820, 100]
-	for i in 5:
-		var row := Rect2(panel.position + Vector2(14.0, 72.0 + i * 55.0), Vector2(panel.size.x - 28.0, 46.0))
-		var row_color := Color("ffe6a8") if i == 4 else Color(0.95, 0.99, 0.97, 0.96)
-		draw_style_box(make_box(row_color, 13.0), row)
-		draw_circle(row.position + Vector2(24.0, 23.0), 16.0, Color("ffc83d") if i < 3 else Color("77b8ca"))
-		draw_string(ui_font, row.position + Vector2(8.0, 29.0), str(i + 1), HORIZONTAL_ALIGNMENT_CENTER, 32.0, 14, Color("173249"))
-		draw_string(ui_font, row.position + Vector2(49.0, 22.0), names[i], HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 115.0, 13, Color("173249"))
-		draw_string(ui_font, row.position + Vector2(49.0, 37.0), str(scores[i]) + " PTS", HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 115.0, 9, Color("527184"))
-		draw_string(ui_font, row.position + Vector2(row.size.x - 66.0, 29.0), str(18 - i * 2) + " W", HORIZONTAL_ALIGNMENT_CENTER, 56.0, 12, Color("1c936b"))
+	draw_string(ui_font, panel.position + Vector2(0.0, 28.0), ui_text("leaderboard_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 16, Color("173249"))
+	var entries := global_leaderboard.duplicate()
+	if entries.is_empty():
+		entries = [{"rank": 1, "name": profile_name, "rating": player_rating, "publicId": firebase_public_id}]
+	var count := mini(4, entries.size())
+	for i in count:
+		var entry: Dictionary = entries[i]
+		var row := Rect2(panel.position + Vector2(10.0, 38.0 + i * 48.0), Vector2(panel.size.x - 20.0, 42.0))
+		var is_me := str(entry.get("publicId", "")) == firebase_public_id
+		draw_style_box(make_box(Color("ffe6a8") if is_me else Color(0.95, 0.99, 0.97, 0.96), 13.0), row)
+		draw_string(ui_font, row.position + Vector2(8.0, 27.0), "#" + str(entry.get("rank", i + 1)), HORIZONTAL_ALIGNMENT_CENTER, 28.0, 13, Color("173249"))
+		draw_string(ui_font, row.position + Vector2(38.0, 20.0), str(entry.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 90.0, 12, Color("173249"))
+		draw_string(ui_font, row.position + Vector2(38.0, 35.0), str(entry.get("rating", 0)) + " " + ui_text("rating_label"), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 90.0, 9, Color("527184"))
 
 func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: String) -> void:
 	var back := frontend_back_rect(viewport_size)

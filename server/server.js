@@ -11,6 +11,59 @@ const queues = new Map();
 const authHandoffs = new Map();
 const lobbyChat = [];
 const LOBBY_CHAT_LIMIT = 40;
+const presenceByPublicId = new Map();
+const leaderboard = new Map();
+const pendingInvites = new Map();
+const INVITE_TTL_MS = 15 * 60 * 1000;
+const LEADERBOARD_LIMIT = 80;
+
+function normalizePublicId(value) {
+  const raw = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!raw) return "";
+  if (raw.startsWith("ZP-")) return raw.slice(0, 12);
+  return (`ZP-${raw}`).slice(0, 12);
+}
+
+function upsertLeaderboard(entry) {
+  const publicId = normalizePublicId(entry.publicId);
+  if (!publicId) return;
+  leaderboard.set(publicId, {
+    publicId,
+    name: String(entry.name || "Player").slice(0, 24),
+    rating: clampInt(entry.rating, 0, 9999, 1000),
+    wins: clampInt(entry.wins, 0, 999999, 0),
+    losses: clampInt(entry.losses, 0, 999999, 0),
+    leagueTier: clampInt(entry.leagueTier, 0, 5, 0),
+    updatedAt: Date.now()
+  });
+  while (leaderboard.size > LEADERBOARD_LIMIT) {
+    const oldest = [...leaderboard.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)[0];
+    if (!oldest) break;
+    leaderboard.delete(oldest[0]);
+  }
+}
+
+function leaderboardSnapshot(limit = 10) {
+  return [...leaderboard.values()]
+    .sort((a, b) => b.rating - a.rating || b.wins - a.wins)
+    .slice(0, limit)
+    .map((item, index) => ({ rank: index + 1, ...item }));
+}
+
+function deliverPendingInvites(socket, publicId) {
+  const queue = pendingInvites.get(publicId) || [];
+  pendingInvites.delete(publicId);
+  const now = Date.now();
+  for (const invite of queue) {
+    if (now - invite.at > INVITE_TTL_MS) continue;
+    send(socket, {
+      type: "friend_invite",
+      fromName: invite.fromName,
+      fromPublicId: invite.fromPublicId,
+      roomCode: invite.roomCode
+    });
+  }
+}
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) {
@@ -46,6 +99,9 @@ function publicPlayer(player) {
     level: player.level,
     wins: player.wins,
     losses: player.losses,
+    rating: player.rating ?? 1000,
+    leagueTier: player.leagueTier ?? 0,
+    publicId: player.publicId || "",
     ready: player.ready
   };
 }
@@ -128,6 +184,9 @@ function joinRoom(socket, room, payload) {
     level: clampInt(payload.level, 1, 999, 1),
     wins: clampInt(payload.wins, 0, 999999, 0),
     losses: clampInt(payload.losses, 0, 999999, 0),
+    rating: clampInt(payload.rating, 0, 9999, 1000),
+    leagueTier: clampInt(payload.leagueTier, 0, 5, 0),
+    publicId: normalizePublicId(payload.publicId),
     ready: false
   };
   room.players.push(player);
@@ -225,6 +284,56 @@ function handleMessage(socket, payload) {
     lobbyChat.push(entry);
     while (lobbyChat.length > LOBBY_CHAT_LIMIT) lobbyChat.shift();
     broadcastLobby({ type: "lobby_chat", ...entry });
+    return;
+  }
+
+  if (payload.type === "register_presence") {
+    const publicId = normalizePublicId(payload.publicId);
+    if (!publicId) return;
+    session.publicId = publicId;
+    presenceByPublicId.set(publicId, socket);
+    upsertLeaderboard({
+      publicId,
+      name: payload.name,
+      rating: payload.rating,
+      wins: payload.wins,
+      losses: payload.losses,
+      leagueTier: payload.leagueTier
+    });
+    deliverPendingInvites(socket, publicId);
+    send(socket, { type: "leaderboard", entries: leaderboardSnapshot(12) });
+    return;
+  }
+
+  if (payload.type === "get_leaderboard") {
+    send(socket, { type: "leaderboard", entries: leaderboardSnapshot(12) });
+    return;
+  }
+
+  if (payload.type === "invite_friend") {
+    const inviterPublicId = normalizePublicId(payload.fromPublicId || session.publicId);
+    const targetPublicId = normalizePublicId(payload.targetPublicId);
+    const roomCode = String(payload.roomCode || session.roomCode || "").trim().toUpperCase();
+    if (!targetPublicId || roomCode.length !== 4) {
+      send(socket, { type: "error", code: "INVALID_INVITE", message: "Invalid invite target or room" });
+      return;
+    }
+    const invite = {
+      fromName: String(payload.fromName || "Player").slice(0, 24),
+      fromPublicId: inviterPublicId,
+      roomCode,
+      at: Date.now()
+    };
+    const targetSocket = presenceByPublicId.get(targetPublicId);
+    if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+      send(targetSocket, { type: "friend_invite", ...invite });
+      send(socket, { type: "invite_sent", targetPublicId, online: true });
+    } else {
+      const queue = pendingInvites.get(targetPublicId) || [];
+      queue.push(invite);
+      pendingInvites.set(targetPublicId, queue.filter((item) => Date.now() - item.at <= INVITE_TTL_MS).slice(-5));
+      send(socket, { type: "invite_sent", targetPublicId, online: false });
+    }
     return;
   }
 
@@ -362,7 +471,8 @@ function handleMessage(socket, payload) {
   }
 
   if (payload.type === "chat") {
-    if (room.status !== "playing") return;
+    const canChat = room.status === "playing" || (room.status === "waiting" && room.source === "friend");
+    if (!canChat) return;
     const message = String(payload.message || "").trim().slice(0, 80);
     if (!message) return;
     broadcast(room, {
@@ -431,6 +541,8 @@ wss.on("connection", (socket) => {
   socket.on("close", () => {
     leaveQueue(socket);
     leaveRoom(socket);
+    const session = clients.get(socket);
+    if (session?.publicId) presenceByPublicId.delete(session.publicId);
     clients.delete(socket);
 	for (const [token, handoff] of authHandoffs.entries()) {
 	  if (handoff.socket === socket) authHandoffs.delete(token);
