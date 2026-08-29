@@ -95,13 +95,18 @@ const UI_TEXT_HE := {
 	"claim": "קבלו 80 מטבעות", "claimed": "הפרס של היום כבר נתקבל",
 	"daily_claimed_toast": "קיבלתם 80 מטבעות!", "search_timeout": "החיפוש בוטל. נסו שוב.",
 	"social_hub": "מועדון השחקנים", "friends_tab": "חברים", "chat_tab": "צ׳אט",
-	"add_friend": "הוספת חבר", "friend_id_hint": "ZP-XXXXXXXX",
-	"invite_friend": "הזמנה", "no_friends": "עדיין אין חברים — הוסיפו לפי מזהה",
+	"add_friend": "שליחת בקשה", "friend_id_hint": "ZP-XXXXXXXX",
+	"invite_friend": "הזמנה", "no_friends": "עדיין אין חברים מאושרים",
+	"friend_requests_title": "בקשות חברות", "friend_request_accept": "אישור",
+	"friend_request_decline": "דחייה", "friend_request_sent": "בקשת חברות נשלחה!",
+	"friend_request_pending": "ממתין לאישור", "friend_request_exists": "כבר שלחתם בקשה",
+	"friend_request_incoming": "יש לכם בקשה מ-%s", "friend_accepted": "חבר חדש אושר!",
+	"friend_invite_offline": "החבר לא מחובר כרגע",
 	"lobby_chat_title": "צ׳אט הלובי", "lobby_chat_hint": "כתבו הודעה לקהילה...",
-	"online_players": "שחקנים מחוברים", "friend_added": "חבר נוסף!", "friend_exists": "החבר כבר ברשימה",
-	"friend_not_found": "שחקן לא נמצא", "remove_friend": "הסרה", "your_turn_badge": "התור שלך",
+	"online_players": "שחקנים מחוברים", 	"friend_added": "חבר נוסף!", "friend_exists": "החבר כבר ברשימה",
+	"friend_not_found": "מזהה לא תקין", "remove_friend": "הסרה", "your_turn_badge": "התור שלך",
 	"friend_profile_title": "פרופיל חבר", "friend_online": "מחובר עכשיו", "friend_offline": "לא מחובר",
-	"friend_added_you": "%s הוסיף/ה אותך לרשימת החברים!", "friend_must_open": "בקשו מהחבר לפתוח את המשחק פעם אחת",
+	"friend_added_you": "%s אישר/ה את בקשת החברות!", "friend_must_open": "בקשו מהחבר לפתוח את המשחק פעם אחת",
 	"friend_view_profile": "צפייה בפרופיל", "friend_id_short": "ZP-XXXXXXXX",
 	"league_tab": "ליגה", "leaderboard_title": "טבלת מובילים", "league_rookie": "מתחיל",
 	"league_amateur": "חובבן", "league_pro": "מקצוען", "league_elite": "עילית", "league_legend": "אגדה",
@@ -143,13 +148,18 @@ const UI_TEXT_EN := {
 	"claim": "CLAIM 80 COINS", "claimed": "ALREADY CLAIMED TODAY",
 	"daily_claimed_toast": "You claimed 80 coins!", "search_timeout": "Search cancelled. Try again.",
 	"social_hub": "PLAYER CLUB", "friends_tab": "FRIENDS", "chat_tab": "CHAT",
-	"add_friend": "ADD FRIEND", "friend_id_hint": "ZP-XXXXXXXX",
-	"invite_friend": "INVITE", "no_friends": "No friends yet — add by player ID",
+	"add_friend": "SEND REQUEST", "friend_id_hint": "ZP-XXXXXXXX",
+	"invite_friend": "INVITE", "no_friends": "No approved friends yet",
+	"friend_requests_title": "FRIEND REQUESTS", "friend_request_accept": "ACCEPT",
+	"friend_request_decline": "DECLINE", "friend_request_sent": "Friend request sent!",
+	"friend_request_pending": "Waiting for approval", "friend_request_exists": "Request already sent",
+	"friend_request_incoming": "Request from %s", "friend_accepted": "New friend approved!",
+	"friend_invite_offline": "Friend is offline right now",
 	"lobby_chat_title": "LOBBY CHAT", "lobby_chat_hint": "Say hello to the community...",
 	"online_players": "players online", "friend_added": "Friend added!", "friend_exists": "Friend already added",
-	"friend_not_found": "Player not found", "remove_friend": "REMOVE", "your_turn_badge": "YOUR TURN",
+	"friend_not_found": "Invalid player ID", "remove_friend": "REMOVE", "your_turn_badge": "YOUR TURN",
 	"friend_profile_title": "FRIEND PROFILE", "friend_online": "Online now", "friend_offline": "Offline",
-	"friend_added_you": "%s added you as a friend!", "friend_must_open": "Ask your friend to open the game once",
+	"friend_added_you": "%s accepted your friend request!", "friend_must_open": "Ask your friend to open the game once",
 	"friend_view_profile": "View profile", "friend_id_short": "ZP-XXXXXXXX",
 	"league_tab": "LEAGUE", "leaderboard_title": "LEADERBOARD", "league_rookie": "ROOKIE",
 	"league_amateur": "AMATEUR", "league_pro": "PRO", "league_elite": "ELITE", "league_legend": "LEGEND",
@@ -352,6 +362,8 @@ var match_result_coins := 0
 var match_result_recorded := false
 var turn_shot_committed := false
 var friends_list: Array = []
+var incoming_friend_requests: Array = []
+var outgoing_friend_requests: Array = []
 var home_social_tab := 0
 var home_friend_profile_index := -1
 var lobby_chat_messages: Array = []
@@ -3734,7 +3746,30 @@ func home_add_friend_button_rect(viewport_size: Vector2) -> Rect2:
 func home_friend_row_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := home_social_panel_rect(viewport_size)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(panel.position + Vector2(14.0 * unit, 118.0 * unit + float(index) * 58.0 * unit), Vector2(panel.size.x - 28.0 * unit, 52.0 * unit))
+	var start_y := home_friends_content_top(viewport_size)
+	return Rect2(panel.position + Vector2(14.0 * unit, start_y + float(index) * 58.0 * unit), Vector2(panel.size.x - 28.0 * unit, 52.0 * unit))
+
+func home_friends_content_top(viewport_size: Vector2) -> float:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var incoming_count := mini(2, incoming_friend_requests.size())
+	var header_h := 18.0 * unit if incoming_count > 0 else 0.0
+	return 72.0 * unit + header_h + float(incoming_count) * 58.0 * unit
+
+func home_incoming_request_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var start_y := 90.0 * unit + float(index) * 58.0 * unit
+	return Rect2(panel.position + Vector2(14.0 * unit, start_y), Vector2(panel.size.x - 28.0 * unit, 48.0 * unit))
+
+func home_incoming_accept_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var row := home_incoming_request_rect(index, viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(row.position + Vector2(row.size.x - 150.0 * unit, 8.0 * unit), Vector2(68.0, 32.0) * unit)
+
+func home_incoming_decline_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var row := home_incoming_request_rect(index, viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(row.position + Vector2(row.size.x - 76.0 * unit, 8.0 * unit), Vector2(68.0, 32.0) * unit)
 
 func home_friend_invite_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var row := home_friend_row_rect(index, viewport_size)
@@ -3905,7 +3940,33 @@ func refresh_friend_names_from_leaderboard() -> void:
 	if changed:
 		save_player_profile()
 
-func add_friend_by_public_id(raw_id: String) -> void:
+func friend_request_display_name(entry: Dictionary) -> String:
+	var pid := str(entry.get("id", ""))
+	var name := str(entry.get("name", "")).strip_edges()
+	if not name.is_empty() and name != pid and not name.begins_with("ZP-"):
+		return name.left(20)
+	return friend_display_name(entry)
+
+func apply_social_state_from_server(payload: Dictionary) -> void:
+	apply_friends_list_from_server(payload.get("friends", []))
+	incoming_friend_requests = []
+	for item in payload.get("incoming", []):
+		if typeof(item) == TYPE_DICTIONARY:
+			incoming_friend_requests.append(item)
+	outgoing_friend_requests = []
+	for item in payload.get("outgoing", []):
+		if typeof(item) == TYPE_DICTIONARY:
+			outgoing_friend_requests.append(item)
+	save_player_profile()
+	queue_redraw()
+
+func friend_request_already_sent(public_id: String) -> bool:
+	for entry in outgoing_friend_requests:
+		if typeof(entry) == TYPE_DICTIONARY and str(entry.get("id", "")) == public_id:
+			return true
+	return false
+
+func send_friend_request_by_id(raw_id: String) -> void:
 	var public_id := normalize_friend_public_id(raw_id)
 	if public_id.length() < 5:
 		show_menu_notice(ui_text("friend_not_found"))
@@ -3916,9 +3977,16 @@ func add_friend_by_public_id(raw_id: String) -> void:
 	if friend_already_added(public_id):
 		show_menu_notice(ui_text("friend_exists"))
 		return
+	if friend_request_already_sent(public_id):
+		show_menu_notice(ui_text("friend_request_exists"))
+		return
+	for entry in incoming_friend_requests:
+		if str(entry.get("id", "")) == public_id:
+			accept_friend_request_from(str(entry.get("id", "")))
+			return
 	if multiplayer_state == "connected" and not firebase_public_id.is_empty():
 		send_multiplayer({
-			"type": "add_friend",
+			"type": "send_friend_request",
 			"fromPublicId": firebase_public_id,
 			"targetPublicId": public_id,
 			"fromName": profile_name,
@@ -3930,19 +3998,53 @@ func add_friend_by_public_id(raw_id: String) -> void:
 		if friend_id_input != null:
 			friend_id_input.clear()
 		return
-	if firebase_id_token.is_empty():
-		friends_list.append({"id": public_id, "name": public_id, "rating": 1000, "wins": 0, "losses": 0, "leagueTier": 0, "online": false})
-		save_player_profile()
-		show_menu_notice(ui_text("friend_must_open"))
-		if friend_id_input != null:
-			friend_id_input.clear()
-		queue_redraw()
+	outgoing_friend_requests.append({"id": public_id, "name": public_id})
+	save_player_profile()
+	show_menu_notice(ui_text("friend_request_sent"))
+	if friend_id_input != null:
+		friend_id_input.clear()
+	queue_redraw()
+
+func accept_friend_request_from(from_public_id: String) -> void:
+	var public_id := normalize_friend_public_id(from_public_id)
+	if public_id.is_empty():
 		return
-	if friend_lookup_request == null or friend_lookup_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+	if multiplayer_state == "connected" and not firebase_public_id.is_empty():
+		send_multiplayer({
+			"type": "accept_friend_request",
+			"publicId": firebase_public_id,
+			"fromPublicId": public_id,
+			"name": profile_name,
+			"rating": player_rating,
+			"wins": player_wins,
+			"losses": player_losses,
+			"leagueTier": player_league_tier
+		})
 		return
-	pending_friend_lookup_id = public_id
-	var url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, public_id]
-	friend_lookup_request.request(url, ["Authorization: Bearer " + firebase_id_token])
+	for i in incoming_friend_requests.size():
+		if str(incoming_friend_requests[i].get("id", "")) == public_id:
+			upsert_local_friend(incoming_friend_requests[i])
+			incoming_friend_requests.remove_at(i)
+			break
+	show_menu_notice(ui_text("friend_accepted"))
+	queue_redraw()
+
+func decline_friend_request_at(index: int) -> void:
+	if index < 0 or index >= incoming_friend_requests.size():
+		return
+	var public_id := str(incoming_friend_requests[index].get("id", ""))
+	incoming_friend_requests.remove_at(index)
+	if multiplayer_state == "connected" and not firebase_public_id.is_empty() and not public_id.is_empty():
+		send_multiplayer({
+			"type": "decline_friend_request",
+			"publicId": firebase_public_id,
+			"fromPublicId": public_id
+		})
+	save_player_profile()
+	queue_redraw()
+
+func add_friend_by_public_id(raw_id: String) -> void:
+	send_friend_request_by_id(raw_id)
 
 func _on_friend_lookup_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	var public_id := pending_friend_lookup_id
@@ -3997,6 +4099,10 @@ func remove_friend_at(index: int) -> void:
 
 func invite_friend_to_play(index: int) -> void:
 	if index < 0 or index >= friends_list.size():
+		return
+	var friend_entry: Dictionary = friends_list[index]
+	if not bool(friend_entry.get("online", false)):
+		show_menu_notice(ui_text("friend_invite_offline"))
 		return
 	play_sound("ui")
 	app_screen = APP_FRIEND
@@ -4169,6 +4275,12 @@ func load_player_profile() -> void:
 	friends_list = config.get_value("social", "friends", [])
 	if typeof(friends_list) != TYPE_ARRAY:
 		friends_list = []
+	incoming_friend_requests = config.get_value("social", "incoming_requests", [])
+	if typeof(incoming_friend_requests) != TYPE_ARRAY:
+		incoming_friend_requests = []
+	outgoing_friend_requests = config.get_value("social", "outgoing_requests", [])
+	if typeof(outgoing_friend_requests) != TYPE_ARRAY:
+		outgoing_friend_requests = []
 	update_player_league_tier()
 	firebase_uid = str(config.get_value("firebase", "uid", ""))
 	firebase_public_id = str(config.get_value("firebase", "public_id", ""))
@@ -4198,6 +4310,8 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("settings", "computer_difficulty", computer_difficulty)
 	config.set_value("settings", "language", ui_language)
 	config.set_value("social", "friends", friends_list)
+	config.set_value("social", "incoming_requests", incoming_friend_requests)
+	config.set_value("social", "outgoing_requests", outgoing_friend_requests)
 	config.set_value("firebase", "uid", firebase_uid)
 	config.set_value("firebase", "public_id", firebase_public_id)
 	config.set_value("firebase", "id_token", firebase_id_token)
@@ -4957,30 +5071,43 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 				if str(entry.get("publicId", "")) == firebase_public_id:
 					player_world_rank = int(entry.get("rank", 0))
 					break
-		"friends_list":
-			apply_friends_list_from_server(payload.get("friends", []))
-		"friend_add_result":
+		"friends_list", "social_state":
+			if str(payload.get("type", "")) == "social_state":
+				apply_social_state_from_server(payload)
+			else:
+				apply_friends_list_from_server(payload.get("friends", []))
+		"friend_request_result":
 			if bool(payload.get("ok", false)):
-				var friend_entry: Dictionary = payload.get("friend", {})
-				if not friend_entry.is_empty():
-					upsert_local_friend(friend_entry)
-				show_menu_notice(ui_text("friend_added"))
+				show_menu_notice(ui_text("friend_request_sent"))
 			else:
 				var code := str(payload.get("code", ""))
-				if code == "NOT_FOUND":
-					show_menu_notice(ui_text("friend_must_open"))
-				elif code == "EXISTS":
+				if code == "EXISTS":
 					show_menu_notice(ui_text("friend_exists"))
+				elif code == "PENDING":
+					show_menu_notice(ui_text("friend_request_exists"))
+				elif code == "INCOMING":
+					accept_friend_request_from(str(payload.get("targetPublicId", "")))
 				else:
 					show_menu_notice(ui_text("friend_not_found"))
-		"friend_added_notify":
-			var friend_entry: Dictionary = payload.get("friend", {})
-			if not friend_entry.is_empty():
-				upsert_local_friend(friend_entry)
+		"friend_accept_result":
+			if bool(payload.get("ok", false)):
+				show_menu_notice(ui_text("friend_accepted"))
+			else:
+				show_menu_notice(ui_text("friend_not_found"))
+		"friend_request_notify":
 			home_social_tab = 0
-			var from_name := str(payload.get("fromName", friend_entry.get("name", "")))
-			show_menu_notice(ui_text("friend_added_you") % from_name)
+			var request_name := str(payload.get("request", {}).get("name", ""))
+			show_menu_notice(ui_text("friend_request_incoming") % request_name)
 			play_sound("invite")
+		"friend_accepted_notify":
+			home_social_tab = 0
+			var accepted_name := str(payload.get("fromName", payload.get("friend", {}).get("name", "")))
+			show_menu_notice(ui_text("friend_added_you") % accepted_name)
+			play_sound("invite")
+		"friend_add_result":
+			pass
+		"friend_added_notify":
+			pass
 		"friend_invite":
 			pending_friend_invite = {
 				"fromName": str(payload.get("fromName", "")),
@@ -5200,8 +5327,12 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				return
 			if home_friend_profile_invite_rect(viewport_size).has_point(screen_pos):
 				var invite_index := home_friend_profile_index
-				home_friend_profile_index = -1
-				invite_friend_to_play(invite_index)
+				var friend_entry: Dictionary = friends_list[invite_index] if invite_index >= 0 and invite_index < friends_list.size() else {}
+				if bool(friend_entry.get("online", false)):
+					home_friend_profile_index = -1
+					invite_friend_to_play(invite_index)
+				else:
+					show_menu_notice(ui_text("friend_invite_offline"))
 				return
 			if home_friend_profile_remove_rect(viewport_size).has_point(screen_pos):
 				remove_friend_at(home_friend_profile_index)
@@ -5241,11 +5372,18 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			queue_redraw()
 			return
 		if home_social_tab == 0:
+			for i in mini(2, incoming_friend_requests.size()):
+				if home_incoming_accept_rect(i, viewport_size).has_point(screen_pos):
+					accept_friend_request_from(str(incoming_friend_requests[i].get("id", "")))
+					return
+				if home_incoming_decline_rect(i, viewport_size).has_point(screen_pos):
+					decline_friend_request_at(i)
+					return
 			if home_add_friend_button_rect(viewport_size).has_point(screen_pos):
 				if friend_id_input != null:
-					add_friend_by_public_id(friend_id_input.text)
+					send_friend_request_by_id(friend_id_input.text)
 				return
-			for i in mini(4, friends_list.size()):
+			for i in mini(3, friends_list.size()):
 				var row := home_friend_row_rect(i, viewport_size)
 				var invite_rect := home_friend_invite_rect(i, viewport_size)
 				if invite_rect.has_point(screen_pos):
@@ -5983,23 +6121,47 @@ func draw_home_social_panel(viewport_size: Vector2) -> void:
 			tab_label = ui_text("league_tab")
 		draw_string(ui_font, tab_rect.position + Vector2(0.0, 26.0) * unit, tab_label, HORIZONTAL_ALIGNMENT_CENTER, tab_rect.size.x, int(13.0 * unit), Color.WHITE)
 	if home_social_tab == 0:
-		var visible_count := mini(4, friends_list.size())
-		if visible_count == 0:
+		var incoming_count := mini(2, incoming_friend_requests.size())
+		if incoming_count > 0:
+			draw_string(ui_font, panel.position + Vector2(0.0, 84.0) * unit, ui_text("friend_requests_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(12.0 * unit), Color("ffe25d"))
+		for i in incoming_count:
+			var request_row := home_incoming_request_rect(i, viewport_size)
+			var request_entry: Dictionary = incoming_friend_requests[i]
+			var request_name := friend_request_display_name(request_entry)
+			draw_style_box(make_box(Color("2a4560"), 12.0 * unit), request_row)
+			draw_circle(request_row.position + Vector2(22.0, 24.0) * unit, 14.0 * unit, Color("ffe25d"))
+			draw_string(ui_font, request_row.position + Vector2(14.0, 30.0) * unit, request_name.substr(0, 1), HORIZONTAL_ALIGNMENT_CENTER, 16.0 * unit, int(14.0 * unit), Color("173249"))
+			draw_string(ui_font, request_row.position + Vector2(42.0, 20.0) * unit, request_name, HORIZONTAL_ALIGNMENT_LEFT, request_row.size.x - 170.0 * unit, int(13.0 * unit), Color.WHITE)
+			draw_string(ui_font, request_row.position + Vector2(42.0, 36.0) * unit, str(request_entry.get("id", "")), HORIZONTAL_ALIGNMENT_LEFT, request_row.size.x - 170.0 * unit, int(9.0 * unit), Color("8cecff"))
+			var accept_rect := home_incoming_accept_rect(i, viewport_size)
+			var decline_rect := home_incoming_decline_rect(i, viewport_size)
+			draw_style_box(make_box(Color("35b96f"), 10.0 * unit), accept_rect)
+			draw_style_box(make_box(Color("e94f78"), 10.0 * unit), decline_rect)
+			draw_string(ui_font, accept_rect.position + Vector2(0.0, 22.0) * unit, ui_text("friend_request_accept"), HORIZONTAL_ALIGNMENT_CENTER, accept_rect.size.x, int(11.0 * unit), Color.WHITE)
+			draw_string(ui_font, decline_rect.position + Vector2(0.0, 22.0) * unit, ui_text("friend_request_decline"), HORIZONTAL_ALIGNMENT_CENTER, decline_rect.size.x, int(11.0 * unit), Color.WHITE)
+		var visible_count := mini(3, friends_list.size())
+		if visible_count == 0 and incoming_count == 0 and outgoing_friend_requests.is_empty():
 			draw_string(ui_font, panel.position + Vector2(0.0, 170.0) * unit, ui_text("no_friends"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 20.0 * unit, int(14.0 * unit), Color("8cecff"))
 		for i in visible_count:
 			var row := home_friend_row_rect(i, viewport_size)
 			var friend_entry: Dictionary = friends_list[i]
 			var display_name := friend_display_name(friend_entry)
+			var is_online := bool(friend_entry.get("online", false))
 			var selected := i == home_friend_profile_index
 			draw_style_box(make_box(Color("244d70") if selected else Color("173249"), 14.0 * unit), row)
-			draw_circle(row.position + Vector2(24.0, 26.0) * unit, 16.0 * unit, Color("35b96f") if bool(friend_entry.get("online", false)) else Color("6965d8"))
+			draw_circle(row.position + Vector2(24.0, 26.0) * unit, 16.0 * unit, Color("35b96f") if is_online else Color("ef6b65"))
+			draw_circle(row.position + Vector2(24.0, 26.0) * unit, 6.0 * unit, Color.WHITE if is_online else Color("ffd0d0"))
 			var initial := display_name.substr(0, 1)
 			draw_string(ui_font, row.position + Vector2(16.0, 32.0) * unit, initial, HORIZONTAL_ALIGNMENT_CENTER, 16.0 * unit, int(16.0 * unit), Color.WHITE)
 			draw_string(ui_font, row.position + Vector2(48.0, 22.0) * unit, display_name, HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 150.0 * unit, int(15.0 * unit), Color.WHITE)
-			draw_string(ui_font, row.position + Vector2(48.0, 40.0) * unit, str(friend_entry.get("id", "")), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 150.0 * unit, int(10.0 * unit), Color("70dfff"))
+			var status_text := ui_text("friend_online") if is_online else ui_text("friend_offline")
+			draw_string(ui_font, row.position + Vector2(48.0, 40.0) * unit, status_text, HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 150.0 * unit, int(10.0 * unit), Color("35b96f") if is_online else Color("ef6b65"))
 			var invite_rect := home_friend_invite_rect(i, viewport_size)
-			draw_style_box(make_box(Color("35b96f"), 10.0 * unit), invite_rect)
+			draw_style_box(make_box(Color("35b96f") if is_online else Color("5a6675"), 10.0 * unit), invite_rect)
 			draw_string(ui_font, invite_rect.position + Vector2(0.0, 22.0) * unit, ui_text("invite_friend"), HORIZONTAL_ALIGNMENT_CENTER, invite_rect.size.x, int(12.0 * unit), Color.WHITE)
+		if not outgoing_friend_requests.is_empty():
+			var pending_y := home_friends_content_top(viewport_size) + float(mini(3, friends_list.size())) * 58.0 * unit + 6.0 * unit
+			draw_string(ui_font, panel.position + Vector2(18.0 * unit, pending_y), ui_text("friend_request_pending") + " (" + str(outgoing_friend_requests.size()) + ")", HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 36.0 * unit, int(11.0 * unit), Color("ffe25d"))
 		draw_style_box(make_box(Color("10283b"), 12.0 * unit), home_add_friend_rect(viewport_size))
 		draw_style_box(make_box(Color("7655df"), 14.0 * unit), home_add_friend_button_rect(viewport_size))
 		draw_string(ui_font, home_add_friend_button_rect(viewport_size).position + Vector2(0.0, 24.0) * unit, ui_text("add_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_add_friend_button_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
@@ -6053,15 +6215,17 @@ func draw_home_friend_profile(viewport_size: Vector2) -> void:
 	draw_string(ui_font, modal.position + Vector2(0.0, 148.0) * unit, display_name, HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(22.0 * unit), Color("173249"))
 	draw_string(ui_font, modal.position + Vector2(0.0, 174.0) * unit, str(friend_entry.get("id", "")), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(12.0 * unit), Color("527184"))
 	var online_text := ui_text("friend_online") if bool(friend_entry.get("online", false)) else ui_text("friend_offline")
-	var online_color := Color("35b96f") if bool(friend_entry.get("online", false)) else Color("70858d")
+	var online_color := Color("35b96f") if bool(friend_entry.get("online", false)) else Color("ef6b65")
 	draw_string(ui_font, modal.position + Vector2(0.0, 198.0) * unit, online_text, HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(13.0 * unit), online_color)
 	var stats := Rect2(modal.position + Vector2(24.0 * unit, 214.0 * unit), Vector2(modal.size.x - 48.0 * unit, 72.0 * unit))
 	draw_style_box(make_box(Color("d8f2fb"), 14.0 * unit), stats)
 	draw_string(ui_font, stats.position + Vector2(14.0, 24.0) * unit, league_name(int(friend_entry.get("leagueTier", 0))), HORIZONTAL_ALIGNMENT_LEFT, stats.size.x - 28.0 * unit, int(14.0 * unit), Color("173249"))
 	draw_string(ui_font, stats.position + Vector2(14.0, 44.0) * unit, ui_text("rating_label") + ": " + str(friend_entry.get("rating", 1000)), HORIZONTAL_ALIGNMENT_LEFT, stats.size.x - 28.0 * unit, int(12.0 * unit), Color("527184"))
 	draw_string(ui_font, stats.position + Vector2(14.0, 62.0) * unit, ui_text("wins") + ": " + str(friend_entry.get("wins", 0)) + "  " + ui_text("losses") + ": " + str(friend_entry.get("losses", 0)), HORIZONTAL_ALIGNMENT_LEFT, stats.size.x - 28.0 * unit, int(12.0 * unit), Color("527184"))
-	draw_style_box(make_box(Color("35b96f"), 12.0 * unit), home_friend_profile_invite_rect(viewport_size))
-	draw_string(ui_font, home_friend_profile_invite_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, ui_text("invite_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_friend_profile_invite_rect(viewport_size).size.x, int(14.0 * unit), Color.WHITE)
+	var invite_rect := home_friend_profile_invite_rect(viewport_size)
+	var can_invite := bool(friend_entry.get("online", false))
+	draw_style_box(make_box(Color("35b96f") if can_invite else Color("5a6675"), 12.0 * unit), invite_rect)
+	draw_string(ui_font, invite_rect.position + Vector2(0.0, 26.0) * unit, ui_text("invite_friend"), HORIZONTAL_ALIGNMENT_CENTER, invite_rect.size.x, int(14.0 * unit), Color.WHITE)
 	draw_style_box(make_box(Color("e94f78"), 12.0 * unit), home_friend_profile_remove_rect(viewport_size))
 	draw_string(ui_font, home_friend_profile_remove_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, ui_text("remove_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_friend_profile_remove_rect(viewport_size).size.x, int(14.0 * unit), Color.WHITE)
 

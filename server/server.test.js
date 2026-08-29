@@ -225,7 +225,7 @@ test("invite_friend delivers to online player", async (context) => {
   assert.equal(invite.fromName, "Host");
 });
 
-test("add_friend syncs both players and delivers friend list", async (context) => {
+test("friend requests require acceptance and sync both players", async (context) => {
   const port = 11245;
   const child = await startServer(port);
   context.after(() => child.kill("SIGTERM"));
@@ -240,12 +240,11 @@ test("add_friend syncs both players and delivers friend list", async (context) =
   second.send(JSON.stringify({ type: "register_presence", publicId: "ZP-PLAYER02", name: "Friend", rating: 1100, wins: 2, losses: 2 }));
   await next(second, "leaderboard");
 
-  const firstListPromise = next(first, "friends_list", (message) => message.friends?.length === 1);
-  const resultPromise = next(first, "friend_add_result");
-  const secondListPromise = next(second, "friends_list", (message) => message.friends?.length === 1);
-  const notifyPromise = next(second, "friend_added_notify");
+  const requestNotifyPromise = next(second, "friend_request_notify");
+  const requestResultPromise = next(first, "friend_request_result");
+  const firstSocialPromise = next(first, "social_state", (message) => message.outgoing?.length === 1);
   first.send(JSON.stringify({
-    type: "add_friend",
+    type: "send_friend_request",
     fromPublicId: "ZP-PLAYER01",
     targetPublicId: "ZP-PLAYER02",
     fromName: "Moshe",
@@ -254,16 +253,57 @@ test("add_friend syncs both players and delivers friend list", async (context) =
     losses: 1,
     leagueTier: 1
   }));
-  const firstList = await firstListPromise;
-  const result = await resultPromise;
-  const secondList = await secondListPromise;
-  const notify = await notifyPromise;
-  assert.equal(firstList.friends.length, 1);
-  assert.equal(result.ok, true);
-  assert.equal(result.friend.name, "Friend");
-  assert.equal(notify.friend.name, "Moshe");
-  assert.equal(secondList.friends.length, 1);
-  assert.equal(secondList.friends[0].name, "Moshe");
+  const requestResult = await requestResultPromise;
+  assert.equal(requestResult.ok, true);
+  const firstSocial = await firstSocialPromise;
+  assert.equal(firstSocial.outgoing.length, 1);
+  const requestNotify = await requestNotifyPromise;
+  assert.equal(requestNotify.request.name, "Moshe");
+
+  const acceptResultPromise = next(second, "friend_accept_result");
+  const acceptedNotifyPromise = next(first, "friend_accepted_notify");
+  const secondSocialPromise = next(second, "social_state", (message) => message.friends?.length === 1);
+  const firstFriendsPromise = next(first, "social_state", (message) => message.friends?.length === 1);
+  second.send(JSON.stringify({
+    type: "accept_friend_request",
+    publicId: "ZP-PLAYER02",
+    fromPublicId: "ZP-PLAYER01",
+    name: "Friend"
+  }));
+  const acceptResult = await acceptResultPromise;
+  assert.equal(acceptResult.ok, true);
+  assert.equal(acceptResult.friend.name, "Moshe");
+  const acceptedNotify = await acceptedNotifyPromise;
+  assert.equal(acceptedNotify.friend.name, "Friend");
+  const secondSocial = await secondSocialPromise;
+  assert.equal(secondSocial.friends[0].name, "Moshe");
+  const firstFriends = await firstFriendsPromise;
+  assert.equal(firstFriends.friends[0].name, "Friend");
+});
+
+test("send_friend_request works when target is offline", async (context) => {
+  const port = 11246;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const first = await connect(port);
+  context.after(() => first.close());
+
+  first.send(JSON.stringify({ type: "register_presence", publicId: "ZP-PLAYER01", name: "Moshe", rating: 1200 }));
+  await next(first, "leaderboard");
+
+  const requestResultPromise = next(first, "friend_request_result");
+  const socialPromise = next(first, "social_state", (message) => message.outgoing?.length === 1);
+  first.send(JSON.stringify({
+    type: "send_friend_request",
+    fromPublicId: "ZP-PLAYER01",
+    targetPublicId: "ZP-OFFLINE1",
+    fromName: "Moshe"
+  }));
+  const requestResult = await requestResultPromise;
+  assert.equal(requestResult.ok, true);
+  const social = await socialPromise;
+  assert.equal(social.outgoing[0].id, "ZP-OFFLINE1");
 });
 
 test("register_fcm_token stores token for offline push delivery", async (context) => {
