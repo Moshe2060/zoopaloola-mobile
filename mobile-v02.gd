@@ -310,6 +310,8 @@ var player_rating := 1000
 var player_league_tier := 0
 var global_leaderboard: Array = []
 var pending_friend_invite: Dictionary = {}
+var pending_friend_invite_send: Dictionary = {}
+var pending_friend_invite_target_name := ""
 var friend_room_chat_open := false
 var home_ambient_particles: Array = []
 var sound_enabled := true
@@ -4106,6 +4108,36 @@ func remove_friend_at(index: int) -> void:
 		})
 	queue_redraw()
 
+func maybe_send_pending_friend_invite() -> void:
+	if pending_friend_invite_send.is_empty():
+		return
+	if multiplayer_state != "connected":
+		connect_multiplayer()
+		return
+	if multiplayer_room_code.is_empty():
+		create_multiplayer_room()
+		return
+	flush_pending_friend_invite_send()
+
+func flush_pending_friend_invite_send() -> void:
+	if pending_friend_invite_send.is_empty():
+		return
+	if multiplayer_state != "connected" or multiplayer_room_code.is_empty():
+		return
+	var target_id := normalize_friend_public_id(str(pending_friend_invite_send.get("targetPublicId", "")))
+	if target_id.is_empty():
+		pending_friend_invite_send = {}
+		return
+	pending_friend_invite_target_name = str(pending_friend_invite_send.get("targetName", ""))
+	pending_friend_invite_send = {}
+	send_multiplayer({
+		"type": "invite_friend",
+		"targetPublicId": target_id,
+		"roomCode": multiplayer_room_code,
+		"fromName": profile_name,
+		"fromPublicId": firebase_public_id
+	})
+
 func invite_friend_to_play(index: int) -> void:
 	if index < 0 or index >= friends_list.size():
 		return
@@ -4114,22 +4146,15 @@ func invite_friend_to_play(index: int) -> void:
 		show_menu_notice(ui_text("friend_invite_offline"))
 		return
 	play_sound("ui")
-	app_screen = APP_FRIEND
-	connect_multiplayer()
-	if multiplayer_room_code.is_empty():
-		create_multiplayer_room()
-	var target_id := str(friend_entry.get("id", ""))
+	var target_id := normalize_friend_public_id(str(friend_entry.get("id", "")))
 	if target_id.is_empty():
 		return
-	if multiplayer_state == "connected" and not multiplayer_room_code.is_empty():
-		send_multiplayer({
-			"type": "invite_friend",
-			"targetPublicId": target_id,
-			"roomCode": multiplayer_room_code,
-			"fromName": profile_name,
-			"fromPublicId": firebase_public_id
-		})
-	show_menu_notice(("הזמנה ל" if ui_language == "he" else "Invite sent to ") + str(friend_entry.get("name", "")))
+	pending_friend_invite_send = {
+		"targetPublicId": target_id,
+		"targetName": str(friend_entry.get("name", ""))
+	}
+	app_screen = APP_FRIEND
+	maybe_send_pending_friend_invite()
 
 func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -5067,6 +5092,8 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 				join_multiplayer_room()
 			elif pending_find_match:
 				send_find_match()
+			elif not pending_friend_invite_send.is_empty():
+				maybe_send_pending_friend_invite()
 			sync_player_presence()
 			register_fcm_token_with_server()
 		"fcm_registered":
@@ -5131,7 +5158,12 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			)
 		"invite_sent":
 			var online := bool(payload.get("online", false))
-			show_menu_notice(ui_text("invite_sent_online") if online else ui_text("invite_sent_offline"))
+			var target_name := pending_friend_invite_target_name
+			pending_friend_invite_target_name = ""
+			if not target_name.is_empty():
+				show_menu_notice(("הזמנה ל" if ui_language == "he" else "Invite sent to ") + target_name)
+			else:
+				show_menu_notice(ui_text("invite_sent_online") if online else ui_text("invite_sent_offline"))
 		"auth_handoff":
 			var auth_url: String = str(payload.get("url", ""))
 			if OS.has_feature("android") and auth_url.begins_with("https://moshe2060.github.io/zoopaloola-mobile/"):
@@ -5151,6 +5183,7 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			multiplayer_ready = false
 			if str(payload.get("source", "")) == "arena":
 				match_source = "arena"
+			maybe_send_pending_friend_invite()
 		"searching":
 			matchmaking_searching = true
 			multiplayer_error = ""
@@ -5300,6 +5333,9 @@ func profile_initial() -> String:
 
 func handle_frontend_touch(screen_pos: Vector2) -> void:
 	var viewport_size := get_viewport_rect().size
+	if home_invite_join_rect(viewport_size).has_point(screen_pos):
+		accept_pending_friend_invite()
+		return
 	if app_screen == APP_SPLASH:
 		app_screen = APP_AUTH
 		return
@@ -5638,6 +5674,7 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		if lobby_background_texture != null:
 			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_rewards_screen(viewport_size)
+	draw_pending_invite_banner(viewport_size)
 	if menu_notice_time > 0.0:
 		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
 		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
@@ -6251,7 +6288,6 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_string(ui_font, stats_strip.position + Vector2(12.0, 22.0) * unit, ("ניצחונות: %d" if ui_language == "he" else "WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(13.0 * unit), Color.WHITE)
 	draw_string(ui_font, stats_strip.position + Vector2(12.0, 40.0) * unit, ("רצף: %d" if ui_language == "he" else "STREAK: %d") % player_current_streak, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(12.0 * unit), Color("8cecff"))
 	draw_string(ui_font, stats_strip.position + Vector2(12.0, 54.0) * unit, league_name(player_league_tier) + " • " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(11.0 * unit), Color("ffe25d"))
-	draw_pending_invite_banner(viewport_size)
 
 	# Full-body hero with the selected lifebuoy wrapped around its waist.
 	var character_area := home_character_rect(viewport_size)
