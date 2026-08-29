@@ -88,11 +88,16 @@ const UI_TEXT_HE := {
 	"career": "סטטיסטיקות קריירה", "matches": "משחקים", "wins": "ניצחונות", "losses": "הפסדים", "win_rate": "אחוז הצלחה", "best_streak": "רצף שיא", "world_rank": "דירוג עולמי", "current_streak": "רצף ניצחונות נוכחי: ",
 	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים, אפקטים ושולחנות משחק", "effects": "אפקטים", "collection_info": "אוספים נדירים • עיצובים עונתיים • אנימציות מיוחדות", "coming_soon": "בקרוב",
 	"boards": "שולחנות", "boards_sub": "עיצובי מגרש", "boards_section": "שולחנות משחק", "boards_section_sub": "בחרו את עיצוב המגרש לקרב הבא", "board_equipped": "מוגדר למשחק", "board_selected_toast": "שולחן חדש הוגדר!",
+<<<<<<< HEAD
 	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה", "board_candy": "עולם הממתקים",
+=======
+	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה",
+	"free_item": "חינם", "locked_item": "נעול", "buy_item": "קנה", "owned_item": "שלך", "purchase_success": "נרכש בהצלחה!", "unlock_in_shop": "ניתן לרכוש בחנות", "shop_unlocks_sub": "רכשו דמויות וגלגלים נוספים במטבעות",
+>>>>>>> 3592d28 (Add paid character and ring unlocks with coin economy reset)
 	"searching": "מחפשים יריב בזירה...", "cancel_search": "ביטול חיפוש",
 	"match_win": "ניצחתם!", "match_lose": "הפסדתם", "draw": "תיקו",
 	"play_again": "משחק נוסף", "back_home": "חזרה לבית",
-	"you_won_coins": "הרווחתם ", "not_enough_coins": "אין מספיק מטבעות לזירה הזו",
+	"you_won_coins": "הרווחתם ", "not_enough_coins": "אין מספיק מטבעות",
 	"daily_title": "פרס יומי", "daily_sub": "חזרו כל יום לקבל מטבעות לגלגל ההצלה",
 	"claim": "קבלו 80 מטבעות", "claimed": "הפרס של היום כבר נתקבל",
 	"daily_claimed_toast": "קיבלתם 80 מטבעות!", "search_timeout": "החיפוש בוטל. נסו שוב.",
@@ -143,11 +148,16 @@ const UI_TEXT_EN := {
 	"career": "CAREER STATISTICS", "matches": "MATCHES", "wins": "WINS", "losses": "LOSSES", "win_rate": "WIN RATE", "best_streak": "BEST STREAK", "world_rank": "WORLD RANK", "current_streak": "CURRENT WIN STREAK: ",
 	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections • Seasonal designs • Special animations", "coming_soon": "COMING SOON",
 	"boards": "TABLES", "boards_sub": "Board skins", "boards_section": "GAME TABLES", "boards_section_sub": "Choose the look of your next match", "board_equipped": "EQUIPPED", "board_selected_toast": "New table equipped!",
+<<<<<<< HEAD
 	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA", "board_candy": "CANDY WORLD",
+=======
+	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA",
+	"free_item": "FREE", "locked_item": "LOCKED", "buy_item": "BUY", "owned_item": "OWNED", "purchase_success": "Purchased!", "unlock_in_shop": "Buy this in the shop", "shop_unlocks_sub": "Unlock more animals and lifebuoys with coins",
+>>>>>>> 3592d28 (Add paid character and ring unlocks with coin economy reset)
 	"searching": "Finding an arena opponent...", "cancel_search": "CANCEL SEARCH",
 	"match_win": "YOU WIN!", "match_lose": "YOU LOST", "draw": "DRAW",
 	"play_again": "PLAY AGAIN", "back_home": "BACK HOME",
-	"you_won_coins": "You earned ", "not_enough_coins": "Not enough coins for this arena",
+	"you_won_coins": "You earned ", "not_enough_coins": "Not enough coins",
 	"daily_title": "DAILY REWARD", "daily_sub": "Come back every day for lifebuoy coins",
 	"claim": "CLAIM 80 COINS", "claimed": "ALREADY CLAIMED TODAY",
 	"daily_claimed_toast": "You claimed 80 coins!", "search_timeout": "Search cancelled. Try again.",
@@ -191,6 +201,10 @@ const ARENA_WIN_PRIZES := [100, 250, 1200]
 const DAILY_REWARD_COINS := 80
 const COMPUTER_WIN_COINS := 40
 const FRIEND_WIN_COINS := 25
+const FREE_UNLOCK_COUNT := 3
+const ECONOMY_VERSION := 2
+const ANIMAL_UNLOCK_PRICES := [0, 0, 0, 550, 750, 950]
+const RING_UNLOCK_PRICES := [0, 0, 0, 350, 450, 550]
 const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
 const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
@@ -300,7 +314,10 @@ var splash_elapsed := 0.0
 var menu_elapsed := 0.0
 var game_mode := "computer"
 var profile_name := "PLAYER 1"
-var player_coins := 1250
+var player_coins := 0
+var owned_animals: Array = []
+var owned_rings: Array = []
+var shop_tab := 0
 var selected_arena := 0
 const BOARD_THEME_COUNT := 5
 var selected_board_theme := 0
@@ -2965,14 +2982,12 @@ func handle_customizer_touch(screen_pos: Vector2) -> bool:
 		return false
 	for i in ANIMAL_NAMES.size():
 		if customizer_animal_rect(i, viewport_size).has_point(screen_pos):
-			player_animal = i
-			rebuild_team_piece_textures()
+			try_select_animal(i)
 			queue_redraw()
 			return true
 	for i in RING_COLOR_NAMES.size():
 		if customizer_color_rect(i, viewport_size).has_point(screen_pos):
-			player_ring_color = i
-			rebuild_team_piece_textures()
+			try_select_ring(i)
 			queue_redraw()
 			return true
 	for i in BOARD_THEME_COUNT:
@@ -3013,6 +3028,7 @@ func draw_customizer(viewport_size: Vector2) -> void:
 		if i < full_body_animal_textures.size() and full_body_animal_textures[i] != null:
 			var portrait := Rect2(rect.position + Vector2(rect.size.x * 0.5 - 22.0, 4.0), Vector2(44.0, 48.0))
 			draw_texture_rect(full_body_animal_textures[i], portrait, false)
+		draw_collection_lock_overlay(rect, i, false, unit)
 		draw_string(ui_font, rect.position + Vector2(0, 62), ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
 	draw_string(ui_font, panel.position + Vector2(20, 195), "צבע הגלגל" if ui_language == "he" else "LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 	for i in RING_COLOR_NAMES.size():
@@ -3020,6 +3036,7 @@ func draw_customizer(viewport_size: Vector2) -> void:
 		draw_style_box(make_box(RING_COLORS[i], 10.0), rect)
 		if i == player_ring_color:
 			draw_rect(rect.grow(3.0), Color.WHITE, false, 3.0)
+		draw_collection_lock_overlay(rect, i, true, unit)
 		draw_string(ui_font, rect.position + Vector2(0, 36), RING_COLOR_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
 	draw_string(ui_font, panel.position + Vector2(20, 248), ui_text("choose_board"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 	for i in BOARD_THEME_COUNT:
@@ -4391,9 +4408,160 @@ func update_room_code_input() -> void:
 		room_code_input.position = Vector2(700.0, 260.0) * unit
 		room_code_input.size = Vector2(330.0, 72.0) * unit
 
+func initialize_owned_collections() -> void:
+	owned_animals.clear()
+	owned_rings.clear()
+	for i in ANIMAL_NAMES.size():
+		owned_animals.append(i < FREE_UNLOCK_COUNT)
+	for i in RING_COLORS.size():
+		owned_rings.append(i < FREE_UNLOCK_COUNT)
+
+func is_animal_unlocked(index: int) -> bool:
+	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
+	return i < owned_animals.size() and bool(owned_animals[i])
+
+func is_ring_unlocked(index: int) -> bool:
+	var i := clampi(index, 0, RING_COLORS.size() - 1)
+	return i < owned_rings.size() and bool(owned_rings[i])
+
+func animal_unlock_price(index: int) -> int:
+	var i := clampi(index, 0, ANIMAL_UNLOCK_PRICES.size() - 1)
+	if i < FREE_UNLOCK_COUNT:
+		return 0
+	return ANIMAL_UNLOCK_PRICES[i]
+
+func ring_unlock_price(index: int) -> int:
+	var i := clampi(index, 0, RING_UNLOCK_PRICES.size() - 1)
+	if i < FREE_UNLOCK_COUNT:
+		return 0
+	return RING_UNLOCK_PRICES[i]
+
+func first_unlocked_animal() -> int:
+	for i in ANIMAL_NAMES.size():
+		if is_animal_unlocked(i):
+			return i
+	return 0
+
+func first_unlocked_ring() -> int:
+	for i in RING_COLORS.size():
+		if is_ring_unlocked(i):
+			return i
+	return 0
+
+func ensure_valid_loadout() -> void:
+	if not is_animal_unlocked(player_animal):
+		player_animal = first_unlocked_animal()
+	if not is_ring_unlocked(player_ring_color):
+		player_ring_color = first_unlocked_ring()
+	rebuild_team_piece_textures()
+
+func load_owned_collections(config: ConfigFile) -> void:
+	initialize_owned_collections()
+	var saved_animals: Variant = config.get_value("player", "owned_animals", [])
+	var saved_rings: Variant = config.get_value("player", "owned_rings", [])
+	if typeof(saved_animals) == TYPE_ARRAY:
+		for i in mini(saved_animals.size(), owned_animals.size()):
+			owned_animals[i] = bool(saved_animals[i]) or i < FREE_UNLOCK_COUNT
+	if typeof(saved_rings) == TYPE_ARRAY:
+		for i in mini(saved_rings.size(), owned_rings.size()):
+			owned_rings[i] = bool(saved_rings[i]) or i < FREE_UNLOCK_COUNT
+
+func apply_economy_migration(config: ConfigFile) -> void:
+	var saved_version := int(config.get_value("player", "economy_version", 0))
+	if saved_version >= ECONOMY_VERSION:
+		return
+	player_coins = 0
+	initialize_owned_collections()
+	ensure_valid_loadout()
+	config.set_value("player", "economy_version", ECONOMY_VERSION)
+	config.set_value("player", "coins", player_coins)
+	config.set_value("player", "owned_animals", owned_animals)
+	config.set_value("player", "owned_rings", owned_rings)
+	config.save(PLAYER_PROFILE_PATH)
+
+func try_select_animal(index: int) -> bool:
+	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
+	if not is_animal_unlocked(i):
+		show_menu_notice(ui_text("unlock_in_shop"))
+		return false
+	player_animal = i
+	rebuild_team_piece_textures()
+	save_player_profile()
+	return true
+
+func try_select_ring(index: int) -> bool:
+	var i := clampi(index, 0, RING_COLORS.size() - 1)
+	if not is_ring_unlocked(i):
+		show_menu_notice(ui_text("unlock_in_shop"))
+		return false
+	player_ring_color = i
+	rebuild_team_piece_textures()
+	save_player_profile()
+	return true
+
+func try_purchase_animal(index: int) -> bool:
+	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
+	if is_animal_unlocked(i):
+		return try_select_animal(i)
+	var price := animal_unlock_price(i)
+	if price <= 0:
+		return try_select_animal(i)
+	if player_coins < price:
+		show_menu_notice(ui_text("not_enough_coins"))
+		return false
+	player_coins -= price
+	owned_animals[i] = true
+	player_animal = i
+	rebuild_team_piece_textures()
+	save_player_profile()
+	show_menu_notice(ui_text("purchase_success"))
+	play_sound("ui")
+	return true
+
+func try_purchase_ring(index: int) -> bool:
+	var i := clampi(index, 0, RING_COLORS.size() - 1)
+	if is_ring_unlocked(i):
+		return try_select_ring(i)
+	var price := ring_unlock_price(i)
+	if price <= 0:
+		return try_select_ring(i)
+	if player_coins < price:
+		show_menu_notice(ui_text("not_enough_coins"))
+		return false
+	player_coins -= price
+	owned_rings[i] = true
+	player_ring_color = i
+	rebuild_team_piece_textures()
+	save_player_profile()
+	show_menu_notice(ui_text("purchase_success"))
+	play_sound("ui")
+	return true
+
+func collection_item_price_label(index: int, is_ring: bool) -> String:
+	if is_ring:
+		if is_ring_unlocked(index):
+			return ui_text("owned_item")
+		var price := ring_unlock_price(index)
+		return ui_text("free_item") if price <= 0 else str(price) + ui_text("coins")
+	if is_animal_unlocked(index):
+		return ui_text("owned_item")
+	var animal_price := animal_unlock_price(index)
+	return ui_text("free_item") if animal_price <= 0 else str(animal_price) + ui_text("coins")
+
+func draw_collection_lock_overlay(rect: Rect2, index: int, is_ring: bool, unit: float) -> void:
+	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
+	if unlocked:
+		return
+	draw_rect(rect, Color(0.01, 0.03, 0.08, 0.58))
+	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y * 0.42), "🔒", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(20.0 * unit), Color.WHITE)
+	var price_text := collection_item_price_label(index, is_ring)
+	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y * 0.68), price_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(11.0 * unit), Color("ffe25d"))
+
 func load_player_profile() -> void:
 	var config := ConfigFile.new()
+	initialize_owned_collections()
 	if config.load(PLAYER_PROFILE_PATH) != OK:
+		ensure_valid_loadout()
 		return
 	profile_name = str(config.get_value("player", "name", profile_name)).strip_edges().left(20)
 	if profile_name.is_empty():
@@ -4432,6 +4600,9 @@ func load_player_profile() -> void:
 	firebase_token_expires_at = int(config.get_value("firebase", "expires_at", 0))
 	firebase_provider = str(config.get_value("firebase", "provider", firebase_provider))
 	firebase_email = str(config.get_value("firebase", "email", firebase_email))
+	load_owned_collections(config)
+	apply_economy_migration(config)
+	ensure_valid_loadout()
 
 func save_player_profile(sync_cloud: bool = true) -> void:
 	var config := ConfigFile.new()
@@ -4439,6 +4610,9 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("player", "animal", player_animal)
 	config.set_value("player", "ring_color", player_ring_color)
 	config.set_value("player", "coins", player_coins)
+	config.set_value("player", "economy_version", ECONOMY_VERSION)
+	config.set_value("player", "owned_animals", owned_animals)
+	config.set_value("player", "owned_rings", owned_rings)
 	config.set_value("player", "level", player_level)
 	config.set_value("player", "xp", player_xp)
 	config.set_value("player", "wins", player_wins)
@@ -4868,6 +5042,9 @@ func firestore_fields(include_public_id: bool = true) -> Dictionary:
 		"animal": {"integerValue": str(player_animal)},
 		"ringColor": {"integerValue": str(player_ring_color)},
 		"coins": {"integerValue": str(player_coins)},
+		"economyVersion": {"integerValue": str(ECONOMY_VERSION)},
+		"ownedAnimals": {"stringValue": JSON.stringify(owned_animals)},
+		"ownedRings": {"stringValue": JSON.stringify(owned_rings)},
 		"level": {"integerValue": str(player_level)},
 		"xp": {"integerValue": str(player_xp)},
 		"wins": {"integerValue": str(player_wins)},
@@ -5207,8 +5384,14 @@ func update_match_character(animal: int = -1, ring_color: int = -1) -> void:
 	var current_animal: int = player_animal if multiplayer_slot == 0 else ai_animal
 	var current_ring: int = player_ring_color if multiplayer_slot == 0 else ai_ring_color
 	if animal >= 0:
+		if not is_animal_unlocked(animal):
+			show_menu_notice(ui_text("unlock_in_shop"))
+			return
 		current_animal = animal
 	if ring_color >= 0:
+		if not is_ring_unlocked(ring_color):
+			show_menu_notice(ui_text("unlock_in_shop"))
+			return
 		current_ring = ring_color
 	if multiplayer_slot == 0:
 		player_animal = current_animal
@@ -5660,17 +5843,33 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		if app_screen == APP_PROFILE:
 			for i in ANIMAL_NAMES.size():
 				if character_card_rect(i, viewport_size).has_point(screen_pos):
-					player_animal = i
-					rebuild_team_piece_textures()
-					save_player_profile()
+					try_select_animal(i)
+					queue_redraw()
 					return
 			for i in RING_COLOR_NAMES.size():
 				if character_ring_rect(i, viewport_size).has_point(screen_pos):
-					player_ring_color = i
-					rebuild_team_piece_textures()
-					save_player_profile()
+					try_select_ring(i)
+					queue_redraw()
 					return
 		elif app_screen == APP_SHOP:
+			for i in 3:
+				if shop_category_rect(i, viewport_size).has_point(screen_pos):
+					shop_tab = i
+					play_sound("ui")
+					queue_redraw()
+					return
+			if shop_tab == 0:
+				for i in ANIMAL_NAMES.size():
+					if shop_item_rect(i, viewport_size).has_point(screen_pos):
+						try_purchase_animal(i)
+						queue_redraw()
+						return
+			elif shop_tab == 1:
+				for i in RING_COLOR_NAMES.size():
+					if shop_item_rect(i, viewport_size).has_point(screen_pos):
+						try_purchase_ring(i)
+						queue_redraw()
+						return
 			for i in BOARD_THEME_COUNT:
 				if shop_board_rect(i, viewport_size).has_point(screen_pos):
 					selected_board_theme = i
@@ -5713,15 +5912,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				return
 			for i in ANIMAL_NAMES.size():
 				if player_profile_animal_rect(i, viewport_size).has_point(screen_pos):
-					player_animal = i
-					rebuild_team_piece_textures()
-					save_player_profile()
+					try_select_animal(i)
+					queue_redraw()
 					return
 			for i in RING_COLOR_NAMES.size():
 				if player_profile_color_rect(i, viewport_size).has_point(screen_pos):
-					player_ring_color = i
-					rebuild_team_piece_textures()
-					save_player_profile()
+					try_select_ring(i)
+					queue_redraw()
 					return
 		elif app_screen == APP_FRIEND:
 			if friend_room_chat_open:
@@ -5741,10 +5938,12 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				if friend_customizer_open:
 					for i in ANIMAL_NAMES.size():
 						if friend_choice_rect(i, false, viewport_size).has_point(screen_pos):
-							update_match_character(i, -1)
+							if try_select_animal(i):
+								update_match_character(i, -1)
 							return
 						if friend_choice_rect(i, true, viewport_size).has_point(screen_pos):
-							update_match_character(-1, i)
+							if try_select_ring(i):
+								update_match_character(-1, i)
 							return
 					for i in BOARD_THEME_COUNT:
 						if friend_board_rect(i, viewport_size).has_point(screen_pos):
@@ -6010,6 +6209,7 @@ func draw_friend_customizer(viewport_size: Vector2) -> void:
 			draw_style_box(make_box(Color("ffe25d"), 17.0 * unit), choice.grow(6.0 * unit))
 		draw_style_box(make_box(Color("1d405b"), 15.0 * unit), choice)
 		draw_texture_rect(full_body_animal_textures[i], choice.grow(-7.0 * unit), false)
+		draw_collection_lock_overlay(choice, i, false, unit)
 		if i == selected_animal:
 			draw_circle(choice.position + Vector2(78.0, 14.0) * unit, 12.0 * unit, Color("ffe25d"))
 			draw_string(ui_font, choice.position + Vector2(67.0, 19.0) * unit, "✓", HORIZONTAL_ALIGNMENT_CENTER, 22.0 * unit, int(14.0 * unit), Color("173249"))
@@ -6020,6 +6220,7 @@ func draw_friend_customizer(viewport_size: Vector2) -> void:
 			draw_style_box(make_box(Color("ffe25d"), 17.0 * unit), color_choice.grow(6.0 * unit))
 		draw_style_box(make_box(Color("1d405b"), 15.0 * unit), color_choice)
 		draw_circle(color_choice.get_center(), 29.0 * unit, RING_COLORS[i])
+		draw_collection_lock_overlay(color_choice, i, true, unit)
 		if i == selected_ring:
 			draw_circle(color_choice.get_center(), 36.0 * unit, Color.WHITE, false, 4.0 * unit, true)
 	draw_string(ui_font, modal.position + Vector2(0.0, 332.0) * unit, ui_text("choose_board"), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
@@ -6301,6 +6502,7 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 		draw_style_box(make_box(Color("e9f9f4"), 11.0 * unit), animal_rect)
 		if i < full_body_animal_textures.size() and full_body_animal_textures[i] != null:
 			draw_texture_rect(full_body_animal_textures[i], animal_rect.grow(-5.0 * unit), false)
+		draw_collection_lock_overlay(animal_rect, i, false, unit)
 	draw_string(ui_font, hero_panel.position + Vector2(22.0, 506.0) * unit, ui_text("favorite_color"), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x - 44.0 * unit, int(12.0 * unit), Color("173249"))
 	for i in RING_COLORS.size():
 		var color_rect := player_profile_color_rect(i, viewport_size)
@@ -6309,6 +6511,7 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 			draw_circle(color_center, 25.0 * unit, Color.WHITE)
 			draw_circle(color_center, 21.0 * unit, Color("ffe25d"))
 		draw_circle(color_center, 17.0 * unit, RING_COLORS[i])
+		draw_collection_lock_overlay(color_rect, i, true, unit)
 
 	var info_panel := Rect2(Vector2(474.0, 102.0) * unit, Vector2(768.0, 570.0) * unit)
 	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.92), 27.0 * unit), info_panel.grow(5.0 * unit))
@@ -6754,7 +6957,12 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		draw_circle(ring_center, 12.0 * unit, Color("14324c"))
 		draw_arc(ring_center, 27.0 * unit, -0.70, 0.15, 10, Color("fff4dc"), 8.0 * unit, true)
 		draw_arc(ring_center, 27.0 * unit, 2.45, 3.30, 10, Color("fff4dc"), 8.0 * unit, true)
+<<<<<<< HEAD
 		draw_string(ui_font, ring_button.position + Vector2(63.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, ring_button.size.x - 69.0 * unit, int(11.0 * unit), Color.WHITE)
+=======
+		draw_collection_lock_overlay(ring_button, i, true, unit)
+		draw_string(ui_font, ring_button.position + Vector2(78.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, 86.0 * unit, int(12.0 * unit), Color.WHITE)
+>>>>>>> 3592d28 (Add paid character and ring unlocks with coin economy reset)
 		if i == player_ring_color:
 			draw_circle(ring_button.position + Vector2(ring_button.size.x - 14.0 * unit, 14.0 * unit), 13.0 * unit, Color("ffe25d"))
 			draw_string(ui_font, ring_button.position + Vector2(ring_button.size.x - 27.0 * unit, 20.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 26.0 * unit, int(13.0 * unit), Color("173249"))
@@ -6769,6 +6977,7 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		if portrait != null:
 			var portrait_rect := Rect2(card.position + Vector2(30.0, 2.0) * unit, Vector2(98.0, 116.0) * unit)
 			draw_texture_rect(portrait, portrait_rect, false)
+		draw_collection_lock_overlay(card, i, false, unit)
 		draw_rect(Rect2(card.position + Vector2(0.0, 114.0) * unit, Vector2(card.size.x, 36.0 * unit)), Color(0.01, 0.05, 0.10, 0.80))
 		draw_string(ui_font, card.position + Vector2(0.0, 139.0) * unit, ui_animal_name(i), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(12.0 * unit), Color.WHITE)
 		if selected_card:
@@ -6812,6 +7021,35 @@ func draw_board_theme_card(theme_index: int, card: Rect2, selected: bool, unit: 
 		draw_circle(card.position + Vector2(card.size.x - 12.0 * unit, 12.0 * unit), 9.0 * unit, Color("ffe25d"))
 		draw_string(ui_font, card.position + Vector2(card.size.x - 21.0 * unit, 16.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 18.0 * unit, int(11.0 * unit), Color("173249"))
 
+func shop_item_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var gap := 12.0 * unit
+	var card_w := minf(188.0 * unit, (viewport_size.x - 90.0 * unit - gap * 5.0) / 6.0)
+	var total_w := card_w * 6.0 + gap * 5.0
+	var start_x := (viewport_size.x - total_w) * 0.5
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 392.0 * unit), Vector2(card_w, 150.0 * unit))
+
+func draw_shop_unlock_card(index: int, rect: Rect2, is_ring: bool, unit: float) -> void:
+	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
+	var selected := (player_ring_color == index) if is_ring else (player_animal == index)
+	var accent := Color("467ce8") if is_ring else Color("24b889")
+	draw_style_box(make_box(Color("ffe25d") if selected else Color(0.02, 0.06, 0.12, 0.90), 16.0 * unit), rect.grow((4.0 if selected else 2.0) * unit))
+	draw_style_box(make_box(accent.darkened(0.58), 14.0 * unit), rect)
+	if is_ring:
+		draw_circle(rect.get_center() + Vector2(0.0, -8.0 * unit), 28.0 * unit, RING_COLORS[index])
+	else:
+		if index < full_body_animal_textures.size() and full_body_animal_textures[index] != null:
+			draw_texture_rect(full_body_animal_textures[index], rect.grow(-10.0 * unit), false)
+	draw_collection_lock_overlay(rect, index, is_ring, unit)
+	var label := ui_ring_name(index) if is_ring else ui_animal_name(index)
+	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y - 14.0 * unit), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(11.0 * unit), Color.WHITE)
+	var status := collection_item_price_label(index, is_ring)
+	if unlocked:
+		status = ui_text("selected") if selected else ui_text("owned_item")
+	else:
+		status = ui_text("buy_item") + " • " + collection_item_price_label(index, is_ring)
+	draw_string(ui_font, rect.position + Vector2(0.0, 18.0 * unit), status, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(10.0 * unit), Color("ffe25d"))
+
 func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var gap := 18.0 * unit
@@ -6826,7 +7064,7 @@ func shop_board_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var card_w := minf(220.0 * unit, (viewport_size.x - 110.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
 	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
 	var start_x := (viewport_size.x - total_w) * 0.5
-	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 430.0 * unit), Vector2(card_w, 210.0 * unit))
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 602.0 * unit), Vector2(card_w, 210.0 * unit))
 
 func draw_shop_category_icon(kind: int, center: Vector2, size: float, unit: float) -> void:
 	draw_circle(center, size * 0.52, Color(1.0, 1.0, 1.0, 0.10))
@@ -6893,25 +7131,40 @@ func draw_board_theme_overlay_on_rect(theme_index: int, rect: Rect2, unit: float
 func draw_shop_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.55))
-	draw_frontend_header(viewport_size, ui_text("shop_title"), ui_text("shop_title_sub"))
+	draw_frontend_header(viewport_size, ui_text("shop_title"), ui_text("shop_unlocks_sub"))
+	var coin_box := Rect2(viewport_size.x - 220.0 * unit, 24.0 * unit, 180.0 * unit, 54.0 * unit)
+	draw_style_box(make_box(Color("253e67"), 14.0 * unit), coin_box)
+	draw_circle(coin_box.position + Vector2(28.0, 27.0) * unit, 15.0 * unit, Color("ffc83d"))
+	draw_string(ui_font, coin_box.position + Vector2(52.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 110.0 * unit, int(20.0 * unit), Color.WHITE)
 	var categories := [ui_text("characters"), ui_text("rings"), ui_text("effects")]
 	var category_colors := [Color("24b889"), Color("467ce8"), Color("9a58dc")]
 	var category_subs := [ui_text("characters_sub"), ui_text("rings_sub"), ui_text("effects")]
 	for i in 3:
 		var card := shop_category_rect(i, viewport_size)
 		var accent: Color = category_colors[i]
-		draw_style_box(make_box(Color(0.02, 0.06, 0.12, 0.94), 22.0 * unit), card.grow(4.0 * unit))
+		var selected_tab := i == shop_tab
+		draw_style_box(make_box(Color("ffe25d") if selected_tab else Color(0.02, 0.06, 0.12, 0.94), 22.0 * unit), card.grow((6.0 if selected_tab else 4.0) * unit))
 		draw_style_box(make_box(accent.darkened(0.62), 18.0 * unit), card)
 		draw_rect(Rect2(card.position + Vector2(10.0 * unit, 10.0 * unit), Vector2(card.size.x - 20.0 * unit, 3.0 * unit)), Color(accent.lightened(0.25), 0.55))
 		var icon_center := card.position + Vector2(card.size.x * 0.5, 78.0 * unit)
 		draw_shop_category_icon(i, icon_center, 54.0 * unit, unit)
 		draw_string(ui_font, card.position + Vector2(0.0, 148.0 * unit), categories[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(22.0 * unit), Color.WHITE)
 		draw_string(ui_font, card.position + Vector2(14.0 * unit, 176.0 * unit), category_subs[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 28.0 * unit, int(11.0 * unit), Color("d7f6ff"))
-		var badge := Rect2(card.position + Vector2(card.size.x * 0.5 - 52.0 * unit, 196.0 * unit), Vector2(104.0 * unit, 28.0 * unit))
-		draw_style_box(make_box(Color("253e67"), 10.0 * unit), badge)
-		draw_string(ui_font, badge.position + Vector2(0.0, 20.0) * unit, ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, int(12.0 * unit), Color("ffe25d"))
+		if i == 2:
+			var badge := Rect2(card.position + Vector2(card.size.x * 0.5 - 52.0 * unit, 196.0 * unit), Vector2(104.0 * unit, 28.0 * unit))
+			draw_style_box(make_box(Color("253e67"), 10.0 * unit), badge)
+			draw_string(ui_font, badge.position + Vector2(0.0, 20.0) * unit, ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, int(12.0 * unit), Color("ffe25d"))
 
-	var section := Rect2(viewport_size.x * 0.05, 388.0 * unit, viewport_size.x * 0.90, 34.0 * unit)
+	if shop_tab == 0:
+		for i in ANIMAL_NAMES.size():
+			draw_shop_unlock_card(i, shop_item_rect(i, viewport_size), false, unit)
+	elif shop_tab == 1:
+		for i in RING_COLOR_NAMES.size():
+			draw_shop_unlock_card(i, shop_item_rect(i, viewport_size), true, unit)
+	else:
+		draw_string(ui_font, Vector2(0.0, 430.0 * unit), ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(24.0 * unit), Color("ffe25d"))
+
+	var section := Rect2(viewport_size.x * 0.05, 560.0 * unit, viewport_size.x * 0.90, 34.0 * unit)
 	draw_string(ui_font, section.position + Vector2(0.0, 24.0) * unit, ui_text("boards_section"), HORIZONTAL_ALIGNMENT_LEFT, section.size.x * 0.55, int(20.0 * unit), Color("ffe25d"))
 	draw_string(ui_font, section.position + Vector2(section.size.x * 0.42, 24.0) * unit, ui_text("boards_section_sub"), HORIZONTAL_ALIGNMENT_LEFT, section.size.x * 0.58, int(11.0 * unit), Color("8cecff"))
 
