@@ -5889,6 +5889,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			start_computer_setup()
 			return
 	else:
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 		if frontend_back_rect(viewport_size).has_point(screen_pos):
 			if app_screen == APP_PLAYER_PROFILE:
 				commit_profile_name()
@@ -5929,7 +5930,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 						queue_redraw()
 						return
 			for i in BOARD_THEME_COUNT:
-				var boards_top := shop_grid_bottom_y(RING_COLOR_NAMES.size() if shop_tab == 1 else ANIMAL_NAMES.size() if shop_tab == 0 else 4, viewport_size) + 18.0 * unit
+				var boards_top := shop_boards_top_y(viewport_size)
 				if shop_board_rect(i, viewport_size, boards_top).has_point(screen_pos):
 					selected_board_theme = i
 					save_player_profile()
@@ -7070,6 +7071,11 @@ func draw_board_theme_card(theme_index: int, card: Rect2, selected: bool, unit: 
 		draw_circle(card.position + Vector2(card.size.x - 12.0 * unit, 12.0 * unit), 9.0 * unit, Color("ffe25d"))
 		draw_string(ui_font, card.position + Vector2(card.size.x - 21.0 * unit, 16.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 18.0 * unit, int(11.0 * unit), Color("173249"))
 
+func shop_boards_top_y(viewport_size: Vector2) -> float:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var item_count := RING_COLOR_NAMES.size() if shop_tab == 1 else (ANIMAL_NAMES.size() if shop_tab == 0 else 4)
+	return shop_grid_bottom_y(item_count, viewport_size) + 18.0 * unit
+
 func shop_unlocked_count(is_ring: bool) -> int:
 	var total := 0
 	if is_ring:
@@ -7270,7 +7276,7 @@ func draw_shop_screen(viewport_size: Vector2) -> void:
 		var collected := shop_unlocked_count(shop_tab == 1)
 		draw_string(ui_font, Vector2(0.0, 352.0 * unit), ui_text("shop_collected") % [collected, active_item_count], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
 
-	var boards_top_y := shop_grid_bottom_y(active_item_count if shop_tab < 2 else 4, viewport_size) + 18.0 * unit
+	var boards_top_y := shop_boards_top_y(viewport_size)
 	var section := Rect2(viewport_size.x * 0.05, boards_top_y - 30.0 * unit, viewport_size.x * 0.90, 34.0 * unit)
 	draw_string(ui_font, section.position + Vector2(0.0, 24.0) * unit, ui_text("boards_section"), HORIZONTAL_ALIGNMENT_LEFT, section.size.x * 0.55, int(20.0 * unit), Color("ffe25d"))
 	draw_string(ui_font, section.position + Vector2(section.size.x * 0.42, 24.0) * unit, ui_text("boards_section_sub"), HORIZONTAL_ALIGNMENT_LEFT, section.size.x * 0.58, int(11.0 * unit), Color("8cecff"))
