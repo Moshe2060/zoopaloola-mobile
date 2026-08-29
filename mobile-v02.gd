@@ -3341,14 +3341,65 @@ func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var total_width := card_width * 3.0 + 32.0
 	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + index * (card_width + 16.0), viewport_size.y * 0.43), Vector2(card_width, minf(225.0, viewport_size.y * 0.34)))
 
-func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
+func home_layout(viewport_size: Vector2) -> Dictionary:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var header_h := 96.0 * unit
+	var left_x := 18.0 * unit
+	var left_w := 164.0 * unit
+	var right_w := 258.0 * unit
+	var right_x := viewport_size.x - right_w - 14.0 * unit
+	var bottom_bar_h := 88.0 * unit
+	var content_top := header_h + 10.0 * unit
+	var content_bottom := viewport_size.y - bottom_bar_h - 12.0 * unit
+	var center_left := left_x + left_w + 16.0 * unit
+	var center_right := right_x - 16.0 * unit
+	var center_w := maxf(140.0 * unit, center_right - center_left)
+	var stats_h := 58.0 * unit
+	var rail_button_h := 74.0 * unit
+	var rail_gap := 10.0 * unit
+	var rail_start_y := content_top + stats_h + 10.0 * unit
+	var bottom_y := viewport_size.y - bottom_bar_h - 4.0 * unit
+	var bottom_button_h := 78.0 * unit
+	var play_w := minf(292.0 * unit, center_w * 0.52)
+	var friend_w := minf(196.0 * unit, center_w * 0.34)
+	var play_x := center_right - play_w
+	var friend_x := center_left + maxf(0.0, (center_w - friend_w - play_w - 18.0 * unit) * 0.5)
+	return {
+		"unit": unit,
+		"header_h": header_h,
+		"left_x": left_x,
+		"left_w": left_w,
+		"right_x": right_x,
+		"right_w": right_w,
+		"content_top": content_top,
+		"content_bottom": content_bottom,
+		"center_left": center_left,
+		"center_right": center_right,
+		"center_w": center_w,
+		"stats_h": stats_h,
+		"rail_button_h": rail_button_h,
+		"rail_gap": rail_gap,
+		"rail_start_y": rail_start_y,
+		"bottom_y": bottom_y,
+		"bottom_button_h": bottom_button_h,
+		"play_w": play_w,
+		"friend_w": friend_w,
+		"play_x": play_x,
+		"friend_x": friend_x,
+	}
+
+func home_stats_rect(viewport_size: Vector2) -> Rect2:
+	var layout := home_layout(viewport_size)
+	return Rect2(layout.left_x, layout.content_top, layout.left_w, layout.stats_h)
+
+func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var layout := home_layout(viewport_size)
 	if index == 0:
-		return Rect2(24.0 * unit, 132.0 * unit, 178.0 * unit, 86.0 * unit)
+		return Rect2(layout.left_x, layout.rail_start_y, layout.left_w, layout.rail_button_h)
 	if index == 1:
-		return Rect2(24.0 * unit, viewport_size.y - 132.0 * unit, 178.0 * unit, 88.0 * unit)
+		return Rect2(layout.friend_x, layout.bottom_y, layout.friend_w, layout.bottom_button_h)
 	if index == 2:
-		return Rect2(viewport_size.x - 370.0 * unit, viewport_size.y - 132.0 * unit, 342.0 * unit, 96.0 * unit)
+		return Rect2(layout.play_x, layout.bottom_y, layout.play_w, layout.bottom_button_h)
 	return Rect2()
 
 func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
@@ -3382,17 +3433,42 @@ func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
 
+func home_top_control_rects(viewport_size: Vector2) -> Dictionary:
+	var layout := home_layout(viewport_size)
+	var unit: float = layout.unit
+	var y := 22.0 * unit
+	var h := 54.0 * unit
+	var gap := 8.0 * unit
+	var coin_w := 154.0 * unit
+	var gem_w := 120.0 * unit
+	var small_w := 54.0 * unit
+	var coin_x := layout.right_x - coin_w - gap
+	var gem_x := coin_x - gem_w - gap
+	var sound_x := gem_x - small_w - gap
+	var help_x := sound_x - small_w - gap
+	var settings_x := help_x - small_w - gap
+	return {
+		"coin": Rect2(coin_x, y, coin_w, h),
+		"gems": Rect2(gem_x, y, gem_w, h),
+		"sound": Rect2(sound_x, y, small_w, h),
+		"help": Rect2(help_x, y, small_w, h),
+		"settings": Rect2(settings_x, y, small_w, h),
+	}
+
 func home_coin_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(viewport_size.x - 374.0 * unit, 22.0 * unit, 154.0 * unit, 54.0 * unit)
+	return home_top_control_rects(viewport_size).coin
 
 func home_settings_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(viewport_size.x - 78.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
+	return home_top_control_rects(viewport_size).settings
 
 func home_help_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(viewport_size.x - 198.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
+	return home_top_control_rects(viewport_size).help
+
+func home_sound_toggle_rect(viewport_size: Vector2) -> Rect2:
+	return home_top_control_rects(viewport_size).sound
+
+func home_gems_rect(viewport_size: Vector2) -> Rect2:
+	return home_top_control_rects(viewport_size).gems
 
 func tutorial_step_data(step: int) -> Dictionary:
 	var steps := TUTORIAL_STEPS_HE if ui_language == "he" else TUTORIAL_STEPS_EN
@@ -3555,12 +3631,18 @@ func draw_tutorial_overlay(viewport_size: Vector2) -> void:
 	draw_string(ui_font, tutorial_skip_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, "×", HORIZONTAL_ALIGNMENT_CENTER, tutorial_skip_rect(viewport_size).size.x, int(22.0 * unit), Color("607080"))
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(24.0 * unit, (232.0 + float(index) * 100.0) * unit, 178.0 * unit, 86.0 * unit)
+	var layout := home_layout(viewport_size)
+	var y := layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index + 1)
+	return Rect2(layout.left_x, y, layout.left_w, layout.rail_button_h)
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(viewport_size.x * 0.24, viewport_size.y * 0.115), Vector2(360.0, 480.0) * unit)
+	var layout := home_layout(viewport_size)
+	var unit: float = layout.unit
+	var char_w := minf(300.0 * unit, layout.center_w * 0.88)
+	var char_h := minf(390.0 * unit, (layout.content_bottom - layout.content_top) * 0.72)
+	var char_x := layout.center_left + (layout.center_w - char_w) * 0.5
+	var char_y := layout.content_top + 6.0 * unit
+	return Rect2(char_x, char_y, char_w, char_h)
 
 func draw_home_ambient_effects(viewport_size: Vector2) -> void:
 	init_home_ambient_particles()
@@ -3617,13 +3699,9 @@ func friend_room_chat_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2(840.0, 320.0) * unit, Vector2(205.0, 48.0) * unit)
 
-func home_sound_toggle_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(viewport_size.x - 136.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
-
 func home_social_panel_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(viewport_size.x - 318.0 * unit, 104.0 * unit, 294.0 * unit, viewport_size.y - 118.0 * unit)
+	var layout := home_layout(viewport_size)
+	return Rect2(layout.right_x, layout.content_top, layout.right_w, layout.content_bottom - layout.content_top)
 
 func home_social_tab_rect(tab: int, viewport_size: Vector2) -> Rect2:
 	var panel := home_social_panel_rect(viewport_size)
@@ -5763,19 +5841,19 @@ func draw_home_social_panel(viewport_size: Vector2) -> void:
 			draw_string(ui_font, row.position + Vector2(row.size.x - 72.0 * unit, 26.0) * unit, str(entry.get("rating", 0)), HORIZONTAL_ALIGNMENT_CENTER, 62.0 * unit, int(13.0 * unit), row_color)
 
 func draw_home_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var layout := home_layout(viewport_size)
+	var unit: float = layout.unit
 	draw_home_ambient_effects(viewport_size)
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.10))
-	draw_rect(Rect2(0.0, 0.0, viewport_size.x, 98.0 * unit), Color(0.015, 0.055, 0.12, 0.94))
-	draw_rect(Rect2(0.0, 94.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
-	draw_rect(Rect2(0.0, 98.0 * unit, 226.0 * unit, viewport_size.y - 98.0 * unit), Color(0.01, 0.05, 0.10, 0.20))
-	var stats_strip := Rect2(24.0 * unit, 104.0 * unit, 210.0 * unit, 72.0 * unit)
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, layout.header_h), Color(0.015, 0.055, 0.12, 0.94))
+	draw_rect(Rect2(0.0, layout.header_h - 4.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
+	var left_bg_w := layout.left_x + layout.left_w + 10.0 * unit
+	draw_rect(Rect2(0.0, layout.header_h, left_bg_w, viewport_size.y - layout.header_h), Color(0.01, 0.05, 0.10, 0.20))
+	var stats_strip := home_stats_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.90), 16.0 * unit), stats_strip)
-	draw_string(ui_font, stats_strip.position + Vector2(14.0, 24.0) * unit, ("ניצחונות: %d" if ui_language == "he" else "WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(14.0 * unit), Color.WHITE)
-	draw_string(ui_font, stats_strip.position + Vector2(14.0, 46.0) * unit, ("רצף: %d" if ui_language == "he" else "STREAK: %d") % player_current_streak, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(13.0 * unit), Color("8cecff"))
-	draw_string(ui_font, stats_strip.position + Vector2(14.0, 64.0) * unit, league_name(player_league_tier) + " • " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(12.0 * unit), Color("ffe25d"))
-	var board_panel := Rect2(24.0 * unit, 188.0 * unit, 210.0 * unit, minf(250.0 * unit, viewport_size.y - 250.0 * unit))
-	draw_home_leaderboard(board_panel)
+	draw_string(ui_font, stats_strip.position + Vector2(12.0, 22.0) * unit, ("ניצחונות: %d" if ui_language == "he" else "WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(13.0 * unit), Color.WHITE)
+	draw_string(ui_font, stats_strip.position + Vector2(12.0, 40.0) * unit, ("רצף: %d" if ui_language == "he" else "STREAK: %d") % player_current_streak, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(12.0 * unit), Color("8cecff"))
+	draw_string(ui_font, stats_strip.position + Vector2(12.0, 54.0) * unit, league_name(player_league_tier) + " • " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(11.0 * unit), Color("ffe25d"))
 	draw_pending_invite_banner(viewport_size)
 
 	# Full-body hero with the selected lifebuoy wrapped around its waist.
@@ -5852,7 +5930,7 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_circle(coin_rect.position + Vector2(29.0, 27.0) * unit, 15.0 * unit, Color("ffc83d"))
 	draw_circle(coin_rect.position + Vector2(29.0, 27.0) * unit, 9.0 * unit, Color("e9971b"), false, 3.0 * unit, true)
 	draw_string(ui_font, coin_rect.position + Vector2(54.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 82.0 * unit, int(20.0 * unit), Color.WHITE)
-	var gems := Rect2(viewport_size.x - 210.0 * unit, 22.0 * unit, 120.0 * unit, 54.0 * unit)
+	var gems := home_gems_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), gems.grow(4.0))
 	draw_style_box(make_box(Color("253e67"), 16.0), gems)
 	var gem_center := gems.position + Vector2(28.0, 27.0) * unit
@@ -5874,28 +5952,29 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var arena_button := home_mode_rect(0, viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), arena_button.grow(5.0 * unit))
 	draw_style_box(make_box(Color("7258df"), 16.0), arena_button)
-	var arena_icon := arena_button.position + Vector2(42.0, 38.0) * unit
-	draw_circle(arena_icon, 27.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
+	var arena_icon := arena_button.position + Vector2(arena_button.size.x * 0.24, arena_button.size.y * 0.42)
+	draw_circle(arena_icon, 24.0 * unit, Color(1.0, 1.0, 1.0, 0.20))
 	draw_home_mode_icon(0, arena_icon, unit)
-	draw_string(ui_font, arena_button.position + Vector2(8.0, 77.0) * unit, ui_text("arena"), HORIZONTAL_ALIGNMENT_CENTER, arena_button.size.x - 16.0 * unit, int(17.0 * unit), Color.WHITE)
+	draw_string(ui_font, arena_button.position + Vector2(8.0, arena_button.size.y * 0.78), ui_text("arena"), HORIZONTAL_ALIGNMENT_CENTER, arena_button.size.x - 16.0 * unit, int(15.0 * unit), Color.WHITE)
 
 	# Friends stays isolated on the right side of the mascot.
 	var friend_button := home_mode_rect(1, viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), friend_button.grow(5.0 * unit))
 	draw_style_box(make_box(Color("315fd0"), 16.0), friend_button)
-	var friend_icon := friend_button.position + Vector2(friend_button.size.x * 0.5, 35.0 * unit)
-	draw_home_mode_icon(1, friend_icon, unit * 1.08)
-	draw_string(ui_font, friend_button.position + Vector2(5.0, 78.0) * unit, ui_text("friend"), HORIZONTAL_ALIGNMENT_CENTER, friend_button.size.x - 10.0 * unit, int(15.0 * unit), Color.WHITE)
+	var friend_icon := friend_button.position + Vector2(friend_button.size.x * 0.5, friend_button.size.y * 0.38)
+	draw_home_mode_icon(1, friend_icon, unit)
+	draw_string(ui_font, friend_button.position + Vector2(6.0, friend_button.size.y * 0.72), ui_text("friend"), HORIZONTAL_ALIGNMENT_CENTER, friend_button.size.x - 12.0 * unit, int(13.0 * unit), Color.WHITE)
 
 	var play_rect := home_mode_rect(2, viewport_size)
 	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 25.0), play_rect.grow((6.0 + pulse * 2.0) * unit))
-	draw_style_box(make_box(Color("f6aa20"), 22.0), play_rect)
-	var play_center := play_rect.position + Vector2(58.0, 60.0) * unit
-	draw_circle(play_center, 34.0 * unit, Color("df7b12"))
-	draw_home_mode_icon(2, play_center, unit * 1.2)
-	draw_string(ui_font, play_rect.position + Vector2(100.0, 59.0) * unit, "שחק" if ui_language == "he" else "PLAY", HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(34.0 * unit), Color.WHITE)
-	draw_string(ui_font, play_rect.position + Vector2(100.0, 82.0) * unit, ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_CENTER, 220.0 * unit, int(11.0 * unit), Color("fff4cf"))
+	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 22.0), play_rect.grow((5.0 + pulse * 2.0) * unit))
+	draw_style_box(make_box(Color("f6aa20"), 20.0), play_rect)
+	var play_center := play_rect.position + Vector2(52.0, play_rect.size.y * 0.5)
+	draw_circle(play_center, 30.0 * unit, Color("df7b12"))
+	draw_home_mode_icon(2, play_center, unit * 1.1)
+	var play_text_x := play_rect.position.x + 96.0 * unit
+	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.46), "שחק" if ui_language == "he" else "PLAY", HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x - 104.0 * unit, int(28.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.72), ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x - 104.0 * unit, int(10.0 * unit), Color("fff4cf"))
 
 	# Collection shortcuts stay close to the hero character.
 	var nav_labels := [ui_text("shop"), ui_text("rewards")]
@@ -5905,11 +5984,11 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		var nav := home_nav_rect(i, viewport_size)
 		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.86), 17.0), nav.grow(4.0 * unit))
 		draw_style_box(make_box(nav_colors[i], 15.0), nav)
-		var nav_icon_center := nav.position + Vector2(31.0, 39.0) * unit
-		draw_circle(nav_icon_center, 23.0 * unit, Color(1.0, 1.0, 1.0, 0.22))
+		var nav_icon_center := nav.position + Vector2(nav.size.x * 0.18, nav.size.y * 0.42)
+		draw_circle(nav_icon_center, 20.0 * unit, Color(1.0, 1.0, 1.0, 0.22))
 		draw_home_nav_icon(i, nav_icon_center, unit)
-		draw_string(ui_font, nav.position + Vector2(56.0, 38.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(19.0 * unit), Color.WHITE)
-		draw_string(ui_font, nav.position + Vector2(56.0, 66.0) * unit, nav_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(10.0 * unit), Color("fff0c7"))
+		draw_string(ui_font, nav.position + Vector2(nav.size.x * 0.34, nav.size.y * 0.38), nav_labels[i], HORIZONTAL_ALIGNMENT_LEFT, nav.size.x * 0.58, int(17.0 * unit), Color.WHITE)
+		draw_string(ui_font, nav.position + Vector2(nav.size.x * 0.34, nav.size.y * 0.72), nav_subtitles[i], HORIZONTAL_ALIGNMENT_LEFT, nav.size.x * 0.58, int(9.0 * unit), Color("fff0c7"))
 	draw_home_social_panel(viewport_size)
 	var help_toggle := home_help_rect(viewport_size)
 	draw_style_box(make_box(Color("35b96f") if tutorial_open else Color("2982a6"), 16.0 * unit), help_toggle)
