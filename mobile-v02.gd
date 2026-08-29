@@ -244,6 +244,9 @@ var multiplayer_players: Array = []
 var multiplayer_ready := false
 var multiplayer_error := ""
 var pending_shared_room_code := ""
+var pending_android_auth_handoff := ""
+var pending_auth_handoff_payload: Dictionary = {}
+var pending_google_handoff_request := false
 var multiplayer_local_animal := -1
 var multiplayer_local_ring_color := -1
 var friend_customizer_open := false
@@ -2847,6 +2850,11 @@ func initialize_saved_session() -> void:
 			if "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(character):
 				pending_shared_room_code += character
 		pending_shared_room_code = pending_shared_room_code.left(4)
+		var handoff_value: String = str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('androidAuth') || ''", true))
+		for character in handoff_value.to_lower():
+			if "0123456789abcdef".contains(character):
+				pending_android_auth_handoff += character
+		pending_android_auth_handoff = pending_android_auth_handoff.left(64)
 		if firebase_refresh_token.is_empty():
 			firebase_refresh_token = str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseRefreshToken') || ''", true))
 	if firebase_refresh_token.is_empty():
@@ -3128,8 +3136,17 @@ window.zpGoogleState = {status: 'loading-sdk'};
 	JavaScriptBridge.eval(script, true)
 
 func begin_google_sign_in() -> void:
+	if OS.has_feature("android"):
+		firebase_status = "פותח כניסה מאובטחת ל-Google..." if ui_language == "he" else "OPENING SECURE GOOGLE SIGN-IN..."
+		pending_google_handoff_request = true
+		connect_multiplayer()
+		if multiplayer_state == "connected":
+			send_multiplayer({"type":"create_auth_handoff"})
+			pending_google_handoff_request = false
+		queue_redraw()
+		return
 	if not OS.has_feature("web"):
-		show_menu_notice("Google login is currently available on the website")
+		show_menu_notice("Google login is unavailable on this device")
 		return
 	var public_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
 	var call_script := "window.zpBeginGoogleLink && window.zpBeginGoogleLink(%s, %s, %s)" % [JSON.stringify(firebase_id_token), JSON.stringify(public_url), JSON.stringify(profile_name)]
@@ -3191,6 +3208,24 @@ func apply_firebase_auth_response(response: Dictionary) -> void:
 		app_screen = APP_HOME
 	if not pending_shared_room_code.is_empty():
 		open_pending_shared_room()
+	if OS.has_feature("web") and not pending_android_auth_handoff.is_empty() and firebase_provider == "google":
+		pending_auth_handoff_payload = {
+			"type":"complete_auth_handoff",
+			"handoffToken":pending_android_auth_handoff,
+			"localId":firebase_uid,
+			"idToken":firebase_id_token,
+			"refreshToken":firebase_refresh_token,
+			"expiresIn":str(maxi(60, firebase_token_expires_at - int(Time.get_unix_time_from_system()))),
+			"provider":"google",
+			"email":firebase_email,
+			"displayName":profile_name
+		}
+		connect_multiplayer()
+		if multiplayer_state == "connected":
+			send_multiplayer(pending_auth_handoff_payload)
+			pending_auth_handoff_payload = {}
+			pending_android_auth_handoff = ""
+			show_menu_notice("החשבון נשלח לאפליקציה" if ui_language == "he" else "ACCOUNT SENT TO THE APP")
 	queue_redraw()
 
 func update_firebase(delta: float) -> void:
@@ -3604,6 +3639,13 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 		"connected":
 			multiplayer_state = "connected"
 			multiplayer_error = ""
+			if pending_google_handoff_request:
+				send_multiplayer({"type":"create_auth_handoff"})
+				pending_google_handoff_request = false
+			if not pending_auth_handoff_payload.is_empty():
+				send_multiplayer(pending_auth_handoff_payload)
+				pending_auth_handoff_payload = {}
+				pending_android_auth_handoff = ""
 			if not pending_shared_room_code.is_empty():
 				var shared_code: String = pending_shared_room_code
 				pending_shared_room_code = ""
@@ -3611,6 +3653,19 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 				join_multiplayer_room()
 			elif pending_find_match:
 				send_find_match()
+		"auth_handoff":
+			var auth_url: String = str(payload.get("url", ""))
+			if OS.has_feature("android") and auth_url.begins_with("https://moshe2060.github.io/zoopaloola-mobile/"):
+				firebase_status = "השלימו את הכניסה בדפדפן" if ui_language == "he" else "FINISH SIGN-IN IN YOUR BROWSER"
+				OS.shell_open(auth_url)
+		"auth_handoff_complete":
+			var google_name: String = str(payload.get("displayName", "")).strip_edges().left(20)
+			if not google_name.is_empty():
+				profile_name = google_name
+				if profile_name_input != null:
+					profile_name_input.text = profile_name
+			apply_firebase_auth_response(payload)
+			show_menu_notice("התחברת עם Google" if ui_language == "he" else "SIGNED IN WITH GOOGLE")
 		"joined":
 			multiplayer_room_code = str(payload.get("roomCode", ""))
 			multiplayer_slot = int(payload.get("slot", -1))
