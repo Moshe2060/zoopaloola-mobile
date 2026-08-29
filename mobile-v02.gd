@@ -869,8 +869,8 @@ func _process(delta: float) -> void:
 	if app_screen != APP_GAME:
 		ensure_home_connected()
 		update_arena_fx(delta)
+		update_home_social_inputs()
 		if app_screen == APP_HOME:
-			update_home_social_inputs()
 			maybe_start_tutorial()
 		if menu_notice_time > 0.0:
 			menu_notice_time -= delta
@@ -3745,21 +3745,26 @@ func update_home_social_inputs() -> void:
 	var viewport_size := get_viewport_rect().size
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var panel := home_social_panel_rect(viewport_size)
+	var on_home := app_screen == APP_HOME
 	if friend_id_input != null:
-		var show_friend_input := home_social_tab == 0
+		var show_friend_input := on_home and home_social_tab == 0
 		friend_id_input.visible = show_friend_input
 		if show_friend_input:
 			friend_id_input.position = home_add_friend_rect(viewport_size).position
 			friend_id_input.size = home_add_friend_rect(viewport_size).size
 			friend_id_input.placeholder_text = ui_text("friend_id_hint")
+		elif friend_id_input.has_focus():
+			friend_id_input.release_focus()
 	if lobby_chat_input != null:
-		var show_chat_input := home_social_tab == 1
+		var show_chat_input := on_home and home_social_tab == 1
 		lobby_chat_input.visible = show_chat_input
 		if show_chat_input:
 			var input_rect := Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 118.0 * unit, 36.0 * unit))
 			lobby_chat_input.position = input_rect.position
 			lobby_chat_input.size = input_rect.size
 			lobby_chat_input.placeholder_text = ui_text("lobby_chat_hint")
+		elif lobby_chat_input.has_focus():
+			lobby_chat_input.release_focus()
 
 func send_lobby_chat_message() -> void:
 	if lobby_chat_input == null:
