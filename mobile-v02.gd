@@ -4109,7 +4109,6 @@ func invite_friend_to_play(index: int) -> void:
 	connect_multiplayer()
 	if multiplayer_room_code.is_empty():
 		create_multiplayer_room()
-	var friend_entry: Dictionary = friends_list[index]
 	var target_id := str(friend_entry.get("id", ""))
 	if target_id.is_empty():
 		return
