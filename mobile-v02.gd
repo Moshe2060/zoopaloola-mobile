@@ -3935,6 +3935,10 @@ func apply_friends_list_from_server(friends: Array) -> void:
 		var entry: Dictionary = merged[i]
 		if str(entry.get("name", "")).begins_with("ZP-"):
 			entry.name = friend_display_name(entry)
+	if merged.is_empty():
+		# The match server keeps friends in memory; an empty response must not
+		# wipe friends that are still saved locally on the device.
+		return
 	friends_list = merged
 	save_player_profile()
 	queue_redraw()
