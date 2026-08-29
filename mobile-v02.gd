@@ -88,7 +88,7 @@ const UI_TEXT_HE := {
 	"career": "סטטיסטיקות קריירה", "matches": "משחקים", "wins": "ניצחונות", "losses": "הפסדים", "win_rate": "אחוז הצלחה", "best_streak": "רצף שיא", "world_rank": "דירוג עולמי", "current_streak": "רצף ניצחונות נוכחי: ",
 	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים, אפקטים ושולחנות משחק", "effects": "אפקטים", "collection_info": "אוספים נדירים • עיצובים עונתיים • אנימציות מיוחדות", "coming_soon": "בקרוב",
 	"boards": "שולחנות", "boards_sub": "עיצובי מגרש", "boards_section": "שולחנות משחק", "boards_section_sub": "בחרו את עיצוב המגרש לקרב הבא", "board_equipped": "מוגדר למשחק", "board_selected_toast": "שולחן חדש הוגדר!",
-	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "הר געש",
+	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה",
 	"searching": "מחפשים יריב בזירה...", "cancel_search": "ביטול חיפוש",
 	"match_win": "ניצחתם!", "match_lose": "הפסדתם", "draw": "תיקו",
 	"play_again": "משחק נוסף", "back_home": "חזרה לבית",
@@ -143,7 +143,7 @@ const UI_TEXT_EN := {
 	"career": "CAREER STATISTICS", "matches": "MATCHES", "wins": "WINS", "losses": "LOSSES", "win_rate": "WIN RATE", "best_streak": "BEST STREAK", "world_rank": "WORLD RANK", "current_streak": "CURRENT WIN STREAK: ",
 	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections • Seasonal designs • Special animations", "coming_soon": "COMING SOON",
 	"boards": "TABLES", "boards_sub": "Board skins", "boards_section": "GAME TABLES", "boards_section_sub": "Choose the look of your next match", "board_equipped": "EQUIPPED", "board_selected_toast": "New table equipped!",
-	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "VOLCANO",
+	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA",
 	"searching": "Finding an arena opponent...", "cancel_search": "CANCEL SEARCH",
 	"match_win": "YOU WIN!", "match_lose": "YOU LOST", "draw": "DRAW",
 	"play_again": "PLAY AGAIN", "back_home": "BACK HOME",
@@ -218,6 +218,7 @@ const TUTORIAL_STEPS_EN := [
 	{"title": "READY TO PLAY!", "body": "Start with a computer match to practice.\nReopen this guide anytime with the ? button.\nGood luck in the arena!", "art": "ready"},
 ]
 var board_texture: Texture2D
+var board_theme_textures: Array[Texture2D] = []
 var ui_font: Font
 var lobby_background_texture: Texture2D
 var loading_team_texture: Texture2D
@@ -759,12 +760,21 @@ func _ready() -> void:
 	friend_lookup_request.request_completed.connect(_on_friend_lookup_completed)
 	add_child(friend_lookup_request)
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
+	board_theme_textures = [
+		board_texture,
+		load("res://assets/boards/board-ice.webp") as Texture2D,
+		load("res://assets/boards/board-jungle.webp") as Texture2D,
+		load("res://assets/boards/board-lava.webp") as Texture2D,
+	]
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
 	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
+	for theme_index in board_theme_textures.size():
+		if board_theme_textures[theme_index] == null:
+			push_error("Board theme %d could not be loaded." % theme_index)
 	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
 		piece_textures.append(load("res://assets/pieces/" + file_name))
 	for animal_file in ANIMAL_FILES:
@@ -1558,9 +1568,11 @@ func _draw() -> void:
 	# Floating animals stay behind the elevated table and only remain visible on
 	# the surrounding water.
 	draw_water_floaters(viewport_size)
-	# Approved faithful remaster, created natively in landscape.
-	draw_texture_rect(board_texture, board_rect, false, board_theme_modulate(selected_board_theme))
-	draw_board_theme_overlay(selected_board_theme)
+	# Each table theme keeps the exact approved gameplay geometry while using
+	# its own production texture.
+	var active_board_texture := board_theme_texture(selected_board_theme)
+	if active_board_texture != null:
+		draw_texture_rect(active_board_texture, board_rect, false)
 	draw_scoreboards()
 	draw_rubber_launchers_idle()
 	draw_press_weapons_idle()
@@ -6654,6 +6666,12 @@ func board_theme_name(index: int) -> String:
 	var keys := ["board_classic", "board_ice", "board_jungle", "board_volcano"]
 	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
 
+func board_theme_texture(index: int) -> Texture2D:
+	if board_theme_textures.is_empty():
+		return board_texture
+	var texture := board_theme_textures[clampi(index, 0, board_theme_textures.size() - 1)]
+	return texture if texture != null else board_texture
+
 func board_theme_accent(index: int) -> Color:
 	var accents := [Color("58c9e8"), Color("8cecff"), Color("6fda18"), Color("ff7b43")]
 	return accents[clampi(index, 0, accents.size() - 1)]
@@ -6726,9 +6744,9 @@ func draw_shop_board_preview(theme_index: int, preview: Rect2, unit: float) -> v
 	draw_style_box(make_box(accent.darkened(0.55), 12.0 * unit), preview)
 	var inner := preview.grow(-10.0 * unit)
 	draw_rect(inner, Color("1a3048"))
-	if board_texture != null:
-		draw_texture_rect(board_texture, inner, false, board_theme_modulate(theme))
-	draw_board_theme_overlay_on_rect(theme, inner, unit)
+	var preview_texture := board_theme_texture(theme)
+	if preview_texture != null:
+		draw_texture_rect(preview_texture, inner, false)
 	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.35), 10.0 * unit), Rect2(inner.position, Vector2(inner.size.x, 3.0 * unit)))
 
 func draw_board_theme_overlay_on_rect(theme_index: int, rect: Rect2, unit: float) -> void:
