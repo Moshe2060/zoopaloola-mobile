@@ -106,6 +106,8 @@ const UI_TEXT_HE := {
 	"invite_sent_online": "ההזמנה נשלחה!", "invite_sent_offline": "ההזמנה ממתינה לחבר",
 	"room_chat": "צ׳אט חדר", "sound_on": "צלילים", "promoted_league": "עליתם לליגה חדשה!",
 	"match_found": "נמצא יריב!", "entering_arena": "נכנסים לזירה...",
+	"tutorial_title": "מדריך למתחילים", "tutorial_next": "הבא", "tutorial_prev": "הקודם",
+	"tutorial_skip": "דלג", "tutorial_done": "בואו נשחק!", "tutorial_help": "מדריך",
 }
 const UI_TEXT_EN := {
 	"player": "PLAYER 1", "level": "LEVEL 1 • ROOKIE EXPLORER",
@@ -147,6 +149,8 @@ const UI_TEXT_EN := {
 	"invite_sent_online": "Invite sent!", "invite_sent_offline": "Invite queued for friend",
 	"room_chat": "ROOM CHAT", "sound_on": "SOUND", "promoted_league": "You reached a new league!",
 	"match_found": "MATCH FOUND!", "entering_arena": "ENTERING ARENA...",
+	"tutorial_title": "HOW TO PLAY", "tutorial_next": "NEXT", "tutorial_prev": "BACK",
+	"tutorial_skip": "SKIP", "tutorial_done": "LET'S PLAY!", "tutorial_help": "GUIDE",
 }
 const APP_SPLASH := 0
 const APP_HOME := 1
@@ -168,6 +172,27 @@ const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "lea
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
 const ARENA_MATCH_FOUND_DURATION := 2.2
 const FIREBASE_WEB_VAPID_KEY := ""
+const TUTORIAL_STEP_COUNT := 8
+const TUTORIAL_STEPS_HE := [
+	{"title": "ברוכים הבאים לזופלולה!", "body": "משחק גולות חיות על לוח מיוחד עם חורים, נשקים ויריבים אמיתיים.\nעברו בין השלבים כדי ללמוד איך הכל עובד.", "art": "welcome"},
+	{"title": "איך יורים?", "body": "בתור שלכם — געו בכדור שלכם, גררו אחורה ושחררו.\nככל שתמשכו רחוק יותר, הכדור יעוף חזק יותר.\nמשיכה קצרה מבטלת את הירייה.", "art": "shoot"},
+	{"title": "מה המטרה?", "body": "דחפו את כדורי היריב לחורים בפינות הלוח.\nכדור שנכנס לחור יוצא מהמשחק — מי שמוריד את כל כדורי היריב קודם, מנצח!", "art": "goal"},
+	{"title": "חורים מיוחדים", "body": "חלק מהחורים מפעילים נשקים: גומי, מקש, חשמל, אש, קרח ועוד.\nהם יוצרים רגעים מטורפים — נסו לתכנן סביבם!", "art": "weapons"},
+	{"title": "תורות", "body": "כל שחקן יורה פעם אחת בתורו.\nכרטיס השחקן הפעיל מודגש בזהב עם תגית \"התור שלך\".\nהכדור שלכם זוהר רק לפני הירייה הראשונה בתור.", "art": "turns"},
+	{"title": "מצבי משחק", "body": "שחק — משחק נגד המחשב (מומלץ להתחיל כאן).\nחבר — חדר פרטי עם קוד לשני מכשירים.\nזירה — משחק אונליין מול יריב אקראי עם דירוג ומטבעות.", "art": "modes"},
+	{"title": "מסך הבית", "body": "פרופיל — שם, דמות וסטטיסטיקות.\nמועדון שחקנים — חברים, צ׳אט לובי וליגה.\nפרס יומי — מטבעות חינם כל יום.\nהעתיקו את מזהה ZP- שלכם כדי להוסיף חברים.", "art": "hub"},
+	{"title": "מוכנים לשחק!", "body": "התחילו במשחק נגד המחשב כדי להתרגל.\nאפשר לפתוח את המדריך שוב בכל עת מכפתור ? בפינה.\nבהצלחה בזירה!", "art": "ready"},
+]
+const TUTORIAL_STEPS_EN := [
+	{"title": "WELCOME TO ZOOPALOOLA!", "body": "A lively marble game on a special board with holes, weapons, and real opponents.\nSwipe through these steps to learn how everything works.", "art": "welcome"},
+	{"title": "HOW TO SHOOT", "body": "On your turn, touch your ball, pull back, and release.\nThe farther you pull, the harder the shot.\nA tiny pull cancels the shot.", "art": "shoot"},
+	{"title": "THE GOAL", "body": "Knock your opponent's balls into the corner holes.\nA ball that falls in is out — clear all enemy balls first to win!", "art": "goal"},
+	{"title": "SPECIAL HOLES", "body": "Some holes trigger weapons: rubber, press, electric, fire, ice, and more.\nThey create wild moments — plan around them!", "art": "weapons"},
+	{"title": "TURNS", "body": "Each player shoots once per turn.\nThe active player's card glows gold with a \"YOUR TURN\" badge.\nYour ball glows only before your first shot each turn.", "art": "turns"},
+	{"title": "GAME MODES", "body": "PLAY — vs computer (best place to start).\nFRIEND — private room with a 4-letter code.\nARENA — online random match with rating and coins.", "art": "modes"},
+	{"title": "HOME SCREEN", "body": "Profile — name, character, and stats.\nPlayer Club — friends, lobby chat, and league.\nDaily reward — free coins every day.\nCopy your ZP- ID to add friends.", "art": "hub"},
+	{"title": "READY TO PLAY!", "body": "Start with a computer match to practice.\nReopen this guide anytime with the ? button.\nGood luck in the arena!", "art": "ready"},
+]
 var board_texture: Texture2D
 var ui_font: Font
 var lobby_background_texture: Texture2D
@@ -306,6 +331,9 @@ var pending_arena_match: Dictionary = {}
 var arena_matched_opponent: Dictionary = {}
 var fcm_token_registered := ""
 var push_setup_done := false
+var tutorial_completed := false
+var tutorial_open := false
+var tutorial_step := 0
 var match_finished := false
 var match_result_open := false
 var match_result_winner := -1
@@ -835,6 +863,7 @@ func _process(delta: float) -> void:
 		update_arena_fx(delta)
 		if app_screen == APP_HOME:
 			update_home_social_inputs()
+			maybe_start_tutorial()
 		if menu_notice_time > 0.0:
 			menu_notice_time -= delta
 		queue_redraw()
@@ -1101,6 +1130,14 @@ func handle_system_back() -> void:
 		return
 
 	# Home and the root authentication chooser are the only true app roots.
+	if tutorial_open:
+		if tutorial_step > 0:
+			retreat_tutorial_step()
+		else:
+			tutorial_open = false
+		queue_redraw()
+		return
+
 	# Back from either root keeps Android's expected behavior and exits.
 	get_tree().quit()
 
@@ -3146,6 +3183,174 @@ func home_settings_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(viewport_size.x - 78.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
 
+func home_settings_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(viewport_size.x - 78.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
+
+func home_help_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(viewport_size.x - 198.0 * unit, 22.0 * unit, 54.0 * unit, 54.0 * unit)
+
+func tutorial_step_data(step: int) -> Dictionary:
+	var steps := TUTORIAL_STEPS_HE if ui_language == "he" else TUTORIAL_STEPS_EN
+	return steps[clampi(step, 0, steps.size() - 1)]
+
+func tutorial_panel_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var width := minf(760.0 * unit, viewport_size.x - 48.0 * unit)
+	var height := minf(520.0 * unit, viewport_size.y - 72.0 * unit)
+	return Rect2(Vector2((viewport_size.x - width) * 0.5, (viewport_size.y - height) * 0.5), Vector2(width, height))
+
+func tutorial_prev_rect(viewport_size: Vector2) -> Rect2:
+	var panel := tutorial_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(24.0 * unit, panel.size.y - 64.0 * unit), Vector2(120.0 * unit, 44.0 * unit))
+
+func tutorial_next_rect(viewport_size: Vector2) -> Rect2:
+	var panel := tutorial_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.end - Vector2(144.0 * unit, 64.0 * unit), Vector2(120.0 * unit, 44.0 * unit))
+
+func tutorial_skip_rect(viewport_size: Vector2) -> Rect2:
+	var panel := tutorial_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.end - Vector2(54.0 * unit, panel.size.y - 8.0 * unit), Vector2(36.0 * unit, 36.0 * unit))
+
+func tutorial_highlight_rect(step: int, viewport_size: Vector2) -> Rect2:
+	match step:
+		5:
+			return home_mode_rect(2, viewport_size).grow(8.0)
+		6:
+			return home_social_panel_rect(viewport_size).grow(6.0)
+		7:
+			return home_mode_rect(2, viewport_size).grow(12.0)
+	return Rect2()
+
+func maybe_start_tutorial() -> void:
+	if tutorial_completed or tutorial_open:
+		return
+	open_tutorial()
+
+func open_tutorial(from_step: int = 0) -> void:
+	tutorial_open = true
+	tutorial_step = clampi(from_step, 0, TUTORIAL_STEP_COUNT - 1)
+	play_sound("ui")
+	queue_redraw()
+
+func complete_tutorial() -> void:
+	tutorial_open = false
+	tutorial_completed = true
+	save_player_profile()
+	play_sound("ui")
+	queue_redraw()
+
+func advance_tutorial_step() -> void:
+	if tutorial_step >= TUTORIAL_STEP_COUNT - 1:
+		complete_tutorial()
+	else:
+		tutorial_step += 1
+		play_sound("ui")
+		queue_redraw()
+
+func retreat_tutorial_step() -> void:
+	tutorial_step = maxi(0, tutorial_step - 1)
+	play_sound("ui")
+	queue_redraw()
+
+func handle_tutorial_touch(screen_pos: Vector2, viewport_size: Vector2) -> void:
+	if tutorial_skip_rect(viewport_size).has_point(screen_pos):
+		complete_tutorial()
+		return
+	if tutorial_step > 0 and tutorial_prev_rect(viewport_size).has_point(screen_pos):
+		retreat_tutorial_step()
+		return
+	if tutorial_next_rect(viewport_size).has_point(screen_pos):
+		advance_tutorial_step()
+		return
+
+func draw_tutorial_art(art_id: String, rect: Rect2, unit: float) -> void:
+	var center := rect.get_center()
+	match art_id:
+		"welcome":
+			draw_circle(center, 58.0 * unit, Color("8cecff", 0.22))
+			draw_circle(center + Vector2(-28.0, 8.0) * unit, 22.0 * unit, Color("ef3340"))
+			draw_circle(center + Vector2(24.0, -6.0) * unit, 22.0 * unit, Color("1677ff"))
+			draw_string(ui_font, center + Vector2(-34.0, 58.0) * unit, "ZOOPA", HORIZONTAL_ALIGNMENT_CENTER, 68.0 * unit, int(22.0 * unit), Color("ffe25d"))
+		"shoot":
+			var ball_pos := center + Vector2(36.0, 10.0) * unit
+			draw_circle(ball_pos, 18.0 * unit, Color("ef3340"))
+			draw_line(ball_pos, ball_pos + Vector2(-72.0, 28.0) * unit, Color("ffe25d"), 5.0 * unit, true)
+			draw_circle(ball_pos + Vector2(-72.0, 28.0) * unit, 10.0 * unit, Color("ffe25d", 0.55))
+			draw_string(ui_font, center + Vector2(-80.0, -42.0) * unit, "← PULL", HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(14.0 * unit), Color.WHITE)
+		"goal":
+			var board := Rect2(center + Vector2(-88.0, -48.0) * unit, Vector2(176.0, 176.0) * unit)
+			draw_style_box(make_box(Color("5d7f4f"), 12.0 * unit), board)
+			for corner in [board.position, board.position + Vector2(board.size.x, 0.0), board.end - board.size, board.end]:
+				draw_circle(corner, 14.0 * unit, Color("173249"))
+			draw_circle(board.get_center(), 12.0 * unit, Color("ef3340"))
+			draw_circle(board.get_center() + Vector2(34.0, -18.0) * unit, 12.0 * unit, Color("1677ff"))
+		"weapons":
+			var icons := [Color("ef3340"), Color("9d59e8"), Color("ff8a00"), Color("12c95b")]
+			for i in icons.size():
+				var pos := center + Vector2(-54.0 + float(i) * 36.0, float((i % 2) * 20 - 10)) * unit
+				draw_circle(pos, 16.0 * unit, icons[i])
+		"turns":
+			var left_card := Rect2(center + Vector2(-92.0, -34.0) * unit, Vector2(84.0, 68.0) * unit)
+			var right_card := Rect2(center + Vector2(8.0, -34.0) * unit, Vector2(84.0, 68.0) * unit)
+			draw_style_box(make_box(Color("ffe25d"), 10.0 * unit), left_card.grow(4.0 * unit))
+			draw_style_box(make_box(Color("173249"), 8.0 * unit), left_card)
+			draw_style_box(make_box(Color("244d70"), 8.0 * unit), right_card)
+			draw_string(ui_font, left_card.position + Vector2(0.0, 42.0) * unit, "YOU", HORIZONTAL_ALIGNMENT_CENTER, left_card.size.x, int(12.0 * unit), Color.WHITE)
+		"modes":
+			var labels := ["PC", "FR", "AR"]
+			var colors := [Color("f6aa20"), Color("315fd0"), Color("7258df")]
+			for i in 3:
+				var chip := Rect2(center + Vector2(-78.0 + float(i) * 52.0, -18.0) * unit, Vector2(44.0, 44.0) * unit)
+				draw_style_box(make_box(colors[i], 10.0 * unit), chip)
+				draw_string(ui_font, chip.position + Vector2(0.0, 28.0) * unit, labels[i], HORIZONTAL_ALIGNMENT_CENTER, chip.size.x, int(11.0 * unit), Color.WHITE)
+		"hub":
+			draw_style_box(make_box(Color("315fd0"), 12.0 * unit), Rect2(center + Vector2(-70.0, -30.0) * unit, Vector2(140.0, 60.0) * unit))
+			draw_circle(center + Vector2(-48.0, 42.0) * unit, 14.0 * unit, Color("6965d8"))
+			draw_circle(center + Vector2(-16.0, 42.0) * unit, 14.0 * unit, Color("51d995"))
+			draw_circle(center + Vector2(16.0, 42.0) * unit, 14.0 * unit, Color("ffe25d"))
+		"ready":
+			draw_circle(center, 42.0 * unit, Color("6fda18", 0.25))
+			draw_string(ui_font, center + Vector2(-28.0, 12.0) * unit, "GO!", HORIZONTAL_ALIGNMENT_CENTER, 56.0 * unit, int(34.0 * unit), Color("6fda18"))
+
+func draw_tutorial_overlay(viewport_size: Vector2) -> void:
+	if not tutorial_open:
+		return
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var highlight := tutorial_highlight_rect(tutorial_step, viewport_size)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.72))
+	if highlight.size.x > 0.0:
+		var pulse := 0.55 + sin(menu_elapsed * 5.0) * 0.2
+		draw_style_box(make_box(Color("ffe25d", pulse), 18.0 * unit), highlight.grow(6.0 * unit))
+	var panel := tutorial_panel_rect(viewport_size)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.13, 0.96), 26.0 * unit), panel.grow(6.0 * unit))
+	draw_style_box(make_box(Color("eaf8f1"), 24.0 * unit), panel)
+	var step_data := tutorial_step_data(tutorial_step)
+	draw_string(ui_font, panel.position + Vector2(0.0, 42.0) * unit, ui_text("tutorial_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(14.0 * unit), Color("2982a6"))
+	draw_string(ui_font, panel.position + Vector2(24.0 * unit, 78.0) * unit, str(step_data.get("title", "")), HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 48.0 * unit, int(26.0 * unit), Color("173249"))
+	var art_rect := Rect2(panel.position + Vector2(panel.size.x * 0.5 - 100.0 * unit, 112.0 * unit), Vector2(200.0, 120.0) * unit)
+	draw_tutorial_art(str(step_data.get("art", "")), art_rect, unit)
+	var body_y := 250.0 * unit
+	var body_lines := str(step_data.get("body", "")).split("\n")
+	for line in body_lines:
+		draw_string(ui_font, panel.position + Vector2(28.0 * unit, body_y), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 56.0 * unit, int(16.0 * unit), Color("354522"))
+		body_y += 28.0 * unit
+	var dots_x := panel.position.x + panel.size.x * 0.5 - float(TUTORIAL_STEP_COUNT - 1) * 10.0 * unit
+	for i in TUTORIAL_STEP_COUNT:
+		var dot_center := Vector2(dots_x + float(i) * 20.0 * unit, panel.end.y - 78.0 * unit)
+		draw_circle(dot_center, 5.0 * unit, Color("ffe25d") if i == tutorial_step else Color("9ab0c2"))
+	if tutorial_step > 0:
+		draw_style_box(make_box(Color("244d70"), 12.0 * unit), tutorial_prev_rect(viewport_size))
+		draw_string(ui_font, tutorial_prev_rect(viewport_size).position + Vector2(0.0, 29.0) * unit, ui_text("tutorial_prev"), HORIZONTAL_ALIGNMENT_CENTER, tutorial_prev_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
+	var next_label := ui_text("tutorial_done") if tutorial_step >= TUTORIAL_STEP_COUNT - 1 else ui_text("tutorial_next")
+	draw_style_box(make_box(Color("35b96f"), 12.0 * unit), tutorial_next_rect(viewport_size))
+	draw_string(ui_font, tutorial_next_rect(viewport_size).position + Vector2(0.0, 29.0) * unit, next_label, HORIZONTAL_ALIGNMENT_CENTER, tutorial_next_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
+	draw_string(ui_font, tutorial_skip_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, "×", HORIZONTAL_ALIGNMENT_CENTER, tutorial_skip_rect(viewport_size).size.x, int(22.0 * unit), Color("607080"))
+
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(24.0 * unit, (232.0 + float(index) * 100.0) * unit, 178.0 * unit, 86.0 * unit)
@@ -3528,6 +3733,7 @@ func load_player_profile() -> void:
 	player_rating = clampi(int(config.get_value("player", "rating", player_rating)), 100, 9999)
 	player_league_tier = clampi(int(config.get_value("player", "league_tier", player_league_tier)), 0, LEAGUE_NAME_KEYS.size() - 1)
 	sound_enabled = bool(config.get_value("settings", "sound_enabled", sound_enabled))
+	tutorial_completed = bool(config.get_value("settings", "tutorial_completed", tutorial_completed))
 	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
 	ui_language = str(config.get_value("settings", "language", ui_language))
 	friends_list = config.get_value("social", "friends", [])
@@ -3558,6 +3764,7 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("player", "league_tier", player_league_tier)
 	config.set_value("player", "last_daily_claim", last_daily_claim)
 	config.set_value("settings", "sound_enabled", sound_enabled)
+	config.set_value("settings", "tutorial_completed", tutorial_completed)
 	config.set_value("settings", "language", ui_language)
 	config.set_value("social", "friends", friends_list)
 	config.set_value("firebase", "uid", firebase_uid)
@@ -3817,6 +4024,7 @@ func apply_firebase_auth_response(response: Dictionary) -> void:
 	if app_screen == APP_AUTH:
 		auth_email_mode = ""
 		app_screen = APP_HOME
+	maybe_start_tutorial()
 	if not pending_shared_room_code.is_empty():
 		open_pending_shared_room()
 	if OS.has_feature("web") and not pending_android_auth_handoff.is_empty() and firebase_provider == "google":
@@ -4528,7 +4736,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		queue_redraw()
 		return
 	if app_screen == APP_HOME:
+		if tutorial_open:
+			handle_tutorial_touch(screen_pos, viewport_size)
+			return
 		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		if home_help_rect(viewport_size).has_point(screen_pos):
+			open_tutorial()
+			return
 		if home_social_tab_rect(0, viewport_size).has_point(screen_pos):
 			home_social_tab = 0
 			if lobby_chat_input != null:
@@ -5492,6 +5706,10 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		draw_string(ui_font, nav.position + Vector2(56.0, 38.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(19.0 * unit), Color.WHITE)
 		draw_string(ui_font, nav.position + Vector2(56.0, 66.0) * unit, nav_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(10.0 * unit), Color("fff0c7"))
 	draw_home_social_panel(viewport_size)
+	var help_toggle := home_help_rect(viewport_size)
+	draw_style_box(make_box(Color("35b96f") if tutorial_open else Color("2982a6"), 16.0 * unit), help_toggle)
+	draw_string(ui_font, help_toggle.position + Vector2(0.0, 35.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, help_toggle.size.x, int(22.0 * unit), Color.WHITE)
+	draw_tutorial_overlay(viewport_size)
 
 func draw_home_mode_icon(kind: int, center: Vector2, unit: float) -> void:
 	if kind == 0:
