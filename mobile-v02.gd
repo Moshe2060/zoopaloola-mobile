@@ -196,8 +196,8 @@ const COMPUTER_WIN_COINS := 40
 const FRIEND_WIN_COINS := 25
 const FREE_UNLOCK_COUNT := 3
 const ECONOMY_VERSION := 2
-const ANIMAL_UNLOCK_PRICES := [0, 0, 0, 550, 750, 950]
-const RING_UNLOCK_PRICES := [0, 0, 0, 350, 450, 550]
+const ANIMAL_UNLOCK_PRICES := [0, 0, 0, 550, 750, 950, 0]
+const RING_UNLOCK_PRICES := [0, 0, 0, 350, 450, 550, 0]
 const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
 const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
@@ -4467,9 +4467,9 @@ func initialize_owned_collections() -> void:
 	owned_animals.clear()
 	owned_rings.clear()
 	for i in ANIMAL_NAMES.size():
-		owned_animals.append(i < FREE_UNLOCK_COUNT)
+		owned_animals.append(animal_unlock_price(i) <= 0)
 	for i in RING_COLORS.size():
-		owned_rings.append(i < FREE_UNLOCK_COUNT)
+		owned_rings.append(ring_unlock_price(i) <= 0)
 
 func is_animal_unlocked(index: int) -> bool:
 	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
@@ -4516,10 +4516,10 @@ func load_owned_collections(config: ConfigFile) -> void:
 	var saved_rings: Variant = config.get_value("player", "owned_rings", [])
 	if typeof(saved_animals) == TYPE_ARRAY:
 		for i in mini(saved_animals.size(), owned_animals.size()):
-			owned_animals[i] = bool(saved_animals[i]) or i < FREE_UNLOCK_COUNT
+			owned_animals[i] = bool(saved_animals[i]) or animal_unlock_price(i) <= 0
 	if typeof(saved_rings) == TYPE_ARRAY:
 		for i in mini(saved_rings.size(), owned_rings.size()):
-			owned_rings[i] = bool(saved_rings[i]) or i < FREE_UNLOCK_COUNT
+			owned_rings[i] = bool(saved_rings[i]) or ring_unlock_price(i) <= 0
 
 func apply_economy_migration(config: ConfigFile) -> void:
 	var saved_version := int(config.get_value("player", "economy_version", 0))
@@ -5733,11 +5733,11 @@ func ui_text(key: String) -> String:
 	return str(UI_TEXT_EN.get(key, key))
 
 func ui_animal_name(index: int) -> String:
-	var keys := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe"]
+	var keys := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe", "tiger"]
 	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
 
 func ui_ring_name(index: int) -> String:
-	var keys := ["red", "orange", "blue", "green", "purple", "turquoise"]
+	var keys := ["red", "orange", "blue", "green", "purple", "turquoise", "pink"]
 	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
 
 func profile_initial() -> String:
@@ -7068,11 +7068,12 @@ func draw_board_theme_card(theme_index: int, card: Rect2, selected: bool, unit: 
 		draw_circle(card.position + Vector2(card.size.x - 12.0 * unit, 12.0 * unit), 9.0 * unit, Color("ffe25d"))
 		draw_string(ui_font, card.position + Vector2(card.size.x - 21.0 * unit, 16.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 18.0 * unit, int(11.0 * unit), Color("173249"))
 
-func shop_item_rect(index: int, viewport_size: Vector2) -> Rect2:
+func shop_item_rect(index: int, viewport_size: Vector2, item_count: int = ANIMAL_NAMES.size()) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var gap := 12.0 * unit
-	var card_w := minf(188.0 * unit, (viewport_size.x - 90.0 * unit - gap * 5.0) / 6.0)
-	var total_w := card_w * 6.0 + gap * 5.0
+	var count := maxi(item_count, 1)
+	var card_w := minf(188.0 * unit, (viewport_size.x - 90.0 * unit - gap * float(count - 1)) / float(count))
+	var total_w := card_w * float(count) + gap * float(count - 1)
 	var start_x := (viewport_size.x - total_w) * 0.5
 	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 392.0 * unit), Vector2(card_w, 150.0 * unit))
 
@@ -7204,10 +7205,10 @@ func draw_shop_screen(viewport_size: Vector2) -> void:
 
 	if shop_tab == 0:
 		for i in ANIMAL_NAMES.size():
-			draw_shop_unlock_card(i, shop_item_rect(i, viewport_size), false, unit)
+			draw_shop_unlock_card(i, shop_item_rect(i, viewport_size, ANIMAL_NAMES.size()), false, unit)
 	elif shop_tab == 1:
 		for i in RING_COLOR_NAMES.size():
-			draw_shop_unlock_card(i, shop_item_rect(i, viewport_size), true, unit)
+			draw_shop_unlock_card(i, shop_item_rect(i, viewport_size, RING_COLOR_NAMES.size()), true, unit)
 	else:
 		draw_string(ui_font, Vector2(0.0, 430.0 * unit), ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(24.0 * unit), Color("ffe25d"))
 
