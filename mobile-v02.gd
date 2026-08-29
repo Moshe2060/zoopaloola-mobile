@@ -78,7 +78,7 @@ const UI_TEXT_HE := {
 	"computer": "משחק מול המחשב", "computer_sub": "שחקן יחיד • נגד המחשב",
 	"back": "חזרה", "choose_character": "בחירת דמות", "choose_character_sub": "בחרו חיה וצבע גלגל הצלה",
 	"choose_ring": "בחרו גלגל הצלה", "choose_ring_sub": "הצבע שבחרתם יופיע בכל משחק",
-	"choose_animal": "בחרו חיה", "choose_board": "בחרו שולחן משחק", "choose_setup": "בחרו דמות, גלגל ושולחן", "red": "אדום", "orange": "כתום", "blue": "כחול", "green": "ירוק", "purple": "סגול", "turquoise": "טורקיז",
+	"choose_animal": "בחרו חיה", "choose_board": "בחרו שולחן משחק", "choose_setup": "בחרו דמות, גלגל ושולחן", "restoring_session": "מחזירים את ההתחברות שלכם...", "red": "אדום", "orange": "כתום", "blue": "כחול", "green": "ירוק", "purple": "סגול", "turquoise": "טורקיז",
 	"elephant": "פיל", "zebra": "זברה", "monkey": "קוף", "hippo": "היפופוטם", "rhino": "קרנף", "giraffe": "ג׳ירפה",
 	"arena_title": "בחירת זירה", "arena_title_sub": "בחרו את מגרש המשחק לקרב האונליין",
 	"sakura": "גן הסאקורה", "bamboo": "חורשת הבמבוק", "volcano": "מקדש הגעש",
@@ -133,7 +133,7 @@ const UI_TEXT_EN := {
 	"computer": "PLAY VS COMPUTER", "computer_sub": "Single player • vs AI",
 	"back": "BACK", "choose_character": "CHOOSE YOUR CHARACTER", "choose_character_sub": "Pick an animal and a lifebuoy color",
 	"choose_ring": "CHOOSE A LIFEBUOY", "choose_ring_sub": "Your color follows you into every match",
-	"choose_animal": "CHOOSE AN ANIMAL", "choose_board": "CHOOSE A GAME TABLE", "choose_setup": "Choose animal, ring and table", "red": "RED", "orange": "ORANGE", "blue": "BLUE", "green": "GREEN", "purple": "PURPLE", "turquoise": "TURQUOISE",
+	"choose_animal": "CHOOSE AN ANIMAL", "choose_board": "CHOOSE A GAME TABLE", "choose_setup": "Choose animal, ring and table", "restoring_session": "Restoring your sign-in...", "red": "RED", "orange": "ORANGE", "blue": "BLUE", "green": "GREEN", "purple": "PURPLE", "turquoise": "TURQUOISE",
 	"elephant": "ELEPHANT", "zebra": "ZEBRA", "monkey": "MONKEY", "hippo": "HIPPO", "rhino": "RHINO", "giraffe": "GIRAFFE",
 	"arena_title": "CHOOSE YOUR ARENA", "arena_title_sub": "Select the battleground for your online match",
 	"sakura": "SAKURA GARDEN", "bamboo": "BAMBOO GROVE", "volcano": "VOLCANO TEMPLE",
@@ -658,7 +658,10 @@ var firebase_profile_dirty := false
 var firebase_sync_delay := 0.0
 var firebase_web_poll_delay := 0.0
 var firebase_status := "מתחבר..."
-const CLIENT_VERSION := "ACCOUNT-5"
+var session_restore_pending := false
+var session_restore_deadline := 0.0
+const SESSION_RESTORE_WAIT_SEC := 3.5
+const CLIENT_VERSION := "ACCOUNT-6"
 
 func _enter_tree() -> void:
 	# Enter native fullscreen before _ready() and before the first game frame.
@@ -4278,6 +4281,49 @@ func _on_room_code_changed(value: String) -> void:
 		room_code_input.text = clean.left(4)
 		room_code_input.caret_column = room_code_input.text.length()
 
+func sync_web_auth_storage() -> void:
+	if not OS.has_feature("web"):
+		return
+	var saved_refresh := str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseRefreshToken') || ''", true))
+	if not saved_refresh.is_empty():
+		firebase_refresh_token = saved_refresh
+	var saved_provider := str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseProvider') || ''", true))
+	if not saved_provider.is_empty():
+		firebase_provider = saved_provider
+
+func persist_web_auth_storage() -> void:
+	if not OS.has_feature("web"):
+		return
+	var script := """
+localStorage.setItem('zpFirebaseRefreshToken', __REFRESH__);
+localStorage.setItem('zpFirebaseProvider', __PROVIDER__);
+"""
+	script = script.replace("__REFRESH__", JSON.stringify(firebase_refresh_token)).replace("__PROVIDER__", JSON.stringify(firebase_provider))
+	JavaScriptBridge.eval(script, true)
+
+func clear_saved_auth_session() -> void:
+	firebase_uid = ""
+	firebase_public_id = ""
+	firebase_id_token = ""
+	firebase_refresh_token = ""
+	firebase_token_expires_at = 0
+	firebase_email = ""
+	firebase_provider = "guest"
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken'); localStorage.removeItem('zpFirebaseProvider');", true)
+	save_player_profile(false)
+
+func auth_token_is_unrecoverable(message: String) -> bool:
+	var upper := message.to_upper()
+	return upper.contains("INVALID_REFRESH_TOKEN") or upper.contains("USER_DISABLED") or upper.contains("USER_NOT_FOUND") or upper.contains("INVALID_GRANT")
+
+func begin_silent_session_restore() -> void:
+	session_restore_pending = false
+	app_screen = APP_HOME
+	firebase_auth_mode = "resume"
+	firebase_status = ui_text("restoring_session")
+	start_firebase_auth()
+
 func initialize_saved_session() -> void:
 	if OS.has_feature("web"):
 		var shared_value: String = str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('room') || ''", true))
@@ -4290,15 +4336,14 @@ func initialize_saved_session() -> void:
 			if "0123456789abcdef".contains(character):
 				pending_android_auth_handoff += character
 		pending_android_auth_handoff = pending_android_auth_handoff.left(64)
-		if firebase_refresh_token.is_empty():
-			firebase_refresh_token = str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseRefreshToken') || ''", true))
+	sync_web_auth_storage()
 	if firebase_refresh_token.is_empty():
+		if OS.has_feature("web"):
+			session_restore_pending = true
+			session_restore_deadline = menu_elapsed + SESSION_RESTORE_WAIT_SEC
+			firebase_status = ui_text("restoring_session")
 		return
-	# A saved refresh token means this device has already chosen an account.
-	# Refresh it silently and take the player straight into the game menu.
-	app_screen = APP_HOME
-	firebase_auth_mode = "resume"
-	start_firebase_auth()
+	begin_silent_session_restore()
 
 func open_pending_shared_room() -> void:
 	if pending_shared_room_code.is_empty() or room_code_input == null:
@@ -4456,15 +4501,16 @@ func start_firebase_auth() -> void:
 		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
 
 func begin_guest_sign_in() -> void:
-	var can_resume_guest := firebase_provider == "guest" and not firebase_refresh_token.is_empty()
-	firebase_auth_mode = "guest_resume" if can_resume_guest else "guest"
-	firebase_provider = "guest"
-	firebase_email = ""
-	if can_resume_guest:
+	if not firebase_refresh_token.is_empty():
+		firebase_auth_mode = "resume"
+		firebase_status = ui_text("restoring_session")
 		start_firebase_auth()
 		return
+	firebase_auth_mode = "guest"
+	firebase_provider = "guest"
+	firebase_email = ""
 	if OS.has_feature("web"):
-		JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken')", true)
+		JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken'); localStorage.removeItem('zpFirebaseProvider');", true)
 	firebase_uid = ""
 	firebase_public_id = ""
 	firebase_id_token = ""
@@ -4487,6 +4533,8 @@ func start_email_auth(register_account: bool) -> void:
 		firebase_status = "הסיסמה חייבת להכיל לפחות 6 תווים" if ui_language == "he" else "PASSWORD MUST HAVE 6 CHARACTERS"
 		return
 	firebase_auth_busy = true
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.zpManualAuth = 'active';", true)
 	firebase_auth_mode = "register" if register_account else "email"
 	firebase_status = "יוצר חשבון..." if register_account else "מתחבר..."
 	var action := "signUp" if register_account else "signInWithPassword"
@@ -4501,6 +4549,7 @@ window.zpAuthState = {status: 'loading'};
     const data = await response.json();
     if (!response.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
     localStorage.setItem('zpFirebaseRefreshToken', data.refreshToken || '');
+    localStorage.setItem('zpFirebaseProvider', 'email');
     window.zpAuthState = {status:'done', localId:data.localId, idToken:data.idToken, refreshToken:data.refreshToken, expiresIn:data.expiresIn || '3600', provider:'email', email:data.email || __EMAIL__};
   } catch (error) { window.zpAuthState = {status:'error', message:String(error && error.message || error)}; }
 })();
@@ -4542,6 +4591,9 @@ window.zpAuthState = {status: 'loading'};
     if (!response.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
     const refreshToken = data.refreshToken || data.refresh_token || savedRefresh;
     localStorage.setItem('zpFirebaseRefreshToken', refreshToken);
+    if (!savedRefresh) {
+      localStorage.setItem('zpFirebaseProvider', 'guest');
+    }
     window.zpAuthState = {
       status: 'done', localId: data.localId || data.user_id,
       idToken: data.idToken || data.id_token, refreshToken: refreshToken,
@@ -4557,7 +4609,8 @@ window.zpAuthState = {status: 'loading'};
 
 func setup_firebase_google_web() -> void:
 	var script := """
-window.zpGoogleState = {status: 'loading-sdk'};
+    window.zpGoogleState = {status: 'loading-sdk'};
+    window.zpManualAuth = 'idle';
 (async () => {
   try {
     const appSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js');
@@ -4571,13 +4624,46 @@ window.zpGoogleState = {status: 'loading-sdk'};
     const auth = authSdk.getAuth(app);
     await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
     const provider = new authSdk.GoogleAuthProvider();
-    provider.setCustomParameters({prompt: 'select_account'});
+    const resolveProvider = (user) => {
+      if (!user) return 'guest';
+      if (user.isAnonymous) return 'guest';
+      const providerId = (user.providerData && user.providerData[0] && user.providerData[0].providerId) || '';
+      if (providerId === 'google.com') return 'google';
+      if (providerId === 'password') return 'email';
+      return 'google';
+    };
+    authSdk.onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.zpSessionRestoreChecked = true;
+        return;
+      }
+      if (window.zpManualAuth === 'active') return;
+      try {
+        const idToken = await user.getIdToken();
+        const refreshToken = user.refreshToken || '';
+        const provider = resolveProvider(user);
+        localStorage.setItem('zpFirebaseRefreshToken', refreshToken);
+        localStorage.setItem('zpFirebaseProvider', provider);
+        window.zpAuthState = {
+          status: 'done', localId: user.uid, idToken: idToken,
+          refreshToken: refreshToken, expiresIn: '3600',
+          provider: provider, email: user.email || '',
+          displayName: user.displayName || ''
+        };
+      } catch (error) {
+        window.zpAuthState = {status: 'error', message: String(error && (error.code || error.message) || error)};
+      } finally {
+        window.zpSessionRestoreChecked = true;
+      }
+    });
     window.zpBeginGoogleLink = (oldToken, publicUrl, playerName) => {
+      window.zpManualAuth = 'active';
       window.zpGoogleState = {status: 'opening'};
       authSdk.signInWithPopup(auth, provider).then(async (result) => {
         const user = result.user;
         const idToken = await user.getIdToken(true);
         localStorage.setItem('zpFirebaseRefreshToken', user.refreshToken || '');
+        localStorage.setItem('zpFirebaseProvider', 'google');
         window.zpGoogleState = {
           status: 'done', localId: user.uid, idToken: idToken,
           refreshToken: user.refreshToken || '', expiresIn: '3600',
@@ -4585,6 +4671,8 @@ window.zpGoogleState = {status: 'loading-sdk'};
         };
       }).catch((error) => {
         window.zpGoogleState = {status: 'error', message: String(error && (error.code || error.message) || error)};
+      }).finally(() => {
+        window.zpManualAuth = 'idle';
       });
     };
     window.zpGoogleState = {status: 'ready'};
@@ -4596,6 +4684,8 @@ window.zpGoogleState = {status: 'loading-sdk'};
 	JavaScriptBridge.eval(script, true)
 
 func begin_google_sign_in() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.zpManualAuth = 'active';", true)
 	if OS.has_feature("android"):
 		firebase_status = "פותח כניסה מאובטחת ל-Google..." if ui_language == "he" else "OPENING SECURE GOOGLE SIGN-IN..."
 		pending_google_handoff_request = true
@@ -4618,9 +4708,10 @@ func _on_firebase_auth_completed(_result: int, response_code: int, _headers: Pac
 	firebase_auth_busy = false
 	if response_code < 200 or response_code >= 300:
 		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
-		if firebase_auth_mode == "resume":
-			firebase_refresh_token = ""
+		if firebase_auth_mode == "resume" and response_code >= 400 and response_code < 500:
+			clear_saved_auth_session()
 			app_screen = APP_AUTH
+			firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
 		return
 	var response_text := body.get_string_from_utf8().strip_edges()
 	var json := JSON.new()
@@ -4636,6 +4727,7 @@ func _on_firebase_auth_completed(_result: int, response_code: int, _headers: Pac
 
 func apply_firebase_auth_response(response: Dictionary) -> void:
 	firebase_auth_busy = false
+	session_restore_pending = false
 	var previous_uid := firebase_uid
 	firebase_uid = str(response.get("localId", response.get("user_id", firebase_uid)))
 	if response.has("provider"):
@@ -4650,6 +4742,7 @@ func apply_firebase_auth_response(response: Dictionary) -> void:
 		firebase_email = ""
 	firebase_id_token = str(response.get("idToken", response.get("id_token", "")))
 	firebase_refresh_token = str(response.get("refreshToken", response.get("refresh_token", firebase_refresh_token)))
+	persist_web_auth_storage()
 	var expires_in := int(str(response.get("expiresIn", response.get("expires_in", "3600"))))
 	firebase_token_expires_at = int(Time.get_unix_time_from_system()) + maxi(60, expires_in)
 	if not firebase_uid.is_empty():
@@ -4690,6 +4783,13 @@ func apply_firebase_auth_response(response: Dictionary) -> void:
 	queue_redraw()
 
 func update_firebase(delta: float) -> void:
+	if session_restore_pending:
+		session_restore_deadline -= delta
+		if session_restore_deadline <= 0.0:
+			session_restore_pending = false
+			if firebase_refresh_token.is_empty() and app_screen != APP_HOME:
+				app_screen = APP_AUTH
+				firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
 	if OS.has_feature("web"):
 		firebase_web_poll_delay -= delta
 		if firebase_web_poll_delay <= 0.0:
@@ -4714,12 +4814,19 @@ func poll_firebase_web_state() -> void:
 				apply_firebase_auth_response(auth_state)
 			elif auth_status == "error":
 				firebase_auth_busy = false
-				firebase_status = ("שגיאת חיבור: " if ui_language == "he" else "SIGN-IN ERROR: ") + str(auth_state.get("message", "Unknown error")).left(34)
-				if firebase_auth_mode == "resume":
-					firebase_refresh_token = ""
-					JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken')", true)
+				var auth_error := str(auth_state.get("message", "Unknown error"))
+				firebase_status = ("שגיאת חיבור: " if ui_language == "he" else "SIGN-IN ERROR: ") + auth_error.left(34)
+				if firebase_auth_mode == "resume" and auth_token_is_unrecoverable(auth_error):
+					clear_saved_auth_session()
 					app_screen = APP_AUTH
+					firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
 				queue_redraw()
+		if session_restore_pending:
+			var restore_checked := str(JavaScriptBridge.eval("window.zpSessionRestoreChecked ? '1' : '0'", true)) == "1"
+			if restore_checked and firebase_refresh_token.is_empty() and not firebase_auth_busy:
+				session_restore_pending = false
+				app_screen = APP_AUTH
+				firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
 	var google_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpGoogleState || {})", true))
 	var google_data: Variant = JSON.parse_string(google_text)
 	if google_data is Dictionary:
@@ -5404,6 +5511,8 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		app_screen = APP_AUTH
 		return
 	if app_screen == APP_AUTH:
+		if session_restore_pending:
+			return
 		if auth_email_mode.is_empty():
 			if auth_choice_rect(0, viewport_size).has_point(screen_pos):
 				firebase_auth_mode = "google"
@@ -5773,7 +5882,9 @@ func draw_auth_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color(0.025, 0.09, 0.16, 0.97), 30.0 * unit), panel)
 	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 70.0 * unit), "ברוכים הבאים ל־ZOOPALOOLA" if ui_language == "he" else "WELCOME TO ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(30.0 * unit), Color("ffd83d"))
 	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 110.0 * unit), ("בחרו איך להיכנס למשחק" if auth_email_mode.is_empty() else ("הרשמה חדשה" if auth_email_mode == "register" else "כניסה עם מייל")) if ui_language == "he" else ("CHOOSE HOW TO SIGN IN" if auth_email_mode.is_empty() else ("CREATE ACCOUNT" if auth_email_mode == "register" else "EMAIL SIGN IN")), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(20.0 * unit), Color.WHITE)
-	if auth_email_mode.is_empty():
+	if session_restore_pending and auth_email_mode.is_empty():
+		draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 300.0 * unit), ui_text("restoring_session"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(22.0 * unit), Color("9fd9ef"))
+	elif auth_email_mode.is_empty():
 		var labels := ["כניסה עם Gmail", "כניסה עם מייל", "כניסה כאורח", "הרשמה"] if ui_language == "he" else ["CONTINUE WITH GOOGLE", "SIGN IN WITH EMAIL", "CONTINUE AS GUEST", "REGISTER"]
 		var colors := [Color("4285f4"), Color("2f9ed1"), Color("35bd78"), Color("ff9f2e")]
 		var icons := ["G", "@", "☺", "+"]
