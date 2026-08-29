@@ -240,9 +240,9 @@ test("add_friend syncs both players and delivers friend list", async (context) =
   second.send(JSON.stringify({ type: "register_presence", publicId: "ZP-PLAYER02", name: "Friend", rating: 1100, wins: 2, losses: 2 }));
   await next(second, "leaderboard");
 
-  const firstListPromise = next(first, "friends_list");
+  const firstListPromise = next(first, "friends_list", (message) => message.friends?.length === 1);
   const resultPromise = next(first, "friend_add_result");
-  const secondListPromise = next(second, "friends_list");
+  const secondListPromise = next(second, "friends_list", (message) => message.friends?.length === 1);
   const notifyPromise = next(second, "friend_added_notify");
   first.send(JSON.stringify({
     type: "add_friend",
