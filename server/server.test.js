@@ -150,3 +150,36 @@ test("cancel_match removes a player from the arena queue", async (context) => {
   second.send(JSON.stringify({ type: "find_match", name: "Two", arena: 1 }));
   await searchingSecond;
 });
+
+test("browser securely returns Google auth to the waiting Android client", async (context) => {
+  const port = 11240;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const android = await connect(port);
+  const browser = await connect(port);
+  context.after(() => android.close());
+  context.after(() => browser.close());
+
+  const handoffPromise = next(android, "auth_handoff");
+  android.send(JSON.stringify({ type: "create_auth_handoff" }));
+  const handoff = await handoffPromise;
+  const token = new URL(handoff.url).searchParams.get("androidAuth");
+  assert.match(token, /^[0-9a-f]{48}$/);
+
+  const completedPromise = next(android, "auth_handoff_complete");
+  browser.send(JSON.stringify({
+    type: "complete_auth_handoff",
+    handoffToken: token,
+    localId: "firebase-user",
+    idToken: "id-token",
+    refreshToken: "refresh-token",
+    provider: "google",
+    email: "player@gmail.com",
+    displayName: "Player Name"
+  }));
+  const completed = await completedPromise;
+  assert.equal(completed.provider, "google");
+  assert.equal(completed.email, "player@gmail.com");
+  assert.equal(completed.displayName, "Player Name");
+});
