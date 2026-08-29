@@ -9,6 +9,8 @@ const rooms = new Map();
 const clients = new Map();
 const queues = new Map();
 const authHandoffs = new Map();
+const lobbyChat = [];
+const LOBBY_CHAT_LIMIT = 40;
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) {
@@ -205,9 +207,26 @@ function findMatch(socket, payload) {
   send(socket, { type: "searching", arena });
 }
 
+function broadcastLobby(message) {
+  for (const [socket] of clients.entries()) {
+    send(socket, message);
+  }
+}
+
 function handleMessage(socket, payload) {
   if (!payload || typeof payload.type !== "string") return;
   const session = clients.get(socket);
+
+  if (payload.type === "lobby_chat") {
+    const message = String(payload.message || "").trim().slice(0, 80);
+    if (!message) return;
+    const name = String(payload.name || "Player").slice(0, 24);
+    const entry = { name, message, at: Date.now() };
+    lobbyChat.push(entry);
+    while (lobbyChat.length > LOBBY_CHAT_LIMIT) lobbyChat.shift();
+    broadcastLobby({ type: "lobby_chat", ...entry });
+    return;
+  }
 
   if (payload.type === "create_auth_handoff") {
     const token = crypto.randomBytes(24).toString("hex");
@@ -396,7 +415,7 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (socket) => {
   const id = crypto.randomUUID();
   clients.set(socket, { id, roomCode: null, alive: true });
-  send(socket, { type: "connected", playerId: id });
+  send(socket, { type: "connected", playerId: id, lobbyChat: lobbyChat.slice(-20) });
 
   socket.on("pong", () => {
     const session = clients.get(socket);

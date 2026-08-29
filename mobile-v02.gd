@@ -94,6 +94,12 @@ const UI_TEXT_HE := {
 	"daily_title": "פרס יומי", "daily_sub": "חזרו כל יום לקבל מטבעות לגלגל ההצלה",
 	"claim": "קבלו 80 מטבעות", "claimed": "הפרס של היום כבר נתקבל",
 	"daily_claimed_toast": "קיבלתם 80 מטבעות!", "search_timeout": "החיפוש בוטל. נסו שוב.",
+	"social_hub": "מועדון השחקנים", "friends_tab": "חברים", "chat_tab": "צ׳אט",
+	"add_friend": "הוספת חבר", "friend_id_hint": "מזהה שחקן ZP-XXXXXXXX",
+	"invite_friend": "הזמנה", "no_friends": "עדיין אין חברים — הוסיפו לפי מזהה",
+	"lobby_chat_title": "צ׳אט הלובי", "lobby_chat_hint": "כתבו הודעה לקהילה...",
+	"online_players": "שחקנים מחוברים", "friend_added": "חבר נוסף!", "friend_exists": "החבר כבר ברשימה",
+	"friend_not_found": "שחקן לא נמצא", "remove_friend": "הסרה", "your_turn_badge": "התור שלך",
 }
 const UI_TEXT_EN := {
 	"player": "PLAYER 1", "level": "LEVEL 1 • ROOKIE EXPLORER",
@@ -123,6 +129,12 @@ const UI_TEXT_EN := {
 	"daily_title": "DAILY REWARD", "daily_sub": "Come back every day for lifebuoy coins",
 	"claim": "CLAIM 80 COINS", "claimed": "ALREADY CLAIMED TODAY",
 	"daily_claimed_toast": "You claimed 80 coins!", "search_timeout": "Search cancelled. Try again.",
+	"social_hub": "PLAYER CLUB", "friends_tab": "FRIENDS", "chat_tab": "CHAT",
+	"add_friend": "ADD FRIEND", "friend_id_hint": "Player ID ZP-XXXXXXXX",
+	"invite_friend": "INVITE", "no_friends": "No friends yet — add by player ID",
+	"lobby_chat_title": "LOBBY CHAT", "lobby_chat_hint": "Say hello to the community...",
+	"online_players": "players online", "friend_added": "Friend added!", "friend_exists": "Friend already added",
+	"friend_not_found": "Player not found", "remove_friend": "REMOVE", "your_turn_badge": "YOUR TURN",
 }
 const APP_SPLASH := 0
 const APP_HOME := 1
@@ -269,6 +281,14 @@ var match_result_open := false
 var match_result_winner := -1
 var match_result_coins := 0
 var match_result_recorded := false
+var turn_shot_committed := false
+var friends_list: Array = []
+var home_social_tab := 0
+var lobby_chat_messages: Array = []
+var friend_id_input: LineEdit
+var lobby_chat_input: LineEdit
+var friend_lookup_request: HTTPRequest
+var pending_friend_lookup_id := ""
 
 var view_origin := Vector2.ZERO
 var board_scale := 1.0
@@ -382,6 +402,25 @@ func _ready() -> void:
 	auth_password_input.add_theme_font_size_override("font_size", 22)
 	auth_password_input.text_submitted.connect(_on_auth_password_submitted)
 	add_child(auth_password_input)
+	friend_id_input = LineEdit.new()
+	friend_id_input.visible = false
+	friend_id_input.max_length = 12
+	friend_id_input.placeholder_text = "ZP-XXXXXXXX"
+	friend_id_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	friend_id_input.add_theme_font_override("font", ui_font)
+	friend_id_input.add_theme_font_size_override("font_size", 18)
+	add_child(friend_id_input)
+	lobby_chat_input = LineEdit.new()
+	lobby_chat_input.visible = false
+	lobby_chat_input.max_length = 80
+	lobby_chat_input.placeholder_text = ui_text("lobby_chat_hint")
+	lobby_chat_input.add_theme_font_override("font", ui_font)
+	lobby_chat_input.add_theme_font_size_override("font_size", 18)
+	lobby_chat_input.text_submitted.connect(_on_lobby_chat_submitted)
+	add_child(lobby_chat_input)
+	friend_lookup_request = HTTPRequest.new()
+	friend_lookup_request.request_completed.connect(_on_friend_lookup_completed)
+	add_child(friend_lookup_request)
 	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
@@ -498,6 +537,7 @@ func new_game() -> void:
 	match_result_winner = -1
 	match_result_coins = 0
 	match_result_recorded = false
+	turn_shot_committed = false
 	status = "Your turn - touch a red ball, pull back and release"
 	queue_redraw()
 
@@ -516,6 +556,9 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 	if app_screen != APP_GAME:
+		ensure_home_connected()
+		if app_screen == APP_HOME:
+			update_home_social_inputs()
 		if menu_notice_time > 0.0:
 			menu_notice_time -= delta
 		queue_redraw()
@@ -890,18 +933,21 @@ func pointer_up(screen_pos: Vector2) -> void:
 	var pull_distance: float = pull.length()
 	var strength: float = clampf(pull_distance, MIN_SHOT_PULL, 30.0)
 	if pull_distance >= MIN_SHOT_PULL:
+		turn_shot_committed = true
 		if game_mode == "online":
 			send_multiplayer({"type":"shot", "ballIndex":selected, "pullX":pull.x, "pullY":pull.y, "strength":strength})
 			status = "שולח את הזריקה..." if ui_language == "he" else "Sending shot..."
 		elif game_mode == "computer":
 			balls[selected].v = pull.normalized() * (strength * 0.078)
 			turn = 1
+			turn_shot_committed = false
 			ai_pending = true
 			ai_timer = 0.28
 			status = "Computer's turn"
 		else:
 			balls[selected].v = pull.normalized() * (strength * 0.078)
 			turn = 1 - turn
+			turn_shot_committed = false
 			ai_pending = false
 			status = ("Red" if turn == 0 else "Blue") + " player's turn"
 	else:
@@ -918,16 +964,34 @@ func ai_shot() -> void:
 	var target := Vector2(38.0, [25.0, 104.0, 183.0][randi() % 3])
 	var direction: Vector2 = target - balls[shooter].p
 	balls[shooter].v = direction.normalized() * randf_range(1.25, 2.2)
+	turn_shot_committed = true
 	status = "Blue player shot..."
 
 func finish_ai_turn() -> void:
 	turn = 0
+	turn_shot_committed = false
 	status = "Your turn - touch a red ball, pull back and release"
 
 func any_ball_moving() -> bool:
 	for ball in balls:
 		if ball.alive and ball.v.length_squared() > 0.0001: return true
 	return false
+
+func show_turn_ball_hint() -> bool:
+	if effect_editor_enabled or customizer_open or match_finished or turn_shot_committed:
+		return false
+	if any_ball_moving() or not effects_allow_next_turn():
+		return false
+	return true
+
+func show_turn_ball_hint_for_team(team: int) -> bool:
+	if not show_turn_ball_hint() or team != turn:
+		return false
+	if game_mode == "computer" and team != 0:
+		return false
+	if game_mode == "online" and team != multiplayer_slot:
+		return false
+	return true
 
 func board_to_screen(p: Vector2) -> Vector2:
 	# Rotate the original portrait coordinates clockwise into the landscape board.
@@ -984,7 +1048,7 @@ func _draw() -> void:
 		if not ball.alive: continue
 		var sp := board_to_screen(ball.p)
 		var visual_radius := GAME_BALL_VISUAL_RADIUS * board_scale
-		if ball.team == turn and not effect_editor_enabled and not customizer_open:
+		if show_turn_ball_hint_for_team(ball.team):
 			var pulse := (sin(float(Time.get_ticks_msec()) * 0.006) + 1.0) * 0.5
 			var halo_radius := visual_radius * (1.34 + pulse * 0.10)
 			draw_circle(sp, halo_radius, Color(0.54, 1.0, 0.62, 0.16 + pulse * 0.08))
@@ -1389,11 +1453,6 @@ func draw_hud(viewport_size: Vector2) -> void:
 	# Keep the whole HUD on the water strip, with player identity at the edges.
 	draw_match_player_card(Rect2(8.0, 6.0, card_width, 58.0), 0)
 	draw_match_player_card(Rect2(viewport_size.x - card_width - 8.0, 6.0, card_width, 58.0), 1)
-	var turn_rect := Rect2(viewport_size.x * 0.5 - 102.0, 4.0, 204.0, 46.0)
-	var local_turn := (turn == multiplayer_slot) if game_mode == "online" else turn == 0
-	draw_style_box(make_box(Color("12a96b") if local_turn else Color("7256d8"), 18.0), turn_rect)
-	var turn_text := match_turn_text()
-	draw_string(ui_font, turn_rect.position + Vector2(0.0, 31.0), turn_text, HORIZONTAL_ALIGNMENT_CENTER, turn_rect.size.x, 18, Color.WHITE)
 	if game_mode == "online":
 		var chat_rect := game_chat_rect(viewport_size)
 		draw_style_box(make_box(Color("1b91a8"), 14.0), chat_rect)
@@ -1427,14 +1486,29 @@ func match_player_name(team: int) -> String:
 
 func draw_match_player_card(rect: Rect2, team: int) -> void:
 	var active := turn == team
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.005) + 1.0) * 0.5 if active else 0.0
+	if active:
+		var glow_rect := rect.grow(4.0 + pulse * 3.0)
+		draw_style_box(make_box(Color(0.94, 0.82, 0.39, 0.20 + pulse * 0.10), 16.0), glow_rect)
 	draw_style_box(make_box(Color(0.03, 0.08, 0.14, 0.94), 14.0), rect)
 	if active:
-		draw_rect(rect.grow(2.0), Color("f6d365"), false, 3.0)
+		draw_rect(rect.grow(2.0 + pulse * 2.0), Color("f6d365"), false, 3.0 + pulse)
+		var badge := ui_text("your_turn_badge") if is_local_player_team(team) else ("תור היריב" if ui_language == "he" else "THEIR TURN")
+		var badge_rect := Rect2(rect.position.x + rect.size.x - 92.0, rect.position.y - 10.0, 88.0, 22.0)
+		draw_style_box(make_box(Color("12a96b") if is_local_player_team(team) else Color("7256d8"), 10.0), badge_rect)
+		draw_string(ui_font, badge_rect.position + Vector2(0.0, 16.0), badge, HORIZONTAL_ALIGNMENT_CENTER, badge_rect.size.x, 11, Color.WHITE)
 	if team_piece_textures.size() > team and team_piece_textures[team] != null:
 		draw_texture_rect(team_piece_textures[team], Rect2(rect.position + Vector2(7.0, 5.0), Vector2(48.0, 48.0)), false)
 	var animal_index := player_animal if team == 0 else ai_animal
 	draw_string(ui_font, rect.position + Vector2(62.0, 25.0), match_player_name(team), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 16, Color.WHITE)
 	draw_string(ui_font, rect.position + Vector2(62.0, 46.0), ui_text(ANIMAL_FILES[animal_index]) + " • " + str(fallen_count(team)), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 13, RING_COLORS[player_ring_color if team == 0 else ai_ring_color].lightened(0.28))
+
+func is_local_player_team(team: int) -> bool:
+	if game_mode == "online":
+		return team == multiplayer_slot
+	if game_mode == "computer":
+		return team == 0
+	return true
 
 func exit_confirm_panel(viewport_size: Vector2) -> Rect2:
 	return Rect2((viewport_size - Vector2(520.0, 245.0)) * 0.5, Vector2(520.0, 245.0))
@@ -2731,7 +2805,7 @@ func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	if index == 0:
 		return Rect2(24.0 * unit, 132.0 * unit, 178.0 * unit, 86.0 * unit)
 	if index == 1:
-		return Rect2(viewport_size.x - 174.0 * unit, 300.0 * unit, 150.0 * unit, 88.0 * unit)
+		return Rect2(24.0 * unit, viewport_size.y - 132.0 * unit, 178.0 * unit, 88.0 * unit)
 	if index == 2:
 		return Rect2(viewport_size.x - 370.0 * unit, viewport_size.y - 132.0 * unit, 342.0 * unit, 96.0 * unit)
 	return Rect2()
@@ -2781,7 +2855,164 @@ func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(viewport_size.x * 0.31, viewport_size.y * 0.115), Vector2(360.0, 480.0) * unit)
+	return Rect2(Vector2(viewport_size.x * 0.24, viewport_size.y * 0.115), Vector2(360.0, 480.0) * unit)
+
+func home_social_panel_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(viewport_size.x - 318.0 * unit, 104.0 * unit, 294.0 * unit, viewport_size.y - 118.0 * unit)
+
+func home_social_tab_rect(tab: int, viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var width := (panel.size.x - 18.0 * unit) * 0.5
+	return Rect2(panel.position + Vector2(9.0 * unit + float(tab) * (width + 4.0 * unit), 14.0 * unit), Vector2(width, 38.0 * unit))
+
+func home_add_friend_rect(viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 98.0 * unit), Vector2(panel.size.x - 28.0 * unit, 38.0 * unit))
+
+func home_add_friend_button_rect(viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 28.0 * unit, 36.0 * unit))
+
+func home_friend_row_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(14.0 * unit, 118.0 * unit + float(index) * 58.0 * unit), Vector2(panel.size.x - 28.0 * unit, 52.0 * unit))
+
+func home_lobby_send_rect(viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(panel.size.x - 96.0 * unit, panel.size.y - 52.0 * unit), Vector2(82.0 * unit, 36.0 * unit))
+
+func ensure_home_connected() -> void:
+	if app_screen != APP_HOME:
+		return
+	if multiplayer_state in ["connected", "connecting"]:
+		return
+	connect_multiplayer()
+
+func update_home_social_inputs() -> void:
+	var viewport_size := get_viewport_rect().size
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var panel := home_social_panel_rect(viewport_size)
+	if friend_id_input != null:
+		var show_friend_input := home_social_tab == 0
+		friend_id_input.visible = show_friend_input
+		if show_friend_input:
+			friend_id_input.position = home_add_friend_rect(viewport_size).position
+			friend_id_input.size = home_add_friend_rect(viewport_size).size
+			friend_id_input.placeholder_text = ui_text("friend_id_hint")
+	if lobby_chat_input != null:
+		var show_chat_input := home_social_tab == 1
+		lobby_chat_input.visible = show_chat_input
+		if show_chat_input:
+			var input_rect := Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 118.0 * unit, 36.0 * unit))
+			lobby_chat_input.position = input_rect.position
+			lobby_chat_input.size = input_rect.size
+			lobby_chat_input.placeholder_text = ui_text("lobby_chat_hint")
+
+func send_lobby_chat_message() -> void:
+	if lobby_chat_input == null:
+		return
+	var message := lobby_chat_input.text.strip_edges()
+	if message.is_empty():
+		return
+	if multiplayer_state == "connected":
+		send_multiplayer({"type": "lobby_chat", "name": profile_name, "message": message.left(80)})
+	else:
+		lobby_chat_messages.append({"name": profile_name, "message": message.left(80)})
+		while lobby_chat_messages.size() > 30:
+			lobby_chat_messages.pop_front()
+	lobby_chat_input.clear()
+	lobby_chat_input.grab_focus()
+	queue_redraw()
+
+func _on_lobby_chat_submitted(_text: String) -> void:
+	send_lobby_chat_message()
+
+func normalize_friend_public_id(raw: String) -> String:
+	var clean := raw.strip_edges().to_upper().replace(" ", "")
+	if clean.is_empty():
+		return ""
+	if not clean.begins_with("ZP-"):
+		clean = "ZP-" + clean.trim_prefix("ZP")
+	return clean.left(12)
+
+func friend_already_added(public_id: String) -> bool:
+	for entry in friends_list:
+		if typeof(entry) == TYPE_DICTIONARY and str(entry.get("id", "")) == public_id:
+			return true
+	return false
+
+func add_friend_by_public_id(raw_id: String) -> void:
+	var public_id := normalize_friend_public_id(raw_id)
+	if public_id.length() < 5:
+		show_menu_notice(ui_text("friend_not_found"))
+		return
+	if public_id == firebase_public_id:
+		show_menu_notice(ui_text("friend_exists"))
+		return
+	if friend_already_added(public_id):
+		show_menu_notice(ui_text("friend_exists"))
+		return
+	if firebase_id_token.is_empty():
+		friends_list.append({"id": public_id, "name": public_id})
+		save_player_profile()
+		show_menu_notice(ui_text("friend_added"))
+		if friend_id_input != null:
+			friend_id_input.clear()
+		queue_redraw()
+		return
+	if friend_lookup_request == null or friend_lookup_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	pending_friend_lookup_id = public_id
+	var url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, public_id]
+	friend_lookup_request.request(url, ["Authorization: Bearer " + firebase_id_token])
+
+func _on_friend_lookup_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var public_id := pending_friend_lookup_id
+	pending_friend_lookup_id = ""
+	if public_id.is_empty():
+		return
+	var friend_name := public_id
+	if response_code >= 200 and response_code < 300:
+		var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+		if data is Dictionary:
+			var fields: Dictionary = data.get("fields", {})
+			if fields.has("name"):
+				friend_name = str(fields.name.get("stringValue", friend_name)).strip_edges().left(20)
+	if response_code == 404:
+		show_menu_notice(ui_text("friend_not_found"))
+		queue_redraw()
+		return
+	if friend_already_added(public_id):
+		show_menu_notice(ui_text("friend_exists"))
+		return
+	friends_list.append({"id": public_id, "name": friend_name})
+	save_player_profile()
+	show_menu_notice(ui_text("friend_added"))
+	if friend_id_input != null:
+		friend_id_input.clear()
+	queue_redraw()
+
+func remove_friend_at(index: int) -> void:
+	if index < 0 or index >= friends_list.size():
+		return
+	friends_list.remove_at(index)
+	save_player_profile()
+	queue_redraw()
+
+func invite_friend_to_play(index: int) -> void:
+	if index < 0 or index >= friends_list.size():
+		return
+	app_screen = APP_FRIEND
+	connect_multiplayer()
+	if multiplayer_room_code.is_empty() and multiplayer_state == "connected":
+		create_multiplayer_room()
+	show_menu_notice(("הזמנה ל" if ui_language == "he" else "Invite sent to ") + str(friends_list[index].get("name", "")))
 
 func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -2927,6 +3158,9 @@ func load_player_profile() -> void:
 	player_current_streak = maxi(0, int(config.get_value("player", "current_streak", player_current_streak)))
 	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
 	ui_language = str(config.get_value("settings", "language", ui_language))
+	friends_list = config.get_value("social", "friends", [])
+	if typeof(friends_list) != TYPE_ARRAY:
+		friends_list = []
 	firebase_uid = str(config.get_value("firebase", "uid", ""))
 	firebase_public_id = str(config.get_value("firebase", "public_id", ""))
 	firebase_id_token = str(config.get_value("firebase", "id_token", ""))
@@ -2949,6 +3183,7 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("player", "current_streak", player_current_streak)
 	config.set_value("player", "last_daily_claim", last_daily_claim)
 	config.set_value("settings", "language", ui_language)
+	config.set_value("social", "friends", friends_list)
 	config.set_value("firebase", "uid", firebase_uid)
 	config.set_value("firebase", "public_id", firebase_public_id)
 	config.set_value("firebase", "id_token", firebase_id_token)
@@ -3639,6 +3874,11 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 		"connected":
 			multiplayer_state = "connected"
 			multiplayer_error = ""
+			var history = payload.get("lobbyChat", [])
+			if typeof(history) == TYPE_ARRAY and history.size() > 0:
+				lobby_chat_messages = history
+				while lobby_chat_messages.size() > 30:
+					lobby_chat_messages.pop_front()
 			if pending_google_handoff_request:
 				send_multiplayer({"type":"create_auth_handoff"})
 				pending_google_handoff_request = false
@@ -3709,7 +3949,7 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			match_chat_messages.clear()
 			new_game()
 			turn = int(payload.get("turn", 0))
-			status = "התור שלכם" if turn == multiplayer_slot and ui_language == "he" else ("תור היריב" if ui_language == "he" else ("Your turn" if turn == multiplayer_slot else "Opponent's turn"))
+			turn_shot_committed = false
 		"shot":
 			var ball_index := int(payload.get("ballIndex", -1))
 			if ball_index >= 0 and ball_index < balls.size() and balls[ball_index].alive:
@@ -3717,9 +3957,10 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 				var strength := float(payload.get("strength", 0.0))
 				if pull.length_squared() > 0.0:
 					balls[ball_index].v = pull.normalized() * (strength * 0.078)
+					turn_shot_committed = true
 		"turn":
 			turn = int(payload.get("turn", 0))
-			status = "התור שלכם" if turn == multiplayer_slot and ui_language == "he" else ("תור היריב" if ui_language == "he" else ("Your turn" if turn == multiplayer_slot else "Opponent's turn"))
+			turn_shot_committed = false
 		"chat":
 			match_chat_messages.append({
 				"slot": int(payload.get("playerSlot", -1)),
@@ -3728,6 +3969,13 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			})
 			while match_chat_messages.size() > 20:
 				match_chat_messages.pop_front()
+		"lobby_chat":
+			lobby_chat_messages.append({
+				"name": str(payload.get("name", "Player")),
+				"message": str(payload.get("message", ""))
+			})
+			while lobby_chat_messages.size() > 30:
+				lobby_chat_messages.pop_front()
 		"match_over":
 			var winner_slot := int(payload.get("winnerSlot", -1))
 			if winner_slot >= 0:
@@ -3845,6 +4093,34 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		queue_redraw()
 		return
 	if app_screen == APP_HOME:
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		if home_social_tab_rect(0, viewport_size).has_point(screen_pos):
+			home_social_tab = 0
+			if lobby_chat_input != null:
+				lobby_chat_input.release_focus()
+			queue_redraw()
+			return
+		if home_social_tab_rect(1, viewport_size).has_point(screen_pos):
+			home_social_tab = 1
+			if friend_id_input != null:
+				friend_id_input.release_focus()
+			queue_redraw()
+			return
+		if home_social_tab == 0:
+			if home_add_friend_button_rect(viewport_size).has_point(screen_pos):
+				if friend_id_input != null:
+					add_friend_by_public_id(friend_id_input.text)
+				return
+			for i in mini(4, friends_list.size()):
+				var row := home_friend_row_rect(i, viewport_size)
+				var invite_rect := Rect2(row.position + Vector2(row.size.x - 86.0 * unit, 10.0 * unit), Vector2(72.0, 32.0) * unit)
+				if invite_rect.has_point(screen_pos):
+					invite_friend_to_play(i)
+					return
+		elif home_social_tab == 1:
+			if home_lobby_send_rect(viewport_size).has_point(screen_pos):
+				send_lobby_chat_message()
+				return
 		if home_character_rect(viewport_size).has_point(screen_pos):
 			app_screen = APP_PROFILE
 			return
@@ -4454,14 +4730,61 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color("2982a6") if not firebase_public_id.is_empty() else Color("70858d"), 12.0 * unit), copy_rect)
 	draw_string(ui_font, copy_rect.position + Vector2(0.0, 29.0) * unit, "העתקה" if ui_language == "he" else "COPY ID", HORIZONTAL_ALIGNMENT_CENTER, copy_rect.size.x, int(16.0 * unit), Color.WHITE)
 
+func draw_home_social_panel(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var panel := home_social_panel_rect(viewport_size)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.13, 0.93), 22.0 * unit), panel.grow(5.0 * unit))
+	draw_style_box(make_box(Color(0.04, 0.12, 0.20, 0.97), 20.0 * unit), panel)
+	draw_string(ui_font, panel.position + Vector2(0.0, 34.0) * unit, ui_text("social_hub"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(18.0 * unit), Color("f6d365"))
+	for tab in 2:
+		var tab_rect := home_social_tab_rect(tab, viewport_size)
+		var selected := tab == home_social_tab
+		draw_style_box(make_box(Color("315fd0") if selected else Color("1d405b"), 14.0 * unit), tab_rect)
+		draw_string(ui_font, tab_rect.position + Vector2(0.0, 26.0) * unit, ui_text("friends_tab") if tab == 0 else ui_text("chat_tab"), HORIZONTAL_ALIGNMENT_CENTER, tab_rect.size.x, int(15.0 * unit), Color.WHITE)
+	if home_social_tab == 0:
+		var visible_count := mini(4, friends_list.size())
+		if visible_count == 0:
+			draw_string(ui_font, panel.position + Vector2(0.0, 170.0) * unit, ui_text("no_friends"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 20.0 * unit, int(14.0 * unit), Color("8cecff"))
+		for i in visible_count:
+			var row := home_friend_row_rect(i, viewport_size)
+			var friend_entry: Dictionary = friends_list[i]
+			draw_style_box(make_box(Color("173249"), 14.0 * unit), row)
+			draw_circle(row.position + Vector2(24.0, 26.0) * unit, 16.0 * unit, Color("6965d8"))
+			var initial := str(friend_entry.get("name", "?")).substr(0, 1)
+			draw_string(ui_font, row.position + Vector2(16.0, 32.0) * unit, initial, HORIZONTAL_ALIGNMENT_CENTER, 16.0 * unit, int(16.0 * unit), Color.WHITE)
+			draw_string(ui_font, row.position + Vector2(48.0, 22.0) * unit, str(friend_entry.get("name", "Friend")), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 150.0 * unit, int(15.0 * unit), Color.WHITE)
+			draw_string(ui_font, row.position + Vector2(48.0, 40.0) * unit, str(friend_entry.get("id", "")), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 150.0 * unit, int(11.0 * unit), Color("70dfff"))
+			var invite_rect := Rect2(row.position + Vector2(row.size.x - 86.0 * unit, 10.0 * unit), Vector2(72.0, 32.0) * unit)
+			draw_style_box(make_box(Color("35b96f"), 10.0 * unit), invite_rect)
+			draw_string(ui_font, invite_rect.position + Vector2(0.0, 22.0) * unit, ui_text("invite_friend"), HORIZONTAL_ALIGNMENT_CENTER, invite_rect.size.x, int(12.0 * unit), Color.WHITE)
+		draw_style_box(make_box(Color("10283b"), 12.0 * unit), home_add_friend_rect(viewport_size))
+		draw_style_box(make_box(Color("7655df"), 14.0 * unit), home_add_friend_button_rect(viewport_size))
+		draw_string(ui_font, home_add_friend_button_rect(viewport_size).position + Vector2(0.0, 24.0) * unit, ui_text("add_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_add_friend_button_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
+	else:
+		draw_string(ui_font, panel.position + Vector2(0.0, 72.0) * unit, ui_text("lobby_chat_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(14.0 * unit), Color("a9cde2"))
+		var first_index: int = maxi(0, lobby_chat_messages.size() - 7)
+		var row := 0
+		for i in range(first_index, lobby_chat_messages.size()):
+			var message: Dictionary = lobby_chat_messages[i]
+			var line := str(message.get("name", "")) + ": " + str(message.get("message", ""))
+			draw_string(ui_font, panel.position + Vector2(18.0 * unit, 104.0 * unit + row * 34.0 * unit), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 36.0 * unit, int(14.0 * unit), Color("d7f6ff"))
+			row += 1
+		var input_bg := Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 118.0 * unit, 36.0 * unit))
+		draw_style_box(make_box(Color("10283b"), 12.0 * unit), input_bg)
+		draw_style_box(make_box(Color("12a96b"), 12.0 * unit), home_lobby_send_rect(viewport_size))
+		draw_string(ui_font, home_lobby_send_rect(viewport_size).position + Vector2(0.0, 24.0) * unit, "שליחה" if ui_language == "he" else "SEND", HORIZONTAL_ALIGNMENT_CENTER, home_lobby_send_rect(viewport_size).size.x, int(14.0 * unit), Color.WHITE)
+
 func draw_home_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	# Compact game HUD, a large mascot and small action islands around it.
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.04))
-	draw_rect(Rect2(0.0, 0.0, viewport_size.x, 94.0 * unit), Color(0.015, 0.055, 0.12, 0.92))
-	draw_rect(Rect2(0.0, 90.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
-	draw_rect(Rect2(0.0, 94.0 * unit, 226.0 * unit, viewport_size.y - 94.0 * unit), Color(0.01, 0.05, 0.10, 0.16))
-	draw_rect(Rect2(viewport_size.x - 205.0 * unit, 94.0 * unit, 205.0 * unit, viewport_size.y - 94.0 * unit), Color(0.01, 0.05, 0.10, 0.11))
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.10))
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, 98.0 * unit), Color(0.015, 0.055, 0.12, 0.94))
+	draw_rect(Rect2(0.0, 94.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
+	draw_rect(Rect2(0.0, 98.0 * unit, 226.0 * unit, viewport_size.y - 98.0 * unit), Color(0.01, 0.05, 0.10, 0.20))
+	var stats_strip := Rect2(24.0 * unit, 104.0 * unit, 210.0 * unit, 72.0 * unit)
+	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.90), 16.0 * unit), stats_strip)
+	draw_string(ui_font, stats_strip.position + Vector2(14.0, 24.0) * unit, ("ניצחונות: %d" if ui_language == "he" else "WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(14.0 * unit), Color.WHITE)
+	draw_string(ui_font, stats_strip.position + Vector2(14.0, 46.0) * unit, ("רצף: %d" if ui_language == "he" else "STREAK: %d") % player_current_streak, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(13.0 * unit), Color("8cecff"))
+	draw_string(ui_font, stats_strip.position + Vector2(14.0, 64.0) * unit, ("חברים: %d" if ui_language == "he" else "FRIENDS: %d") % friends_list.size(), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 20.0 * unit, int(12.0 * unit), Color("ffe25d"))
 
 	# Full-body hero with the selected lifebuoy wrapped around its waist.
 	var character_area := home_character_rect(viewport_size)
@@ -4591,6 +4914,7 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 		draw_home_nav_icon(i, nav_icon_center, unit)
 		draw_string(ui_font, nav.position + Vector2(56.0, 38.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(19.0 * unit), Color.WHITE)
 		draw_string(ui_font, nav.position + Vector2(56.0, 66.0) * unit, nav_subtitles[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x - 62.0 * unit, int(10.0 * unit), Color("fff0c7"))
+	draw_home_social_panel(viewport_size)
 
 func draw_home_mode_icon(kind: int, center: Vector2, unit: float) -> void:
 	if kind == 0:

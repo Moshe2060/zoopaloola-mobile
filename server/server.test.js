@@ -151,6 +151,23 @@ test("cancel_match removes a player from the arena queue", async (context) => {
   await searchingSecond;
 });
 
+test("lobby chat broadcasts to connected clients", async (context) => {
+  const port = 11241;
+  const child = await startServer(port);
+  context.after(() => child.kill("SIGTERM"));
+
+  const first = await connect(port);
+  const second = await connect(port);
+  context.after(() => first.close());
+  context.after(() => second.close());
+
+  const chatPromise = next(second, "lobby_chat");
+  first.send(JSON.stringify({ type: "lobby_chat", name: "One", message: "Hello lobby!" }));
+  const chat = await chatPromise;
+  assert.equal(chat.name, "One");
+  assert.equal(chat.message, "Hello lobby!");
+});
+
 test("browser securely returns Google auth to the waiting Android client", async (context) => {
   const port = 11240;
   const child = await startServer(port);
