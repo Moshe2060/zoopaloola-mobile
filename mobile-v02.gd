@@ -78,7 +78,7 @@ const UI_TEXT_HE := {
 	"computer": "משחק מול המחשב", "computer_sub": "שחקן יחיד • נגד המחשב",
 	"back": "חזרה", "choose_character": "בחירת דמות", "choose_character_sub": "בחרו חיה וצבע גלגל הצלה",
 	"choose_ring": "בחרו גלגל הצלה", "choose_ring_sub": "הצבע שבחרתם יופיע בכל משחק",
-	"choose_animal": "בחרו חיה", "red": "אדום", "orange": "כתום", "blue": "כחול", "green": "ירוק", "purple": "סגול", "turquoise": "טורקיז",
+	"choose_animal": "בחרו חיה", "choose_board": "בחרו שולחן משחק", "choose_setup": "בחרו דמות, גלגל ושולחן", "red": "אדום", "orange": "כתום", "blue": "כחול", "green": "ירוק", "purple": "סגול", "turquoise": "טורקיז",
 	"elephant": "פיל", "zebra": "זברה", "monkey": "קוף", "hippo": "היפופוטם", "rhino": "קרנף", "giraffe": "ג׳ירפה",
 	"arena_title": "בחירת זירה", "arena_title_sub": "בחרו את מגרש המשחק לקרב האונליין",
 	"sakura": "גן הסאקורה", "bamboo": "חורשת הבמבוק", "volcano": "מקדש הגעש",
@@ -133,7 +133,7 @@ const UI_TEXT_EN := {
 	"computer": "PLAY VS COMPUTER", "computer_sub": "Single player • vs AI",
 	"back": "BACK", "choose_character": "CHOOSE YOUR CHARACTER", "choose_character_sub": "Pick an animal and a lifebuoy color",
 	"choose_ring": "CHOOSE A LIFEBUOY", "choose_ring_sub": "Your color follows you into every match",
-	"choose_animal": "CHOOSE AN ANIMAL", "red": "RED", "orange": "ORANGE", "blue": "BLUE", "green": "GREEN", "purple": "PURPLE", "turquoise": "TURQUOISE",
+	"choose_animal": "CHOOSE AN ANIMAL", "choose_board": "CHOOSE A GAME TABLE", "choose_setup": "Choose animal, ring and table", "red": "RED", "orange": "ORANGE", "blue": "BLUE", "green": "GREEN", "purple": "PURPLE", "turquoise": "TURQUOISE",
 	"elephant": "ELEPHANT", "zebra": "ZEBRA", "monkey": "MONKEY", "hippo": "HIPPO", "rhino": "RHINO", "giraffe": "GIRAFFE",
 	"arena_title": "CHOOSE YOUR ARENA", "arena_title_sub": "Select the battleground for your online match",
 	"sakura": "SAKURA GARDEN", "bamboo": "BAMBOO GROVE", "volcano": "VOLCANO TEMPLE",
@@ -2912,7 +2912,7 @@ func make_colored_animal_texture(animal_index: int, target_color: Color) -> Text
 	return ImageTexture.create_from_image(image)
 
 func customizer_panel(viewport_size: Vector2) -> Rect2:
-	var size := Vector2(minf(820.0, viewport_size.x - 36.0), minf(470.0, viewport_size.y - 34.0))
+	var size := Vector2(minf(820.0, viewport_size.x - 36.0), minf(560.0, viewport_size.y - 34.0))
 	return Rect2((viewport_size - size) * 0.5, size)
 
 func customizer_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
@@ -2927,11 +2927,17 @@ func customizer_color_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var width := (panel.size.x - 40.0 - gap * 5.0) / 6.0
 	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 205.0), Vector2(width, 58.0))
 
+func customizer_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := customizer_panel(viewport_size)
+	var gap := 10.0
+	var width := (panel.size.x - 40.0 - gap * 3.0) / 4.0
+	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 262.0), Vector2(width, 76.0))
+
 func customizer_difficulty_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var panel := customizer_panel(viewport_size)
 	var gap := 12.0
 	var width := (panel.size.x - 40.0 - gap * 2.0) / 3.0
-	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 292.0), Vector2(width, 54.0))
+	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 368.0), Vector2(width, 54.0))
 
 func customizer_start_rect(viewport_size: Vector2) -> Rect2:
 	var panel := customizer_panel(viewport_size)
@@ -2951,6 +2957,13 @@ func handle_customizer_touch(screen_pos: Vector2) -> bool:
 		if customizer_color_rect(i, viewport_size).has_point(screen_pos):
 			player_ring_color = i
 			rebuild_team_piece_textures()
+			queue_redraw()
+			return true
+	for i in BOARD_THEME_COUNT:
+		if customizer_board_rect(i, viewport_size).has_point(screen_pos):
+			selected_board_theme = i
+			save_player_profile()
+			play_sound("ui")
 			queue_redraw()
 			return true
 	for i in 3:
@@ -2975,7 +2988,8 @@ func draw_customizer(viewport_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.04, 0.08, 0.72))
 	var panel := customizer_panel(viewport_size)
 	draw_style_box(make_box(Color("122337"), 18.0), panel)
-	draw_string(ui_font, panel.position + Vector2(0, 38), "בחרו דמות וגלגל למשחק" if ui_language == "he" else "CHOOSE YOUR ANIMAL AND LIFEBUOY", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 22, Color("f6d365"))
+	draw_string(ui_font, panel.position + Vector2(0, 38), ui_text("choose_setup"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 22, Color("f6d365"))
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	draw_string(ui_font, panel.position + Vector2(20, 72), "דמות" if ui_language == "he" else "ANIMAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 	for i in ANIMAL_NAMES.size():
 		var rect := customizer_animal_rect(i, viewport_size)
@@ -2991,7 +3005,10 @@ func draw_customizer(viewport_size: Vector2) -> void:
 		if i == player_ring_color:
 			draw_rect(rect.grow(3.0), Color.WHITE, false, 3.0)
 		draw_string(ui_font, rect.position + Vector2(0, 36), RING_COLOR_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
-	draw_string(ui_font, panel.position + Vector2(20, 278), ui_text("difficulty"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(20, 248), ui_text("choose_board"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	for i in BOARD_THEME_COUNT:
+		draw_board_theme_card(i, customizer_board_rect(i, viewport_size), i == selected_board_theme, unit)
+	draw_string(ui_font, panel.position + Vector2(20, 354), ui_text("difficulty"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
 	var diff_labels := [ui_text("difficulty_easy"), ui_text("difficulty_medium"), ui_text("difficulty_hard")]
 	var diff_colors := [Color("51d995"), Color("f6aa20"), Color("e94f78")]
 	for i in 3:
@@ -3446,6 +3463,14 @@ func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 func arena_play_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2((viewport_size.x - 290.0 * unit) * 0.5, viewport_size.y - 78.0 * unit), Vector2(290.0, 58.0) * unit)
+
+func arena_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var gap := 14.0 * unit
+	var card_w := minf(200.0 * unit, (viewport_size.x - 100.0 * unit - gap * 3.0) / 4.0)
+	var total_w := card_w * 4.0 + gap * 3.0
+	var start_x := (viewport_size.x - total_w) * 0.5
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 556.0 * unit), Vector2(card_w, 72.0 * unit))
 
 func player_profile_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -4218,7 +4243,15 @@ func friend_edit_rect(viewport_size: Vector2) -> Rect2:
 
 func friend_choice_rect(index: int, colors: bool, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((318.0 + float(index) * 110.0) * unit, (430.0 if colors else 270.0) * unit), Vector2(92.0, 92.0) * unit)
+	return Rect2(Vector2((318.0 + float(index) * 110.0) * unit, (330.0 if colors else 220.0) * unit), Vector2(92.0, 92.0) * unit)
+
+func friend_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var gap := 12.0 * unit
+	var card_w := minf(158.0 * unit, (viewport_size.x - 90.0 * unit - gap * 3.0) / 4.0)
+	var total_w := card_w * 4.0 + gap * 3.0
+	var start_x := (viewport_size.x - total_w) * 0.5
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 418.0 * unit), Vector2(card_w, 82.0 * unit))
 
 func friend_modal_close_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -5301,7 +5334,7 @@ func start_computer_setup() -> void:
 	# player confirms the animal and lifebuoy for this computer match.
 	start_selected_mode("computer")
 	customizer_open = true
-	status = "בחרו דמות וגלגל" if ui_language == "he" else "Choose a character and lifebuoy"
+	status = ui_text("choose_setup")
 	queue_redraw()
 
 func show_menu_notice(text: String) -> void:
@@ -5528,6 +5561,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				if arena_card_rect(i, viewport_size).has_point(screen_pos):
 					selected_arena = i
 					return
+			for i in BOARD_THEME_COUNT:
+				if arena_board_rect(i, viewport_size).has_point(screen_pos):
+					selected_board_theme = i
+					save_player_profile()
+					play_sound("ui")
+					queue_redraw()
+					return
 			if arena_play_rect(viewport_size).has_point(screen_pos):
 				if matchmaking_searching:
 					cancel_matchmaking()
@@ -5582,6 +5622,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 							return
 						if friend_choice_rect(i, true, viewport_size).has_point(screen_pos):
 							update_match_character(-1, i)
+							return
+					for i in BOARD_THEME_COUNT:
+						if friend_board_rect(i, viewport_size).has_point(screen_pos):
+							selected_board_theme = i
+							save_player_profile()
+							play_sound("ui")
+							queue_redraw()
 							return
 				return
 			if multiplayer_room_code.is_empty():
@@ -5814,10 +5861,11 @@ func draw_small_lifebuoy(center: Vector2, color_index: int, radius: float) -> vo
 		draw_arc(center, radius * 0.82, angle - 0.20, angle + 0.20, 8, Color("fff4dc"), radius * 0.35, true)
 	draw_circle(center, radius * 0.43, Color("1d405b"))
 
-func draw_friend_modal_base(viewport_size: Vector2, title: String) -> Rect2:
+func draw_friend_modal_base(viewport_size: Vector2, title: String, modal_height: float = 510.0) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.0, 0.02, 0.05, 0.72))
-	var modal := Rect2(Vector2(270.0, 125.0) * unit, Vector2(740.0, 510.0) * unit)
+	var modal_y := maxf(70.0, (viewport_size.y / unit - modal_height) * 0.5)
+	var modal := Rect2(Vector2(270.0, modal_y) * unit, Vector2(740.0, modal_height) * unit)
 	draw_style_box(make_box(Color("09243a"), 28.0 * unit), modal)
 	draw_string(ui_font, modal.position + Vector2(0.0, 65.0) * unit, title, HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(30.0 * unit), Color("ffe25d"))
 	var close := friend_modal_close_rect(viewport_size)
@@ -5826,7 +5874,7 @@ func draw_friend_modal_base(viewport_size: Vector2, title: String) -> Rect2:
 	return modal
 
 func draw_friend_customizer(viewport_size: Vector2) -> void:
-	var modal := draw_friend_modal_base(viewport_size, "בחירת דמות למשחק הזה" if ui_language == "he" else "MATCH CHARACTER")
+	var modal := draw_friend_modal_base(viewport_size, ui_text("choose_setup"), 560.0)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var selected_animal: int = player_animal if multiplayer_slot == 0 else ai_animal
 	var selected_ring: int = player_ring_color if multiplayer_slot == 0 else ai_ring_color
@@ -5840,7 +5888,7 @@ func draw_friend_customizer(viewport_size: Vector2) -> void:
 		if i == selected_animal:
 			draw_circle(choice.position + Vector2(78.0, 14.0) * unit, 12.0 * unit, Color("ffe25d"))
 			draw_string(ui_font, choice.position + Vector2(67.0, 19.0) * unit, "✓", HORIZONTAL_ALIGNMENT_CENTER, 22.0 * unit, int(14.0 * unit), Color("173249"))
-	draw_string(ui_font, modal.position + Vector2(0.0, 282.0) * unit, "בחרו צבע גלגל" if ui_language == "he" else "CHOOSE A RING COLOR", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
+	draw_string(ui_font, modal.position + Vector2(0.0, 222.0) * unit, "בחרו צבע גלגל" if ui_language == "he" else "CHOOSE A RING COLOR", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
 	for i in RING_COLORS.size():
 		var color_choice := friend_choice_rect(i, true, viewport_size)
 		if i == selected_ring:
@@ -5849,8 +5897,11 @@ func draw_friend_customizer(viewport_size: Vector2) -> void:
 		draw_circle(color_choice.get_center(), 29.0 * unit, RING_COLORS[i])
 		if i == selected_ring:
 			draw_circle(color_choice.get_center(), 36.0 * unit, Color.WHITE, false, 4.0 * unit, true)
-	draw_string(ui_font, modal.position + Vector2(0.0, 420.0) * unit, ("נבחרו: %s • %s" if ui_language == "he" else "Selected: %s • %s") % [ui_animal_name(selected_animal), ui_ring_name(selected_ring)], HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, modal.position + Vector2(0.0, 475.0) * unit, "השינוי חל רק בחדר ובמשחק הנוכחי" if ui_language == "he" else "This choice applies only to this match", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(16.0 * unit), Color("a9cde2"))
+	draw_string(ui_font, modal.position + Vector2(0.0, 332.0) * unit, ui_text("choose_board"), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
+	for i in BOARD_THEME_COUNT:
+		draw_board_theme_card(i, friend_board_rect(i, viewport_size), i == selected_board_theme, unit)
+	draw_string(ui_font, modal.position + Vector2(0.0, 518.0) * unit, ("נבחרו: %s • %s • %s" if ui_language == "he" else "Selected: %s • %s • %s") % [ui_animal_name(selected_animal), ui_ring_name(selected_ring), board_theme_name(selected_board_theme)], HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(18.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, modal.position + Vector2(0.0, 548.0) * unit, "השינוי חל רק בחדר ובמשחק הנוכחי" if ui_language == "he" else "This choice applies only to this match", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(16.0 * unit), Color("a9cde2"))
 
 func draw_friend_opponent_profile(viewport_size: Vector2) -> void:
 	var modal := draw_friend_modal_base(viewport_size, "פרופיל היריב" if ui_language == "he" else "OPPONENT PROFILE")
@@ -6077,6 +6128,9 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 		draw_string(ui_font, card.position + Vector2(22.0, 363.0) * unit, ui_text("prize") + str(prizes[i]) + ui_text("coins"), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(17.0 * unit), Color("a66013"))
 		if selected:
 			draw_string(ui_font, card.position + Vector2(0.0, 408.0) * unit, ui_text("selected"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(15.0 * unit), Color("16845b"))
+	draw_string(ui_font, Vector2(0.0, 538.0 * unit), ui_text("choose_board"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
+	for i in BOARD_THEME_COUNT:
+		draw_board_theme_card(i, arena_board_rect(i, viewport_size), i == selected_board_theme, unit)
 	var play := arena_play_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.90), 18.0 * unit), play.grow(5.0 * unit))
 	draw_style_box(make_box(Color("d49b2f") if matchmaking_searching else Color("6fda18"), 16.0 * unit), play)
@@ -6616,26 +6670,16 @@ func board_theme_modulate(index: int) -> Color:
 			return Color.WHITE
 
 func draw_board_theme_overlay(theme_index: int) -> void:
-	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
-	if theme == 0:
-		return
-	var unit := board_scale
-	if theme == 1:
-		for i in 10:
-			var px := board_rect.position.x + board_rect.size.x * (0.08 + float(i % 5) * 0.18)
-			var py := board_rect.position.y + board_rect.size.y * (0.12 + float(i / 5) * 0.34)
-			draw_circle(Vector2(px, py), (5.0 + float(i % 3) * 2.0) * unit, Color(1.0, 1.0, 1.0, 0.22))
-		draw_rect(board_rect.grow(-4.0 * unit), Color("8cecff", 0.08), false, maxf(2.0, 3.0 * unit))
-	elif theme == 2:
-		for i in 6:
-			var vine_x := board_rect.position.x + board_rect.size.x * (0.1 + float(i) * 0.14)
-			draw_line(Vector2(vine_x, board_rect.position.y - 6.0 * unit), Vector2(vine_x + 8.0 * unit, board_rect.end.y + 4.0 * unit), Color("3f8f3a", 0.35), 4.0 * unit, true)
-		draw_rect(board_rect, Color("6fda18", 0.06))
-	elif theme == 3:
-		draw_rect(board_rect, Color("ff5b2d", 0.07))
-		for i in 8:
-			var ember := board_rect.position + Vector2(board_rect.size.x * (0.1 + float(i) * 0.1), board_rect.size.y * (0.15 + float(i % 4) * 0.18))
-			draw_circle(ember, (3.0 + float(i % 3)) * unit, Color("ffb12b", 0.25 + sin(menu_elapsed * 4.0 + float(i)) * 0.12))
+	draw_board_theme_overlay_on_rect(theme_index, board_rect, board_scale)
+
+func draw_board_theme_card(theme_index: int, card: Rect2, selected: bool, unit: float) -> void:
+	draw_style_box(make_box(Color("ffe25d") if selected else Color(0.02, 0.06, 0.12, 0.90), 14.0 * unit), card.grow((4.0 if selected else 2.0) * unit))
+	var preview := Rect2(card.position + Vector2(6.0 * unit, 6.0 * unit), Vector2(card.size.x - 12.0 * unit, card.size.y - 24.0 * unit))
+	draw_shop_board_preview(theme_index, preview, unit)
+	draw_string(ui_font, card.position + Vector2(0.0, card.size.y - 12.0 * unit), board_theme_name(theme_index), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(10.0 * unit), Color.WHITE)
+	if selected:
+		draw_circle(card.position + Vector2(card.size.x - 12.0 * unit, 12.0 * unit), 9.0 * unit, Color("ffe25d"))
+		draw_string(ui_font, card.position + Vector2(card.size.x - 21.0 * unit, 16.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 18.0 * unit, int(11.0 * unit), Color("173249"))
 
 func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -6690,23 +6734,30 @@ func draw_shop_board_preview(theme_index: int, preview: Rect2, unit: float) -> v
 func draw_board_theme_overlay_on_rect(theme_index: int, rect: Rect2, unit: float) -> void:
 	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
 	if theme == 0:
-		draw_rect(rect, Color("58c9e8", 0.05))
-	elif theme == 1:
-		draw_rect(rect, Color("8cecff", 0.12))
+		draw_rect(rect, Color("58c9e8", 0.08))
+		return
+	if theme == 1:
+		draw_rect(rect, Color("8cecff", 0.18))
+		for i in 8:
+			draw_circle(rect.position + Vector2(rect.size.x * (0.1 + float(i % 4) * 0.22), rect.size.y * (0.14 + float(i / 4) * 0.28)), (4.0 + float(i % 3) * 2.5) * unit, Color(1.0, 1.0, 1.0, 0.38))
 		for i in 5:
-			draw_circle(rect.position + Vector2(rect.size.x * (0.15 + float(i) * 0.16), rect.size.y * (0.2 + float(i % 2) * 0.35)), 5.0 * unit, Color(1.0, 1.0, 1.0, 0.35))
-		for i in 4:
-			var crystal := rect.position + Vector2(rect.size.x * (0.2 + float(i) * 0.18), rect.size.y * 0.78)
-			draw_colored_polygon(PackedVector2Array([crystal + Vector2(0.0, -10.0) * unit, crystal + Vector2(8.0, 0.0) * unit, crystal + Vector2(0.0, 12.0) * unit, crystal + Vector2(-8.0, 0.0) * unit]), Color("d8f8ff", 0.75))
+			var crystal := rect.position + Vector2(rect.size.x * (0.12 + float(i) * 0.17), rect.size.y * (0.62 + float(i % 2) * 0.16))
+			draw_colored_polygon(PackedVector2Array([crystal + Vector2(0.0, -12.0) * unit, crystal + Vector2(10.0, 0.0) * unit, crystal + Vector2(0.0, 14.0) * unit, crystal + Vector2(-10.0, 0.0) * unit]), Color("d8f8ff", 0.82))
+		draw_rect(rect.grow(-3.0 * unit), Color("8cecff", 0.14), false, maxf(2.0, 3.0 * unit))
 	elif theme == 2:
-		draw_rect(rect, Color("6fda18", 0.10))
+		draw_rect(rect, Color("6fda18", 0.16))
+		for i in 6:
+			var x := rect.position.x + rect.size.x * (0.08 + float(i) * 0.15)
+			draw_line(Vector2(x, rect.position.y - 4.0 * unit), Vector2(x + 10.0 * unit, rect.end.y + 4.0 * unit), Color("3f8f3a", 0.62), 4.5 * unit, true)
 		for i in 4:
-			var x := rect.position.x + rect.size.x * (0.12 + float(i) * 0.2)
-			draw_line(Vector2(x, rect.position.y), Vector2(x + 6.0 * unit, rect.end.y), Color("3f8f3a", 0.55), 3.0 * unit, true)
+			draw_circle(rect.position + Vector2(rect.size.x * (0.18 + float(i) * 0.2), rect.size.y * 0.22), 5.0 * unit, Color("b8ff7a", 0.55))
 	else:
-		draw_rect(rect, Color("ff5b2d", 0.12))
-		var lava := PackedVector2Array([rect.position + Vector2(0.0, rect.size.y), rect.position + Vector2(rect.size.x * 0.5, rect.size.y * 0.35), rect.end])
-		draw_colored_polygon(lava, Color("ff5b2d", 0.28))
+		draw_rect(rect, Color("ff5b2d", 0.18))
+		var lava := PackedVector2Array([rect.position + Vector2(0.0, rect.size.y), rect.position + Vector2(rect.size.x * 0.42, rect.size.y * 0.28), rect.position + Vector2(rect.size.x * 0.72, rect.size.y * 0.55), rect.end])
+		draw_colored_polygon(lava, Color("ff5b2d", 0.34))
+		for i in 10:
+			var ember := rect.position + Vector2(rect.size.x * (0.08 + float(i) * 0.09), rect.size.y * (0.12 + float(i % 5) * 0.15))
+			draw_circle(ember, (3.0 + float(i % 3) * 2.0) * unit, Color("ffb12b", 0.35 + sin(menu_elapsed * 4.0 + float(i)) * 0.15))
 
 func draw_shop_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
