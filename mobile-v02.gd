@@ -89,7 +89,7 @@ const UI_TEXT_HE := {
 	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים, אפקטים ושולחנות משחק", "effects": "אפקטים", "collection_info": "אוספים נדירים • עיצובים עונתיים • אנימציות מיוחדות", "coming_soon": "בקרוב",
 	"boards": "שולחנות", "boards_sub": "עיצובי מגרש", "boards_section": "שולחנות משחק", "boards_section_sub": "בחרו את עיצוב המגרש לקרב הבא", "board_equipped": "מוגדר למשחק", "board_selected_toast": "שולחן חדש הוגדר!",
 	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה", "board_candy": "עולם הממתקים",
-	"free_item": "חינם", "locked_item": "נעול", "buy_item": "קנה", "owned_item": "שלך", "purchase_success": "נרכש בהצלחה!", "unlock_in_shop": "ניתן לרכוש בחנות", "shop_unlocks_sub": "רכשו דמויות וגלגלים נוספים במטבעות", "host_board_only": "רק מארח החדר בוחר שולחן", "guest_board_locked": "שולחן המארח", "arena_board_fixed": "שולחן הזירה",
+	"free_item": "חינם", "locked_item": "נעול", "buy_item": "קנה", "owned_item": "שלך", "equipped_item": "מצויד", "shop_collected": "%d/%d נאספו", "purchase_success": "נרכש בהצלחה!", "unlock_in_shop": "ניתן לרכוש בחנות", "shop_unlocks_sub": "רכשו דמויות וגלגלים נוספים במטבעות", "host_board_only": "רק מארח החדר בוחר שולחן", "guest_board_locked": "שולחן המארח", "arena_board_fixed": "שולחן הזירה",
 	"searching": "מחפשים יריב בזירה...", "cancel_search": "ביטול חיפוש",
 	"match_win": "ניצחתם!", "match_lose": "הפסדתם", "draw": "תיקו",
 	"play_again": "משחק נוסף", "back_home": "חזרה לבית",
@@ -145,7 +145,7 @@ const UI_TEXT_EN := {
 	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections • Seasonal designs • Special animations", "coming_soon": "COMING SOON",
 	"boards": "TABLES", "boards_sub": "Board skins", "boards_section": "GAME TABLES", "boards_section_sub": "Choose the look of your next match", "board_equipped": "EQUIPPED", "board_selected_toast": "New table equipped!",
 	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA", "board_candy": "CANDY WORLD",
-	"free_item": "FREE", "locked_item": "LOCKED", "buy_item": "BUY", "owned_item": "OWNED", "purchase_success": "Purchased!", "unlock_in_shop": "Buy this in the shop", "shop_unlocks_sub": "Unlock more animals and lifebuoys with coins", "host_board_only": "Only the room host picks the table", "guest_board_locked": "Host's table", "arena_board_fixed": "Arena table",
+	"free_item": "FREE", "locked_item": "LOCKED", "buy_item": "BUY", "owned_item": "OWNED", "equipped_item": "EQUIPPED", "shop_collected": "%d/%d COLLECTED", "purchase_success": "Purchased!", "unlock_in_shop": "Buy this in the shop", "shop_unlocks_sub": "Unlock more animals and lifebuoys with coins", "host_board_only": "Only the room host picks the table", "guest_board_locked": "Host's table", "arena_board_fixed": "Arena table",
 	"searching": "Finding an arena opponent...", "cancel_search": "CANCEL SEARCH",
 	"match_win": "YOU WIN!", "match_lose": "YOU LOST", "draw": "DRAW",
 	"play_again": "PLAY AGAIN", "back_home": "BACK HOME",
@@ -195,6 +195,7 @@ const DAILY_REWARD_COINS := 80
 const COMPUTER_WIN_COINS := 40
 const FRIEND_WIN_COINS := 25
 const FREE_UNLOCK_COUNT := 3
+const SHOP_GRID_COLUMNS := 4
 const ECONOMY_VERSION := 2
 const ANIMAL_UNLOCK_PRICES := [0, 0, 0, 550, 750, 950, 0]
 const RING_UNLOCK_PRICES := [0, 0, 0, 350, 450, 550, 0]
@@ -5917,18 +5918,19 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					return
 			if shop_tab == 0:
 				for i in ANIMAL_NAMES.size():
-					if shop_item_rect(i, viewport_size).has_point(screen_pos):
+					if shop_item_rect(i, viewport_size, ANIMAL_NAMES.size()).has_point(screen_pos):
 						try_purchase_animal(i)
 						queue_redraw()
 						return
 			elif shop_tab == 1:
 				for i in RING_COLOR_NAMES.size():
-					if shop_item_rect(i, viewport_size).has_point(screen_pos):
+					if shop_item_rect(i, viewport_size, RING_COLOR_NAMES.size()).has_point(screen_pos):
 						try_purchase_ring(i)
 						queue_redraw()
 						return
 			for i in BOARD_THEME_COUNT:
-				if shop_board_rect(i, viewport_size).has_point(screen_pos):
+				var boards_top := shop_grid_bottom_y(RING_COLOR_NAMES.size() if shop_tab == 1 else ANIMAL_NAMES.size() if shop_tab == 0 else 4, viewport_size) + 18.0 * unit
+				if shop_board_rect(i, viewport_size, boards_top).has_point(screen_pos):
 					selected_board_theme = i
 					save_player_profile()
 					show_menu_notice(ui_text("board_selected_toast"))
@@ -7068,35 +7070,86 @@ func draw_board_theme_card(theme_index: int, card: Rect2, selected: bool, unit: 
 		draw_circle(card.position + Vector2(card.size.x - 12.0 * unit, 12.0 * unit), 9.0 * unit, Color("ffe25d"))
 		draw_string(ui_font, card.position + Vector2(card.size.x - 21.0 * unit, 16.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 18.0 * unit, int(11.0 * unit), Color("173249"))
 
+func shop_unlocked_count(is_ring: bool) -> int:
+	var total := 0
+	if is_ring:
+		for i in RING_COLORS.size():
+			if is_ring_unlocked(i):
+				total += 1
+	else:
+		for i in ANIMAL_NAMES.size():
+			if is_animal_unlocked(i):
+				total += 1
+	return total
+
+func shop_grid_card_size(viewport_size: Vector2) -> Vector2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var gap := 14.0 * unit
+	var card_w := minf(168.0 * unit, (viewport_size.x - 80.0 * unit - gap * float(SHOP_GRID_COLUMNS - 1)) / float(SHOP_GRID_COLUMNS))
+	return Vector2(card_w, card_w * 1.22)
+
+func shop_grid_rows(item_count: int) -> int:
+	return int(ceil(float(item_count) / float(SHOP_GRID_COLUMNS)))
+
+func shop_grid_top_y(viewport_size: Vector2) -> float:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return 378.0 * unit
+
+func shop_grid_bottom_y(item_count: int, viewport_size: Vector2) -> float:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var card_size := shop_grid_card_size(viewport_size)
+	var gap := 14.0 * unit
+	return shop_grid_top_y(viewport_size) + float(shop_grid_rows(item_count)) * (card_size.y + gap) + 10.0 * unit
+
 func shop_item_rect(index: int, viewport_size: Vector2, item_count: int = ANIMAL_NAMES.size()) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var gap := 12.0 * unit
-	var count := maxi(item_count, 1)
-	var card_w := minf(188.0 * unit, (viewport_size.x - 90.0 * unit - gap * float(count - 1)) / float(count))
-	var total_w := card_w * float(count) + gap * float(count - 1)
+	var gap := 14.0 * unit
+	var card_size := shop_grid_card_size(viewport_size)
+	var col := index % SHOP_GRID_COLUMNS
+	var row := int(index / SHOP_GRID_COLUMNS)
+	var total_w := card_size.x * float(SHOP_GRID_COLUMNS) + gap * float(SHOP_GRID_COLUMNS - 1)
 	var start_x := (viewport_size.x - total_w) * 0.5
-	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 392.0 * unit), Vector2(card_w, 150.0 * unit))
+	return Rect2(Vector2(start_x + float(col) * (card_size.x + gap), shop_grid_top_y(viewport_size) + float(row) * (card_size.y + gap)), card_size)
+
+func draw_shop_portrait(center: Vector2, radius: float, index: int, is_ring: bool, unit: float) -> void:
+	draw_circle(center, radius + 3.0 * unit, Color("8b6b3e"))
+	draw_circle(center, radius, Color("efe2c8"))
+	if is_ring:
+		draw_circle(center, radius * 0.82, RING_COLORS[index])
+		draw_circle(center, radius * 0.34, Color("efe2c8"))
+		draw_arc(center, radius * 0.82, -0.65, 0.20, 12, Color("fff4dc"), 5.0 * unit, true)
+		draw_arc(center, radius * 0.82, 2.50, 3.35, 12, Color("fff4dc"), 5.0 * unit, true)
+	elif index < animal_textures.size() and animal_textures[index] != null:
+		var portrait_size := radius * 2.02
+		draw_texture_rect(animal_textures[index], Rect2(center - Vector2.ONE * portrait_size * 0.5, Vector2.ONE * portrait_size), false)
+	else:
+		draw_circle(center, radius * 0.55, Color("c9b48d"))
 
 func draw_shop_unlock_card(index: int, rect: Rect2, is_ring: bool, unit: float) -> void:
 	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
 	var selected := (player_ring_color == index) if is_ring else (player_animal == index)
-	var accent := Color("467ce8") if is_ring else Color("24b889")
-	draw_style_box(make_box(Color("ffe25d") if selected else Color(0.02, 0.06, 0.12, 0.90), 16.0 * unit), rect.grow((4.0 if selected else 2.0) * unit))
-	draw_style_box(make_box(accent.darkened(0.58), 14.0 * unit), rect)
-	if is_ring:
-		draw_circle(rect.get_center() + Vector2(0.0, -8.0 * unit), 28.0 * unit, RING_COLORS[index])
-	else:
-		if index < full_body_animal_textures.size() and full_body_animal_textures[index] != null:
-			draw_texture_rect(full_body_animal_textures[index], rect.grow(-10.0 * unit), false)
-	draw_collection_lock_overlay(rect, index, is_ring, unit)
+	var card_bg := Color("fff4cf")
+	var border_col := Color("ffe25d") if selected else Color("c4a06a")
+	draw_style_box(make_box(border_col, 18.0 * unit), rect.grow((5.0 if selected else 2.0) * unit))
+	draw_style_box(make_box(card_bg, 16.0 * unit), rect)
+	var portrait_center := rect.position + Vector2(rect.size.x * 0.5, rect.size.y * 0.43)
+	var portrait_radius := rect.size.x * 0.31
+	draw_shop_portrait(portrait_center, portrait_radius, index, is_ring, unit)
+	if not unlocked:
+		draw_circle(portrait_center, portrait_radius + 2.0 * unit, Color(0.02, 0.05, 0.10, 0.45))
+		draw_string(ui_font, portrait_center + Vector2(-10.0 * unit, 6.0 * unit), "🔒", HORIZONTAL_ALIGNMENT_CENTER, 20.0 * unit, int(18.0 * unit), Color.WHITE)
 	var label := ui_ring_name(index) if is_ring else ui_animal_name(index)
-	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y - 14.0 * unit), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(11.0 * unit), Color.WHITE)
-	var status := collection_item_price_label(index, is_ring)
-	if unlocked:
-		status = ui_text("selected") if selected else ui_text("owned_item")
-	else:
-		status = ui_text("buy_item") + " • " + collection_item_price_label(index, is_ring)
-	draw_string(ui_font, rect.position + Vector2(0.0, 18.0 * unit), status, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(10.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y - 16.0 * unit), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(12.0 * unit), Color("4a3218"))
+	if selected and unlocked:
+		var badge := Rect2(rect.position + Vector2(rect.size.x * 0.5 - 42.0 * unit, 8.0 * unit), Vector2(84.0 * unit, 24.0 * unit))
+		draw_style_box(make_box(Color("35b96f"), 10.0 * unit), badge)
+		draw_string(ui_font, badge.position + Vector2(0.0, 17.0) * unit, ui_text("equipped_item"), HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, int(10.0 * unit), Color.WHITE)
+	elif not unlocked:
+		var price := ring_unlock_price(index) if is_ring else animal_unlock_price(index)
+		var price_text := ui_text("free_item") if price <= 0 else str(price)
+		var price_box := Rect2(rect.position + Vector2(rect.size.x * 0.5 - 34.0 * unit, rect.size.y - 38.0 * unit), Vector2(68.0 * unit, 22.0 * unit))
+		draw_circle(price_box.position + Vector2(12.0 * unit, 11.0 * unit), 9.0 * unit, Color("ffc83d"))
+		draw_string(ui_font, price_box.position + Vector2(24.0 * unit, 16.0) * unit, price_text, HORIZONTAL_ALIGNMENT_LEFT, 44.0 * unit, int(11.0 * unit), Color("4a3218"))
 
 func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -7106,13 +7159,13 @@ func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var start_x := (viewport_size.x - total_w) * 0.5
 	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 118.0 * unit), Vector2(card_w, 250.0 * unit))
 
-func shop_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+func shop_board_rect(index: int, viewport_size: Vector2, boards_top_y: float) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var gap := 16.0 * unit
 	var card_w := minf(220.0 * unit, (viewport_size.x - 110.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
 	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
 	var start_x := (viewport_size.x - total_w) * 0.5
-	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 602.0 * unit), Vector2(card_w, 210.0 * unit))
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), boards_top_y), Vector2(card_w, 210.0 * unit))
 
 func draw_shop_category_icon(kind: int, center: Vector2, size: float, unit: float) -> void:
 	draw_circle(center, size * 0.52, Color(1.0, 1.0, 1.0, 0.10))
@@ -7212,12 +7265,18 @@ func draw_shop_screen(viewport_size: Vector2) -> void:
 	else:
 		draw_string(ui_font, Vector2(0.0, 430.0 * unit), ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(24.0 * unit), Color("ffe25d"))
 
-	var section := Rect2(viewport_size.x * 0.05, 560.0 * unit, viewport_size.x * 0.90, 34.0 * unit)
+	var active_item_count := RING_COLOR_NAMES.size() if shop_tab == 1 else ANIMAL_NAMES.size()
+	if shop_tab == 0 or shop_tab == 1:
+		var collected := shop_unlocked_count(shop_tab == 1)
+		draw_string(ui_font, Vector2(0.0, 352.0 * unit), ui_text("shop_collected") % [collected, active_item_count], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
+
+	var boards_top_y := shop_grid_bottom_y(active_item_count if shop_tab < 2 else 4, viewport_size) + 18.0 * unit
+	var section := Rect2(viewport_size.x * 0.05, boards_top_y - 30.0 * unit, viewport_size.x * 0.90, 34.0 * unit)
 	draw_string(ui_font, section.position + Vector2(0.0, 24.0) * unit, ui_text("boards_section"), HORIZONTAL_ALIGNMENT_LEFT, section.size.x * 0.55, int(20.0 * unit), Color("ffe25d"))
 	draw_string(ui_font, section.position + Vector2(section.size.x * 0.42, 24.0) * unit, ui_text("boards_section_sub"), HORIZONTAL_ALIGNMENT_LEFT, section.size.x * 0.58, int(11.0 * unit), Color("8cecff"))
 
 	for i in BOARD_THEME_COUNT:
-		var board_card := shop_board_rect(i, viewport_size)
+		var board_card := shop_board_rect(i, viewport_size, boards_top_y)
 		var selected := i == selected_board_theme
 		var accent := board_theme_accent(i)
 		draw_style_box(make_box(Color("ffe25d") if selected else Color(0.02, 0.06, 0.12, 0.90), 18.0 * unit), board_card.grow((5.0 if selected else 3.0) * unit))
