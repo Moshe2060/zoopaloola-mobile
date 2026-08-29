@@ -108,6 +108,8 @@ const UI_TEXT_HE := {
 	"match_found": "נמצא יריב!", "entering_arena": "נכנסים לזירה...",
 	"tutorial_title": "מדריך למתחילים", "tutorial_next": "הבא", "tutorial_prev": "הקודם",
 	"tutorial_skip": "דלג", "tutorial_done": "בואו נשחק!", "tutorial_help": "מדריך",
+	"difficulty": "רמת קושי", "difficulty_easy": "קל", "difficulty_medium": "בינוני", "difficulty_hard": "קשה",
+	"ai_name_easy": "מחשב (קל)", "ai_name_medium": "מחשב (בינוני)", "ai_name_hard": "מחשב (קשה)",
 }
 const UI_TEXT_EN := {
 	"player": "PLAYER 1", "level": "LEVEL 1 • ROOKIE EXPLORER",
@@ -151,6 +153,8 @@ const UI_TEXT_EN := {
 	"match_found": "MATCH FOUND!", "entering_arena": "ENTERING ARENA...",
 	"tutorial_title": "HOW TO PLAY", "tutorial_next": "NEXT", "tutorial_prev": "BACK",
 	"tutorial_skip": "SKIP", "tutorial_done": "LET'S PLAY!", "tutorial_help": "GUIDE",
+	"difficulty": "DIFFICULTY", "difficulty_easy": "EASY", "difficulty_medium": "MEDIUM", "difficulty_hard": "HARD",
+	"ai_name_easy": "CPU (EASY)", "ai_name_medium": "CPU (MEDIUM)", "ai_name_hard": "CPU (HARD)",
 }
 const APP_SPLASH := 0
 const APP_HOME := 1
@@ -334,6 +338,7 @@ var push_setup_done := false
 var tutorial_completed := false
 var tutorial_open := false
 var tutorial_step := 0
+var tutorial_dismissed_session := false
 var match_finished := false
 var match_result_open := false
 var match_result_winner := -1
@@ -599,6 +604,8 @@ var accumulator := 0.0
 var status := "Your turn - touch a red ball, pull back and release"
 var ai_pending := false
 var ai_timer := 0.0
+var ai_committed_shot := false
+var computer_difficulty := 1
 var customizer_open := false
 # Start with the combination requested during the visual review: zebra + green.
 var player_animal := 1
@@ -802,6 +809,7 @@ func new_game() -> void:
 	contacts.clear()
 	turn = 0
 	ai_pending = false
+	ai_committed_shot = false
 	selected = -1
 	dragging = false
 	# Match the original opening formation: sixteen pieces wrap around the white
@@ -909,7 +917,8 @@ func physics_step() -> void:
 		for j in range(i + 1, balls.size()):
 			if balls[j].alive:
 				resolve_collision(i, j)
-	if game_mode == "computer" and turn == 1 and not match_finished and not ai_pending and not any_ball_moving() and effects_allow_next_turn():
+	if game_mode == "computer" and turn == 1 and not match_finished and not ai_pending and ai_committed_shot and not any_ball_moving() and effects_allow_next_turn():
+		ai_committed_shot = false
 		finish_ai_turn()
 
 func resolve_walls(index: int) -> void:
@@ -1135,6 +1144,7 @@ func handle_system_back() -> void:
 			retreat_tutorial_step()
 		else:
 			tutorial_open = false
+			tutorial_dismissed_session = true
 		queue_redraw()
 		return
 
@@ -1256,8 +1266,10 @@ func pointer_up(screen_pos: Vector2) -> void:
 			balls[selected].v = pull.normalized() * (strength * 0.078)
 			turn = 1
 			turn_shot_committed = false
+			ai_committed_shot = false
 			ai_pending = true
-			ai_timer = 0.28
+			var think := ai_think_delay()
+			ai_timer = think
 			status = "Computer's turn"
 		else:
 			balls[selected].v = pull.normalized() * (strength * 0.078)
@@ -1270,17 +1282,188 @@ func pointer_up(screen_pos: Vector2) -> void:
 	dragging = false
 	selected = -1
 
-func ai_shot() -> void:
-	var candidates: Array[int] = []
+func ai_difficulty_settings() -> Dictionary:
+	match clampi(computer_difficulty, 0, 2):
+		0:
+			return {"angle_error": 0.32, "power_error": 0.24, "pick_top": 0.42, "think_min": 0.55, "think_max": 1.25, "rating_bonus": -140, "min_align": 0.05}
+		2:
+			return {"angle_error": 0.035, "power_error": 0.05, "pick_top": 0.96, "think_min": 0.22, "think_max": 0.62, "rating_bonus": 160, "min_align": 0.22}
+	return {"angle_error": 0.11, "power_error": 0.11, "pick_top": 0.74, "think_min": 0.34, "think_max": 0.88, "rating_bonus": 0, "min_align": 0.12}
+
+func ai_think_delay() -> float:
+	var settings := ai_difficulty_settings()
+	return randf_range(float(settings.think_min), float(settings.think_max))
+
+func ai_opponent_rating() -> int:
+	return clampi(940 + player_level * 8 + int(ai_difficulty_settings().rating_bonus), 700, 1800)
+
+func ai_display_name() -> String:
+	match clampi(computer_difficulty, 0, 2):
+		0: return ui_text("ai_name_easy")
+		2: return ui_text("ai_name_hard")
+	return ui_text("ai_name_medium")
+
+func ai_collect_shot_candidates(settings: Dictionary) -> Array:
+	var candidates: Array = []
+	var min_align: float = float(settings.min_align)
+	for shooter_index in balls.size():
+		var shooter: Dictionary = balls[shooter_index]
+		if not shooter.alive or int(shooter.team) != 1:
+			continue
+		var shooter_pos: Vector2 = shooter.p
+		for enemy_index in balls.size():
+			var enemy: Dictionary = balls[enemy_index]
+			if not enemy.alive or int(enemy.team) != 0:
+				continue
+			var enemy_pos: Vector2 = enemy.p
+			for hole_index in 6:
+				var hole_pos: Vector2 = entry_trigger_center(hole_index)
+				var to_hole: Vector2 = hole_pos - enemy_pos
+				var hole_dist: float = to_hole.length()
+				if hole_dist < 2.0:
+					continue
+				var hole_dir: Vector2 = to_hole / hole_dist
+				var contact: Vector2 = enemy_pos - hole_dir * (RADIUS * 2.05)
+				var to_contact: Vector2 = contact - shooter_pos
+				var shot_dist: float = to_contact.length()
+				if shot_dist < MIN_SHOT_PULL or shot_dist > 118.0:
+					continue
+				var shot_dir: Vector2 = to_contact / shot_dist
+				var push_align: float = shot_dir.dot(hole_dir)
+				if push_align < min_align:
+					continue
+				var score: float = push_align * 55.0
+				score += (1.0 - clampf(hole_dist / 155.0, 0.0, 1.0)) * 38.0
+				score += (1.0 - clampf(shot_dist / 118.0, 0.0, 1.0)) * 18.0
+				score -= ai_self_sink_risk(shooter_pos, shot_dir, shot_dist) * 28.0
+				candidates.append({
+					"shooter": shooter_index,
+					"direction": shot_dir,
+					"distance": shot_dist,
+					"score": score,
+					"kind": "pocket"
+				})
+		for enemy_index in balls.size():
+			var enemy: Dictionary = balls[enemy_index]
+			if not enemy.alive or int(enemy.team) != 0:
+				continue
+			var to_enemy: Vector2 = enemy.p - shooter_pos
+			var dist: float = to_enemy.length()
+			if dist < MIN_SHOT_PULL or dist > 105.0:
+				continue
+			var dir: Vector2 = to_enemy / dist
+			var hole_pos: Vector2 = ai_nearest_hole(enemy.p)
+			var hole_dir: Vector2 = (hole_pos - enemy.p).normalized()
+			var score: float = dir.dot(hole_dir) * 22.0 + (1.0 - dist / 105.0) * 10.0
+			candidates.append({
+				"shooter": shooter_index,
+				"direction": dir,
+				"distance": dist,
+				"score": score,
+				"kind": "hit"
+			})
+	return candidates
+
+func ai_nearest_hole(pos: Vector2) -> Vector2:
+	var best := entry_trigger_center(0)
+	var best_dist := pos.distance_squared_to(best)
+	for hole_index in range(1, 6):
+		var center := entry_trigger_center(hole_index)
+		var dist := pos.distance_squared_to(center)
+		if dist < best_dist:
+			best_dist = dist
+			best = center
+	return best
+
+func ai_self_sink_risk(shooter_pos: Vector2, shot_dir: Vector2, shot_dist: float) -> float:
+	var risk := 0.0
+	var end_pos := shooter_pos + shot_dir * minf(shot_dist * 1.15, 90.0)
+	for hole_index in 6:
+		var hole_pos: Vector2 = entry_trigger_center(hole_index)
+		if end_pos.distance_to(hole_pos) < trap_entry_radii[hole_index] + RADIUS * 2.5:
+			risk += 1.0
+	for ball in balls:
+		if not ball.alive or int(ball.team) != 1:
+			continue
+		if ball.p.distance_squared_to(shooter_pos) < 0.01:
+			continue
+		if end_pos.distance_to(ball.p) < RADIUS * 3.0:
+			risk += 0.35
+	return risk
+
+func ai_pick_shot(candidates: Array, settings: Dictionary) -> Dictionary:
+	if candidates.is_empty():
+		return {}
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a.score) > float(b.score)
+	)
+	var pick_top: float = float(settings.pick_top)
+	var pool_size: int = maxi(1, int(ceil(float(candidates.size()) * pick_top)))
+	var choice: Dictionary = candidates[randi() % pool_size]
+	return choice
+
+func ai_fallback_shot() -> Dictionary:
+	var shooters: Array[int] = []
 	for i in balls.size():
-		if balls[i].alive and balls[i].team == 1: candidates.append(i)
-	if candidates.is_empty(): finish_ai_turn(); return
-	var shooter := candidates[randi() % candidates.size()]
-	var target := Vector2(38.0, [25.0, 104.0, 183.0][randi() % 3])
-	var direction: Vector2 = target - balls[shooter].p
-	balls[shooter].v = direction.normalized() * randf_range(1.25, 2.2)
+		if balls[i].alive and int(balls[i].team) == 1:
+			shooters.append(i)
+	if shooters.is_empty():
+		return {}
+	var shooter_index: int = shooters[randi() % shooters.size()]
+	var shooter_pos: Vector2 = balls[shooter_index].p
+	var target_pos: Vector2 = Vector2(BOARD_W * 0.5, BOARD_H * 0.5)
+	var enemy_count := 0
+	for ball in balls:
+		if ball.alive and int(ball.team) == 0:
+			target_pos += ball.p
+			enemy_count += 1
+	if enemy_count > 0:
+		target_pos /= float(enemy_count + 1)
+	else:
+		target_pos = Vector2(BOARD_W * 0.72, BOARD_H * 0.5)
+	var to_target: Vector2 = target_pos - shooter_pos
+	var dist: float = to_target.length()
+	if dist < MIN_SHOT_PULL:
+		to_target = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized() * MIN_SHOT_PULL
+		dist = MIN_SHOT_PULL
+	return {
+		"shooter": shooter_index,
+		"direction": to_target / dist,
+		"distance": dist,
+		"score": 0.0,
+		"kind": "break"
+	}
+
+func ai_apply_shot(shot: Dictionary, settings: Dictionary) -> void:
+	var shooter_index: int = int(shot.shooter)
+	if shooter_index < 0 or shooter_index >= balls.size() or not balls[shooter_index].alive:
+		return
+	var direction: Vector2 = shot.direction
+	var angle_error: float = float(settings.angle_error)
+	direction = direction.rotated(randf_range(-angle_error, angle_error))
+	if direction.length_squared() < 0.0001:
+		direction = Vector2.RIGHT
+	else:
+		direction = direction.normalized()
+	var base_strength: float = clampf(float(shot.distance) * 0.34, MIN_SHOT_PULL, 28.5)
+	var power_error: float = float(settings.power_error)
+	var strength: float = clampf(base_strength + randf_range(-power_error, power_error) * 12.0, MIN_SHOT_PULL, 30.0)
+	balls[shooter_index].v = direction * (strength * 0.078)
 	turn_shot_committed = true
-	status = "Blue player shot..."
+	ai_committed_shot = true
+	play_sound("shot")
+	status = "Blue player shot..." if ui_language != "he" else "המחשב יורה..."
+
+func ai_shot() -> void:
+	var settings := ai_difficulty_settings()
+	var candidates := ai_collect_shot_candidates(settings)
+	var shot: Dictionary = ai_pick_shot(candidates, settings)
+	if shot.is_empty():
+		shot = ai_fallback_shot()
+	if shot.is_empty():
+		finish_ai_turn()
+		return
+	ai_apply_shot(shot, settings)
 
 func finish_ai_turn() -> void:
 	turn = 0
@@ -1654,6 +1837,7 @@ func finish_match(winner_team: int) -> void:
 	dragging = false
 	selected = -1
 	ai_pending = false
+	ai_committed_shot = false
 	chat_open = false
 	record_match_result(local_player_won(winner_team))
 	queue_redraw()
@@ -1700,7 +1884,7 @@ func record_match_result(did_win: bool) -> void:
 					break
 		apply_rating_change(did_win, opponent_rating)
 	elif game_mode == "computer":
-		apply_rating_change(did_win, 980 + player_level * 8)
+		apply_rating_change(did_win, ai_opponent_rating())
 	if did_win:
 		play_sound("win")
 	save_player_profile()
@@ -1810,7 +1994,7 @@ func match_player_name(team: int) -> String:
 		return str(multiplayer_players[team].get("name", "שחקן " + str(team + 1)))
 	if team == 0:
 		return profile_name
-	return ("מחשב" if ui_language == "he" else "COMPUTER") if game_mode == "computer" else ("שחקן 2" if ui_language == "he" else "PLAYER 2")
+	return ai_display_name() if game_mode == "computer" else ("שחקן 2" if ui_language == "he" else "PLAYER 2")
 
 func draw_match_player_card(rect: Rect2, team: int) -> void:
 	var active := turn == team
@@ -1828,8 +2012,8 @@ func draw_match_player_card(rect: Rect2, team: int) -> void:
 	if team_piece_textures.size() > team and team_piece_textures[team] != null:
 		draw_texture_rect(team_piece_textures[team], Rect2(rect.position + Vector2(7.0, 5.0), Vector2(48.0, 48.0)), false)
 	var animal_index := player_animal if team == 0 else ai_animal
-	var team_rating := player_rating if team == 0 else 1000
-	var team_league := player_league_tier if team == 0 else 0
+	var team_rating := player_rating if team == 0 else ai_opponent_rating()
+	var team_league := player_league_tier if team == 0 else league_tier_for_rating(ai_opponent_rating())
 	if game_mode == "online" and team < multiplayer_players.size():
 		var pdata: Dictionary = multiplayer_players[team]
 		team_rating = int(pdata.get("rating", team_rating))
@@ -2700,7 +2884,7 @@ func make_colored_animal_texture(animal_index: int, target_color: Color) -> Text
 	return ImageTexture.create_from_image(image)
 
 func customizer_panel(viewport_size: Vector2) -> Rect2:
-	var size := Vector2(minf(820.0, viewport_size.x - 36.0), minf(390.0, viewport_size.y - 34.0))
+	var size := Vector2(minf(820.0, viewport_size.x - 36.0), minf(470.0, viewport_size.y - 34.0))
 	return Rect2((viewport_size - size) * 0.5, size)
 
 func customizer_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
@@ -2715,9 +2899,15 @@ func customizer_color_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var width := (panel.size.x - 40.0 - gap * 5.0) / 6.0
 	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 205.0), Vector2(width, 58.0))
 
+func customizer_difficulty_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := customizer_panel(viewport_size)
+	var gap := 12.0
+	var width := (panel.size.x - 40.0 - gap * 2.0) / 3.0
+	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 292.0), Vector2(width, 54.0))
+
 func customizer_start_rect(viewport_size: Vector2) -> Rect2:
 	var panel := customizer_panel(viewport_size)
-	return Rect2(panel.position + Vector2(panel.size.x * 0.5 - 95.0, panel.size.y - 68.0), Vector2(190.0, 48.0))
+	return Rect2(panel.position + Vector2(panel.size.x * 0.5 - 110.0, panel.size.y - 68.0), Vector2(220.0, 48.0))
 
 func handle_customizer_touch(screen_pos: Vector2) -> bool:
 	var viewport_size := get_viewport_rect().size
@@ -2733,6 +2923,13 @@ func handle_customizer_touch(screen_pos: Vector2) -> bool:
 		if customizer_color_rect(i, viewport_size).has_point(screen_pos):
 			player_ring_color = i
 			rebuild_team_piece_textures()
+			queue_redraw()
+			return true
+	for i in 3:
+		if customizer_difficulty_rect(i, viewport_size).has_point(screen_pos):
+			computer_difficulty = i
+			save_player_profile()
+			play_sound("ui")
 			queue_redraw()
 			return true
 	if customizer_start_rect(viewport_size).has_point(screen_pos):
@@ -2766,9 +2963,19 @@ func draw_customizer(viewport_size: Vector2) -> void:
 		if i == player_ring_color:
 			draw_rect(rect.grow(3.0), Color.WHITE, false, 3.0)
 		draw_string(ui_font, rect.position + Vector2(0, 36), RING_COLOR_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(20, 278), ui_text("difficulty"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	var diff_labels := [ui_text("difficulty_easy"), ui_text("difficulty_medium"), ui_text("difficulty_hard")]
+	var diff_colors := [Color("51d995"), Color("f6aa20"), Color("e94f78")]
+	for i in 3:
+		var diff_rect := customizer_difficulty_rect(i, viewport_size)
+		var selected := i == computer_difficulty
+		draw_style_box(make_box(diff_colors[i] if selected else Color("26384b"), 12.0), diff_rect)
+		if selected:
+			draw_rect(diff_rect.grow(3.0), Color.WHITE, false, 3.0)
+		draw_string(ui_font, diff_rect.position + Vector2(0, 34), diff_labels[i], HORIZONTAL_ALIGNMENT_CENTER, diff_rect.size.x, 14, Color.WHITE)
 	var start_rect := customizer_start_rect(viewport_size)
 	draw_style_box(make_box(Color("12a96b"), 14.0), start_rect)
-	draw_string(ui_font, start_rect.position + Vector2(0, 31), "התחלת משחק" if ui_language == "he" else "START GAME", HORIZONTAL_ALIGNMENT_CENTER, start_rect.size.x, 17, Color.WHITE)
+	draw_string(ui_font, start_rect.position + Vector2(0, 31), "התחלת משחק" if ui_language == "he" else "START MATCH", HORIZONTAL_ALIGNMENT_CENTER, start_rect.size.x, 17, Color.WHITE)
 
 func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
 	if texture == null: return
@@ -3227,7 +3434,7 @@ func tutorial_highlight_rect(step: int, viewport_size: Vector2) -> Rect2:
 	return Rect2()
 
 func maybe_start_tutorial() -> void:
-	if tutorial_completed or tutorial_open:
+	if tutorial_completed or tutorial_open or tutorial_dismissed_session:
 		return
 	open_tutorial()
 
@@ -3734,6 +3941,7 @@ func load_player_profile() -> void:
 	player_league_tier = clampi(int(config.get_value("player", "league_tier", player_league_tier)), 0, LEAGUE_NAME_KEYS.size() - 1)
 	sound_enabled = bool(config.get_value("settings", "sound_enabled", sound_enabled))
 	tutorial_completed = bool(config.get_value("settings", "tutorial_completed", tutorial_completed))
+	computer_difficulty = clampi(int(config.get_value("settings", "computer_difficulty", computer_difficulty)), 0, 2)
 	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
 	ui_language = str(config.get_value("settings", "language", ui_language))
 	friends_list = config.get_value("social", "friends", [])
@@ -3765,6 +3973,7 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("player", "last_daily_claim", last_daily_claim)
 	config.set_value("settings", "sound_enabled", sound_enabled)
 	config.set_value("settings", "tutorial_completed", tutorial_completed)
+	config.set_value("settings", "computer_difficulty", computer_difficulty)
 	config.set_value("settings", "language", ui_language)
 	config.set_value("social", "friends", friends_list)
 	config.set_value("firebase", "uid", firebase_uid)
