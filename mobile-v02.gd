@@ -6672,7 +6672,7 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 		var card := arena_card_rect(i, viewport_size)
 		var selected := i == selected_arena
 		var pulse := sin(menu_elapsed * 4.2 + float(i) * 0.8) * 3.0 if selected else 0.0
-		var border := Color("ffe25d") if selected else card_colors[i]
+		var border: Color = Color("ffe25d") if selected else card_colors[i]
 		draw_style_box(make_box(Color(border.r, border.g, border.b, 0.16), 27.0 * unit), card.grow((8.0 + pulse if selected else 5.0) * unit))
 		draw_style_box(make_box(Color(0.018, 0.052, 0.11, 0.95), 22.0 * unit), card)
 		draw_rect(card, Color(border.r, border.g, border.b, 0.55), false, (3.0 if selected else 1.5) * unit, true)

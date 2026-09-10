@@ -104,7 +104,7 @@ jobs:
           mv "build/modern-preview/${EXPORT_NAME}.html" build/modern-preview/index.html
           # Never allow a phone to combine cached engine files from different
           # previews. The HTML entry stays stable, every heavy bundle is unique.
-          sed -i 's#background-color: black;#background: radial-gradient(circle at 50% 42%, #123b67 0%, #06152d 48%, #020711 100%);#' build/modern-preview/index.html
+          sed -i 's|background-color: black;|background: radial-gradient(circle at 50% 42%, #123b67 0%, #06152d 48%, #020711 100%);|' build/modern-preview/index.html
           sed -i 's#<progress id="status-progress"></progress>#<div style="font:700 18px Arial;color:#fff1a6;margin-bottom:16px">ZOOPALOOLA MODERN</div><progress id="status-progress"></progress><div style="font:14px Arial;color:#9fe8ff;margin-top:14px">טוען את הזירה…</div>#' build/modern-preview/index.html
 
       - name: Add preview without replacing stable root
