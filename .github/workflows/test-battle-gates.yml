@@ -1,0 +1,48 @@
+name: Validate Battle Gates prototype
+
+on:
+  push:
+    branches: [battle-gates-prototype]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  godot-validation:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract isolated Godot project
+        run: unzip -q Zoopaloola-Godot-Mobile.zip
+      - name: Apply Battle Gates prototype files
+        run: bash scripts/apply-godot-assets.sh
+      - name: Import assets
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          godot --headless --editor --path . --quit-after 30 > /tmp/godot-import.log 2>&1
+          cat /tmp/godot-import.log
+          ! grep -Eq 'SCRIPT ERROR|Parse Error|Error loading image|Error importing|Failed loading resource|could not be loaded' /tmp/godot-import.log
+      - name: Parse and launch main scene
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          godot --headless --path . --quit-after 3 > /tmp/godot-validation.log 2>&1
+          cat /tmp/godot-validation.log
+          ! grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource|could not be loaded' /tmp/godot-validation.log
+
+  server-regression:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm test
