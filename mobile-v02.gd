@@ -801,7 +801,7 @@ func _ready() -> void:
 		load("res://assets/boards/board-lava.webp") as Texture2D,
 		load("res://assets/boards/board-candy.webp") as Texture2D,
 	]
-	battle_gates_arena_texture = load("res://assets/battle_gates/battle-gates-arena-v1.png") as Texture2D
+	battle_gates_arena_texture = load("res://assets/battle_gates/battle-gates-arena-v1.webp") as Texture2D
 	if BATTLE_GATES_PROTOTYPE and battle_gates_arena_texture == null:
 		push_error("Battle Gates arena artwork could not be loaded.")
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
