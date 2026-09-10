@@ -257,6 +257,9 @@ var hammer_impact_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
+var impact_bursts: Array = []
+var score_bursts: Array = []
+var motion_trails: Array = []
 var contacts := {}
 
 # Touch-friendly rubber effect editor. Values are stored in board-image units.
@@ -873,6 +876,9 @@ func new_game() -> void:
 	balls.clear()
 	active_effects.clear()
 	water_floaters.clear()
+	impact_bursts.clear()
+	score_bursts.clear()
+	motion_trails.clear()
 	contacts.clear()
 	turn = 0
 	ai_pending = false
@@ -951,6 +957,7 @@ func _process(delta: float) -> void:
 		accumulator -= STEP_TIME
 	update_effects(delta)
 	update_water_floaters(delta)
+	update_modern_game_fx(delta)
 	if ai_pending and not match_finished and effects_allow_next_turn() and not any_ball_moving():
 		ai_timer -= delta
 		if ai_timer <= 0.0:
@@ -1075,6 +1082,9 @@ func resolve_collision(a_index: int, b_index: int) -> void:
 	var relative: Vector2 = b.v - a.v
 	var speed := relative.dot(normal)
 	if speed < 0.0:
+		var impact_strength := minf(1.0, absf(speed) / 2.4)
+		if impact_strength > 0.16:
+			impact_bursts.append({"p":(a.p + b.p) * 0.5, "age":0.0, "power":impact_strength})
 		a.v += normal * speed
 		b.v -= normal * speed
 
@@ -1085,6 +1095,7 @@ func score_ball(index: int, hole: int) -> void:
 	balls[index].alive = false
 	balls[index].v = Vector2.ZERO
 	active_effects.append({"hole":hole, "elapsed":0.0, "team":scored_team, "piece":index})
+	score_bursts.append({"p":SCORING_HOLE_CENTERS[hole], "age":0.0, "team":scored_team})
 	status = "Ball scored!"
 	play_sound("score")
 	check_match_end()
@@ -1109,6 +1120,26 @@ func update_effects(delta: float) -> void:
 		if active_effects[i].elapsed >= duration:
 			spawn_water_floater(active_effects[i])
 			active_effects.remove_at(i)
+
+func update_modern_game_fx(delta: float) -> void:
+	for burst in impact_bursts:
+		burst.age += delta
+	for i in range(impact_bursts.size() - 1, -1, -1):
+		if impact_bursts[i].age >= 0.42:
+			impact_bursts.remove_at(i)
+	for burst in score_bursts:
+		burst.age += delta
+	for i in range(score_bursts.size() - 1, -1, -1):
+		if score_bursts[i].age >= 1.15:
+			score_bursts.remove_at(i)
+	for i in balls.size():
+		if balls[i].alive and balls[i].v.length_squared() > 0.09:
+			motion_trails.append({"p":balls[i].p, "age":0.0, "team":balls[i].team})
+	for trail in motion_trails:
+		trail.age += delta
+	for i in range(motion_trails.size() - 1, -1, -1):
+		if motion_trails[i].age >= 0.30:
+			motion_trails.remove_at(i)
 
 func spawn_water_floater(effect: Dictionary) -> void:
 	# Continue from the exact final frame of each weapon fall. Spawning again at
@@ -1662,6 +1693,7 @@ func _draw() -> void:
 	draw_ice_weapons_idle()
 	draw_fire_weapons_idle()
 	draw_hammer_weapons_idle()
+	draw_modern_game_fx(false)
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -1690,6 +1722,7 @@ func _draw() -> void:
 			draw_hammer_trap(effect)
 		else:
 			draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
+	draw_modern_game_fx(true)
 
 	if dragging and selected >= 0:
 		var start := board_to_screen(balls[selected].p)
@@ -1703,6 +1736,37 @@ func _draw() -> void:
 	draw_hud(viewport_size)
 	draw_effect_editor(viewport_size)
 	draw_customizer(viewport_size)
+
+func draw_modern_game_fx(foreground: bool) -> void:
+	if not foreground:
+		for trail in motion_trails:
+			var life: float = 1.0 - float(trail.age) / 0.30
+			var center := board_to_screen(trail.p)
+			var color := team_marker_color(int(trail.team))
+			color.a = 0.20 * life
+			draw_circle(center, GAME_BALL_VISUAL_RADIUS * board_scale * (0.58 + life * 0.20), color)
+		return
+	for burst in impact_bursts:
+		var t: float = clampf(float(burst.age) / 0.42, 0.0, 1.0)
+		var center := board_to_screen(burst.p)
+		var power: float = float(burst.power)
+		var radius: float = (8.0 + 28.0 * t) * board_scale * power
+		draw_circle(center, radius, Color(0.75, 0.96, 1.0, (1.0 - t) * 0.20), false, maxf(2.0, 4.0 * board_scale), true)
+		for ray in 8:
+			var direction := Vector2.RIGHT.rotated(float(ray) * TAU / 8.0 + t * 0.35)
+			draw_line(center + direction * radius * 0.42, center + direction * radius, Color(0.88, 0.98, 1.0, (1.0 - t) * 0.85), maxf(1.0, 2.4 * board_scale), true)
+	for burst in score_bursts:
+		var t: float = clampf(float(burst.age) / 1.15, 0.0, 1.0)
+		var center := board_to_screen(burst.p)
+		var team_color := team_marker_color(int(burst.team))
+		var wave := sin(t * PI)
+		team_color.a = (1.0 - t) * 0.75
+		draw_circle(center, (14.0 + 42.0 * t) * board_scale, team_color, false, maxf(2.0, 5.0 * board_scale), true)
+		draw_circle(center, (10.0 + 18.0 * wave) * board_scale, Color(1.0, 0.88, 0.34, (1.0 - t) * 0.42))
+		for spark in 12:
+			var direction := Vector2.UP.rotated(float(spark) * TAU / 12.0)
+			var spark_pos := center + direction * (18.0 + 38.0 * t) * board_scale
+			draw_circle(spark_pos, maxf(1.5, 3.4 * board_scale * (1.0 - t)), Color(1.0, 0.90, 0.45, 1.0 - t))
 
 func draw_aim_arrow(origin: Vector2, direction: Vector2, length: float) -> void:
 	var tip := origin + direction * length
