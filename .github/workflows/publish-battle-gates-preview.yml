@@ -23,7 +23,7 @@ jobs:
     container:
       image: barichello/godot-ci:4.4
     environment:
-      name: github-pages
+      name: battle-gates-preview
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
