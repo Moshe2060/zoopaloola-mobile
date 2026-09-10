@@ -6903,13 +6903,13 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var layout := home_layout(viewport_size)
 	var unit: float = layout.unit
 	draw_home_ambient_effects(viewport_size)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.10))
-	draw_rect(Rect2(0.0, 0.0, viewport_size.x, layout.header_h), Color(0.015, 0.055, 0.12, 0.94))
-	draw_rect(Rect2(0.0, layout.header_h - 4.0 * unit, viewport_size.x, 4.0 * unit), Color("58c9e8"))
+	draw_modern_home_backdrop(viewport_size, layout)
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, layout.header_h), Color(0.008, 0.025, 0.065, 0.88))
+	draw_rect(Rect2(0.0, layout.header_h - 2.0 * unit, viewport_size.x, 2.0 * unit), Color("46dcff", 0.72))
 	var left_bg_w: float = layout.left_x + layout.left_w + 10.0 * unit
 	draw_rect(Rect2(0.0, layout.header_h, left_bg_w, viewport_size.y - layout.header_h), Color(0.01, 0.05, 0.10, 0.20))
 	var stats_strip := home_stats_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.90), 16.0 * unit), stats_strip)
+	draw_glass_card(stats_strip, Color("45dcff"), unit, false)
 	draw_string(ui_font, stats_strip.position + Vector2(12.0, 22.0) * unit, ("ניצחונות: %d" if ui_language == "he" else "WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(13.0 * unit), Color.WHITE)
 	draw_string(ui_font, stats_strip.position + Vector2(12.0, 40.0) * unit, ("רצף: %d" if ui_language == "he" else "STREAK: %d") % player_current_streak, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(12.0 * unit), Color("8cecff"))
 	draw_string(ui_font, stats_strip.position + Vector2(12.0, 54.0) * unit, league_name(player_league_tier) + " • " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(11.0 * unit), Color("ffe25d"))
@@ -6917,6 +6917,11 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	# Full-body hero with the selected lifebuoy wrapped around its waist.
 	var character_area := home_character_rect(viewport_size)
 	var idle_phase := menu_elapsed * 1.55
+	var hero_spot := character_area.position + Vector2(character_area.size.x * 0.5, character_area.size.y * 0.48)
+	for halo in range(5, 0, -1):
+		var halo_radius := (54.0 + float(halo) * 29.0) * unit
+		draw_circle(hero_spot, halo_radius, Color(0.22, 0.78, 1.0, 0.018 * float(6 - halo)))
+	draw_string(ui_font, character_area.position + Vector2(0.0, 27.0 * unit), "מוכן לקרב" if ui_language == "he" else "READY FOR BATTLE", HORIZONTAL_ALIGNMENT_CENTER, character_area.size.x, int(17.0 * unit), Color("8cecff"))
 	# Keep the soles slightly inside the visible top plane so the idle motion
 	# never makes the animal appear to float above the wooden stage.
 	var hero_size := character_area.size
@@ -7007,27 +7012,29 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color("5f78ff"), 3.0 * unit), Rect2(progress_bg.position, Vector2(progress_bg.size.x * 0.62, progress_bg.size.y)))
 
 	var bottom_bar := Rect2(layout.center_left - 8.0 * unit, layout.bottom_y - 8.0 * unit, layout.center_w + 16.0 * unit, layout.bottom_button_h + 16.0 * unit)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.55), 18.0 * unit), bottom_bar)
+	draw_style_box(make_box(Color(0.008, 0.025, 0.06, 0.72), 24.0 * unit), bottom_bar)
+	draw_rect(bottom_bar, Color(0.32, 0.83, 1.0, 0.22), false, 1.5 * unit, true)
 
 	# Bottom row: online arena, friend match, then vs computer.
 	var arena_button := home_mode_rect(0, viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), arena_button.grow(5.0 * unit))
-	draw_style_box(make_box(Color("7258df"), 16.0), arena_button)
+	draw_glass_card(arena_button, Color("9a73ff"), unit, false)
+	draw_rect(Rect2(arena_button.position, Vector2(5.0 * unit, arena_button.size.y)), Color("9a73ff"))
 	var arena_icon := arena_button.position + Vector2(arena_button.size.x * 0.5, arena_button.size.y * 0.38)
 	draw_home_mode_icon(0, arena_icon, unit)
 	draw_string(ui_font, arena_button.position + Vector2(6.0, arena_button.size.y * 0.72), ui_text("arena"), HORIZONTAL_ALIGNMENT_CENTER, arena_button.size.x - 12.0 * unit, int(13.0 * unit), Color.WHITE)
 
 	var friend_button := home_mode_rect(1, viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 18.0), friend_button.grow(5.0 * unit))
-	draw_style_box(make_box(Color("315fd0"), 16.0), friend_button)
+	draw_glass_card(friend_button, Color("45a8ff"), unit, false)
+	draw_rect(Rect2(friend_button.position, Vector2(5.0 * unit, friend_button.size.y)), Color("45a8ff"))
 	var friend_icon := friend_button.position + Vector2(friend_button.size.x * 0.5, friend_button.size.y * 0.38)
 	draw_home_mode_icon(1, friend_icon, unit)
 	draw_string(ui_font, friend_button.position + Vector2(6.0, friend_button.size.y * 0.72), ui_text("friend"), HORIZONTAL_ALIGNMENT_CENTER, friend_button.size.x - 12.0 * unit, int(13.0 * unit), Color.WHITE)
 
 	var play_rect := home_mode_rect(2, viewport_size)
 	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 22.0), play_rect.grow((5.0 + pulse * 2.0) * unit))
-	draw_style_box(make_box(Color("f6aa20"), 20.0), play_rect)
+	draw_style_box(make_box(Color(0.98, 0.68, 0.14, 0.12 + pulse * 0.08), 25.0), play_rect.grow((6.0 + pulse * 4.0) * unit))
+	draw_style_box(make_box(Color("f4a51f"), 20.0), play_rect)
+	draw_rect(Rect2(play_rect.position + Vector2(7.0, 6.0) * unit, Vector2(play_rect.size.x - 14.0 * unit, 3.0 * unit)), Color(1.0, 0.94, 0.66, 0.70), true)
 	var play_center := play_rect.position + Vector2(play_rect.size.x * 0.22, play_rect.size.y * 0.42)
 	draw_circle(play_center, 24.0 * unit, Color("df7b12"))
 	draw_home_mode_icon(2, play_center, unit)
@@ -7054,6 +7061,30 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_string(ui_font, help_toggle.position + Vector2(0.0, 35.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, help_toggle.size.x, int(22.0 * unit), Color.WHITE)
 	draw_home_friend_profile(viewport_size)
 	draw_tutorial_overlay(viewport_size)
+
+func draw_modern_home_backdrop(viewport_size: Vector2, layout: Dictionary) -> void:
+	# Layered navy gradient, a subtle perspective grid and animated neon horizon.
+	for band in 10:
+		var y := viewport_size.y * float(band) / 10.0
+		var shade := Color(0.012 + band * 0.0015, 0.035 + band * 0.003, 0.085 + band * 0.006, 0.34)
+		draw_rect(Rect2(0.0, y, viewport_size.x, viewport_size.y / 10.0 + 1.0), shade)
+	var horizon_y := viewport_size.y * 0.69
+	for row in 7:
+		var t := float(row) / 6.0
+		var grid_y := lerpf(horizon_y, viewport_size.y, t * t)
+		draw_line(Vector2(0.0, grid_y), Vector2(viewport_size.x, grid_y), Color(0.22, 0.72, 1.0, 0.055), 1.0)
+	for column in 13:
+		var x := viewport_size.x * float(column) / 12.0
+		draw_line(Vector2(viewport_size.x * 0.5, horizon_y), Vector2(x, viewport_size.y), Color(0.35, 0.40, 1.0, 0.045), 1.0)
+	var sweep_x := fmod(menu_elapsed * 90.0, viewport_size.x + 240.0) - 120.0
+	draw_colored_polygon(PackedVector2Array([Vector2(sweep_x - 90.0, layout.header_h), Vector2(sweep_x, layout.header_h), Vector2(sweep_x + 220.0, viewport_size.y), Vector2(sweep_x + 80.0, viewport_size.y)]), Color(0.25, 0.84, 1.0, 0.025))
+
+func draw_glass_card(rect: Rect2, accent: Color, unit: float, selected_card: bool) -> void:
+	var glow_alpha := 0.13 if selected_card else 0.07
+	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, glow_alpha), 22.0 * unit), rect.grow(4.0 * unit))
+	draw_style_box(make_box(Color(0.018, 0.055, 0.12, 0.88), 18.0 * unit), rect)
+	draw_rect(rect, Color(accent.r, accent.g, accent.b, 0.34), false, 1.5 * unit, true)
+	draw_rect(Rect2(rect.position + Vector2(10.0, 8.0) * unit, Vector2(rect.size.x - 20.0 * unit, 2.0 * unit)), Color(1.0, 1.0, 1.0, 0.15), true)
 
 func draw_home_mode_icon(kind: int, center: Vector2, unit: float) -> void:
 	if kind == 0:
