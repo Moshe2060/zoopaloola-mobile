@@ -661,6 +661,9 @@ var ai_pending := false
 var ai_timer := 0.0
 var ai_committed_shot := false
 var computer_difficulty := 1
+var modern_match_intro := 0.0
+var last_announced_turn := -1
+var turn_banner_age := 0.0
 var customizer_open := false
 # Start with the combination requested during the visual review: zebra + green.
 var player_animal := 1
@@ -881,6 +884,9 @@ func new_game() -> void:
 	motion_trails.clear()
 	contacts.clear()
 	turn = 0
+	modern_match_intro = 0.0
+	last_announced_turn = -1
+	turn_banner_age = 0.0
 	ai_pending = false
 	ai_committed_shot = false
 	selected = -1
@@ -958,6 +964,12 @@ func _process(delta: float) -> void:
 	update_effects(delta)
 	update_water_floaters(delta)
 	update_modern_game_fx(delta)
+	modern_match_intro = minf(2.4, modern_match_intro + delta)
+	if last_announced_turn != turn:
+		last_announced_turn = turn
+		turn_banner_age = 0.0
+	else:
+		turn_banner_age += delta
 	if ai_pending and not match_finished and effects_allow_next_turn() and not any_ball_moving():
 		ai_timer -= delta
 		if ai_timer <= 0.0:
@@ -1734,6 +1746,7 @@ func _draw() -> void:
 	draw_table_wall_editor_overlay()
 
 	draw_hud(viewport_size)
+	draw_modern_match_overlay(viewport_size)
 	draw_effect_editor(viewport_size)
 	draw_customizer(viewport_size)
 
@@ -1767,6 +1780,30 @@ func draw_modern_game_fx(foreground: bool) -> void:
 			var direction := Vector2.UP.rotated(float(spark) * TAU / 12.0)
 			var spark_pos := center + direction * (18.0 + 38.0 * t) * board_scale
 			draw_circle(spark_pos, maxf(1.5, 3.4 * board_scale * (1.0 - t)), Color(1.0, 0.90, 0.45, 1.0 - t))
+
+func draw_modern_match_overlay(viewport_size: Vector2) -> void:
+	# Compact animated turn indicator that stays clear of the board and player cards.
+	var banner_width := minf(250.0, viewport_size.x * 0.24)
+	var banner := Rect2((viewport_size.x - banner_width) * 0.5, 8.0, banner_width, 48.0)
+	var pulse := (sin(menu_elapsed * 4.4) + 1.0) * 0.5
+	var accent := team_marker_color(turn)
+	draw_style_box(make_box(Color(0.015, 0.045, 0.085, 0.93), 18.0), banner)
+	draw_rect(banner.grow(2.0 + pulse), Color(accent.r, accent.g, accent.b, 0.72), false, 2.0 + pulse, true)
+	draw_circle(banner.position + Vector2(24.0, 24.0), 6.0 + pulse * 1.5, accent)
+	draw_string(ui_font, banner.position + Vector2(40.0, 31.0), match_turn_text(), HORIZONTAL_ALIGNMENT_CENTER, banner.size.x - 54.0, 17, Color.WHITE)
+	if modern_match_intro < 2.4:
+		var intro_t := modern_match_intro / 2.4
+		var opacity := clampf(sin(intro_t * PI) * 1.35, 0.0, 1.0)
+		var title_width := minf(520.0, viewport_size.x * 0.56)
+		var title_rect := Rect2((viewport_size.x - title_width) * 0.5, viewport_size.y * 0.43, title_width, 92.0)
+		draw_style_box(make_box(Color(0.01, 0.03, 0.07, 0.78 * opacity), 28.0), title_rect)
+		draw_rect(title_rect.grow(2.0), Color(0.35, 0.88, 1.0, 0.55 * opacity), false, 3.0, true)
+		var title := "הקרב מתחיל" if ui_language == "he" else "BATTLE START"
+		draw_string(ui_font, title_rect.position + Vector2(0.0, 57.0), title, HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, 34, Color(1.0, 0.93, 0.58, opacity))
+	if turn_banner_age < 0.72 and modern_match_intro >= 2.2:
+		var pop := sin(clampf(turn_banner_age / 0.72, 0.0, 1.0) * PI)
+		var glow := banner.grow(8.0 + pop * 10.0)
+		draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.12 * pop), 24.0), glow)
 
 func draw_aim_arrow(origin: Vector2, direction: Vector2, length: float) -> void:
 	var tip := origin + direction * length

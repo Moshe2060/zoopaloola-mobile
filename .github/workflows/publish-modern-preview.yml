@@ -1,0 +1,117 @@
+name: Publish isolated Modern Edition preview
+
+on:
+  push:
+    branches: [modern-edition]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: modern-edition-preview
+  cancel-in-progress: true
+
+jobs:
+  publish-preview:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4
+    environment:
+      name: modern-edition-preview
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore exact stable Pages build
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: stable-pages-artifact
+          repository: Moshe2060/zoopaloola-mobile
+          run-id: 34526723662
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract stable site unchanged
+        run: |
+          mkdir -p combined-site
+          tar -xf stable-pages-artifact/artifact.tar -C combined-site
+          test -s combined-site/index.html
+
+      - name: Prepare Modern Edition project
+        run: |
+          unzip -q Zoopaloola-Godot-Mobile.zip
+          bash scripts/apply-godot-assets.sh
+
+      - name: Add isolated Web export preset
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          cat >> export_presets.cfg <<'EOF'
+
+          [preset.1]
+
+          name="Modern Preview"
+          platform="Web"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path="build/modern-preview/index.html"
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.1.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          variant/extensions_support=false
+          variant/thread_support=false
+          vram_texture_compression/for_desktop=true
+          vram_texture_compression/for_mobile=false
+          html/export_icon=true
+          html/custom_html_shell=""
+          html/head_include=""
+          html/canvas_resize_policy=2
+          html/focus_canvas_on_start=true
+          html/experimental_virtual_keyboard=true
+          progressive_web_app/enabled=false
+          EOF
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.stable"
+          cp -R /root/.local/share/godot/export_templates/4.4.stable/. "$HOME/.local/share/godot/export_templates/4.4.stable/"
+
+      - name: Validate and export Modern Edition
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          godot --headless --editor --path . --quit-after 30 > /tmp/modern-import.log 2>&1
+          cat /tmp/modern-import.log
+          ! grep -Eq 'SCRIPT ERROR|Parse Error|Error loading image|Error importing|Failed loading resource|could not be loaded' /tmp/modern-import.log
+          mkdir -p build/modern-preview
+          godot --headless --path . --export-release "Modern Preview" build/modern-preview/index.html
+          test -s build/modern-preview/index.html
+          test -s build/modern-preview/index.wasm
+          test -s build/modern-preview/index.pck
+
+      - name: Add preview without replacing stable root
+        run: |
+          mkdir -p combined-site/modern-preview
+          cp -R zoopaloola_godot_mobile/build/modern-preview/. combined-site/modern-preview/
+          test -s combined-site/index.html
+          test -s combined-site/modern-preview/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: combined-site
+
+      - name: Publish Modern Edition preview
+        id: deployment
+        uses: actions/deploy-pages@v4
