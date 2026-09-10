@@ -1,0 +1,121 @@
+name: Publish isolated Battle Gates preview
+
+on:
+  push:
+    branches: [battle-gates-prototype]
+    paths:
+      - '.github/workflows/publish-battle-gates-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish-preview:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore exact stable Pages build
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: stable-pages-artifact
+          repository: Moshe2060/zoopaloola-mobile
+          run-id: 34526723662
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract stable site unchanged
+        run: |
+          mkdir -p combined-site
+          tar -xf stable-pages-artifact/artifact.tar -C combined-site
+          test -s combined-site/index.html
+
+      - name: Extract prototype Godot project
+        run: unzip -q Zoopaloola-Godot-Mobile.zip
+
+      - name: Apply Battle Gates files
+        run: bash scripts/apply-godot-assets.sh
+
+      - name: Configure isolated Web export
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          cat >> export_presets.cfg <<'EOF'
+
+          [preset.1]
+
+          name="Battle Gates Preview"
+          platform="Web"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path="build/battle-gates-preview/index.html"
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.1.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          variant/extensions_support=false
+          variant/thread_support=false
+          vram_texture_compression/for_desktop=true
+          vram_texture_compression/for_mobile=false
+          html/export_icon=true
+          html/custom_html_shell=""
+          html/head_include=""
+          html/canvas_resize_policy=2
+          html/focus_canvas_on_start=true
+          html/experimental_virtual_keyboard=true
+          progressive_web_app/enabled=false
+          EOF
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.stable"
+          cp -R /root/.local/share/godot/export_templates/4.4.stable/. "$HOME/.local/share/godot/export_templates/4.4.stable/"
+
+      - name: Validate and export prototype
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          godot --headless --editor --path . --quit-after 30 > /tmp/battle-gates-import.log 2>&1
+          cat /tmp/battle-gates-import.log
+          ! grep -Eq 'SCRIPT ERROR|Parse Error|Error loading image|Error importing|Failed loading resource|could not be loaded' /tmp/battle-gates-import.log
+          mkdir -p build/battle-gates-preview
+          godot --headless --path . --export-release "Battle Gates Preview" build/battle-gates-preview/index.html
+          test -s build/battle-gates-preview/index.html
+          test -s build/battle-gates-preview/index.wasm
+          test -s build/battle-gates-preview/index.pck
+
+      - name: Add preview without replacing stable root
+        run: |
+          mkdir -p combined-site/battle-gates-preview
+          cp -R zoopaloola_godot_mobile/build/battle-gates-preview/. combined-site/battle-gates-preview/
+          test -s combined-site/index.html
+          test -s combined-site/battle-gates-preview/index.html
+
+      - name: Upload combined Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: combined-site
+
+      - name: Publish preview
+        id: deployment
+        uses: actions/deploy-pages@v4
