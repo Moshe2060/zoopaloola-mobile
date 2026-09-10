@@ -19,6 +19,48 @@ jobs:
         run: unzip -q Zoopaloola-Godot-Mobile.zip
       - name: Apply Battle Gates prototype files
         run: bash scripts/apply-godot-assets.sh
+      - name: Configure Web preview export
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          cat >> export_presets.cfg <<'EOF'
+
+          [preset.1]
+
+          name="Web Preview"
+          platform="Web"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path="build/web/index.html"
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.1.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          variant/extensions_support=false
+          variant/thread_support=false
+          vram_texture_compression/for_desktop=true
+          vram_texture_compression/for_mobile=false
+          html/export_icon=true
+          html/custom_html_shell=""
+          html/head_include=""
+          html/canvas_resize_policy=2
+          html/focus_canvas_on_start=true
+          html/experimental_virtual_keyboard=true
+          progressive_web_app/enabled=false
+          EOF
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.stable"
+          cp -R /root/.local/share/godot/export_templates/4.4.stable/. "$HOME/.local/share/godot/export_templates/4.4.stable/"
       - name: Import assets
         working-directory: zoopaloola_godot_mobile
         run: |
@@ -31,6 +73,20 @@ jobs:
           godot --headless --path . --quit-after 3 > /tmp/godot-validation.log 2>&1
           cat /tmp/godot-validation.log
           ! grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource|could not be loaded' /tmp/godot-validation.log
+      - name: Export private Web preview
+        working-directory: zoopaloola_godot_mobile
+        run: |
+          mkdir -p build/web
+          godot --headless --path . --export-release "Web Preview" build/web/index.html
+          test -s build/web/index.html
+          test -s build/web/index.wasm
+          test -s build/web/index.pck
+      - name: Upload private preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: battle-gates-web-preview
+          path: zoopaloola_godot_mobile/build/web
+          if-no-files-found: error
 
   server-regression:
     runs-on: ubuntu-latest
