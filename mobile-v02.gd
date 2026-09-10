@@ -40,6 +40,12 @@ const ICE_TRAP_HOLE := 4
 const FIRE_TRAP_HOLE := 5
 const ELECTRIC_TRAP_HOLE := 2
 const HAMMER_TRAP_HOLE := 3
+const BATTLE_GATES_PROTOTYPE := true
+const BATTLE_GATE_TYPES := ["PUSH", "GRAVITY", "ELECTRIC", "BOUNCE", "ICE", "FIRE"]
+const BATTLE_GATE_COLORS := [
+	Color("42f5a7"), Color("a86cff"), Color("55dfff"),
+	Color("ffd34e"), Color("80e9ff"), Color("ff7047")
+]
 const TRAP_CAPTURE_TIME := 2.35
 const TRAP_FALL_TIME := 2.85
 const PRESS_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
@@ -254,6 +260,7 @@ var hammer_idle_texture: Texture2D
 var hammer_swing_texture: Texture2D
 var hammer_head_side_texture: Texture2D
 var hammer_impact_texture: Texture2D
+var battle_gates_arena_texture: Texture2D
 var balls: Array = []
 var active_effects: Array = []
 var water_floaters: Array = []
@@ -794,6 +801,9 @@ func _ready() -> void:
 		load("res://assets/boards/board-lava.webp") as Texture2D,
 		load("res://assets/boards/board-candy.webp") as Texture2D,
 	]
+	battle_gates_arena_texture = load("res://assets/battle_gates/battle-gates-arena-v1.png") as Texture2D
+	if BATTLE_GATES_PROTOTYPE and battle_gates_arena_texture == null:
+		push_error("Battle Gates arena artwork could not be loaded.")
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
@@ -1094,7 +1104,9 @@ func update_effects(delta: float) -> void:
 		effect.elapsed += delta
 	for i in range(active_effects.size() - 1, -1, -1):
 		var duration := EFFECT_DURATION
-		if active_effects[i].hole == RUBBER_TRAP_HOLE:
+		if BATTLE_GATES_PROTOTYPE:
+			duration = battle_gate_effect_duration(int(active_effects[i].hole))
+		elif active_effects[i].hole == RUBBER_TRAP_HOLE:
 			duration = RUBBER_EFFECT_DURATION
 		elif active_effects[i].hole == PRESS_TRAP_HOLE:
 			duration = PRESS_EFFECT_DURATION
@@ -1107,7 +1119,8 @@ func update_effects(delta: float) -> void:
 		elif active_effects[i].hole == HAMMER_TRAP_HOLE:
 			duration = HAMMER_EFFECT_DURATION
 		if active_effects[i].elapsed >= duration:
-			spawn_water_floater(active_effects[i])
+			if not BATTLE_GATES_PROTOTYPE:
+				spawn_water_floater(active_effects[i])
 			active_effects.remove_at(i)
 
 func spawn_water_floater(effect: Dictionary) -> void:
@@ -1626,7 +1639,10 @@ func screen_to_board(p: Vector2) -> Vector2:
 
 func _draw() -> void:
 	var viewport_size := get_viewport_rect().size
-	draw_ocean(viewport_size)
+	if BATTLE_GATES_PROTOTYPE and app_screen == APP_GAME:
+		draw_battle_gates_space(viewport_size)
+	else:
+		draw_ocean(viewport_size)
 	if viewport_size.y > viewport_size.x:
 		var launch_width: float = minf(viewport_size.x * 0.82, 620.0)
 		var launch_rect := Rect2(
@@ -1649,19 +1665,23 @@ func _draw() -> void:
 		return
 	# Floating animals stay behind the elevated table and only remain visible on
 	# the surrounding water.
-	draw_water_floaters(viewport_size)
+	if not BATTLE_GATES_PROTOTYPE:
+		draw_water_floaters(viewport_size)
 	# Each table theme keeps the exact approved gameplay geometry while using
 	# its own production texture.
-	var active_board_texture := board_theme_texture(active_board_theme())
+	var active_board_texture := battle_gates_arena_texture if BATTLE_GATES_PROTOTYPE else board_theme_texture(active_board_theme())
 	if active_board_texture != null:
 		draw_texture_rect(active_board_texture, board_rect, false)
-	draw_scoreboards()
-	draw_rubber_launchers_idle()
-	draw_press_weapons_idle()
-	draw_electric_weapons_idle()
-	draw_ice_weapons_idle()
-	draw_fire_weapons_idle()
-	draw_hammer_weapons_idle()
+	if BATTLE_GATES_PROTOTYPE:
+		draw_battle_gates_frame()
+	else:
+		draw_scoreboards()
+		draw_rubber_launchers_idle()
+		draw_press_weapons_idle()
+		draw_electric_weapons_idle()
+		draw_ice_weapons_idle()
+		draw_fire_weapons_idle()
+		draw_hammer_weapons_idle()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -1673,10 +1693,15 @@ func _draw() -> void:
 			var halo_radius := visual_radius * (1.34 + pulse * 0.10)
 			draw_circle(sp, halo_radius, Color(0.54, 1.0, 0.62, 0.16 + pulse * 0.08))
 			draw_circle(sp, halo_radius, Color(0.76, 1.0, 0.80, 0.68), false, maxf(2.0, visual_radius * 0.12), true)
-		draw_rubber_game_ball(sp, visual_radius, ball.team, i, 1.0)
+		if BATTLE_GATES_PROTOTYPE:
+			draw_energy_core(sp, visual_radius, ball.team, i, 1.0)
+		else:
+			draw_rubber_game_ball(sp, visual_radius, ball.team, i, 1.0)
 
 	for effect in active_effects:
-		if effect.hole == RUBBER_TRAP_HOLE:
+		if BATTLE_GATES_PROTOTYPE:
+			draw_battle_gate_effect(effect)
+		elif effect.hole == RUBBER_TRAP_HOLE:
 			draw_rubber_trap(effect)
 		elif effect.hole == PRESS_TRAP_HOLE:
 			draw_press_trap(effect)
@@ -1703,6 +1728,88 @@ func _draw() -> void:
 	draw_hud(viewport_size)
 	draw_effect_editor(viewport_size)
 	draw_customizer(viewport_size)
+
+func draw_battle_gates_space(viewport_size: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color("080b22"))
+	var now := float(Time.get_ticks_msec()) * 0.00025
+	for band in 10:
+		var t := float(band) / 9.0
+		var color := Color("101b43").lerp(Color("351d57"), t)
+		draw_rect(Rect2(0.0, t * viewport_size.y, viewport_size.x, viewport_size.y / 9.0 + 2.0), color)
+	for i in 36:
+		var x := fmod(float(i * 149) + now * float(12 + i % 7), viewport_size.x + 40.0) - 20.0
+		var y := fmod(float(i * 83), viewport_size.y)
+		var radius := 1.0 + float(i % 3)
+		draw_circle(Vector2(x, y), radius * 2.6, Color(0.35, 0.75, 1.0, 0.08))
+		draw_circle(Vector2(x, y), radius, Color(0.78, 0.92, 1.0, 0.55))
+
+func draw_battle_gates_frame() -> void:
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
+	for hole in 6:
+		var center := board_to_screen(SCORING_HOLE_CENTERS[hole])
+		var color: Color = BATTLE_GATE_COLORS[hole]
+		var radius := maxf(18.0, GAME_BALL_VISUAL_RADIUS * board_scale * 1.22)
+		draw_circle(center, radius * (1.48 + pulse * 0.08), Color(color.r, color.g, color.b, 0.12))
+		draw_circle(center, radius * 1.24, Color("0a1028"))
+		draw_arc(center, radius * 1.10, 0.0, TAU, 48, color, maxf(4.0, radius * 0.18), true)
+		draw_arc(center, radius * 0.77, -float(Time.get_ticks_msec()) * 0.0014, TAU - float(Time.get_ticks_msec()) * 0.0014, 32, color.lightened(0.34), 2.0, true)
+		var label_pos := center + Vector2(-radius * 1.5, radius * (1.85 if hole < 3 else -1.55))
+		draw_string(ui_font, label_pos, BATTLE_GATE_TYPES[hole], HORIZONTAL_ALIGNMENT_CENTER, radius * 3.0, maxi(10, int(radius * 0.42)), Color(color.r, color.g, color.b, 0.94))
+
+func draw_energy_core(position: Vector2, radius: float, team: int, piece: int, alpha: float) -> void:
+	var base := Color("2fc9ff") if team == 0 else Color("b35cff")
+	var accent := Color("d0f8ff") if team == 0 else Color("f4d5ff")
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.006 + float(piece) * 0.71) + 1.0) * 0.5
+	draw_circle(position + Vector2(radius * 0.13, radius * 0.22), radius * 1.15, Color(0.0, 0.0, 0.0, 0.40 * alpha))
+	draw_circle(position, radius * (1.28 + pulse * 0.06), Color(base.r, base.g, base.b, (0.13 + pulse * 0.06) * alpha))
+	draw_circle(position, radius * 1.04, Color("0b132a"))
+	draw_circle(position, radius * 0.91, base.darkened(0.42))
+	draw_arc(position, radius * 0.91, 0.0, TAU, 40, base, maxf(2.5, radius * 0.16), true)
+	draw_arc(position, radius * 0.64, float(Time.get_ticks_msec()) * 0.0018, TAU + float(Time.get_ticks_msec()) * 0.0018, 32, Color(accent.r, accent.g, accent.b, 0.84 * alpha), maxf(1.5, radius * 0.07), true)
+	var sides := 4 + piece % 3
+	var rune := PackedVector2Array()
+	for point in sides:
+		var angle := TAU * float(point) / float(sides) - PI * 0.5 + float(piece % 4) * 0.17
+		rune.append(position + Vector2(cos(angle), sin(angle)) * radius * 0.35)
+	draw_colored_polygon(rune, Color(accent.r, accent.g, accent.b, 0.92 * alpha))
+	draw_circle(position - Vector2(radius * 0.27, radius * 0.29), radius * 0.11, Color(1.0, 1.0, 1.0, 0.62 * alpha))
+
+func battle_gate_effect_duration(_hole: int) -> float:
+	return TRAP_CAPTURE_TIME + 0.75
+
+func draw_battle_gate_effect(effect: Dictionary) -> void:
+	var hole := int(effect.hole)
+	var center := board_to_screen(SCORING_HOLE_CENTERS[hole])
+	var progress := clampf(float(effect.elapsed) / battle_gate_effect_duration(hole), 0.0, 1.0)
+	var color: Color = BATTLE_GATE_COLORS[hole]
+	var start_radius := GAME_BALL_VISUAL_RADIUS * board_scale
+	var spin := progress * TAU * (2.0 if hole != 1 else 3.5)
+	var orbit_radius := start_radius * (2.1 * (1.0 - progress))
+	var core_pos := center + Vector2(cos(spin), sin(spin)) * orbit_radius
+	if hole == 0:
+		core_pos += Vector2(-start_radius * 2.4 * sin(progress * PI), 0.0)
+	elif hole == 1:
+		core_pos = center + Vector2(cos(spin), sin(spin) * 0.45) * orbit_radius
+	elif hole == 3:
+		core_pos.y -= abs(sin(progress * PI * 3.0)) * start_radius * (2.4 * (1.0 - progress))
+	var core_radius := maxf(3.0, start_radius * (1.0 - progress * 0.72))
+	draw_energy_core(core_pos, core_radius, int(effect.team), int(effect.piece), 1.0 - progress * 0.70)
+	for ring in 3:
+		var ring_radius := start_radius * (1.1 + float(ring) * 0.55 + progress * 1.4)
+		draw_arc(center, ring_radius, spin + float(ring), spin + PI * 1.45 + float(ring), 30, Color(color.r, color.g, color.b, (0.82 - float(ring) * 0.18) * (1.0 - progress)), maxf(2.0, start_radius * 0.12), true)
+	if hole == 2:
+		for bolt in 5:
+			var angle := TAU * float(bolt) / 5.0 + spin
+			draw_line(center, center + Vector2(cos(angle), sin(angle)) * start_radius * (1.7 + progress), Color.WHITE, 2.0, true)
+	elif hole == 4:
+		for shard in 6:
+			var angle := TAU * float(shard) / 6.0
+			draw_line(center, center + Vector2(cos(angle), sin(angle)) * start_radius * (1.1 + progress), Color("d8fbff"), 3.0, true)
+	elif hole == 5:
+		for flame in 7:
+			var angle := TAU * float(flame) / 7.0 + spin * 0.4
+			var flame_tip := center + Vector2(cos(angle), sin(angle)) * start_radius * (1.2 + progress * 1.4)
+			draw_line(center, flame_tip, color.lightened(float(flame % 2) * 0.28), maxf(3.0, start_radius * 0.18), true)
 
 func draw_aim_arrow(origin: Vector2, direction: Vector2, length: float) -> void:
 	var tip := origin + direction * length
@@ -2083,6 +2190,9 @@ func draw_scoreboards() -> void:
 		draw_string(ui_font, Vector2(outer_rect.position.x, baseline), score, HORIZONTAL_ALIGNMENT_CENTER, outer_rect.size.x, font_size, Color.WHITE)
 
 func draw_hud(viewport_size: Vector2) -> void:
+	if BATTLE_GATES_PROTOTYPE:
+		draw_battle_hud(viewport_size)
+		return
 	var back := game_back_rect()
 	draw_style_box(make_box(Color(0.04, 0.09, 0.16, 0.94), 18.0), back)
 	draw_string(ui_font, back.position + Vector2(0.0, 30.0), "‹", HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 27, Color.WHITE)
@@ -2093,6 +2203,30 @@ func draw_hud(viewport_size: Vector2) -> void:
 	if game_mode == "online":
 		var chat_rect := game_chat_rect(viewport_size)
 		draw_style_box(make_box(Color("1b91a8"), 14.0), chat_rect)
+		draw_string(ui_font, chat_rect.position + Vector2(0.0, 31.0), "צ׳אט" if ui_language == "he" else "CHAT", HORIZONTAL_ALIGNMENT_CENTER, chat_rect.size.x, 17, Color.WHITE)
+	if exit_confirm_open:
+		draw_exit_confirmation(viewport_size)
+	elif chat_open:
+		draw_match_chat(viewport_size)
+	if match_result_open:
+		draw_match_result(viewport_size)
+
+func draw_battle_hud(viewport_size: Vector2) -> void:
+	var back := game_back_rect()
+	draw_style_box(make_box(Color("0a1128"), 14.0), back)
+	draw_rect(back.grow(1.0), Color("5edbff"), false, 2.0, true)
+	draw_string(ui_font, back.position + Vector2(0.0, 30.0), "‹", HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 27, Color.WHITE)
+	var card_width: float = minf(285.0, viewport_size.x * 0.23)
+	draw_match_player_card(Rect2(8.0, 6.0, card_width, 58.0), 0)
+	draw_match_player_card(Rect2(viewport_size.x - card_width - 8.0, 6.0, card_width, 58.0), 1)
+	var turn_rect := Rect2((viewport_size.x - 230.0) * 0.5, 8.0, 230.0, 48.0)
+	var turn_color := Color("28caff") if turn == 0 else Color("b45cff")
+	draw_style_box(make_box(Color("0a1128"), 16.0), turn_rect)
+	draw_rect(turn_rect.grow(1.0), turn_color, false, 2.5, true)
+	draw_string(ui_font, turn_rect.position + Vector2(0.0, 31.0), match_turn_text(), HORIZONTAL_ALIGNMENT_CENTER, turn_rect.size.x, 17, Color.WHITE)
+	if game_mode == "online":
+		var chat_rect := game_chat_rect(viewport_size)
+		draw_style_box(make_box(Color("132754"), 14.0), chat_rect)
 		draw_string(ui_font, chat_rect.position + Vector2(0.0, 31.0), "צ׳אט" if ui_language == "he" else "CHAT", HORIZONTAL_ALIGNMENT_CENTER, chat_rect.size.x, 17, Color.WHITE)
 	if exit_confirm_open:
 		draw_exit_confirmation(viewport_size)
@@ -2136,7 +2270,9 @@ func draw_match_player_card(rect: Rect2, team: int) -> void:
 		var badge_rect := Rect2(rect.position.x + rect.size.x - 92.0, rect.position.y - 10.0, 88.0, 22.0)
 		draw_style_box(make_box(Color("12a96b") if is_local_player_team(team) else Color("7256d8"), 10.0), badge_rect)
 		draw_string(ui_font, badge_rect.position + Vector2(0.0, 16.0), badge, HORIZONTAL_ALIGNMENT_CENTER, badge_rect.size.x, 11, Color.WHITE)
-	if team_piece_textures.size() > team and team_piece_textures[team] != null:
+	if BATTLE_GATES_PROTOTYPE:
+		draw_energy_core(rect.position + Vector2(31.0, 29.0), 18.0, team, team, 1.0)
+	elif team_piece_textures.size() > team and team_piece_textures[team] != null:
 		draw_texture_rect(team_piece_textures[team], Rect2(rect.position + Vector2(7.0, 5.0), Vector2(48.0, 48.0)), false)
 	var animal_index := player_animal if team == 0 else ai_animal
 	var team_rating := player_rating if team == 0 else ai_opponent_rating()

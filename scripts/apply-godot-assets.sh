@@ -26,6 +26,9 @@ cp "$ROOT/assets/boards/board-jungle.webp" "$PROJECT/assets/boards/board-jungle.
 cp "$ROOT/assets/boards/board-lava.webp" "$PROJECT/assets/boards/board-lava.webp"
 cp "$ROOT/assets/boards/board-candy.webp" "$PROJECT/assets/boards/board-candy.webp"
 
+mkdir -p "$PROJECT/assets/battle_gates"
+cp "$ROOT/assets/battle_gates/battle-gates-arena-v1.png" "$PROJECT/assets/battle_gates/battle-gates-arena-v1.png"
+
 mkdir -p "$PROJECT/assets/remastered_effects"
 cp "$ROOT"/effect-*.png "$PROJECT/assets/remastered_effects/"
 
