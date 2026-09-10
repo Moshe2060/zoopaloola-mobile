@@ -40,11 +40,6 @@ const ICE_TRAP_HOLE := 4
 const FIRE_TRAP_HOLE := 5
 const ELECTRIC_TRAP_HOLE := 2
 const HAMMER_TRAP_HOLE := 3
-const BATTLE_GATES_VISUALS := true
-const PORTAL_COLORS := [
-	Color("38e879"), Color("8d65ff"), Color("56cfff"),
-	Color("ffc83d"), Color("70dcff"), Color("ff6a32")
-]
 const TRAP_CAPTURE_TIME := 2.35
 const TRAP_FALL_TIME := 2.85
 const PRESS_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
@@ -1654,25 +1649,19 @@ func _draw() -> void:
 		return
 	# Floating animals stay behind the elevated table and only remain visible on
 	# the surrounding water.
-	if not BATTLE_GATES_VISUALS:
-		draw_water_floaters(viewport_size)
+	draw_water_floaters(viewport_size)
 	# Each table theme keeps the exact approved gameplay geometry while using
 	# its own production texture.
 	var active_board_texture := board_theme_texture(active_board_theme())
-	if BATTLE_GATES_VISUALS:
-		draw_battle_gate_arena()
-	elif active_board_texture != null:
+	if active_board_texture != null:
 		draw_texture_rect(active_board_texture, board_rect, false)
 	draw_scoreboards()
-	if BATTLE_GATES_VISUALS:
-		draw_battle_portals()
-	else:
-		draw_rubber_launchers_idle()
-		draw_press_weapons_idle()
-		draw_electric_weapons_idle()
-		draw_ice_weapons_idle()
-		draw_fire_weapons_idle()
-		draw_hammer_weapons_idle()
+	draw_rubber_launchers_idle()
+	draw_press_weapons_idle()
+	draw_electric_weapons_idle()
+	draw_ice_weapons_idle()
+	draw_fire_weapons_idle()
+	draw_hammer_weapons_idle()
 
 	for i in balls.size():
 		var ball: Dictionary = balls[i]
@@ -1687,9 +1676,7 @@ func _draw() -> void:
 		draw_rubber_game_ball(sp, visual_radius, ball.team, i, 1.0)
 
 	for effect in active_effects:
-		if BATTLE_GATES_VISUALS:
-			draw_portal_capture_effect(effect)
-		elif effect.hole == RUBBER_TRAP_HOLE:
+		if effect.hole == RUBBER_TRAP_HOLE:
 			draw_rubber_trap(effect)
 		elif effect.hole == PRESS_TRAP_HOLE:
 			draw_press_trap(effect)
@@ -1881,9 +1868,6 @@ func draw_table_wall_editor_overlay() -> void:
 	draw_string(ui_font, board_rect.position + Vector2(12.0, 24.0), side_names[selected_side], HORIZONTAL_ALIGNMENT_LEFT, 180.0, 16, Color.WHITE)
 
 func draw_ocean(viewport_size: Vector2) -> void:
-	if BATTLE_GATES_VISUALS:
-		draw_battle_sky(viewport_size)
-		return
 	# Bright layered water makes the space around the table read as sea even on
 	# small phone screens. The curves are intentionally subtle so they do not
 	# compete with the balls or the weapon effects.
@@ -1909,110 +1893,6 @@ func draw_ocean(viewport_size: Vector2) -> void:
 			shadow_points.append(Vector2(x, y + 7.0))
 		draw_polyline(shadow_points, wave_shadow, 3.0, true)
 		draw_polyline(points, wave_color, 2.0, true)
-
-func draw_battle_sky(viewport_size: Vector2) -> void:
-	# A layered twilight sky replaces the tropical ocean while remaining cheap
-	# enough for the Android and Web renderers.
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color("101b47"))
-	var bands := 12
-	for band in bands:
-		var t := float(band) / float(bands - 1)
-		var color := Color("182b66").lerp(Color("765ca4"), t)
-		draw_rect(Rect2(0.0, t * viewport_size.y, viewport_size.x, viewport_size.y / float(bands) + 2.0), color)
-	var now := float(Time.get_ticks_msec()) * 0.00012
-	for i in 28:
-		var seed := float(i)
-		var x := fmod(seed * 173.0 + now * (18.0 + float(i % 5)), viewport_size.x + 80.0) - 40.0
-		var y := 72.0 + fmod(seed * 89.0, maxf(100.0, viewport_size.y - 120.0))
-		var glow := 1.5 + float(i % 3)
-		draw_circle(Vector2(x, y), glow * 2.8, Color(0.35, 0.84, 1.0, 0.08))
-		draw_circle(Vector2(x, y), glow, Color(0.72, 0.95, 1.0, 0.58))
-	# Distant floating silhouettes establish the new world without competing
-	# with the interactive arena.
-	for island in 7:
-		var px := viewport_size.x * (0.06 + float(island) * 0.15)
-		var py := viewport_size.y * (0.18 + 0.09 * float(island % 3))
-		var width := 42.0 + float(island % 3) * 15.0
-		draw_circle(Vector2(px, py), width, Color(0.10, 0.15, 0.33, 0.55))
-		var rock := PackedVector2Array([
-			Vector2(px - width * 0.72, py), Vector2(px + width * 0.72, py),
-			Vector2(px + width * 0.28, py + width * 1.25), Vector2(px, py + width * 1.65),
-			Vector2(px - width * 0.25, py + width * 1.10)
-		])
-		draw_colored_polygon(rock, Color(0.08, 0.11, 0.25, 0.50))
-
-func draw_battle_gate_arena() -> void:
-	var shadow := board_rect.grow(14.0)
-	draw_style_box(make_box(Color(0.015, 0.025, 0.075, 0.62), 28.0), Rect2(shadow.position + Vector2(0.0, 18.0), shadow.size))
-	draw_style_box(make_box(Color("172447"), 28.0), board_rect.grow(10.0))
-	draw_style_box(make_box(Color("52617b"), 23.0), board_rect.grow(3.0))
-	draw_style_box(make_box(Color("26334f"), 18.0), board_rect)
-	var inner := board_rect.grow(-maxf(18.0, board_rect.size.y * 0.045))
-	draw_style_box(make_box(Color("303c58"), 12.0), inner)
-	# Large stone slabs and faint energy seams make the arena readable at phone size.
-	var tile_color := Color(0.55, 0.69, 0.84, 0.12)
-	for col in range(1, 8):
-		var x := inner.position.x + inner.size.x * float(col) / 8.0
-		draw_line(Vector2(x, inner.position.y), Vector2(x, inner.end.y), tile_color, 1.5, true)
-	for row in range(1, 5):
-		var y := inner.position.y + inner.size.y * float(row) / 5.0
-		draw_line(Vector2(inner.position.x, y), Vector2(inner.end.x, y), tile_color, 1.5, true)
-	var center := board_rect.get_center()
-	var rune_radius := board_rect.size.y * 0.13
-	draw_circle(center, rune_radius * 1.15, Color(0.15, 0.70, 1.0, 0.06))
-	draw_arc(center, rune_radius, 0.0, TAU, 64, Color(0.35, 0.82, 1.0, 0.30), 3.0, true)
-	draw_arc(center, rune_radius * 0.55, 0.0, TAU, 48, Color(0.53, 0.42, 1.0, 0.28), 2.0, true)
-	var diamond := PackedVector2Array([
-		center + Vector2(0.0, -rune_radius * 0.62), center + Vector2(rune_radius * 0.46, 0.0),
-		center + Vector2(0.0, rune_radius * 0.62), center + Vector2(-rune_radius * 0.46, 0.0)
-	])
-	draw_colored_polygon(diamond, Color(0.24, 0.68, 1.0, 0.12))
-	draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color(0.48, 0.88, 1.0, 0.35), 2.0, true)
-
-func portal_glyph(hole: int) -> String:
-	return ["↟", "◎", "✦", "ϟ", "❄", "▲"][hole]
-
-func draw_battle_portals() -> void:
-	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
-	for hole in 6:
-		var center := board_to_screen(SCORING_HOLE_CENTERS[hole])
-		var color: Color = PORTAL_COLORS[hole]
-		var radius := maxf(17.0, GAME_BALL_VISUAL_RADIUS * board_scale * 1.30)
-		draw_circle(center, radius * (1.62 + pulse * 0.08), Color(color.r, color.g, color.b, 0.10))
-		draw_circle(center, radius * 1.30, Color("11172e"))
-		draw_circle(center, radius * 1.08, color.darkened(0.62))
-		draw_arc(center, radius * (1.05 + pulse * 0.04), 0.0, TAU, 48, color, maxf(3.0, radius * 0.17), true)
-		draw_arc(center, radius * 0.70, -float(Time.get_ticks_msec()) * 0.0015, TAU - float(Time.get_ticks_msec()) * 0.0015, 36, color.lightened(0.28), 2.0, true)
-		var glyph_size := maxi(16, int(radius * 0.88))
-		draw_string(ui_font, center + Vector2(-radius * 0.62, glyph_size * 0.34), portal_glyph(hole), HORIZONTAL_ALIGNMENT_CENTER, radius * 1.24, glyph_size, Color.WHITE)
-
-func draw_portal_capture_effect(effect: Dictionary) -> void:
-	var hole := int(effect.hole)
-	var center := board_to_screen(SCORING_HOLE_CENTERS[hole])
-	var duration := portal_effect_duration(hole)
-	var progress := clampf(float(effect.elapsed) / duration, 0.0, 1.0)
-	var eased := smooth_step(progress)
-	var radius := GAME_BALL_VISUAL_RADIUS * board_scale * (1.0 - eased * 0.66)
-	var orbit := Vector2(cos(progress * TAU * 2.4), sin(progress * TAU * 2.4)) * radius * (1.8 - eased)
-	draw_energy_core(center + orbit, maxf(3.0, radius), int(effect.team), int(effect.piece), 1.0 - eased * 0.75)
-	var color: Color = PORTAL_COLORS[hole]
-	draw_arc(center, maxf(8.0, radius * 2.2), progress * TAU, progress * TAU + PI * 1.55, 28, Color(color.r, color.g, color.b, 0.82 * (1.0 - eased)), maxf(2.0, radius * 0.16), true)
-
-func portal_effect_duration(hole: int) -> float:
-	match hole:
-		RUBBER_TRAP_HOLE:
-			return RUBBER_EFFECT_DURATION
-		PRESS_TRAP_HOLE:
-			return PRESS_EFFECT_DURATION
-		ICE_TRAP_HOLE:
-			return ICE_EFFECT_DURATION
-		FIRE_TRAP_HOLE:
-			return FIRE_EFFECT_DURATION
-		ELECTRIC_TRAP_HOLE:
-			return ELECTRIC_EFFECT_DURATION
-		HAMMER_TRAP_HOLE:
-			return HAMMER_EFFECT_DURATION
-	return EFFECT_DURATION
 
 func draw_water_floaters(viewport_size: Vector2) -> void:
 	for floater in water_floaters:
@@ -2256,9 +2136,7 @@ func draw_match_player_card(rect: Rect2, team: int) -> void:
 		var badge_rect := Rect2(rect.position.x + rect.size.x - 92.0, rect.position.y - 10.0, 88.0, 22.0)
 		draw_style_box(make_box(Color("12a96b") if is_local_player_team(team) else Color("7256d8"), 10.0), badge_rect)
 		draw_string(ui_font, badge_rect.position + Vector2(0.0, 16.0), badge, HORIZONTAL_ALIGNMENT_CENTER, badge_rect.size.x, 11, Color.WHITE)
-	if BATTLE_GATES_VISUALS:
-		draw_energy_core(rect.position + Vector2(31.0, 29.0), 18.0, team, team, 1.0)
-	elif team_piece_textures.size() > team and team_piece_textures[team] != null:
+	if team_piece_textures.size() > team and team_piece_textures[team] != null:
 		draw_texture_rect(team_piece_textures[team], Rect2(rect.position + Vector2(7.0, 5.0), Vector2(48.0, 48.0)), false)
 	var animal_index := player_animal if team == 0 else ai_animal
 	var team_rating := player_rating if team == 0 else ai_opponent_rating()
@@ -3105,9 +2983,6 @@ func rubber_hand_pose(value: float) -> int:
 	return 4
 
 func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: int, alpha: float) -> void:
-	if BATTLE_GATES_VISUALS:
-		draw_energy_core(position, radius, team, piece, alpha)
-		return
 	if team_piece_textures.size() < 2 or team_piece_textures[team] == null:
 		return
 	var texture := team_piece_textures[team]
@@ -3119,27 +2994,6 @@ func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: i
 		draw_arc(position, radius * 1.16, 0.0, TAU, 36, marker, maxf(2.5, radius * 0.16), true)
 		draw_circle(position + Vector2(radius * 0.72, -radius * 0.72), radius * 0.22, marker)
 		draw_string(ui_font, position + Vector2(radius * 0.56, -radius * 0.58), str(team + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 0.45, maxi(10, int(radius * 0.42)), Color("173249"))
-
-func draw_energy_core(position: Vector2, radius: float, team: int, piece: int, alpha: float) -> void:
-	var base := Color("28baff") if team == 0 else Color("a65cff")
-	var accent := Color("b9f5ff") if team == 0 else Color("f1c5ff")
-	var pulse := (sin(float(Time.get_ticks_msec()) * 0.005 + float(piece) * 0.71) + 1.0) * 0.5
-	draw_circle(position + Vector2(radius * 0.12, radius * 0.22), radius * 1.14, Color(0.0, 0.0, 0.0, 0.34 * alpha))
-	draw_circle(position, radius * (1.28 + pulse * 0.05), Color(base.r, base.g, base.b, (0.10 + pulse * 0.05) * alpha))
-	draw_circle(position, radius * 1.06, Color("10182c"), true, -1.0, true)
-	draw_circle(position, radius * 0.94, base.darkened(0.42), true, -1.0, true)
-	draw_arc(position, radius * 0.91, 0.0, TAU, 40, base, maxf(2.5, radius * 0.16), true)
-	draw_arc(position, radius * 0.66, 0.0, TAU, 36, Color(accent.r, accent.g, accent.b, 0.82 * alpha), maxf(1.5, radius * 0.07), true)
-	# Each core carries a small geometric rune, giving pieces personality without
-	# reusing the former animal portraits or swim-ring silhouettes.
-	var rotation := float(piece % 5) * 0.31
-	var rune := PackedVector2Array()
-	var points := 4 + piece % 3
-	for i in points:
-		var angle := rotation + TAU * float(i) / float(points) - PI * 0.5
-		rune.append(position + Vector2(cos(angle), sin(angle)) * radius * (0.31 if i % 2 == 0 else 0.42))
-	draw_colored_polygon(rune, Color(accent.r, accent.g, accent.b, 0.88 * alpha))
-	draw_circle(position - Vector2(radius * 0.28, radius * 0.31), radius * 0.12, Color(1.0, 1.0, 1.0, 0.50 * alpha))
 
 func rebuild_team_piece_textures() -> void:
 	team_piece_textures.clear()
