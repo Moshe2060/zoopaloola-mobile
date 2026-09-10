@@ -5385,22 +5385,22 @@ func update_auth_inputs() -> void:
 	if should_show:
 		var viewport_size := get_viewport_rect().size
 		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-		auth_email_input.position = Vector2(430.0, 278.0) * unit
-		auth_email_input.size = Vector2(420.0, 58.0) * unit
-		auth_password_input.position = Vector2(430.0, 355.0) * unit
-		auth_password_input.size = Vector2(420.0, 58.0) * unit
+		auth_email_input.position = Vector2(730.0, 278.0) * unit
+		auth_email_input.size = Vector2(430.0, 58.0) * unit
+		auth_password_input.position = Vector2(730.0, 355.0) * unit
+		auth_password_input.size = Vector2(430.0, 58.0) * unit
 
 func auth_choice_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(430.0, 230.0 + float(index) * 78.0) * unit, Vector2(420.0, 62.0) * unit)
+	return Rect2(Vector2(730.0, 218.0 + float(index) * 82.0) * unit, Vector2(430.0, 66.0) * unit)
 
 func auth_submit_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(430.0, 445.0) * unit, Vector2(420.0, 64.0) * unit)
+	return Rect2(Vector2(730.0, 455.0) * unit, Vector2(430.0, 66.0) * unit)
 
 func auth_cancel_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(500.0, 530.0) * unit, Vector2(280.0, 52.0) * unit)
+	return Rect2(Vector2(805.0, 542.0) * unit, Vector2(280.0, 52.0) * unit)
 
 func chat_panel(viewport_size: Vector2) -> Rect2:
 	return Rect2((viewport_size - Vector2(650.0, 390.0)) * 0.5, Vector2(650.0, 390.0))
@@ -6249,38 +6249,26 @@ func draw_splash_screen(viewport_size: Vector2) -> void:
 	draw_string(ui_font, Vector2(0.0, loading_rect.position.y - 12.0 * unit), "LOADING THE ISLAND...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(13.0 * unit), Color.WHITE)
 
 func draw_frontend(viewport_size: Vector2) -> void:
+	# One coherent visual shell across every menu replaces the collection of
+	# unrelated legacy backgrounds.
+	draw_menu_background(viewport_size)
+	draw_modern_home_backdrop(viewport_size, {"header_h":0.0})
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.004, 0.016, 0.045, 0.38))
 	if app_screen == APP_AUTH:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_auth_screen(viewport_size)
 	elif app_screen == APP_HOME:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
-		else:
-			draw_menu_background(viewport_size)
 		draw_home_screen(viewport_size)
 	elif app_screen == APP_PROFILE:
-		draw_menu_background(viewport_size)
 		draw_profile_screen(viewport_size)
 	elif app_screen == APP_SHOP:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_shop_screen(viewport_size)
 	elif app_screen == APP_ARENA:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_arena_screen(viewport_size)
 	elif app_screen == APP_PLAYER_PROFILE:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_player_profile_screen(viewport_size)
 	elif app_screen == APP_FRIEND:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_friend_screen(viewport_size)
 	elif app_screen == APP_REWARDS:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_rewards_screen(viewport_size)
 	draw_pending_invite_banner(viewport_size)
 	if menu_notice_time > 0.0:
@@ -6290,34 +6278,62 @@ func draw_frontend(viewport_size: Vector2) -> void:
 
 func draw_auth_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.70))
-	var panel := Rect2(Vector2(350.0, 72.0) * unit, Vector2(580.0, 580.0) * unit)
-	draw_style_box(make_box(Color(0.025, 0.09, 0.16, 0.97), 30.0 * unit), panel)
-	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 70.0 * unit), "ברוכים הבאים ל־ZOOPALOOLA" if ui_language == "he" else "WELCOME TO ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(30.0 * unit), Color("ffd83d"))
-	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 110.0 * unit), ("בחרו איך להיכנס למשחק" if auth_email_mode.is_empty() else ("הרשמה חדשה" if auth_email_mode == "register" else "כניסה עם מייל")) if ui_language == "he" else ("CHOOSE HOW TO SIGN IN" if auth_email_mode.is_empty() else ("CREATE ACCOUNT" if auth_email_mode == "register" else "EMAIL SIGN IN")), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(20.0 * unit), Color.WHITE)
+	draw_modern_home_backdrop(viewport_size, {"header_h":0.0})
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.004, 0.015, 0.045, 0.56))
+	# The entrance is now a real split screen: game identity on the left,
+	# immediate account actions on the right.
+	var visual_panel := Rect2(Vector2(32.0, 32.0) * unit, Vector2(610.0, 656.0) * unit)
+	var action_panel := Rect2(Vector2(682.0, 50.0) * unit, Vector2(548.0, 620.0) * unit)
+	draw_style_box(make_box(Color(0.025, 0.11, 0.20, 0.54), 36.0 * unit), visual_panel)
+	draw_rect(visual_panel, Color(0.28, 0.84, 1.0, 0.22), false, 2.0 * unit, true)
+	var portal_center := visual_panel.position + Vector2(visual_panel.size.x * 0.50, visual_panel.size.y * 0.43)
+	for ring in range(6, 0, -1):
+		var radius := (72.0 + float(ring) * 25.0 + sin(menu_elapsed * 1.8 + float(ring)) * 5.0) * unit
+		var ring_color := Color(0.25, 0.82, 1.0, 0.025 * float(7 - ring))
+		draw_circle(portal_center, radius, ring_color, false, maxf(2.0, 5.0 * unit), true)
+	draw_circle(portal_center, 90.0 * unit, Color(0.10, 0.38, 0.72, 0.42))
+	draw_circle(portal_center, 66.0 * unit, Color(0.35, 0.90, 1.0, 0.16))
+	draw_string(ui_font, visual_panel.position + Vector2(0.0, 78.0) * unit, "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, visual_panel.size.x, int(44.0 * unit), Color("fff1a6"))
+	draw_string(ui_font, visual_panel.position + Vector2(0.0, 116.0) * unit, "MODERN EDITION", HORIZONTAL_ALIGNMENT_CENTER, visual_panel.size.x, int(16.0 * unit), Color("63e5ff"))
+	var hero_preview: Texture2D = null
+	if player_animal < lifebuoy_hero_textures.size() and player_ring_color < lifebuoy_hero_textures[player_animal].size():
+		hero_preview = lifebuoy_hero_textures[player_animal][player_ring_color] as Texture2D
+	if hero_preview != null:
+		var hero_size := Vector2(270.0, 350.0) * unit
+		draw_texture_rect(hero_preview, Rect2(portal_center + Vector2(0.0, 18.0 * unit) - hero_size * 0.5, hero_size), false)
+	var feature_labels := ["קרבות מהירים", "זירות מתחלפות", "משחק עם חברים"] if ui_language == "he" else ["FAST BATTLES", "DYNAMIC ARENAS", "PLAY WITH FRIENDS"]
+	for i in 3:
+		var chip := Rect2(visual_panel.position + Vector2(38.0 + float(i) * 184.0, 580.0) * unit, Vector2(168.0, 44.0) * unit)
+		draw_style_box(make_box(Color(0.02, 0.08, 0.16, 0.86), 15.0 * unit), chip)
+		draw_circle(chip.position + Vector2(19.0, 22.0) * unit, 5.0 * unit, [Color("5cf0b5"), Color("a57cff"), Color("52d8ff")][i])
+		draw_string(ui_font, chip.position + Vector2(31.0, 28.0) * unit, feature_labels[i], HORIZONTAL_ALIGNMENT_CENTER, chip.size.x - 38.0 * unit, int(10.0 * unit), Color.WHITE)
+	draw_style_box(make_box(Color(0.008, 0.028, 0.068, 0.94), 34.0 * unit), action_panel)
+	draw_rect(action_panel, Color(0.38, 0.55, 1.0, 0.28), false, 2.0 * unit, true)
+	draw_string(ui_font, action_panel.position + Vector2(0.0, 72.0) * unit, "היכנסו לזירה" if ui_language == "he" else "ENTER THE ARENA", HORIZONTAL_ALIGNMENT_CENTER, action_panel.size.x, int(30.0 * unit), Color.WHITE)
+	draw_string(ui_font, action_panel.position + Vector2(0.0, 108.0) * unit, ("בחרו דרך כניסה" if auth_email_mode.is_empty() else ("יצירת חשבון חדש" if auth_email_mode == "register" else "כניסה לחשבון")) if ui_language == "he" else ("CHOOSE A SIGN-IN METHOD" if auth_email_mode.is_empty() else ("CREATE YOUR ACCOUNT" if auth_email_mode == "register" else "SIGN IN TO YOUR ACCOUNT")), HORIZONTAL_ALIGNMENT_CENTER, action_panel.size.x, int(16.0 * unit), Color("9fd9ef"))
 	if session_restore_pending and auth_email_mode.is_empty():
-		draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 300.0 * unit), ui_text("restoring_session"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(22.0 * unit), Color("9fd9ef"))
+		draw_string(ui_font, action_panel.position + Vector2(0.0, 310.0 * unit), ui_text("restoring_session"), HORIZONTAL_ALIGNMENT_CENTER, action_panel.size.x, int(22.0 * unit), Color("9fd9ef"))
 	elif auth_email_mode.is_empty():
 		var labels := ["כניסה עם Gmail", "כניסה עם מייל", "כניסה כאורח", "הרשמה"] if ui_language == "he" else ["CONTINUE WITH GOOGLE", "SIGN IN WITH EMAIL", "CONTINUE AS GUEST", "REGISTER"]
-		var colors := [Color("4285f4"), Color("2f9ed1"), Color("35bd78"), Color("ff9f2e")]
+		var colors := [Color("5a8cff"), Color("37b7e7"), Color("31cf91"), Color("b278ff")]
 		var icons := ["G", "@", "☺", "+"]
 		for i in 4:
 			var rect := auth_choice_rect(i, viewport_size)
-			draw_style_box(make_box(colors[i], 16.0 * unit), rect)
-			draw_circle(rect.position + Vector2(37.0, 31.0) * unit, 21.0 * unit, Color(1, 1, 1, 0.22))
-			draw_string(ui_font, rect.position + Vector2(16.0, 40.0) * unit, icons[i], HORIZONTAL_ALIGNMENT_CENTER, 42.0 * unit, int(22.0 * unit), Color.WHITE)
-			draw_string(ui_font, rect.position + Vector2(58.0, 40.0) * unit, labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 78.0 * unit, int(22.0 * unit), Color.WHITE)
+			draw_glass_card(rect, colors[i], unit, false)
+			draw_circle(rect.position + Vector2(38.0, 33.0) * unit, 22.0 * unit, Color(colors[i].r, colors[i].g, colors[i].b, 0.32))
+			draw_string(ui_font, rect.position + Vector2(17.0, 42.0) * unit, icons[i], HORIZONTAL_ALIGNMENT_CENTER, 42.0 * unit, int(22.0 * unit), Color.WHITE)
+			draw_string(ui_font, rect.position + Vector2(66.0, 42.0) * unit, labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 88.0 * unit, int(19.0 * unit), Color.WHITE)
 	else:
-		draw_string(ui_font, Vector2(panel.position.x, 248.0 * unit), "כתובת מייל" if ui_language == "he" else "EMAIL ADDRESS", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(15.0 * unit), Color("9fd9ef"))
-		draw_string(ui_font, Vector2(panel.position.x, 326.0 * unit), "סיסמה" if ui_language == "he" else "PASSWORD", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(15.0 * unit), Color("9fd9ef"))
+		draw_string(ui_font, Vector2(730.0, 262.0) * unit, "כתובת מייל" if ui_language == "he" else "EMAIL ADDRESS", HORIZONTAL_ALIGNMENT_CENTER, 430.0 * unit, int(14.0 * unit), Color("9fd9ef"))
+		draw_string(ui_font, Vector2(730.0, 339.0) * unit, "סיסמה" if ui_language == "he" else "PASSWORD", HORIZONTAL_ALIGNMENT_CENTER, 430.0 * unit, int(14.0 * unit), Color("9fd9ef"))
 		var submit := auth_submit_rect(viewport_size)
-		draw_style_box(make_box(Color("35bd78"), 17.0 * unit), submit)
+		draw_style_box(make_box(Color("31cf91"), 18.0 * unit), submit)
 		draw_string(ui_font, submit.position + Vector2(0.0, 41.0) * unit, ("יצירת חשבון" if auth_email_mode == "register" else "כניסה") if ui_language == "he" else ("CREATE ACCOUNT" if auth_email_mode == "register" else "SIGN IN"), HORIZONTAL_ALIGNMENT_CENTER, submit.size.x, int(23.0 * unit), Color.WHITE)
 		var cancel := auth_cancel_rect(viewport_size)
 		draw_style_box(make_box(Color("203a59"), 14.0 * unit), cancel)
 		draw_string(ui_font, cancel.position + Vector2(0.0, 34.0) * unit, "חזרה לאפשרויות" if ui_language == "he" else "BACK TO OPTIONS", HORIZONTAL_ALIGNMENT_CENTER, cancel.size.x, int(18.0 * unit), Color.WHITE)
 	var status_color := Color("7ee4ae") if not ("שגיא" in firebase_status or "ERROR" in firebase_status) else Color("ff7777")
-	draw_string(ui_font, Vector2(panel.position.x + 20.0 * unit, panel.end.y - 25.0 * unit), firebase_status, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 40.0 * unit, int(15.0 * unit), status_color)
+	draw_string(ui_font, action_panel.position + Vector2(20.0, action_panel.size.y - 24.0) * unit, firebase_status, HORIZONTAL_ALIGNMENT_CENTER, action_panel.size.x - 40.0 * unit, int(14.0 * unit), status_color)
 
 func draw_friend_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -6656,21 +6672,22 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 		var card := arena_card_rect(i, viewport_size)
 		var selected := i == selected_arena
 		var pulse := sin(menu_elapsed * 4.2 + float(i) * 0.8) * 3.0 if selected else 0.0
-		var border := Color("ffe25d") if selected else Color(0.02, 0.07, 0.12, 0.92)
-		draw_style_box(make_box(border, 25.0 * unit), card.grow((8.0 + pulse if selected else 5.0) * unit))
-		draw_style_box(make_box(Color("f8f2cf"), 22.0 * unit), card)
+		var border := Color("ffe25d") if selected else card_colors[i]
+		draw_style_box(make_box(Color(border.r, border.g, border.b, 0.16), 27.0 * unit), card.grow((8.0 + pulse if selected else 5.0) * unit))
+		draw_style_box(make_box(Color(0.018, 0.052, 0.11, 0.95), 22.0 * unit), card)
+		draw_rect(card, Color(border.r, border.g, border.b, 0.55), false, (3.0 if selected else 1.5) * unit, true)
 		if selected:
 			draw_style_box(make_box(Color("ffe25d", 0.18 + sin(menu_elapsed * 5.0) * 0.08), 24.0 * unit), card.grow(10.0 * unit))
 		var preview := Rect2(card.position + Vector2(15.0, 15.0) * unit, Vector2(card.size.x - 30.0 * unit, 205.0 * unit))
 		draw_style_box(make_box(card_colors[i], 17.0 * unit), preview.grow(3.0 * unit))
 		draw_arena_preview(preview, i, unit)
 		var title_rect := Rect2(card.position + Vector2(15.0, 232.0) * unit, Vector2(card.size.x - 30.0 * unit, 54.0 * unit))
-		draw_style_box(make_box(Color("314f22"), 13.0 * unit), title_rect)
+		draw_style_box(make_box(Color(card_colors[i].r, card_colors[i].g, card_colors[i].b, 0.32), 13.0 * unit), title_rect)
 		draw_string(ui_font, title_rect.position + Vector2(0.0, 36.0) * unit, names[i], HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, int(21.0 * unit), Color.WHITE)
 		var entry_text := ui_text("entry_free") if entries[i] == 0 else ui_text("entry") + str(entries[i]) + ui_text("coins")
-		draw_string(ui_font, card.position + Vector2(22.0, 325.0) * unit, entry_text, HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(15.0 * unit), Color("354522"))
-		draw_string(ui_font, card.position + Vector2(22.0, 363.0) * unit, ui_text("prize") + str(prizes[i]) + ui_text("coins"), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(17.0 * unit), Color("a66013"))
-		draw_string(ui_font, card.position + Vector2(22.0, 392.0) * unit, ui_text("arena_board_fixed") + ": " + board_theme_name(arena_board_theme_for_level(i)), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(13.0 * unit), Color("2982a6"))
+		draw_string(ui_font, card.position + Vector2(22.0, 325.0) * unit, entry_text, HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(15.0 * unit), Color("c8e8f5"))
+		draw_string(ui_font, card.position + Vector2(22.0, 363.0) * unit, ui_text("prize") + str(prizes[i]) + ui_text("coins"), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(17.0 * unit), Color("ffe25d"))
+		draw_string(ui_font, card.position + Vector2(22.0, 392.0) * unit, ui_text("arena_board_fixed") + ": " + board_theme_name(arena_board_theme_for_level(i)), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(13.0 * unit), Color("62dff5"))
 		if selected:
 			draw_string(ui_font, card.position + Vector2(0.0, 408.0) * unit, ui_text("selected"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(15.0 * unit), Color("16845b"))
 	var play := arena_play_rect(viewport_size)
@@ -7162,10 +7179,13 @@ func draw_home_leaderboard(panel: Rect2) -> void:
 
 func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: String) -> void:
 	var back := frontend_back_rect(viewport_size)
-	draw_style_box(make_box(Color("1b314a"), 14.0), back)
-	draw_string(ui_font, back.position + Vector2(0.0, 31.0), ui_text("back"), HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 16, Color.WHITE)
-	draw_string(ui_font, Vector2(0.0, 52.0), title, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 30, Color("f6d365"))
-	draw_string(ui_font, Vector2(0.0, 78.0), subtitle, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 14, Color(0.78, 0.91, 0.98))
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, 94.0 * unit), Color(0.005, 0.022, 0.058, 0.90))
+	draw_rect(Rect2(0.0, 92.0 * unit, viewport_size.x, 2.0 * unit), Color("46dcff", 0.60))
+	draw_glass_card(back, Color("59dfff"), unit, false)
+	draw_string(ui_font, back.position + Vector2(0.0, 31.0), "‹  " + ui_text("back"), HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 15, Color.WHITE)
+	draw_string(ui_font, Vector2(170.0 * unit, 45.0 * unit), title, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 340.0 * unit, int(27.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(170.0 * unit, 72.0 * unit), subtitle, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 340.0 * unit, int(13.0 * unit), Color("79dff4"))
 
 func draw_profile_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
