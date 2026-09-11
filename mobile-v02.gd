@@ -830,13 +830,13 @@ func _ready() -> void:
 	for animal_file in ANIMAL_FILES:
 		animal_textures.append(load("res://assets/animal_pieces/%s.png" % animal_file))
 		animal_ring_masks.append(load("res://assets/animal_pieces/%s-ring-mask.png" % animal_file))
-	for portrait_file in ["elephant-v1.png", "zebra-v1.png", "monkey-v1.png", "hippo-v1.png", "rhino-v1.png", "giraffe-v1.png", "tiger-v1.png"]:
-		character_portrait_textures.append(load("res://assets/ui/character_portraits/" + portrait_file))
 		full_body_animal_textures.append(load("res://assets/ui/full_body/%s.webp" % animal_file))
 		var hero_colors: Array[Texture2D] = []
 		for ring_name in RING_COLOR_NAMES:
 			hero_colors.append(load("res://assets/ui/full_body/lifebuoy/%s-%s.png" % [animal_file, ring_name.to_lower()]) as Texture2D)
 		lifebuoy_hero_textures.append(hero_colors)
+	for portrait_file in ["elephant-v1.png", "zebra-v1.png", "monkey-v1.png", "hippo-v1.png", "rhino-v1.png", "giraffe-v1.png", "tiger-v1.png"]:
+		character_portrait_textures.append(load("res://assets/ui/character_portraits/" + portrait_file))
 	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
