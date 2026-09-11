@@ -7215,7 +7215,7 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		if player_animal < character_ship_light_masks.size():
 			var light_mask: Texture2D = character_ship_light_masks[player_animal]
 			if light_mask != null:
-				var energy_color := RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)].lightened(0.12)
+				var energy_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)].lightened(0.12)
 				draw_texture_rect(light_mask, hero_rect, false, energy_color)
 	draw_string(ui_font, Vector2(70.0, 635.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(23.0 * unit), Color.WHITE)
 
