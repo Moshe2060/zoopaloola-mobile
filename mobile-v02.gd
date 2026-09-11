@@ -248,6 +248,7 @@ var wood_podium_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var character_portrait_textures: Array[Texture2D] = []
+var hero_saucer_texture: Texture2D
 var full_body_animal_textures: Array[Texture2D] = []
 var lifebuoy_hero_textures: Array = []
 var animal_ring_masks: Array[Texture2D] = []
@@ -820,6 +821,7 @@ func _ready() -> void:
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
 	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
+	hero_saucer_texture = load("res://assets/ui/ships/hero-saucer-base-v1.png") as Texture2D
 	if board_texture == null:
 		push_error("Clean original board could not be loaded.")
 	for theme_index in board_theme_textures.size():
@@ -7197,19 +7199,23 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	draw_string(ui_font, board.position + Vector2(0.0, 132.0) * unit, ui_text("choose_animal"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(21.0 * unit), Color.WHITE)
 	draw_line(board.position + Vector2(36.0, 145.0) * unit, board.position + Vector2(board.size.x - 36.0 * unit, 145.0 * unit), Color("32bfff", 0.62), 2.0 * unit, true)
 
-	var podium_center := Vector2(250.0, 555.0) * unit
-	draw_wood_podium(podium_center, unit * 0.84, false)
-	var hero_size := Vector2(330.0, 430.0) * unit
-	var ground_offset: float = hero_size.y * float(HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)])
-	var hero_center := Vector2(250.0, 365.0) * unit + Vector2(0.0, ground_offset + sin(menu_elapsed * 1.4) * 0.7 * unit)
-	var hero_texture: Texture2D = null
-	if player_animal < lifebuoy_hero_textures.size():
-		var colors: Array = lifebuoy_hero_textures[player_animal]
-		if player_ring_color < colors.size():
-			hero_texture = colors[player_ring_color] as Texture2D
-	if hero_texture != null:
-		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
-	draw_string(ui_font, Vector2(70.0, 628.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(23.0 * unit), Color.WHITE)
+	# The selected animal is now a pilot.  Keeping the pilot and vehicle as
+	# separate layers lets every animal use every ship color cleanly.
+	var hover: float = sin(menu_elapsed * 1.7) * 5.0 * unit
+	var saucer_center := Vector2(250.0, 450.0) * unit + Vector2(0.0, hover)
+	var pilot: Texture2D = character_portrait_textures[player_animal] if player_animal < character_portrait_textures.size() else animal_textures[player_animal]
+	draw_circle(saucer_center + Vector2(0.0, 96.0) * unit, 125.0 * unit, Color(0.10, 0.77, 1.0, 0.12))
+	if pilot != null:
+		var pilot_size := Vector2(235.0, 235.0) * unit
+		var pilot_center := saucer_center + Vector2(0.0, -105.0) * unit
+		draw_texture_rect(pilot, Rect2(pilot_center - pilot_size * 0.5, pilot_size), false)
+	if hero_saucer_texture != null:
+		var saucer_size := Vector2(430.0, 322.5) * unit
+		draw_texture_rect(hero_saucer_texture, Rect2(saucer_center - saucer_size * 0.5, saucer_size), false)
+	# Accent light changes with the selected vehicle color while the premium
+	# navy-and-gold hull stays consistent across the collection.
+	draw_arc(saucer_center + Vector2(0.0, 13.0) * unit, 136.0 * unit, 0.16, PI - 0.16, 36, RING_COLORS[player_ring_color].lightened(0.28), 6.0 * unit, true)
+	draw_string(ui_font, Vector2(70.0, 635.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(23.0 * unit), Color.WHITE)
 
 	for i in ANIMAL_NAMES.size():
 		var card := character_card_rect(i, viewport_size)
@@ -7224,21 +7230,28 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		if selected:
 			draw_colored_polygon(PackedVector2Array([center + Vector2(0.0, -58.0) * unit, center + Vector2(9.0, -47.0) * unit, center + Vector2(0.0, -38.0) * unit, center + Vector2(-9.0, -47.0) * unit]), Color("58dcff"))
 
-	draw_string(ui_font, board.position + Vector2(0.0, 320.0) * unit, ui_text("choose_ring"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(21.0 * unit), Color.WHITE)
+	draw_string(ui_font, board.position + Vector2(0.0, 320.0) * unit, "בחרו חללית" if ui_language == "he" else "CHOOSE A HOVERCRAFT", HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(21.0 * unit), Color.WHITE)
 	draw_line(board.position + Vector2(36.0, 333.0) * unit, board.position + Vector2(board.size.x - 36.0 * unit, 333.0 * unit), Color("32bfff", 0.62), 2.0 * unit, true)
 	for i in RING_COLOR_NAMES.size():
 		var ring_button := character_ring_rect(i, viewport_size)
 		var selected := i == player_ring_color
 		var center := ring_button.get_center()
-		draw_circle(center + Vector2(0.0, 4.0) * unit, 48.0 * unit, Color(0.0, 0.0, 0.0, 0.38))
-		draw_circle(center, 48.0 * unit, Color("ffe25d") if selected else Color("335d91"))
-		draw_circle(center, 41.0 * unit, RING_COLORS[i].darkened(0.20))
-		draw_arc(center, 38.0 * unit, 0.0, TAU, 48, RING_COLORS[i].lightened(0.12), 18.0 * unit, true)
-		draw_circle(center, 19.0 * unit, Color("08234b"))
-		for segment in 4:
-			var start_angle := float(segment) * PI * 0.5 - 0.18
-			draw_arc(center, 38.0 * unit, start_angle, start_angle + 0.36, 8, Color("fff4dc"), 18.0 * unit, true)
-		draw_arc(center, 40.0 * unit, -2.55, -0.70, 18, Color(1.0, 1.0, 1.0, 0.48), 4.0 * unit, true)
+		# Compact flying saucer: flattened hull, cockpit, gold ribs and a colored
+		# energy band.  Its touch rectangle stays unchanged.
+		draw_set_transform(center + Vector2(0.0, 7.0) * unit, 0.0, Vector2(1.0, 0.52))
+		draw_circle(Vector2.ZERO, 49.0 * unit, Color(0.0, 0.0, 0.0, 0.42))
+		draw_set_transform(center, 0.0, Vector2(1.0, 0.56))
+		draw_circle(Vector2.ZERO, 49.0 * unit, Color("ffe25d") if selected else Color("8c6728"))
+		draw_circle(Vector2.ZERO, 43.0 * unit, Color("092657"))
+		draw_arc(Vector2.ZERO, 39.0 * unit, 0.0, TAU, 40, RING_COLORS[i].lightened(0.16), 9.0 * unit, true)
+		draw_arc(Vector2.ZERO, 45.0 * unit, 0.55, 1.15, 10, Color("f2b63f"), 7.0 * unit, true)
+		draw_arc(Vector2.ZERO, 45.0 * unit, 2.0, 2.6, 10, Color("f2b63f"), 7.0 * unit, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_circle(center - Vector2(0.0, 7.0) * unit, 19.0 * unit, Color("56dfff"))
+		draw_circle(center - Vector2(0.0, 7.0) * unit, 14.0 * unit, Color("102b62"))
+		draw_arc(center - Vector2(0.0, 7.0) * unit, 17.0 * unit, -2.7, -0.5, 16, Color(1.0, 1.0, 1.0, 0.62), 3.0 * unit, true)
+		var crystal := center + Vector2(0.0, 25.0) * unit
+		draw_colored_polygon(PackedVector2Array([crystal + Vector2(0.0, -8.0) * unit, crystal + Vector2(6.0, 0.0) * unit, crystal + Vector2(0.0, 8.0) * unit, crystal + Vector2(-6.0, 0.0) * unit]), RING_COLORS[i].lightened(0.28))
 		draw_collection_lock_overlay(ring_button, i, true, unit)
 		if selected:
 			draw_colored_polygon(PackedVector2Array([center + Vector2(0.0, -58.0) * unit, center + Vector2(9.0, -47.0) * unit, center + Vector2(0.0, -38.0) * unit, center + Vector2(-9.0, -47.0) * unit]), Color("58dcff"))
