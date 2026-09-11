@@ -840,7 +840,7 @@ func _ready() -> void:
 		lifebuoy_hero_textures.append(hero_colors)
 	for portrait_file in ["elephant-v1.png", "zebra-v1.png", "monkey-v1.png", "hippo-v1.png", "rhino-v1.png", "giraffe-v1.png", "tiger-v1.png"]:
 		character_portrait_textures.append(load("res://assets/ui/character_portraits/" + portrait_file))
-	for ship_file in ["elephant-pilot-v2.png", "zebra-pilot-v2.png", "monkey-pilot-v2.png", "hippo-pilot-v2.png", "rhino-pilot-v2.png", "giraffe-pilot-v2.png", "tiger-pilot-v2.png"]:
+	for ship_file in ["elephant-pilot-v2.png", "zebra-pilot-v2.png", "monkey-pilot-v3.png", "hippo-pilot-v2.png", "rhino-pilot-v2.png", "giraffe-pilot-v2.png", "tiger-pilot-v2.png"]:
 		character_ship_textures.append(load("res://assets/ui/character_ships/" + ship_file))
 	rebuild_team_piece_textures()
 	for i in 6:
