@@ -12,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: modern-edition-preview
+  group: modern-edition-preview-v2
   cancel-in-progress: true
 
 jobs:
