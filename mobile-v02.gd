@@ -4354,19 +4354,15 @@ func invite_friend_to_play(index: int) -> void:
 
 func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var card_width := minf(158.0, (viewport_size.x / unit - 30.0 - 12.0 * float(ANIMAL_NAMES.size() - 1)) / float(ANIMAL_NAMES.size()))
-	var card_size := Vector2(card_width, 150.0) * unit
-	var gap := 12.0 * unit
-	var total_width := card_size.x * float(ANIMAL_NAMES.size()) + gap * float(ANIMAL_NAMES.size() - 1)
-	var start_x := (viewport_size.x - total_width) * 0.5
-	return Rect2(Vector2(start_x + float(index) * (card_size.x + gap), viewport_size.y - 174.0 * unit), card_size)
+	return Rect2(Vector2(515.0 + float(index) * 98.0, 226.0) * unit, Vector2(88.0, 88.0) * unit)
 
 func character_ring_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var size := Vector2(140.0, 78.0) * unit
-	var column := index % 4
-	var row := index / 4
-	return Rect2(Vector2((590.0 + float(column) * 151.0) * unit, (246.0 + float(row) * 94.0) * unit), size)
+	return Rect2(Vector2(515.0 + float(index) * 98.0, 420.0) * unit, Vector2(88.0, 88.0) * unit)
+
+func character_save_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(615.0, 598.0) * unit, Vector2(520.0, 76.0) * unit)
 
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
@@ -6035,6 +6031,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			app_screen = APP_HOME
 			return
 		if app_screen == APP_PROFILE:
+			if character_save_rect(viewport_size).has_point(screen_pos):
+				save_player_profile()
+				play_sound("ui")
+				show_menu_notice("הבחירה נשמרה" if ui_language == "he" else "SELECTION SAVED")
+				app_screen = APP_HOME
+				queue_redraw()
+				return
 			for i in ANIMAL_NAMES.size():
 				if character_card_rect(i, viewport_size).has_point(screen_pos):
 					try_select_animal(i)
@@ -7170,17 +7173,25 @@ func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: Strin
 
 func draw_profile_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_frontend_header(viewport_size, ui_text("choose_character"), ui_text("choose_character_sub"))
-	# Bright aqua showroom inspired by the sea surrounding the Zoopaloola table.
-	draw_rect(Rect2(0.0, 92.0 * unit, viewport_size.x, viewport_size.y - 92.0 * unit), Color(0.16, 0.72, 0.86, 0.20))
-	var display := Rect2(72.0 * unit, 106.0 * unit, 470.0 * unit, 414.0 * unit)
-	draw_gate_panel(display, Color("58dcff"), unit, 0.56)
-	# A small wooden winner podium grounds the full-body hero.
-	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.83)
-	draw_wood_podium(podium_center, unit * 0.72, false)
-	var hero_size := Vector2(270.0, 350.0) * unit
+	# The character screen deliberately follows the approved concept one-for-one:
+	# hero on the left, two seven-item circular pickers on the right, save below.
+	var back := frontend_back_rect(viewport_size)
+	draw_style_box(make_box(Color("07152f"), 15.0 * unit), back.grow(5.0 * unit))
+	draw_style_box(make_box(Color("173d72"), 13.0 * unit), back)
+	draw_string(ui_font, back.position + Vector2(0.0, 32.0) * unit, "‹  " + ui_text("back"), HORIZONTAL_ALIGNMENT_CENTER, back.size.x, int(17.0 * unit), Color.WHITE)
+
+	var board := Rect2(Vector2(455.0, 92.0) * unit, Vector2(790.0, 500.0) * unit)
+	draw_gate_panel(board, Color("58dcff"), unit, 0.82)
+	draw_string(ui_font, board.position + Vector2(0.0, 58.0) * unit, ui_text("choose_character"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(32.0 * unit), Color.WHITE)
+	draw_string(ui_font, board.position + Vector2(0.0, 88.0) * unit, ui_text("choose_character_sub"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(14.0 * unit), Color("8cecff"))
+	draw_string(ui_font, board.position + Vector2(0.0, 132.0) * unit, ui_text("choose_animal"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(21.0 * unit), Color.WHITE)
+	draw_line(board.position + Vector2(36.0, 145.0) * unit, board.position + Vector2(board.size.x - 36.0 * unit, 145.0 * unit), Color("32bfff", 0.62), 2.0 * unit, true)
+
+	var podium_center := Vector2(250.0, 555.0) * unit
+	draw_wood_podium(podium_center, unit * 0.84, false)
+	var hero_size := Vector2(330.0, 430.0) * unit
 	var ground_offset: float = hero_size.y * float(HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)])
-	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.405 + 10.0 * unit + ground_offset + sin(menu_elapsed * 1.4) * 0.45 * unit)
+	var hero_center := Vector2(250.0, 365.0) * unit + Vector2(0.0, ground_offset + sin(menu_elapsed * 1.4) * 0.7 * unit)
 	var hero_texture: Texture2D = null
 	if player_animal < lifebuoy_hero_textures.size():
 		var colors: Array = lifebuoy_hero_textures[player_animal]
@@ -7188,44 +7199,41 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 			hero_texture = colors[player_ring_color] as Texture2D
 	if hero_texture != null:
 		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
-	draw_string(ui_font, display.position + Vector2(0.0, display.size.y - 18.0 * unit), ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, display.size.x, int(22.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(70.0, 628.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(23.0 * unit), Color.WHITE)
 
-	var info := Rect2(570.0 * unit, 118.0 * unit, 638.0 * unit, 326.0 * unit)
-	draw_gate_panel(info, Color("a868ff"), unit, 0.62)
-	draw_string(ui_font, info.position + Vector2(0.0, 47.0) * unit, ui_text("choose_ring"), HORIZONTAL_ALIGNMENT_CENTER, info.size.x, int(24.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, info.position + Vector2(0.0, 76.0) * unit, ui_text("choose_ring_sub"), HORIZONTAL_ALIGNMENT_CENTER, info.size.x, int(12.0 * unit), Color("d7f6ff"))
-	for i in RING_COLOR_NAMES.size():
-		var ring_button := character_ring_rect(i, viewport_size)
-		var ring_selected := i == player_ring_color
-		draw_style_box(make_box(Color("ffe25d") if ring_selected else Color("173a56"), 17.0 * unit), ring_button.grow((4.0 if ring_selected else 2.0) * unit))
-		draw_style_box(make_box(Color("285b73") if ring_selected else Color("123047"), 14.0 * unit), ring_button)
-		var ring_center := ring_button.position + Vector2(34.0, 39.0) * unit
-		draw_circle(ring_center, 27.0 * unit, RING_COLORS[i])
-		draw_circle(ring_center, 12.0 * unit, Color("14324c"))
-		draw_arc(ring_center, 27.0 * unit, -0.70, 0.15, 10, Color("fff4dc"), 8.0 * unit, true)
-		draw_arc(ring_center, 27.0 * unit, 2.45, 3.30, 10, Color("fff4dc"), 8.0 * unit, true)
-		draw_collection_lock_overlay(ring_button, i, true, unit)
-		draw_string(ui_font, ring_button.position + Vector2(63.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, ring_button.size.x - 69.0 * unit, int(11.0 * unit), Color.WHITE)
-		if i == player_ring_color:
-			draw_circle(ring_button.position + Vector2(ring_button.size.x - 14.0 * unit, 14.0 * unit), 13.0 * unit, Color("ffe25d"))
-			draw_string(ui_font, ring_button.position + Vector2(ring_button.size.x - 27.0 * unit, 20.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 26.0 * unit, int(13.0 * unit), Color("173249"))
-
-	draw_string(ui_font, Vector2(0.0, viewport_size.y - 194.0 * unit), ui_text("choose_animal"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color.WHITE)
 	for i in ANIMAL_NAMES.size():
 		var card := character_card_rect(i, viewport_size)
-		var selected_card := i == player_animal
-		draw_style_box(make_box(Color("ffe25d") if selected_card else Color(0.02, 0.08, 0.14, 0.90), 19.0 * unit), card.grow((5.0 if selected_card else 3.0) * unit))
-		draw_style_box(make_box(Color("35bfc8") if selected_card else Color("244b67"), 16.0 * unit), card)
-		var portrait := full_body_animal_textures[i]
+		var selected := i == player_animal
+		var center := card.get_center()
+		draw_circle(center, 48.0 * unit, Color("ffe25d") if selected else Color("6e8ca7"))
+		draw_circle(center, 42.0 * unit, Color("08234b"))
+		var portrait := animal_textures[i]
 		if portrait != null:
-			var portrait_rect := Rect2(card.position + Vector2(30.0, 2.0) * unit, Vector2(98.0, 116.0) * unit)
-			draw_texture_rect(portrait, portrait_rect, false)
+			draw_texture_rect(portrait, Rect2(center - Vector2(37.0, 37.0) * unit, Vector2(74.0, 74.0) * unit), false)
 		draw_collection_lock_overlay(card, i, false, unit)
-		draw_rect(Rect2(card.position + Vector2(0.0, 114.0) * unit, Vector2(card.size.x, 36.0 * unit)), Color(0.01, 0.05, 0.10, 0.80))
-		draw_string(ui_font, card.position + Vector2(0.0, 139.0) * unit, ui_animal_name(i), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(12.0 * unit), Color.WHITE)
-		if selected_card:
-			draw_circle(card.position + Vector2(card.size.x - 15.0 * unit, 15.0 * unit), 14.0 * unit, Color("ffe25d"))
-			draw_string(ui_font, card.position + Vector2(card.size.x - 29.0 * unit, 21.0 * unit), "✓", HORIZONTAL_ALIGNMENT_CENTER, 28.0 * unit, int(14.0 * unit), Color("173249"))
+		if selected:
+			draw_colored_polygon(PackedVector2Array([center + Vector2(0.0, -58.0) * unit, center + Vector2(9.0, -47.0) * unit, center + Vector2(0.0, -38.0) * unit, center + Vector2(-9.0, -47.0) * unit]), Color("58dcff"))
+
+	draw_string(ui_font, board.position + Vector2(0.0, 320.0) * unit, ui_text("choose_ring"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(21.0 * unit), Color.WHITE)
+	draw_line(board.position + Vector2(36.0, 333.0) * unit, board.position + Vector2(board.size.x - 36.0 * unit, 333.0 * unit), Color("32bfff", 0.62), 2.0 * unit, true)
+	for i in RING_COLOR_NAMES.size():
+		var ring_button := character_ring_rect(i, viewport_size)
+		var selected := i == player_ring_color
+		var center := ring_button.get_center()
+		draw_circle(center, 47.0 * unit, Color("ffe25d") if selected else Color("335d91"))
+		draw_circle(center, 39.0 * unit, RING_COLORS[i])
+		draw_circle(center, 20.0 * unit, Color("08234b"))
+		draw_arc(center, 39.0 * unit, -0.75, 0.08, 12, Color("fff4dc"), 12.0 * unit, true)
+		draw_arc(center, 39.0 * unit, 2.40, 3.22, 12, Color("fff4dc"), 12.0 * unit, true)
+		draw_collection_lock_overlay(ring_button, i, true, unit)
+		if selected:
+			draw_colored_polygon(PackedVector2Array([center + Vector2(0.0, -58.0) * unit, center + Vector2(9.0, -47.0) * unit, center + Vector2(0.0, -38.0) * unit, center + Vector2(-9.0, -47.0) * unit]), Color("58dcff"))
+
+	var save := character_save_rect(viewport_size)
+	draw_style_box(make_box(Color("70420b"), 22.0 * unit), save.grow(7.0 * unit))
+	draw_style_box(make_box(Color("f0a51e"), 18.0 * unit), save)
+	draw_line(save.position + Vector2(28.0, 8.0) * unit, Vector2(save.end.x - 28.0 * unit, save.position.y + 8.0 * unit), Color("fff1a8"), 3.0 * unit, true)
+	draw_string(ui_font, save.position + Vector2(0.0, 50.0) * unit, "שמירת הבחירה" if ui_language == "he" else "SAVE SELECTION", HORIZONTAL_ALIGNMENT_CENTER, save.size.x, int(25.0 * unit), Color.WHITE)
 
 func board_theme_name(index: int) -> String:
 	var keys := ["board_classic", "board_ice", "board_jungle", "board_volcano", "board_candy"]
