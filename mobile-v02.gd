@@ -1,7607 +1,9710 @@
-extends Node2D
-
-const BOARD_W := 207.0
-const BOARD_H := 208.0
-# Physics used a noticeably smaller circle than the visible animal ring, so
-# balls and rails appeared to overlap before a hit was registered.
-const RADIUS := 7.4
-# Keep the approved artwork size unchanged while enlarging only its collision
-# body. This value is the former 6.0 * 1.36 visual radius in board units.
-const GAME_BALL_VISUAL_RADIUS := 8.16
-# Releasing inside this short pull distance cancels aiming. A slightly longer
-# pull becomes a shot, giving touch and mouse players a natural way to switch balls.
-const MIN_SHOT_PULL := 6.0
-const SUBSTEPS := 10
-const STEP_TIME := 0.005
-# Collision rails fitted to the visible inner stone edge of the modular board.
-# The previous board used 38/165 and 27/183, leaving a visible air gap before
-# the ball reached the new stones.
-const WALL_MIN_X := 33.0
-const WALL_MAX_X := 180.0
-const WALL_MIN_Y := 22.0
-const WALL_MAX_Y := 188.0
-# Openings are deliberately wider than on the legacy board, but scoring is a
-# separate deeper line. This prevents a near miss from triggering a weapon.
-const CORNER_OPEN_LOW := 56.0
-const CORNER_OPEN_HIGH := 151.0
-const MIDDLE_OPEN_MIN := 76.0
-const MIDDLE_OPEN_MAX := 133.0
-const SIDE_OPEN_LOW := 67.0
-const SIDE_OPEN_HIGH := 141.0
-const HOLE_CAPTURE_DEPTH := 2.0
-const SCORING_HOLE_CENTERS := [
-	Vector2(32, 177), Vector2(32, 104), Vector2(32, 30),
-	Vector2(174, 30), Vector2(174, 104), Vector2(174, 177)
-]
-const EFFECT_DURATION := 1.35
-const RUBBER_TRAP_HOLE := 0
-const PRESS_TRAP_HOLE := 1
-const ICE_TRAP_HOLE := 4
-const FIRE_TRAP_HOLE := 5
-const ELECTRIC_TRAP_HOLE := 2
-const HAMMER_TRAP_HOLE := 3
-const TRAP_CAPTURE_TIME := 2.35
-const TRAP_FALL_TIME := 2.85
-const PRESS_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
-const ICE_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
-const FIRE_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
-const ELECTRIC_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
-const HAMMER_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
-const RUBBER_CAPTURE_TIME := TRAP_CAPTURE_TIME
-const RUBBER_FALL_TIME := TRAP_FALL_TIME
-const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
-const WATER_FLOAT_TIME := 5.8
-const WATER_DRIFT_DELAY := 1.8
-const ANIMAL_NAMES := ["ELEPHANT", "ZEBRA", "MONKEY", "HIPPO", "RHINO", "GIRAFFE", "TIGER"]
-const ANIMAL_FILES := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe", "tiger"]
-# The elephant artwork has about 8.6% transparent padding below its soles.
-# Compensate when grounding the large hero so every animal meets the stage.
-const HERO_GROUND_OFFSETS := [0.086, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-const RING_COLOR_NAMES := ["RED", "ORANGE", "BLUE", "GREEN", "PURPLE", "TURQUOISE", "PINK"]
-const RING_COLORS := [
-	Color("ef3340"), Color("ff8a00"), Color("1677ff"),
-	Color("12c95b"), Color("8f36dc"), Color("08cbd1"), Color("f22888")
-]
-const HERO_HAND_COLORS := [
-	Color("8799a2"), Color("343434"), Color("9b541f"),
-	Color("e49aa2"), Color("777187"), Color("c88938"), Color("e28a42")
-]
-const UI_TEXT_HE := {
-	"player": "×©×—×§×Ÿ 1", "level": "×¨×ž×” 1 â€¢ ×©×—×§×Ÿ ×ž×ª×—×™×œ",
-	"choose_mode": "×‘×—×¨×• ×ž×¦×‘ ×ž×©×—×§",
-	"characters": "×“×ž×•×™×•×ª", "characters_sub": "×‘×—×™×¨×ª ×”×—×™×” ×©×œ×›×",
-	"rings": "×’×œ×’×œ×™×", "rings_sub": "×‘×—×™×¨×ª ×”×¦×‘×¢ ×©×œ×›×",
-	"shop": "×—× ×•×ª", "shop_sub": "×¤×¨×™×˜×™× ×•×©×“×¨×•×’×™×",
-	"rewards": "×¤×¨×¡×™×", "rewards_sub": "×ž×ª× ×•×ª ×•×¤×¨×¡×™×",
-	"arena": "×–×™×¨×” ××•× ×œ×™×™×Ÿ", "arena_sub": "×ž×©×—×§ ×ž×•×œ ×™×¨×™×‘ ××§×¨××™",
-	"friend": "×ž×©×—×§ ×ž×•×œ ×—×‘×¨", "friend_sub": "×ž×©×—×§ ×¤×¨×˜×™ â€¢ ×©× ×™ ×ž×›×©×™×¨×™×",
-	"computer": "×ž×©×—×§ ×ž×•×œ ×”×ž×—×©×‘", "computer_sub": "×©×—×§×Ÿ ×™×—×™×“ â€¢ × ×’×“ ×”×ž×—×©×‘",
-	"back": "×—×–×¨×”", "choose_character": "×‘×—×™×¨×ª ×“×ž×•×ª", "choose_character_sub": "×‘×—×¨×• ×—×™×” ×•×¦×‘×¢ ×’×œ×’×œ ×”×¦×œ×”",
-	"choose_ring": "×‘×—×¨×• ×’×œ×’×œ ×”×¦×œ×”", "choose_ring_sub": "×”×¦×‘×¢ ×©×‘×—×¨×ª× ×™×•×¤×™×¢ ×‘×›×œ ×ž×©×—×§",
-	"choose_animal": "×‘×—×¨×• ×—×™×”", "choose_board": "×‘×—×¨×• ×©×•×œ×—×Ÿ ×ž×©×—×§", "choose_setup": "×‘×—×¨×• ×“×ž×•×ª, ×’×œ×’×œ ×•×©×•×œ×—×Ÿ", "restoring_session": "×ž×—×–×™×¨×™× ××ª ×”×”×ª×—×‘×¨×•×ª ×©×œ×›×...", "red": "××“×•×", "orange": "×›×ª×•×", "blue": "×›×—×•×œ", "green": "×™×¨×•×§", "purple": "×¡×’×•×œ", "turquoise": "×˜×•×¨×§×™×–", "pink": "×•×¨×•×“",
-	"elephant": "×¤×™×œ", "zebra": "×–×‘×¨×”", "monkey": "×§×•×£", "hippo": "×”×™×¤×•×¤×•×˜×", "rhino": "×§×¨× ×£", "giraffe": "×’×³×™×¨×¤×”", "tiger": "×˜×™×’×¨×™×¡",
-	"arena_title": "×‘×—×™×¨×ª ×–×™×¨×”", "arena_title_sub": "×‘×—×¨×• ××ª ×ž×’×¨×© ×”×ž×©×—×§ ×œ×§×¨×‘ ×”××•× ×œ×™×™×Ÿ",
-	"sakura": "×’×Ÿ ×”×¡××§×•×¨×”", "bamboo": "×—×•×¨×©×ª ×”×‘×ž×‘×•×§", "volcano": "×ž×§×“×© ×”×’×¢×©",
-	"entry_free": "×›× ×™×¡×”: ×—×™× ×", "entry": "×“×ž×™ ×›× ×™×¡×”: ", "coins": " ×ž×˜×‘×¢×•×ª", "prize": "×¤×¨×¡ × ×™×¦×—×•×Ÿ: ", "selected": "× ×‘×—×¨", "find_match": "×—×™×¤×•×© ×™×¨×™×‘ ××•× ×œ×™×™×Ÿ",
-	"profile_title": "×¤×¨×•×¤×™×œ ×©×—×§×Ÿ", "profile_sub": "×”×“×ž×•×ª, ×”×¦×‘×¢ ×”××”×•×‘ ×•×¡×˜×˜×™×¡×˜×™×§×•×ª ×”×§×¨×™×™×¨×” ×©×œ×›×",
-	"main_character": "×”×“×ž×•×ª ×”×¨××©×™×ª", "choose_main": "×‘×—×¨×• ×“×ž×•×ª ×¨××©×™×ª", "favorite_color": "×¦×‘×¢ ×’×œ×’×œ ××”×•×‘",
-	"career": "×¡×˜×˜×™×¡×˜×™×§×•×ª ×§×¨×™×™×¨×”", "matches": "×ž×©×—×§×™×", "wins": "× ×™×¦×—×•× ×•×ª", "losses": "×”×¤×¡×“×™×", "win_rate": "××—×•×– ×”×¦×œ×—×”", "best_streak": "×¨×¦×£ ×©×™×", "world_rank": "×“×™×¨×•×’ ×¢×•×œ×ž×™", "current_streak": "×¨×¦×£ × ×™×¦×—×•× ×•×ª × ×•×›×—×™: ",
-	"shop_title": "×”×—× ×•×ª ×©×œ ×–×•×¤×œ×•×œ×”", "shop_title_sub": "×“×ž×•×™×•×ª, ×’×œ×’×œ×™×, ××¤×§×˜×™× ×•×©×•×œ×—× ×•×ª ×ž×©×—×§", "effects": "××¤×§×˜×™×", "collection_info": "××•×¡×¤×™× × ×“×™×¨×™× â€¢ ×¢×™×¦×•×‘×™× ×¢×•× ×ª×™×™× â€¢ ×× ×™×ž×¦×™×•×ª ×ž×™×•×—×“×•×ª", "coming_soon": "×‘×§×¨×•×‘",
-	"boards": "×©×•×œ×—× ×•×ª", "boards_sub": "×¢×™×¦×•×‘×™ ×ž×’×¨×©", "boards_section": "×©×•×œ×—× ×•×ª ×ž×©×—×§", "boards_section_sub": "×‘×—×¨×• ××ª ×¢×™×¦×•×‘ ×”×ž×’×¨×© ×œ×§×¨×‘ ×”×‘×", "board_equipped": "×ž×•×’×“×¨ ×œ×ž×©×—×§", "board_selected_toast": "×©×•×œ×—×Ÿ ×—×“×© ×”×•×’×“×¨!",
-	"board_classic": "×§×œ××¡×™", "board_ice": "×§×¨×—", "board_jungle": "×’'×•× ×’×œ", "board_volcano": "×œ×‘×”", "board_candy": "×¢×•×œ× ×”×ž×ž×ª×§×™×",
-	"free_item": "×—×™× ×", "locked_item": "× ×¢×•×œ", "buy_item": "×§× ×”", "owned_item": "×©×œ×š", "equipped_item": "×ž×¦×•×™×“", "shop_collected": "%d/%d × ××¡×¤×•", "shop_open_category": "×œ×—×¦×• ×œ×¤×ª×™×—×”", "shop_effects_empty": "××¤×§×˜×™× ×ž×™×•×—×“×™× ×™×’×™×¢×• ×‘×§×¨×•×‘ ×œ×—× ×•×ª", "purchase_success": "× ×¨×›×© ×‘×”×¦×œ×—×”!", "unlock_in_shop": "× ×™×ª×Ÿ ×œ×¨×›×•×© ×‘×—× ×•×ª", "shop_unlocks_sub": "×¨×›×©×• ×“×ž×•×™×•×ª ×•×’×œ×’×œ×™× × ×•×¡×¤×™× ×‘×ž×˜×‘×¢×•×ª", "host_board_only": "×¨×§ ×ž××¨×— ×”×—×“×¨ ×‘×•×—×¨ ×©×•×œ×—×Ÿ", "guest_board_locked": "×©×•×œ×—×Ÿ ×”×ž××¨×—", "arena_board_fixed": "×©×•×œ×—×Ÿ ×”×–×™×¨×”",
-	"searching": "×ž×—×¤×©×™× ×™×¨×™×‘ ×‘×–×™×¨×”...", "cancel_search": "×‘×™×˜×•×œ ×—×™×¤×•×©",
-	"match_win": "× ×™×¦×—×ª×!", "match_lose": "×”×¤×¡×“×ª×", "draw": "×ª×™×§×•",
-	"play_again": "×ž×©×—×§ × ×•×¡×£", "back_home": "×—×–×¨×” ×œ×‘×™×ª",
-	"you_won_coins": "×”×¨×•×•×—×ª× ", "not_enough_coins": "××™×Ÿ ×ž×¡×¤×™×§ ×ž×˜×‘×¢×•×ª",
-	"daily_title": "×¤×¨×¡ ×™×•×ž×™", "daily_sub": "×—×–×¨×• ×›×œ ×™×•× ×œ×§×‘×œ ×ž×˜×‘×¢×•×ª ×œ×’×œ×’×œ ×”×”×¦×œ×”",
-	"claim": "×§×‘×œ×• 80 ×ž×˜×‘×¢×•×ª", "claimed": "×”×¤×¨×¡ ×©×œ ×”×™×•× ×›×‘×¨ × ×ª×§×‘×œ",
-	"daily_claimed_toast": "×§×™×‘×œ×ª× 80 ×ž×˜×‘×¢×•×ª!", "search_timeout": "×”×—×™×¤×•×© ×‘×•×˜×œ. × ×¡×• ×©×•×‘.",
-	"social_hub": "×ž×•×¢×“×•×Ÿ ×”×©×—×§× ×™×", "friends_tab": "×—×‘×¨×™×", "chat_tab": "×¦×³××˜",
-	"add_friend": "×©×œ×™×—×ª ×‘×§×©×”", "friend_id_hint": "ZP-XXXXXXXX",
-	"invite_friend": "×”×–×ž× ×”", "no_friends": "×¢×“×™×™×Ÿ ××™×Ÿ ×—×‘×¨×™× ×ž××•×©×¨×™×",
-	"friend_requests_title": "×‘×§×©×•×ª ×—×‘×¨×•×ª", "friend_request_accept": "××™×©×•×¨",
-	"friend_request_decline": "×“×—×™×™×”", "friend_request_sent": "×‘×§×©×ª ×—×‘×¨×•×ª × ×©×œ×—×”!",
-	"friend_request_pending": "×ž×ž×ª×™×Ÿ ×œ××™×©×•×¨", "friend_request_exists": "×›×‘×¨ ×©×œ×—×ª× ×‘×§×©×”",
-	"friend_request_incoming": "×™×© ×œ×›× ×‘×§×©×” ×ž-%s", "friend_accepted": "×—×‘×¨ ×—×“×© ××•×©×¨!",
-	"friend_invite_offline": "×”×—×‘×¨ ×œ× ×ž×—×•×‘×¨ ×›×¨×’×¢",
-	"lobby_chat_title": "×¦×³××˜ ×”×œ×•×‘×™", "lobby_chat_hint": "×›×ª×‘×• ×”×•×“×¢×” ×œ×§×”×™×œ×”...",
-	"online_players": "×©×—×§× ×™× ×ž×—×•×‘×¨×™×", 	"friend_added": "×—×‘×¨ × ×•×¡×£!", "friend_exists": "×”×—×‘×¨ ×›×‘×¨ ×‘×¨×©×™×ž×”",
-	"friend_not_found": "×ž×–×”×” ×œ× ×ª×§×™×Ÿ", "remove_friend": "×”×¡×¨×”", "your_turn_badge": "×”×ª×•×¨ ×©×œ×š", "extra_turn": "×ª×•×¨ × ×•×¡×£! ×”×›× ×™×¡×• ×¢×•×“ ×›×“×•×¨ ×™×¨×™×‘",
-	"friend_profile_title": "×¤×¨×•×¤×™×œ ×—×‘×¨", "friend_online": "×ž×—×•×‘×¨ ×¢×›×©×™×•", "friend_offline": "×œ× ×ž×—×•×‘×¨",
-	"friend_added_you": "%s ××™×©×¨/×” ××ª ×‘×§×©×ª ×”×—×‘×¨×•×ª!", "friend_must_open": "×‘×§×©×• ×ž×”×—×‘×¨ ×œ×¤×ª×•×— ××ª ×”×ž×©×—×§ ×¤×¢× ××—×ª",
-	"friend_view_profile": "×¦×¤×™×™×” ×‘×¤×¨×•×¤×™×œ", "friend_id_short": "ZP-XXXXXXXX",
-	"league_tab": "×œ×™×’×”", "leaderboard_title": "×˜×‘×œ×ª ×ž×•×‘×™×œ×™×", "league_rookie": "×ž×ª×—×™×œ",
-	"league_amateur": "×—×•×‘×‘×Ÿ", "league_pro": "×ž×§×¦×•×¢×Ÿ", "league_elite": "×¢×™×œ×™×ª", "league_legend": "××’×“×”",
-	"rating_label": "×“×™×¨×•×’", "invite_received": "×”×–×ž× ×” ×œ×ž×©×—×§ ×ž-", "join_invite": "×”×¦×˜×¨×¤×•×ª",
-	"invite_sent_online": "×”×”×–×ž× ×” × ×©×œ×—×”!", "invite_sent_offline": "×”×”×–×ž× ×” ×ž×ž×ª×™× ×” ×œ×—×‘×¨",
-	"room_chat": "×¦×³××˜ ×—×“×¨", "sound_on": "×¦×œ×™×œ×™×", "promoted_league": "×¢×œ×™×ª× ×œ×œ×™×’×” ×—×“×©×”!",
-	"match_found": "× ×ž×¦× ×™×¨×™×‘!", "entering_arena": "× ×›× ×¡×™× ×œ×–×™×¨×”...",
-	"tutorial_title": "×ž×“×¨×™×š ×œ×ž×ª×—×™×œ×™×", "tutorial_next": "×”×‘×", "tutorial_prev": "×”×§×•×“×",
-	"tutorial_skip": "×“×œ×’", "tutorial_done": "×‘×•××• × ×©×—×§!", "tutorial_help": "×ž×“×¨×™×š",
-	"difficulty": "×¨×ž×ª ×§×•×©×™", "difficulty_easy": "×§×œ", "difficulty_medium": "×‘×™× ×•× ×™", "difficulty_hard": "×§×©×”",
-	"ai_name_easy": "×ž×—×©×‘ (×§×œ)", "ai_name_medium": "×ž×—×©×‘ (×‘×™× ×•× ×™)", "ai_name_hard": "×ž×—×©×‘ (×§×©×”)",
-}
-const UI_TEXT_EN := {
-	"player": "PLAYER 1", "level": "LEVEL 1 â€¢ ROOKIE EXPLORER",
-	"choose_mode": "CHOOSE A GAME MODE",
-	"characters": "CHARACTERS", "characters_sub": "Choose your animal",
-	"rings": "LIFEBUOYS", "rings_sub": "Choose your color",
-	"shop": "SHOP", "shop_sub": "Items and upgrades",
-	"rewards": "REWARDS", "rewards_sub": "Gifts and prizes",
-	"arena": "ONLINE ARENA", "arena_sub": "Play a random opponent",
-	"friend": "PLAY A FRIEND", "friend_sub": "Private match â€¢ two devices",
-	"computer": "PLAY VS COMPUTER", "computer_sub": "Single player â€¢ vs AI",
-	"back": "BACK", "choose_character": "CHOOSE YOUR CHARACTER", "choose_character_sub": "Pick an animal and a lifebuoy color",
-	"choose_ring": "CHOOSE A LIFEBUOY", "choose_ring_sub": "Your color follows you into every match",
-	"choose_animal": "CHOOSE AN ANIMAL", "choose_board": "CHOOSE A GAME TABLE", "choose_setup": "Choose animal, ring and table", "restoring_session": "Restoring your sign-in...", "red": "RED", "orange": "ORANGE", "blue": "BLUE", "green": "GREEN", "purple": "PURPLE", "turquoise": "TURQUOISE", "pink": "PINK",
-	"elephant": "ELEPHANT", "zebra": "ZEBRA", "monkey": "MONKEY", "hippo": "HIPPO", "rhino": "RHINO", "giraffe": "GIRAFFE", "tiger": "TIGER",
-	"arena_title": "CHOOSE YOUR ARENA", "arena_title_sub": "Select the battleground for your online match",
-	"sakura": "SAKURA GARDEN", "bamboo": "BAMBOO GROVE", "volcano": "VOLCANO TEMPLE",
-	"entry_free": "ENTRY: FREE", "entry": "ENTRY: ", "coins": " COINS", "prize": "WIN PRIZE: ", "selected": "SELECTED", "find_match": "FIND ONLINE MATCH",
-	"profile_title": "PLAYER PROFILE", "profile_sub": "Your character, favorite color and career statistics",
-	"main_character": "MAIN CHARACTER", "choose_main": "CHOOSE YOUR MAIN ANIMAL", "favorite_color": "FAVORITE LIFEBUOY COLOR",
-	"career": "CAREER STATISTICS", "matches": "MATCHES", "wins": "WINS", "losses": "LOSSES", "win_rate": "WIN RATE", "best_streak": "BEST STREAK", "world_rank": "WORLD RANK", "current_streak": "CURRENT WIN STREAK: ",
-	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections â€¢ Seasonal designs â€¢ Special animations", "coming_soon": "COMING SOON",
-	"boards": "TABLES", "boards_sub": "Board skins", "boards_section": "GAME TABLES", "boards_section_sub": "Choose the look of your next match", "board_equipped": "EQUIPPED", "board_selected_toast": "New table equipped!",
-	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA", "board_candy": "CANDY WORLD",
-	"free_item": "FREE", "locked_item": "LOCKED", "buy_item": "BUY", "owned_item": "OWNED", "equipped_item": "EQUIPPED", "shop_collected": "%d/%d COLLECTED", "shop_open_category": "TAP TO OPEN", "shop_effects_empty": "Special effects are coming soon to the shop", "purchase_success": "Purchased!", "unlock_in_shop": "Buy this in the shop", "shop_unlocks_sub": "Unlock more animals and lifebuoys with coins", "host_board_only": "Only the room host picks the table", "guest_board_locked": "Host's table", "arena_board_fixed": "Arena table",
-	"searching": "Finding an arena opponent...", "cancel_search": "CANCEL SEARCH",
-	"match_win": "YOU WIN!", "match_lose": "YOU LOST", "draw": "DRAW",
-	"play_again": "PLAY AGAIN", "back_home": "BACK HOME",
-	"you_won_coins": "You earned ", "not_enough_coins": "Not enough coins",
-	"daily_title": "DAILY REWARD", "daily_sub": "Come back every day for lifebuoy coins",
-	"claim": "CLAIM 80 COINS", "claimed": "ALREADY CLAIMED TODAY",
-	"daily_claimed_toast": "You claimed 80 coins!", "search_timeout": "Search cancelled. Try again.",
-	"social_hub": "PLAYER CLUB", "friends_tab": "FRIENDS", "chat_tab": "CHAT",
-	"add_friend": "SEND REQUEST", "friend_id_hint": "ZP-XXXXXXXX",
-	"invite_friend": "INVITE", "no_friends": "No approved friends yet",
-	"friend_requests_title": "FRIEND REQUESTS", "friend_request_accept": "ACCEPT",
-	"friend_request_decline": "DECLINE", "friend_request_sent": "Friend request sent!",
-	"friend_request_pending": "Waiting for approval", "friend_request_exists": "Request already sent",
-	"friend_request_incoming": "Request from %s", "friend_accepted": "New friend approved!",
-	"friend_invite_offline": "Friend is offline right now",
-	"lobby_chat_title": "LOBBY CHAT", "lobby_chat_hint": "Say hello to the community...",
-	"online_players": "players online", "friend_added": "Friend added!", "friend_exists": "Friend already added",
-	"friend_not_found": "Invalid player ID", "remove_friend": "REMOVE", "your_turn_badge": "YOUR TURN", "extra_turn": "EXTRA TURN! Pocket another enemy ball",
-	"friend_profile_title": "FRIEND PROFILE", "friend_online": "Online now", "friend_offline": "Offline",
-	"friend_added_you": "%s accepted your friend request!", "friend_must_open": "Ask your friend to open the game once",
-	"friend_view_profile": "View profile", "friend_id_short": "ZP-XXXXXXXX",
-	"league_tab": "LEAGUE", "leaderboard_title": "LEADERBOARD", "league_rookie": "ROOKIE",
-	"league_amateur": "AMATEUR", "league_pro": "PRO", "league_elite": "ELITE", "league_legend": "LEGEND",
-	"rating_label": "RATING", "invite_received": "Game invite from ", "join_invite": "JOIN",
-	"invite_sent_online": "Invite sent!", "invite_sent_offline": "Invite queued for friend",
-	"room_chat": "ROOM CHAT", "sound_on": "SOUND", "promoted_league": "You reached a new league!",
-	"match_found": "MATCH FOUND!", "entering_arena": "ENTERING ARENA...",
-	"tutorial_title": "HOW TO PLAY", "tutorial_next": "NEXT", "tutorial_prev": "BACK",
-	"tutorial_skip": "SKIP", "tutorial_done": "LET'S PLAY!", "tutorial_help": "GUIDE",
-	"difficulty": "DIFFICULTY", "difficulty_easy": "EASY", "difficulty_medium": "MEDIUM", "difficulty_hard": "HARD",
-	"ai_name_easy": "CPU (EASY)", "ai_name_medium": "CPU (MEDIUM)", "ai_name_hard": "CPU (HARD)",
-}
-const APP_SPLASH := 0
-const APP_HOME := 1
-const APP_PROFILE := 2
-const APP_SHOP := 3
-const APP_GAME := 4
-const APP_ARENA := 5
-const APP_PLAYER_PROFILE := 6
-const APP_FRIEND := 7
-const APP_REWARDS := 8
-const APP_AUTH := 9
-const ARENA_BOARD_THEMES := [0, 2, 3]
-const ARENA_ENTRY_COSTS := [0, 100, 500]
-const ARENA_WIN_PRIZES := [100, 250, 1200]
-const DAILY_REWARD_COINS := 80
-const COMPUTER_WIN_COINS := 40
-const FRIEND_WIN_COINS := 25
-const FREE_UNLOCK_COUNT := 3
-const SHOP_PAGE_HUB := "hub"
-const SHOP_PAGE_ANIMALS := "animals"
-const SHOP_PAGE_RINGS := "rings"
-const SHOP_PAGE_EFFECTS := "effects"
-const ECONOMY_VERSION := 2
-const ANIMAL_UNLOCK_PRICES := [0, 0, 0, 550, 750, 950, 0]
-const RING_UNLOCK_PRICES := [0, 0, 0, 350, 450, 550, 0]
-const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
-const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
-const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
-const ARENA_MATCH_FOUND_DURATION := 2.2
-const FIREBASE_WEB_VAPID_KEY := ""
-const TUTORIAL_STEP_COUNT := 8
-const TUTORIAL_STEPS_HE := [
-	{"title": "×‘×¨×•×›×™× ×”×‘××™× ×œ×–×•×¤×œ×•×œ×”!", "body": "×ž×©×—×§ ×’×•×œ×•×ª ×—×™×•×ª ×¢×œ ×œ×•×— ×ž×™×•×—×“ ×¢× ×—×•×¨×™×, × ×©×§×™× ×•×™×¨×™×‘×™× ××ž×™×ª×™×™×.\n×¢×‘×¨×• ×‘×™×Ÿ ×”×©×œ×‘×™× ×›×“×™ ×œ×œ×ž×•×“ ××™×š ×”×›×œ ×¢×•×‘×“.", "art": "welcome"},
-	{"title": "××™×š ×™×•×¨×™×?", "body": "×‘×ª×•×¨ ×©×œ×›× â€” ×’×¢×• ×‘×›×“×•×¨ ×©×œ×›×, ×’×¨×¨×• ××—×•×¨×” ×•×©×—×¨×¨×•.\n×›×›×œ ×©×ª×ž×©×›×• ×¨×—×•×§ ×™×•×ª×¨, ×”×›×“×•×¨ ×™×¢×•×£ ×—×–×§ ×™×•×ª×¨.\n×ž×©×™×›×” ×§×¦×¨×” ×ž×‘×˜×œ×ª ××ª ×”×™×¨×™×™×”.", "art": "shoot"},
-	{"title": "×ž×” ×”×ž×˜×¨×”?", "body": "×“×—×¤×• ××ª ×›×“×•×¨×™ ×”×™×¨×™×‘ ×œ×—×•×¨×™× ×‘×¤×™× ×•×ª ×”×œ×•×—.\n×›×“×•×¨ ×©× ×›× ×¡ ×œ×—×•×¨ ×™×•×¦× ×ž×”×ž×©×—×§ â€” ×ž×™ ×©×ž×•×¨×™×“ ××ª ×›×œ ×›×“×•×¨×™ ×”×™×¨×™×‘ ×§×•×“×, ×ž× ×¦×—!", "art": "goal"},
-	{"title": "×—×•×¨×™× ×ž×™×•×—×“×™×", "body": "×—×œ×§ ×ž×”×—×•×¨×™× ×ž×¤×¢×™×œ×™× × ×©×§×™×: ×’×•×ž×™, ×ž×§×©, ×—×©×ž×œ, ××©, ×§×¨×— ×•×¢×•×“.\n×”× ×™×•×¦×¨×™× ×¨×’×¢×™× ×ž×˜×•×¨×¤×™× â€” × ×¡×• ×œ×ª×›× ×Ÿ ×¡×‘×™×‘×!", "art": "weapons"},
-	{"title": "×ª×•×¨×•×ª", "body": "×›×œ ×©×—×§×Ÿ ×™×•×¨×” ×¤×¢× ××—×ª ×‘×ª×•×¨×•.\n×× ×”×›× ×¡×ª× ×›×“×•×¨ ×©×œ ×”×™×¨×™×‘ ×œ×—×•×¨ â€” ×ž×§×‘×œ×™× ×ª×•×¨ × ×•×¡×£!\n×”×ª×•×¨ ×¢×•×‘×¨ ×¨×§ ×›×©×œ× ×”×¦×œ×—×ª× ×œ×”×›× ×™×¡ ×›×“×•×¨ ×™×¨×™×‘.", "art": "turns"},
-	{"title": "×ž×¦×‘×™ ×ž×©×—×§", "body": "×©×—×§ â€” ×ž×©×—×§ × ×’×“ ×”×ž×—×©×‘ (×ž×•×ž×œ×¥ ×œ×”×ª×—×™×œ ×›××Ÿ).\n×—×‘×¨ â€” ×—×“×¨ ×¤×¨×˜×™ ×¢× ×§×•×“ ×œ×©× ×™ ×ž×›×©×™×¨×™×.\n×–×™×¨×” â€” ×ž×©×—×§ ××•× ×œ×™×™×Ÿ ×ž×•×œ ×™×¨×™×‘ ××§×¨××™ ×¢× ×“×™×¨×•×’ ×•×ž×˜×‘×¢×•×ª.", "art": "modes"},
-	{"title": "×ž×¡×š ×”×‘×™×ª", "body": "×¤×¨×•×¤×™×œ â€” ×©×, ×“×ž×•×ª ×•×¡×˜×˜×™×¡×˜×™×§×•×ª.\n×ž×•×¢×“×•×Ÿ ×©×—×§× ×™× â€” ×—×‘×¨×™×, ×¦×³××˜ ×œ×•×‘×™ ×•×œ×™×’×”.\n×¤×¨×¡ ×™×•×ž×™ â€” ×ž×˜×‘×¢×•×ª ×—×™× × ×›×œ ×™×•×.\n×”×¢×ª×™×§×• ××ª ×ž×–×”×” ZP- ×©×œ×›× ×›×“×™ ×œ×”×•×¡×™×£ ×—×‘×¨×™×.", "art": "hub"},
-	{"title": "×ž×•×›× ×™× ×œ×©×—×§!", "body": "×”×ª×—×™×œ×• ×‘×ž×©×—×§ × ×’×“ ×”×ž×—×©×‘ ×›×“×™ ×œ×”×ª×¨×’×œ.\n××¤×©×¨ ×œ×¤×ª×•×— ××ª ×”×ž×“×¨×™×š ×©×•×‘ ×‘×›×œ ×¢×ª ×ž×›×¤×ª×•×¨ ? ×‘×¤×™× ×”.\n×‘×”×¦×œ×—×” ×‘×–×™×¨×”!", "art": "ready"},
-]
-const TUTORIAL_STEPS_EN := [
-	{"title": "WELCOME TO ZOOPALOOLA!", "body": "A lively marble game on a special board with holes, weapons, and real opponents.\nSwipe through these steps to learn how everything works.", "art": "welcome"},
-	{"title": "HOW TO SHOOT", "body": "On your turn, touch your ball, pull back, and release.\nThe farther you pull, the harder the shot.\nA tiny pull cancels the shot.", "art": "shoot"},
-	{"title": "THE GOAL", "body": "Knock your opponent's balls into the corner holes.\nA ball that falls in is out â€” clear all enemy balls first to win!", "art": "goal"},
-	{"title": "SPECIAL HOLES", "body": "Some holes trigger weapons: rubber, press, electric, fire, ice, and more.\nThey create wild moments â€” plan around them!", "art": "weapons"},
-	{"title": "TURNS", "body": "Each player shoots once per turn.\nPocket an enemy ball and you shoot again!\nYour turn ends only when you fail to pocket an enemy ball.", "art": "turns"},
-	{"title": "GAME MODES", "body": "PLAY â€” vs computer (best place to start).\nFRIEND â€” private room with a 4-letter code.\nARENA â€” online random match with rating and coins.", "art": "modes"},
-	{"title": "HOME SCREEN", "body": "Profile â€” name, character, and stats.\nPlayer Club â€” friends, lobby chat, and league.\nDaily reward â€” free coins every day.\nCopy your ZP- ID to add friends.", "art": "hub"},
-	{"title": "READY TO PLAY!", "body": "Start with a computer match to practice.\nReopen this guide anytime with the ? button.\nGood luck in the arena!", "art": "ready"},
-]
-var board_texture: Texture2D
-var board_theme_textures: Array[Texture2D] = []
-var ui_font: Font
-var lobby_background_texture: Texture2D
-var floating_portals_home_texture: Texture2D
-var loading_team_texture: Texture2D
-var zoopaloola_logo_texture: Texture2D
-var wood_podium_texture: Texture2D
-var piece_textures: Array[Texture2D] = []
-var animal_textures: Array[Texture2D] = []
-var full_body_animal_textures: Array[Texture2D] = []
-var lifebuoy_hero_textures: Array = []
-var animal_ring_masks: Array[Texture2D] = []
-var team_piece_textures: Array[Texture2D] = []
-var effect_textures: Array[Texture2D] = []
-var rubber_ball_texture: Texture2D
-var rubber_hand_textures: Array[Texture2D] = []
-var rubber_launcher_texture: Texture2D
-var rubber_wrap_texture: Texture2D
-var press_machine_texture: Texture2D
-var fire_launcher_texture: Texture2D
-var hammer_texture: Texture2D
-var hammer_base_texture: Texture2D
-var hammer_idle_texture: Texture2D
-var hammer_swing_texture: Texture2D
-var hammer_head_side_texture: Texture2D
-var hammer_impact_texture: Texture2D
-var balls: Array = []
-var active_effects: Array = []
-var water_floaters: Array = []
-var impact_bursts: Array = []
-var score_bursts: Array = []
-var motion_trails: Array = []
-var contacts := {}
-
-# Touch-friendly rubber effect editor. Values are stored in board-image units.
-var effect_editor_enabled := false
-var effect_editor_mode := "electric"
-var editor_selected_hand := 0
-var rubber_top_offset := Vector2(-60.0, -10.0)
-var rubber_side_offset := Vector2(20.0, 20.0)
-var rubber_top_width := 72.0
-var rubber_side_width := 72.0
-var rubber_top_rotation := deg_to_rad(-20.0)
-var rubber_side_rotation := deg_to_rad(-5.0)
-var rubber_top_mirror := false
-var rubber_side_mirror := false
-var electric_top_offset := Vector2(-74.0, -78.0)
-var electric_right_offset := Vector2(70.0, 58.0)
-var electric_top_size := 34.0
-var electric_right_size := 34.0
-var editor_hole := ELECTRIC_TRAP_HOLE
-var editor_target := 0 # 0=weapon 1, 1=weapon 2, 2=ball, 3=fall, 4=entry, 5=table wall
-# Approved trap editor snapshot (2026-08-21):
-# ICE: weapon1=(26,1) 1.00; weapon2=(-16,2) 1.00; ball=(5,20) 1.00; fall=(0,0); entry=(1,19) radius=11; wall=bottom offset=8 size=1
-# FIRE: weapon1=(-5,-10) 1.00; weapon2=(10,0) 1.00; ball=(0,10) 1.00; fall=(-30,-60); entry=(-12,14) radius=12; wall=left offset=-2 size=1
-# HAMMER: weapon1=(20,5) 1.10; weapon2=(0,5) 1.00; ball=(10,20) 1.00; fall=(0,0); entry=(12,14) radius=12; wall=right offset=5 size=1
-# ELECTRIC: weapon1=(10,40) 1.20; weapon2=(-27,-3) 1.20; ball=(35,-5) 1.00; fall=(-15,45); entry=(11,-2) radius=12; wall=top offset=-7 size=1
-# PRESS: weapon1=(-3,0) 1.00; weapon2=(14,-1) 1.00; ball=(4,-5) 1.00; fall=(0,30); entry=(-1,-11) radius=12; wall=top offset=-7 size=1
-# RUBBER: weapon1=(0,15) 1.00; weapon2=(10,-5) 1.00; ball=(-10,-15) 1.00; fall=(20,55); entry=(-13,0) radius=13; wall=left offset=-2 size=1
-var trap_weapon_offsets: Array[Vector2] = [
-	Vector2(0.0, 15.0), Vector2(10.0, -5.0),
-	Vector2(-3.0, 0.0), Vector2(14.0, -1.0),
-	Vector2(10.0, 40.0), Vector2(-27.0, -3.0),
-	Vector2(20.0, 5.0), Vector2(0.0, 5.0),
-	Vector2(26.0, 1.0), Vector2(-16.0, 2.0),
-	Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
-]
-var trap_weapon_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.2, 1.2, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
-var trap_ball_offsets: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(4.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
-var trap_ball_scales: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-var trap_fall_offsets: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
-var trap_entry_offsets: Array[Vector2] = [
-	Vector2(-13.0, 0.0), Vector2(-1.0, -11.0), Vector2(11.0, -2.0),
-	Vector2(12.0, 14.0), Vector2(1.0, 19.0), Vector2(-12.0, 14.0)
-]
-var trap_entry_radii: Array[float] = [13.0, 12.0, 12.0, 12.0, 11.0, 12.0]
-var table_wall_offsets: Array[float] = [-2.0, -7.0, 5.0, 8.0] # left, top, right, bottom
-var table_wall_sizes: Array[float] = [1.0, 1.0, 1.0, 1.0]
-# Mobile browsers may emit a synthetic mouse click after every touch.
-# Once real touch input is seen, ignore those duplicate mouse events.
-var touchscreen_input_seen := false
-var app_screen := APP_AUTH
-var splash_elapsed := 0.0
-var menu_elapsed := 0.0
-var game_mode := "computer"
-var profile_name := "PLAYER 1"
-var player_coins := 0
-var owned_animals: Array = []
-var owned_rings: Array = []
-var shop_page := SHOP_PAGE_HUB
-var selected_arena := 0
-const BOARD_THEME_COUNT := 5
-var selected_board_theme := 0
-var match_board_theme := 0
-var room_board_theme := 0
-var ui_language := "he"
-var player_level := 1
-var player_xp := 0
-var player_next_level_xp := 500
-var player_wins := 0
-var player_losses := 0
-var player_best_streak := 0
-var player_current_streak := 0
-var player_world_rank := 0
-var player_rating := 1000
-var player_league_tier := 0
-var global_leaderboard: Array = []
-var pending_friend_invite: Dictionary = {}
-var pending_friend_invite_send: Dictionary = {}
-var pending_friend_invite_target_name := ""
-var friend_room_chat_open := false
-var home_ambient_particles: Array = []
-var sound_enabled := true
-var sfx_player: AudioStreamPlayer
-var last_daily_claim := ""
-var menu_notice := ""
-var menu_notice_time := 0.0
-var multiplayer_socket := WebSocketPeer.new()
-var multiplayer_state := "disconnected"
-var multiplayer_room_code := ""
-var multiplayer_slot := -1
-var multiplayer_players: Array = []
-var multiplayer_ready := false
-var multiplayer_error := ""
-var pending_shared_room_code := ""
-var pending_android_auth_handoff := ""
-var pending_auth_handoff_payload: Dictionary = {}
-var pending_google_handoff_request := false
-var multiplayer_local_animal := -1
-var multiplayer_local_ring_color := -1
-var friend_customizer_open := false
-var friend_opponent_profile_open := false
-var room_code_input: LineEdit
-var chat_input: LineEdit
-var profile_name_input: LineEdit
-var auth_email_input: LineEdit
-var auth_password_input: LineEdit
-var auth_email_mode := ""
-var firebase_auth_mode := ""
-var exit_confirm_open := false
-var chat_open := false
-var match_chat_messages: Array = []
-var matchmaking_searching := false
-var pending_find_match := false
-var match_source := "computer"
-var arena_fx_phase := "idle"
-var arena_fx_elapsed := 0.0
-var pending_arena_match: Dictionary = {}
-var arena_matched_opponent: Dictionary = {}
-var fcm_token_registered := ""
-var push_setup_done := false
-var tutorial_completed := false
-var tutorial_open := false
-var tutorial_step := 0
-var tutorial_dismissed_session := false
-var match_finished := false
-var match_result_open := false
-var match_result_winner := -1
-var match_result_coins := 0
-var match_result_recorded := false
-var turn_shot_committed := false
-var turn_pending_resolve := false
-var turn_opponent_scored := false
-var friends_list: Array = []
-var incoming_friend_requests: Array = []
-var outgoing_friend_requests: Array = []
-var home_social_tab := 0
-var home_friend_profile_index := -1
-var lobby_chat_messages: Array = []
-var friend_id_input: LineEdit
-var lobby_chat_input: LineEdit
-var friend_lookup_request: HTTPRequest
-var pending_friend_lookup_id := ""
-
-func init_home_ambient_particles() -> void:
-	if not home_ambient_particles.is_empty():
-		return
-	for i in 28:
-		home_ambient_particles.append({
-			"x": randf(),
-			"y": randf(),
-			"speed": randf_range(0.04, 0.14),
-			"size": randf_range(3.0, 11.0),
-			"phase": randf() * TAU,
-			"kind": i % 3
-		})
-
-func make_tone_stream(freq: float, duration: float, volume: float = 0.22) -> AudioStreamWAV:
-	var sample_rate := 22050
-	var frames := maxi(1, int(sample_rate * duration))
-	var data := PackedByteArray()
-	data.resize(frames * 2)
-	for i in frames:
-		var t := float(i) / float(sample_rate)
-		var envelope := 1.0 - float(i) / float(frames)
-		var sample := sin(TAU * freq * t) * volume * envelope
-		var s16 := int(clampf(sample * 32767.0, -32768.0, 32767.0))
-		data[i * 2] = s16 & 0xFF
-		data[i * 2 + 1] = (s16 >> 8) & 0xFF
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.stereo = false
-	stream.mix_rate = sample_rate
-	stream.data = data
-	return stream
-
-func setup_sound() -> void:
-	sfx_player = AudioStreamPlayer.new()
-	sfx_player.bus = "Master"
-	add_child(sfx_player)
-
-func play_sound(kind: String) -> void:
-	if not sound_enabled or sfx_player == null:
-		return
-	var stream: AudioStreamWAV = null
-	match kind:
-		"ui":
-			stream = make_tone_stream(660.0, 0.06, 0.16)
-		"shot":
-			stream = make_tone_stream(240.0, 0.10, 0.20)
-		"score":
-			stream = make_tone_stream(880.0, 0.14, 0.18)
-		"invite":
-			stream = make_tone_stream(520.0, 0.18, 0.20)
-		"win":
-			stream = make_tone_stream(740.0, 0.22, 0.22)
-		_:
-			stream = make_tone_stream(440.0, 0.08, 0.14)
-	sfx_player.stream = stream
-	sfx_player.play()
-
-func league_tier_for_rating(rating: int) -> int:
-	var tier := 0
-	for i in LEAGUE_RATING_THRESHOLDS.size():
-		if rating >= LEAGUE_RATING_THRESHOLDS[i]:
-			tier = i
-	return clampi(tier, 0, LEAGUE_NAME_KEYS.size() - 1)
-
-func league_name(tier: int) -> String:
-	return ui_text(LEAGUE_NAME_KEYS[clampi(tier, 0, LEAGUE_NAME_KEYS.size() - 1)])
-
-func league_color(tier: int) -> Color:
-	var colors := [Color("8cecff"), Color("51d995"), Color("ffe25d"), Color("ff9f24"), Color("e94f78"), Color("c77dff")]
-	return colors[clampi(tier, 0, colors.size() - 1)]
-
-func update_player_league_tier() -> void:
-	player_league_tier = league_tier_for_rating(player_rating)
-
-func apply_rating_change(did_win: bool, opponent_rating: int = 1000) -> void:
-	var expected := 1.0 / (1.0 + pow(10.0, float(opponent_rating - player_rating) / 400.0))
-	var score := 1.0 if did_win else 0.0
-	var k := 28.0 if player_rating < 1200 else 22.0
-	var old_tier := player_league_tier
-	player_rating = clampi(int(round(float(player_rating) + k * (score - expected))), 100, 9999)
-	update_player_league_tier()
-	if player_league_tier > old_tier:
-		show_menu_notice(ui_text("promoted_league") + " " + league_name(player_league_tier))
-		play_sound("win")
-
-func sync_player_presence() -> void:
-	if multiplayer_state != "connected" or firebase_public_id.is_empty():
-		return
-	send_multiplayer({
-		"type": "register_presence",
-		"publicId": firebase_public_id,
-		"name": profile_name,
-		"rating": player_rating,
-		"wins": player_wins,
-		"losses": player_losses,
-		"leagueTier": player_league_tier
-	})
-	send_multiplayer({"type": "get_leaderboard"})
-	register_fcm_token_with_server()
-
-func setup_push_notifications_web() -> void:
-	if not OS.has_feature("web") or push_setup_done:
-		return
-	push_setup_done = true
-	var vapid := FIREBASE_WEB_VAPID_KEY
-	var script := """
-window.zpPushState = {status: 'loading'};
-window.zpShowNotification = (title, body, data) => {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  try {
-    const note = new Notification(title, {
-      body: body,
-      icon: './zoopaloola-boot-splash-v2.png',
-      badge: './zoopaloola-boot-splash-v2.png',
-      data: data || {}
-    });
-    note.onclick = () => {
-      if (data && data.roomCode) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('room', data.roomCode);
-        window.location.href = url.toString();
-      }
-      window.focus();
-      note.close();
-    };
-  } catch (error) {}
-};
-(async () => {
-  try {
-    if (!('Notification' in window)) {
-      window.zpPushState = {status: 'unsupported'};
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    window.zpPushState = {status: permission};
-    const vapidKey = '__VAPID__';
-    if (!vapidKey || !('serviceWorker' in navigator)) return;
-    const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
-    const appSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js');
-    const messagingSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-messaging.js');
-    const config = {
-      apiKey: '__API_KEY__', authDomain: 'zoopaloola-online.firebaseapp.com',
-      projectId: 'zoopaloola-online', storageBucket: 'zoopaloola-online.firebasestorage.app',
-      messagingSenderId: '386401966312', appId: '1:386401966312:web:0e781cb13c98fd6dc3515d'
-    };
-    const app = appSdk.getApps().length ? appSdk.getApps()[0] : appSdk.initializeApp(config);
-    const messaging = messagingSdk.getMessaging(app);
-    const token = await messagingSdk.getToken(messaging, {vapidKey, serviceWorkerRegistration: registration});
-    if (token) {
-      window.zpFcmToken = token;
-      window.zpPushState.fcmToken = token;
-    }
-  } catch (error) {
-    window.zpPushState = {status: 'error', message: String(error && error.message || error)};
-  }
-})();
-""".replace("__API_KEY__", FIREBASE_API_KEY).replace("__VAPID__", vapid)
-	JavaScriptBridge.eval(script, true)
-
-func register_fcm_token_with_server() -> void:
-	if not OS.has_feature("web") or firebase_public_id.is_empty() or multiplayer_state != "connected":
-		return
-	var token := str(JavaScriptBridge.eval("window.zpFcmToken || ''", true)).strip_edges()
-	if token.is_empty() or token == fcm_token_registered:
-		return
-	send_multiplayer({
-		"type": "register_fcm_token",
-		"publicId": firebase_public_id,
-		"token": token,
-		"platform": "web"
-	})
-	fcm_token_registered = token
-
-func show_web_notification(title: String, body: String, data: Dictionary = {}) -> void:
-	if not OS.has_feature("web"):
-		return
-	var payload := JSON.stringify(data)
-	JavaScriptBridge.eval(
-		"window.zpShowNotification && window.zpShowNotification(%s, %s, %s)" % [
-			JSON.stringify(title), JSON.stringify(body), payload
-		],
-		true
-	)
-
-func arena_opponent_data() -> Dictionary:
-	var opponent_slot := 1 - multiplayer_slot if multiplayer_slot >= 0 else 1
-	if opponent_slot >= 0 and opponent_slot < multiplayer_players.size():
-		return multiplayer_players[opponent_slot]
-	return {}
-
-func begin_arena_match_found(payload: Dictionary) -> void:
-	pending_arena_match = payload.duplicate()
-	multiplayer_slot = int(payload.get("slot", multiplayer_slot))
-	turn = int(payload.get("turn", 0))
-	match_source = "arena"
-	matchmaking_searching = false
-	pending_find_match = false
-	arena_fx_phase = "found"
-	arena_fx_elapsed = 0.0
-	arena_matched_opponent = arena_opponent_data()
-	play_sound("invite")
-	queue_redraw()
-
-func apply_match_started(payload: Dictionary) -> void:
-	multiplayer_slot = int(payload.get("slot", multiplayer_slot))
-	turn = int(payload.get("turn", 0))
-	game_mode = "online"
-	match_source = str(payload.get("source", "friend"))
-	if match_source == "arena":
-		var entry: int = int(ARENA_ENTRY_COSTS[clampi(int(payload.get("arena", selected_arena)), 0, ARENA_ENTRY_COSTS.size() - 1)])
-		player_coins = maxi(0, player_coins - entry)
-		save_player_profile()
-	matchmaking_searching = false
-	pending_find_match = false
-	arena_fx_phase = "idle"
-	arena_fx_elapsed = 0.0
-	pending_arena_match = {}
-	arena_matched_opponent = {}
-	app_screen = APP_GAME
-	exit_confirm_open = false
-	chat_open = false
-	match_chat_messages.clear()
-	if payload.has("boardTheme"):
-		sync_match_board_from_payload(payload)
-	elif match_source == "arena":
-		sync_match_board_from_payload({"boardTheme": arena_board_theme_for_level(int(payload.get("arena", selected_arena)))})
-	new_game()
-	turn = int(payload.get("turn", 0))
-	turn_shot_committed = false
-	turn_pending_resolve = false
-	turn_opponent_scored = false
-
-func update_arena_fx(delta: float) -> void:
-	if arena_fx_phase == "idle":
-		return
-	arena_fx_elapsed += delta
-	if arena_fx_phase == "found" and arena_fx_elapsed >= ARENA_MATCH_FOUND_DURATION and not pending_arena_match.is_empty():
-		apply_match_started(pending_arena_match)
-
-func multiplayer_payload_stats() -> Dictionary:
-	return {
-		"rating": player_rating,
-		"leagueTier": player_league_tier,
-		"publicId": firebase_public_id
-	}
-
-var view_origin := Vector2.ZERO
-var board_scale := 1.0
-var board_rect := Rect2()
-var turn := 0
-var selected := -1
-var dragging := false
-var drag_point := Vector2.ZERO
-var accumulator := 0.0
-var status := "Your turn - touch a red ball, pull back and release"
-var ai_pending := false
-var ai_timer := 0.0
-var ai_committed_shot := false
-var computer_difficulty := 1
-var modern_match_intro := 0.0
-var last_announced_turn := -1
-var turn_banner_age := 0.0
-var customizer_open := false
-# Start with the combination requested during the visual review: zebra + green.
-var player_animal := 1
-var player_ring_color := 3
-var ai_animal := 0
-var ai_ring_color := 0
-const PLAYER_PROFILE_PATH := "user://zoopaloola-profile.cfg"
-const FIREBASE_API_KEY := "AIzaSyCIcTUM65KhCem-mG8H23oNnrM3K-jDSHQ"
-const FIREBASE_PROJECT_ID := "zoopaloola-online"
-var firebase_uid := ""
-var firebase_public_id := ""
-var firebase_id_token := ""
-var firebase_refresh_token := ""
-var firebase_token_expires_at := 0
-var firebase_provider := "guest"
-var firebase_email := ""
-var firebase_auth_request: HTTPRequest
-var firebase_profile_request: HTTPRequest
-var firebase_public_id_request: HTTPRequest
-var firebase_auth_busy := false
-var firebase_profile_dirty := false
-var firebase_sync_delay := 0.0
-var firebase_web_poll_delay := 0.0
-var firebase_status := "×ž×ª×—×‘×¨..."
-var session_restore_pending := false
-var session_restore_deadline := 0.0
-const SESSION_RESTORE_WAIT_SEC := 3.5
-const CLIENT_VERSION := "ACCOUNT-6"
-
-func _enter_tree() -> void:
-	# Enter native fullscreen before _ready() and before the first game frame.
-	# Android's immersive export flag normally hides the navigation bar, but
-	# several Samsung devices reveal it again while the activity is starting.
-	if OS.has_feature("android"):
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		handle_system_back()
-		return
-	# Android may restore its system bars after the app loses focus (for example
-	# after opening the recent-apps view). Re-apply fullscreen as soon as the game
-	# becomes active instead of waiting until a match starts.
-	if what == NOTIFICATION_APPLICATION_FOCUS_IN and OS.has_feature("android"):
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-
-func _ready() -> void:
-	# Android's system Back button is application navigation. Disable SceneTree's
-	# default immediate quit so each screen can decide what "back" means.
-	get_tree().quit_on_go_back = false
-	# Smooth the original character art when it is enlarged inside HD balls.
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	# Bundled font includes Hebrew and Latin glyphs, so Web/Android render the
-	# same readable interface without depending on fonts installed on the device.
-	ui_font = load("res://assets/ui/fonts/DejaVuSans-Bold.ttf") as Font
-	if ui_font == null:
-		ui_font = ThemeDB.fallback_font
-	load_player_profile()
-	setup_firebase()
-	setup_sound()
-	if OS.has_feature("web"):
-		setup_push_notifications_web()
-	init_home_ambient_particles()
-	update_player_league_tier()
-	room_code_input = LineEdit.new()
-	room_code_input.visible = false
-	room_code_input.max_length = 4
-	room_code_input.placeholder_text = "ABCD"
-	room_code_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	room_code_input.add_theme_font_override("font", ui_font)
-	room_code_input.add_theme_font_size_override("font_size", 25)
-	room_code_input.text_changed.connect(_on_room_code_changed)
-	add_child(room_code_input)
-	chat_input = LineEdit.new()
-	chat_input.visible = false
-	chat_input.max_length = 80
-	chat_input.placeholder_text = "×›×ª×‘×• ×”×•×“×¢×”..." if ui_language == "he" else "Type a message..."
-	chat_input.add_theme_font_override("font", ui_font)
-	chat_input.add_theme_font_size_override("font_size", 20)
-	chat_input.text_submitted.connect(_on_chat_submitted)
-	add_child(chat_input)
-	profile_name_input = LineEdit.new()
-	profile_name_input.visible = false
-	profile_name_input.max_length = 20
-	profile_name_input.text = profile_name
-	profile_name_input.placeholder_text = "×”×©× ×©×œ×›×" if ui_language == "he" else "Your name"
-	profile_name_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	profile_name_input.add_theme_font_override("font", ui_font)
-	profile_name_input.add_theme_font_size_override("font_size", 21)
-	profile_name_input.text_changed.connect(_on_profile_name_changed)
-	profile_name_input.text_submitted.connect(_on_profile_name_submitted)
-	profile_name_input.focus_exited.connect(commit_profile_name)
-	add_child(profile_name_input)
-	auth_email_input = LineEdit.new()
-	auth_email_input.visible = false
-	auth_email_input.placeholder_text = "example@gmail.com"
-	auth_email_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	auth_email_input.add_theme_font_override("font", ui_font)
-	auth_email_input.add_theme_font_size_override("font_size", 22)
-	add_child(auth_email_input)
-	auth_password_input = LineEdit.new()
-	auth_password_input.visible = false
-	auth_password_input.placeholder_text = "×¡×™×¡×ž×” (×œ×¤×—×•×ª 6 ×ª×•×•×™×)" if ui_language == "he" else "Password (at least 6 characters)"
-	auth_password_input.secret = true
-	auth_password_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	auth_password_input.add_theme_font_override("font", ui_font)
-	auth_password_input.add_theme_font_size_override("font_size", 22)
-	auth_password_input.text_submitted.connect(_on_auth_password_submitted)
-	add_child(auth_password_input)
-	friend_id_input = LineEdit.new()
-	friend_id_input.visible = false
-	friend_id_input.max_length = 12
-	friend_id_input.placeholder_text = "ZP-XXXXXXXX"
-	friend_id_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	friend_id_input.add_theme_font_override("font", ui_font)
-	friend_id_input.add_theme_font_size_override("font_size", 18)
-	add_child(friend_id_input)
-	lobby_chat_input = LineEdit.new()
-	lobby_chat_input.visible = false
-	lobby_chat_input.max_length = 80
-	lobby_chat_input.placeholder_text = ui_text("lobby_chat_hint")
-	lobby_chat_input.add_theme_font_override("font", ui_font)
-	lobby_chat_input.add_theme_font_size_override("font_size", 18)
-	lobby_chat_input.text_submitted.connect(_on_lobby_chat_submitted)
-	add_child(lobby_chat_input)
-	friend_lookup_request = HTTPRequest.new()
-	friend_lookup_request.request_completed.connect(_on_friend_lookup_completed)
-	add_child(friend_lookup_request)
-	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
-	board_theme_textures = [
-		board_texture,
-		load("res://assets/boards/board-ice.webp") as Texture2D,
-		load("res://assets/boards/board-jungle.webp") as Texture2D,
-		load("res://assets/boards/board-lava.webp") as Texture2D,
-		load("res://assets/boards/board-candy.webp") as Texture2D,
-	]
-	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
-	floating_portals_home_texture = load("res://assets/ui/world/floating-portals-home-v1.webp") as Texture2D
-	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
-	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
-	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
-	if board_texture == null:
-		push_error("Clean original board could not be loaded.")
-	for theme_index in board_theme_textures.size():
-		if board_theme_textures[theme_index] == null:
-			push_error("Board theme %d could not be loaded." % theme_index)
-	for file_name in ["59_id_040.png", "60_id_041.png", "61_id_042.png", "62_id_043.png", "63_id_044.png"]:
-		piece_textures.append(load("res://assets/pieces/" + file_name))
-	for animal_file in ANIMAL_FILES:
-		animal_textures.append(load("res://assets/animal_pieces/%s.png" % animal_file))
-		animal_ring_masks.append(load("res://assets/animal_pieces/%s-ring-mask.png" % animal_file))
-		full_body_animal_textures.append(load("res://assets/ui/full_body/%s.webp" % animal_file))
-		var hero_colors: Array[Texture2D] = []
-		for ring_name in RING_COLOR_NAMES:
-			hero_colors.append(load("res://assets/ui/full_body/lifebuoy/%s-%s.png" % [animal_file, ring_name.to_lower()]) as Texture2D)
-		lifebuoy_hero_textures.append(hero_colors)
-	rebuild_team_piece_textures()
-	for i in 6:
-		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
-	rubber_ball_texture = load("res://assets/rubber_trap/rubber-ball.png") as Texture2D
-	for i in 5:
-		rubber_hand_textures.append(load("res://assets/rubber_trap/hands/pose-%d.png" % i))
-	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
-	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
-	press_machine_texture = load("res://assets/press_trap/industrial-press.svg") as Texture2D
-	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
-	hammer_texture = load("res://assets/hammer_trap/mechanical-hammer-v2.svg") as Texture2D
-	hammer_base_texture = load("res://assets/hammer_trap/remastered/hammer-base.png") as Texture2D
-	hammer_idle_texture = load("res://assets/hammer_trap/remastered/hammer-idle.png") as Texture2D
-	hammer_swing_texture = load("res://assets/hammer_trap/remastered/hammer-swing.png") as Texture2D
-	hammer_head_side_texture = load("res://assets/hammer_trap/remastered/hammer-head-side.png") as Texture2D
-	hammer_impact_texture = load("res://assets/hammer_trap/remastered/hammer-impact.png") as Texture2D
-	new_game()
-	get_viewport().size_changed.connect(_on_resize)
-	_on_resize()
-	initialize_saved_session()
-
-func _on_resize() -> void:
-	var viewport_size: Vector2 = get_viewport_rect().size
-	# Leave a clearly visible ocean frame around the floating board. The HUD is
-	# drawn over the ocean, so the board begins below it instead of hiding under
-	# the bar. All gameplay coordinates still use board_rect and stay aligned.
-	# Slightly larger than the first ocean layout while retaining a visible water
-	# frame on every side of the floating table.
-	var side_margin := maxf(8.0, viewport_size.x * 0.008)
-	# Grow the entire table uniformly by using more vertical space. Keeping the
-	# source aspect ratio avoids stretching the stones or center circle.
-	# Balanced framing: enough clear water for the centered turn notice above,
-	# a slim visible water line below, and a large prominent board in between.
-	var top_margin := 38.0
-	var bottom_margin := 26.0
-	var play_position := Vector2(side_margin, top_margin)
-	var available := Vector2(
-		maxf(300.0, viewport_size.x - side_margin * 2.0),
-		maxf(220.0, viewport_size.y - top_margin - bottom_margin)
-	)
-	# Preserve the actual modular board proportions (1480 x 1063). The previous
-	# landscape ratio stretched the stones and center circle horizontally.
-	var target_aspect := 1480.0 / 1063.0
-	var play_size := available
-	if play_size.x / play_size.y > target_aspect:
-		play_size.x = play_size.y * target_aspect
-	else:
-		play_size.y = play_size.x / target_aspect
-	play_position += (available - play_size) * 0.5
-	view_origin = play_position
-	board_rect = Rect2(play_position, play_size)
-	board_scale = minf(board_rect.size.x / BOARD_H, board_rect.size.y / BOARD_W)
-	queue_redraw()
-
-func new_game() -> void:
-	if game_mode != "online":
-		match_board_theme = selected_board_theme
-	balls.clear()
-	active_effects.clear()
-	water_floaters.clear()
-	impact_bursts.clear()
-	score_bursts.clear()
-	motion_trails.clear()
-	contacts.clear()
-	turn = 0
-	modern_match_intro = 0.0
-	last_announced_turn = -1
-	turn_banner_age = 0.0
-	ai_pending = false
-	ai_committed_shot = false
-	selected = -1
-	dragging = false
-	# Match the original opening formation: sixteen pieces wrap around the white
-	# center circle, with two additional pieces on the far left and two on the
-	# far right. Centers were measured from the supplied original screenshot and
-	# are ordered clockwise so the two players alternate around the formation.
-	var screen_formation := [
-		Vector2(0.493, 0.209), Vector2(0.579, 0.241),
-		Vector2(0.659, 0.304), Vector2(0.839, 0.397), Vector2(0.699, 0.397),
-		Vector2(0.718, 0.524), Vector2(0.699, 0.653), Vector2(0.839, 0.653),
-		Vector2(0.659, 0.740), Vector2(0.579, 0.795), Vector2(0.493, 0.817),
-		Vector2(0.406, 0.795), Vector2(0.328, 0.740),
-		Vector2(0.155, 0.653), Vector2(0.279, 0.653), Vector2(0.264, 0.524),
-		Vector2(0.279, 0.397), Vector2(0.155, 0.397),
-		Vector2(0.328, 0.304), Vector2(0.406, 0.241)
-	]
-	# The four detached side pieces are indices 3, 7, 13 and 17. Keep each
-	# detached pair together: both left pieces belong to the player and both
-	# right pieces belong to the opponent.
-	var outside_teams := {3: 1, 7: 1, 13: 0, 17: 0}
-	var inner_index := 0
-	for i in screen_formation.size():
-		var normalized: Vector2 = screen_formation[i]
-		# Invert board_to_screen so these readable landscape coordinates continue
-		# to use the original rotated physics coordinate system.
-		var p := Vector2(normalized.y * BOARD_W, BOARD_H - normalized.x * BOARD_H)
-		var team: int
-		if outside_teams.has(i):
-			team = outside_teams[i]
-		else:
-			team = inner_index % 2
-			inner_index += 1
-		balls.append({"p":p, "v":Vector2.ZERO, "team":team, "alive":true})
-	match_finished = false
-	match_result_open = false
-	match_result_winner = -1
-	match_result_coins = 0
-	match_result_recorded = false
-	turn_shot_committed = false
-	turn_pending_resolve = false
-	turn_opponent_scored = false
-	status = "Your turn - touch a red ball, pull back and release"
-	queue_redraw()
-
-func _process(delta: float) -> void:
-	menu_elapsed += delta
-	update_firebase(delta)
-	poll_multiplayer()
-	update_room_code_input()
-	update_chat_input()
-	update_profile_name_input()
-	update_auth_inputs()
-	update_home_social_inputs()
-	if app_screen == APP_SPLASH:
-		splash_elapsed += delta
-		if splash_elapsed >= 3.2:
-			app_screen = APP_AUTH
-		queue_redraw()
-		return
-	if app_screen != APP_GAME:
-		ensure_home_connected()
-		update_arena_fx(delta)
-		if app_screen == APP_HOME:
-			maybe_start_tutorial()
-		if menu_notice_time > 0.0:
-			menu_notice_time -= delta
-		queue_redraw()
-		return
-	accumulator += delta
-	while accumulator >= STEP_TIME:
-		physics_step()
-		accumulator -= STEP_TIME
-	update_effects(delta)
-	update_water_floaters(delta)
-	update_modern_game_fx(delta)
-	modern_match_intro = minf(2.4, modern_match_intro + delta)
-	if last_announced_turn != turn:
-		last_announced_turn = turn
-		turn_banner_age = 0.0
-	else:
-		turn_banner_age += delta
-	if ai_pending and not match_finished and effects_allow_next_turn() and not any_ball_moving():
-		ai_timer -= delta
-		if ai_timer <= 0.0:
-			ai_pending = false
-			ai_shot()
-	queue_redraw()
-
-func effects_allow_next_turn() -> bool:
-	# The capture/crush portion must finish, but the longer fall and water
-	# continuation may keep playing while the next player starts aiming.
-	for effect in active_effects:
-		var unlock_time := TRAP_CAPTURE_TIME
-		if effect.hole not in [RUBBER_TRAP_HOLE, PRESS_TRAP_HOLE, ELECTRIC_TRAP_HOLE, HAMMER_TRAP_HOLE, ICE_TRAP_HOLE, FIRE_TRAP_HOLE]:
-			unlock_time = EFFECT_DURATION * 0.58
-		if effect.elapsed < unlock_time:
-			return false
-	return true
-
-func physics_step() -> void:
-	contacts.clear()
-	for i in balls.size():
-		var ball: Dictionary = balls[i]
-		if not ball.alive or ball.v == Vector2.ZERO:
-			continue
-		ball.p += ball.v
-		ball.v *= 149.0 / 150.0
-		if ball.v.length_squared() < 0.000095:
-			ball.v = Vector2.ZERO
-		resolve_walls(i)
-	for i in balls.size():
-		if not balls[i].alive:
-			continue
-		for j in range(i + 1, balls.size()):
-			if balls[j].alive:
-				resolve_collision(i, j)
-	if game_mode == "computer" and turn == 1 and not match_finished and not ai_pending and ai_committed_shot and not any_ball_moving() and effects_allow_next_turn():
-		resolve_pending_turn()
-	elif not match_finished and turn_pending_resolve and not any_ball_moving() and effects_allow_next_turn():
-		resolve_pending_turn()
-
-func resolve_walls(index: int) -> void:
-	var ball: Dictionary = balls[index]
-	var p: Vector2 = ball.p
-	var v: Vector2 = ball.v
-	var vertical_open := p.y < CORNER_OPEN_LOW or (p.y > MIDDLE_OPEN_MIN and p.y < MIDDLE_OPEN_MAX) or p.y > CORNER_OPEN_HIGH
-	var horizontal_open := p.x < SIDE_OPEN_LOW or p.x > SIDE_OPEN_HIGH
-	var wall_min_x := effective_wall_min_x()
-	var wall_max_x := effective_wall_max_x()
-	var wall_min_y := effective_wall_min_y()
-	var wall_max_y := effective_wall_max_y()
-	if p.x - RADIUS < wall_min_x:
-		if vertical_open:
-			# Capture only after the ball center is genuinely behind the rail.
-			var hole := hole_for_vertical(p.y, true)
-			if entry_triggered(p, hole): score_ball(index, hole); return
-		# The visual opening is wider than the editable ENTRY circle. Everything
-		# outside that circle must still behave as a rail instead of leaking out.
-		p.x = wall_min_x + RADIUS; v.x = abs(v.x) * 0.75
-	elif p.x + RADIUS > wall_max_x:
-		if vertical_open:
-			var hole := hole_for_vertical(p.y, false)
-			if entry_triggered(p, hole): score_ball(index, hole); return
-		p.x = wall_max_x - RADIUS; v.x = -abs(v.x) * 0.75
-	if p.y - RADIUS < wall_min_y:
-		if horizontal_open:
-			var hole := 2 if p.x < 104.0 else 3
-			if entry_triggered(p, hole): score_ball(index, hole); return
-		p.y = wall_min_y + RADIUS; v.y = abs(v.y) * 0.75
-	elif p.y + RADIUS > wall_max_y:
-		if horizontal_open:
-			var hole := 0 if p.x < 104.0 else 5
-			if entry_triggered(p, hole): score_ball(index, hole); return
-		p.y = wall_max_y - RADIUS; v.y = -abs(v.y) * 0.75
-	ball.p = p; ball.v = v
-
-func hole_for_vertical(y: float, left: bool) -> int:
-	var k := 0 if y < CORNER_OPEN_LOW else (1 if y < MIDDLE_OPEN_MAX else 2)
-	return 2 - k if left else 3 + k
-
-func editor_wall_side(hole: int) -> int:
-	match hole:
-		0, 5: return 0 # visible left
-		1, 2: return 1 # visible top
-		3: return 2 # visible right
-		4: return 3 # visible bottom
-	return 0
-
-func effective_wall_min_x() -> float:
-	return WALL_MIN_X + table_wall_offsets[1] + (table_wall_sizes[1] - 4.0) * 0.5
-
-func effective_wall_max_x() -> float:
-	return WALL_MAX_X + table_wall_offsets[3] - (table_wall_sizes[3] - 4.0) * 0.5
-
-func effective_wall_min_y() -> float:
-	return WALL_MIN_Y - table_wall_offsets[2] + (table_wall_sizes[2] - 4.0) * 0.5
-
-func effective_wall_max_y() -> float:
-	return WALL_MAX_Y - table_wall_offsets[0] - (table_wall_sizes[0] - 4.0) * 0.5
-
-func entry_trigger_center(hole: int) -> Vector2:
-	# ENTRY offsets use the visible screen axes. Convert them back into the
-	# rotated physics coordinates used by the board.
-	var offset := trap_entry_offsets[hole]
-	return SCORING_HOLE_CENTERS[hole] + Vector2(offset.y, -offset.x)
-
-func entry_triggered(ball_position: Vector2, hole: int) -> bool:
-	return ball_position.distance_to(entry_trigger_center(hole)) <= trap_entry_radii[hole]
-
-func resolve_collision(a_index: int, b_index: int) -> void:
-	var key := Vector2i(a_index, b_index)
-	if contacts.has(key): return
-	var a: Dictionary = balls[a_index]
-	var b: Dictionary = balls[b_index]
-	var delta: Vector2 = b.p - a.p
-	var distance := delta.length()
-	if distance <= 0.001 or distance >= RADIUS * 2.0: return
-	contacts[key] = true
-	var normal := delta / distance
-	var overlap := RADIUS * 2.0 - distance
-	a.p -= normal * overlap * 0.5
-	b.p += normal * overlap * 0.5
-	var relative: Vector2 = b.v - a.v
-	var speed := relative.dot(normal)
-	if speed < 0.0:
-		var impact_strength := minf(1.0, absf(speed) / 2.4)
-		if impact_strength > 0.16:
-			impact_bursts.append({"p":(a.p + b.p) * 0.5, "age":0.0, "power":impact_strength})
-		a.v += normal * speed
-		b.v -= normal * speed
-
-func score_ball(index: int, hole: int) -> void:
-	var scored_team: int = balls[index].team
-	if scored_team != turn:
-		turn_opponent_scored = true
-	balls[index].alive = false
-	balls[index].v = Vector2.ZERO
-	active_effects.append({"hole":hole, "elapsed":0.0, "team":scored_team, "piece":index})
-	score_bursts.append({"p":SCORING_HOLE_CENTERS[hole], "age":0.0, "team":scored_team})
-	status = "Ball scored!"
-	play_sound("score")
-	check_match_end()
-
-func update_effects(delta: float) -> void:
-	for effect in active_effects:
-		effect.elapsed += delta
-	for i in range(active_effects.size() - 1, -1, -1):
-		var duration := EFFECT_DURATION
-		if active_effects[i].hole == RUBBER_TRAP_HOLE:
-			duration = RUBBER_EFFECT_DURATION
-		elif active_effects[i].hole == PRESS_TRAP_HOLE:
-			duration = PRESS_EFFECT_DURATION
-		elif active_effects[i].hole == ICE_TRAP_HOLE:
-			duration = ICE_EFFECT_DURATION
-		elif active_effects[i].hole == FIRE_TRAP_HOLE:
-			duration = FIRE_EFFECT_DURATION
-		elif active_effects[i].hole == ELECTRIC_TRAP_HOLE:
-			duration = ELECTRIC_EFFECT_DURATION
-		elif active_effects[i].hole == HAMMER_TRAP_HOLE:
-			duration = HAMMER_EFFECT_DURATION
-		if active_effects[i].elapsed >= duration:
-			spawn_water_floater(active_effects[i])
-			active_effects.remove_at(i)
-
-func update_modern_game_fx(delta: float) -> void:
-	for burst in impact_bursts:
-		burst.age += delta
-	for i in range(impact_bursts.size() - 1, -1, -1):
-		if impact_bursts[i].age >= 0.42:
-			impact_bursts.remove_at(i)
-	for burst in score_bursts:
-		burst.age += delta
-	for i in range(score_bursts.size() - 1, -1, -1):
-		if score_bursts[i].age >= 1.15:
-			score_bursts.remove_at(i)
-	for i in balls.size():
-		if balls[i].alive and balls[i].v.length_squared() > 0.09:
-			motion_trails.append({"p":balls[i].p, "age":0.0, "team":balls[i].team})
-	for trail in motion_trails:
-		trail.age += delta
-	for i in range(motion_trails.size() - 1, -1, -1):
-		if motion_trails[i].age >= 0.30:
-			motion_trails.remove_at(i)
-
-func spawn_water_floater(effect: Dictionary) -> void:
-	# Continue from the exact final frame of each weapon fall. Spawning again at
-	# the hole made the animal grow and appear to fall from the table twice.
-	var landing := effect_fall_endpoint(effect.hole)
-	var outward := (landing - board_rect.get_center()).normalized()
-	if outward.length_squared() < 0.01:
-		outward = Vector2.DOWN
-	# Keep the distant perspective size reached at the end of the fall.
-	var radius := 15.0 * board_rect.size.y / 600.0
-	water_floaters.append({
-		"elapsed": 0.0,
-		"team": effect.team,
-		"piece": effect.piece,
-		"start": landing,
-		"direction": outward,
-		"radius": radius
-	})
-
-func effect_fall_endpoint(hole: int) -> Vector2:
-	var scale_y := board_rect.size.y / 600.0
-	var endpoint := board_to_screen(SCORING_HOLE_CENTERS[hole])
-	match hole:
-		RUBBER_TRAP_HOLE:
-			endpoint = rubber_point(2.0, 22.0)
-		PRESS_TRAP_HOLE:
-			# Stop in the narrow water strip above the table instead of continuing
-			# behind the HUD and outside the visible screen.
-			endpoint = press_point(621.0, -12.0)
-		ELECTRIC_TRAP_HOLE:
-			endpoint = electric_point(1198.0, 22.0)
-		HAMMER_TRAP_HOLE:
-			endpoint = hammer_point(1198.0, 598.0)
-		ICE_TRAP_HOLE:
-			# Match the visible water strip immediately below the table.
-			endpoint = ice_point(600.0, 612.0)
-		FIRE_TRAP_HOLE:
-			endpoint = fire_point(112.0, 536.0) + Vector2(-54.0, 76.0) * scale_y
-	return endpoint + trap_fall_offsets[hole] * scale_y
-
-func update_water_floaters(delta: float) -> void:
-	for floater in water_floaters:
-		floater.elapsed += delta
-	for i in range(water_floaters.size() - 1, -1, -1):
-		if water_floaters[i].elapsed >= WATER_FLOAT_TIME:
-			water_floaters.remove_at(i)
-
-func handle_system_back() -> void:
-	# Close the innermost game overlay before navigating away from the match.
-	if app_screen == APP_GAME:
-		if match_result_open:
-			exit_current_match()
-		elif customizer_open:
-			customizer_open = false
-		elif chat_open:
-			chat_open = false
-			if chat_input != null:
-				chat_input.release_focus()
-		elif exit_confirm_open:
-			exit_confirm_open = false
-		else:
-			# Match back never quits immediately; it uses the same confirmation
-			# dialog as the on-screen arrow.
-			exit_confirm_open = true
-			selected = -1
-			dragging = false
-		queue_redraw()
-		return
-
-	# The email/password form is a child step of the authentication screen.
-	if app_screen == APP_AUTH and not auth_email_mode.is_empty():
-		auth_email_mode = ""
-		firebase_status = "×‘×—×¨×• ×“×¨×š ×›× ×™×¡×”" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
-		if auth_email_input != null:
-			auth_email_input.release_focus()
-		if auth_password_input != null:
-			auth_password_input.release_focus()
-		update_auth_inputs()
-		queue_redraw()
-		return
-
-	# Every secondary menu returns to the home screen and performs the same
-	# cleanup as its visible Back button.
-	if app_screen not in [APP_HOME, APP_AUTH, APP_SPLASH]:
-		if app_screen == APP_PLAYER_PROFILE:
-			commit_profile_name()
-		if app_screen == APP_FRIEND:
-			leave_multiplayer_room()
-		if app_screen == APP_ARENA:
-			cancel_matchmaking()
-		app_screen = APP_HOME
-		update_room_code_input()
-		update_profile_name_input()
-		queue_redraw()
-		return
-
-	if app_screen == APP_SPLASH:
-		app_screen = APP_AUTH
-		queue_redraw()
-		return
-
-	# Home and the root authentication chooser are the only true app roots.
-	if tutorial_open:
-		if tutorial_step > 0:
-			retreat_tutorial_step()
-		else:
-			tutorial_open = false
-			tutorial_dismissed_session = true
-		queue_redraw()
-		return
-
-	# Back from either root keeps Android's expected behavior and exits.
-	get_tree().quit()
-
-func _input(event: InputEvent) -> void:
-	# Mobile browsers only allow fullscreen and orientation locking after a real
-	# user gesture. The first tap requests both, so Android can rotate the game
-	# automatically without asking the player to rotate the phone manually.
-	if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
-		request_landscape_mode()
-	# The game is landscape-only. Ignore touches until the device is rotated.
-	if get_viewport_rect().size.y > get_viewport_rect().size.x:
-		return
-	if event is InputEventScreenTouch:
-		touchscreen_input_seen = true
-		if event.pressed: pointer_down(event.position)
-		else: pointer_up(event.position)
-	elif event is InputEventScreenDrag:
-		touchscreen_input_seen = true
-		pointer_move(event.position)
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not touchscreen_input_seen:
-		if event.pressed: pointer_down(event.position)
-		else: pointer_up(event.position)
-	elif event is InputEventMouseMotion and not touchscreen_input_seen and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		pointer_move(event.position)
-
-func request_landscape_mode() -> void:
-	if not OS.has_feature("web"):
-		return
-	JavaScriptBridge.eval("""
-		(async () => {
-			try {
-				const root = document.documentElement;
-				if (!document.fullscreenElement && root.requestFullscreen) {
-					try {
-						await root.requestFullscreen({ navigationUI: 'hide' });
-					} catch (_) {
-						await root.requestFullscreen();
-					}
-				}
-			} catch (_) {}
-			try {
-				if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
-			} catch (_) {}
-		})();
-	""", true)
-
-func pointer_down(screen_pos: Vector2) -> void:
-	if app_screen != APP_GAME:
-		handle_frontend_touch(screen_pos)
-		return
-	var viewport_size := get_viewport_rect().size
-	if match_result_open:
-		if match_result_home_rect(viewport_size).has_point(screen_pos):
-			exit_current_match()
-		elif game_mode == "computer" and match_result_again_rect(viewport_size).has_point(screen_pos):
-			start_computer_setup()
-		return
-	if customizer_open:
-		handle_customizer_touch(screen_pos)
-		return
-	if exit_confirm_open:
-		if exit_confirm_yes_rect(viewport_size).has_point(screen_pos):
-			exit_current_match()
-		elif exit_confirm_no_rect(viewport_size).has_point(screen_pos):
-			exit_confirm_open = false
-			queue_redraw()
-		return
-	if chat_open:
-		if chat_close_rect(viewport_size).has_point(screen_pos):
-			chat_open = false
-			chat_input.release_focus()
-		elif chat_send_rect(viewport_size).has_point(screen_pos):
-			send_chat_message()
-		queue_redraw()
-		return
-	if game_back_rect().has_point(screen_pos):
-		exit_confirm_open = true
-		selected = -1
-		dragging = false
-		queue_redraw()
-		return
-	if game_mode == "online" and game_chat_rect(viewport_size).has_point(screen_pos):
-		chat_open = true
-		chat_input.grab_focus()
-		queue_redraw()
-		return
-	if match_finished or (game_mode == "computer" and turn != 0) or (game_mode == "online" and turn != multiplayer_slot) or any_ball_moving() or not effects_allow_next_turn(): return
-	var board_pos := screen_to_board(screen_pos)
-	for i in balls.size():
-		if balls[i].alive and balls[i].team == turn and balls[i].p.distance_to(board_pos) <= 16.0:
-			selected = i
-			dragging = true
-			drag_point = board_pos
-			status = "Pull back and release"
-			return
-
-func pointer_move(screen_pos: Vector2) -> void:
-	if dragging and selected >= 0:
-		drag_point = screen_to_board(screen_pos)
-		var pull_distance: float = balls[selected].p.distance_to(drag_point)
-		status = "Release to shoot" if pull_distance >= MIN_SHOT_PULL else "Release to cancel"
-
-func pointer_up(screen_pos: Vector2) -> void:
-	if not dragging or selected < 0: return
-	drag_point = screen_to_board(screen_pos)
-	var pull: Vector2 = balls[selected].p - drag_point
-	var pull_distance: float = pull.length()
-	var strength: float = clampf(pull_distance, MIN_SHOT_PULL, 30.0)
-	if pull_distance >= MIN_SHOT_PULL:
-		turn_shot_committed = true
-		turn_pending_resolve = true
-		turn_opponent_scored = false
-		play_sound("shot")
-		if game_mode == "online":
-			send_multiplayer({"type":"shot", "ballIndex":selected, "pullX":pull.x, "pullY":pull.y, "strength":strength})
-			status = "×©×•×œ×— ××ª ×”×–×¨×™×§×”..." if ui_language == "he" else "Sending shot..."
-		elif game_mode == "computer":
-			balls[selected].v = pull.normalized() * (strength * 0.078)
-			ai_committed_shot = false
-			status = "×ž×—×›×™× ×œ×ª×•×¦××ª ×”×–×¨×™×§×”..." if ui_language == "he" else "Waiting for the shot to settle..."
-		else:
-			balls[selected].v = pull.normalized() * (strength * 0.078)
-			ai_pending = false
-			status = "×ž×—×›×™× ×œ×ª×•×¦××ª ×”×–×¨×™×§×”..." if ui_language == "he" else "Waiting for the shot to settle..."
-	else:
-		status = "Aim cancelled - choose another ball"
-	dragging = false
-	selected = -1
-
-func ai_difficulty_settings() -> Dictionary:
-	match clampi(computer_difficulty, 0, 2):
-		0:
-			return {"angle_error": 0.32, "power_error": 0.24, "pick_top": 0.42, "think_min": 0.55, "think_max": 1.25, "rating_bonus": -140, "min_align": 0.05}
-		2:
-			return {"angle_error": 0.035, "power_error": 0.05, "pick_top": 0.96, "think_min": 0.22, "think_max": 0.62, "rating_bonus": 160, "min_align": 0.22}
-	return {"angle_error": 0.11, "power_error": 0.11, "pick_top": 0.74, "think_min": 0.34, "think_max": 0.88, "rating_bonus": 0, "min_align": 0.12}
-
-func ai_think_delay() -> float:
-	var settings := ai_difficulty_settings()
-	return randf_range(float(settings.think_min), float(settings.think_max))
-
-func ai_opponent_rating() -> int:
-	return clampi(940 + player_level * 8 + int(ai_difficulty_settings().rating_bonus), 700, 1800)
-
-func ai_display_name() -> String:
-	match clampi(computer_difficulty, 0, 2):
-		0: return ui_text("ai_name_easy")
-		2: return ui_text("ai_name_hard")
-	return ui_text("ai_name_medium")
-
-func ai_collect_shot_candidates(settings: Dictionary) -> Array:
-	var candidates: Array = []
-	var min_align: float = float(settings.min_align)
-	for shooter_index in balls.size():
-		var shooter: Dictionary = balls[shooter_index]
-		if not shooter.alive or int(shooter.team) != 1:
-			continue
-		var shooter_pos: Vector2 = shooter.p
-		for enemy_index in balls.size():
-			var enemy: Dictionary = balls[enemy_index]
-			if not enemy.alive or int(enemy.team) != 0:
-				continue
-			var enemy_pos: Vector2 = enemy.p
-			for hole_index in 6:
-				var hole_pos: Vector2 = entry_trigger_center(hole_index)
-				var to_hole: Vector2 = hole_pos - enemy_pos
-				var hole_dist: float = to_hole.length()
-				if hole_dist < 2.0:
-					continue
-				var hole_dir: Vector2 = to_hole / hole_dist
-				var contact: Vector2 = enemy_pos - hole_dir * (RADIUS * 2.05)
-				var to_contact: Vector2 = contact - shooter_pos
-				var shot_dist: float = to_contact.length()
-				if shot_dist < MIN_SHOT_PULL or shot_dist > 118.0:
-					continue
-				var shot_dir: Vector2 = to_contact / shot_dist
-				var push_align: float = shot_dir.dot(hole_dir)
-				if push_align < min_align:
-					continue
-				var score: float = push_align * 55.0
-				score += (1.0 - clampf(hole_dist / 155.0, 0.0, 1.0)) * 38.0
-				score += (1.0 - clampf(shot_dist / 118.0, 0.0, 1.0)) * 18.0
-				score -= ai_self_sink_risk(shooter_pos, shot_dir, shot_dist) * 28.0
-				candidates.append({
-					"shooter": shooter_index,
-					"direction": shot_dir,
-					"distance": shot_dist,
-					"score": score,
-					"kind": "pocket"
-				})
-		for enemy_index in balls.size():
-			var enemy: Dictionary = balls[enemy_index]
-			if not enemy.alive or int(enemy.team) != 0:
-				continue
-			var to_enemy: Vector2 = enemy.p - shooter_pos
-			var dist: float = to_enemy.length()
-			if dist < MIN_SHOT_PULL or dist > 105.0:
-				continue
-			var dir: Vector2 = to_enemy / dist
-			var hole_pos: Vector2 = ai_nearest_hole(enemy.p)
-			var hole_dir: Vector2 = (hole_pos - enemy.p).normalized()
-			var score: float = dir.dot(hole_dir) * 22.0 + (1.0 - dist / 105.0) * 10.0
-			candidates.append({
-				"shooter": shooter_index,
-				"direction": dir,
-				"distance": dist,
-				"score": score,
-				"kind": "hit"
-			})
-	return candidates
-
-func ai_nearest_hole(pos: Vector2) -> Vector2:
-	var best := entry_trigger_center(0)
-	var best_dist := pos.distance_squared_to(best)
-	for hole_index in range(1, 6):
-		var center := entry_trigger_center(hole_index)
-		var dist := pos.distance_squared_to(center)
-		if dist < best_dist:
-			best_dist = dist
-			best = center
-	return best
-
-func ai_self_sink_risk(shooter_pos: Vector2, shot_dir: Vector2, shot_dist: float) -> float:
-	var risk := 0.0
-	var end_pos := shooter_pos + shot_dir * minf(shot_dist * 1.15, 90.0)
-	for hole_index in 6:
-		var hole_pos: Vector2 = entry_trigger_center(hole_index)
-		if end_pos.distance_to(hole_pos) < trap_entry_radii[hole_index] + RADIUS * 2.5:
-			risk += 1.0
-	for ball in balls:
-		if not ball.alive or int(ball.team) != 1:
-			continue
-		if ball.p.distance_squared_to(shooter_pos) < 0.01:
-			continue
-		if end_pos.distance_to(ball.p) < RADIUS * 3.0:
-			risk += 0.35
-	return risk
-
-func ai_pick_shot(candidates: Array, settings: Dictionary) -> Dictionary:
-	if candidates.is_empty():
-		return {}
-	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return float(a.score) > float(b.score)
-	)
-	var pick_top: float = float(settings.pick_top)
-	var pool_size: int = maxi(1, int(ceil(float(candidates.size()) * pick_top)))
-	var choice: Dictionary = candidates[randi() % pool_size]
-	return choice
-
-func ai_fallback_shot() -> Dictionary:
-	var shooters: Array[int] = []
-	for i in balls.size():
-		if balls[i].alive and int(balls[i].team) == 1:
-			shooters.append(i)
-	if shooters.is_empty():
-		return {}
-	var shooter_index: int = shooters[randi() % shooters.size()]
-	var shooter_pos: Vector2 = balls[shooter_index].p
-	var target_pos: Vector2 = Vector2(BOARD_W * 0.5, BOARD_H * 0.5)
-	var enemy_count := 0
-	for ball in balls:
-		if ball.alive and int(ball.team) == 0:
-			target_pos += ball.p
-			enemy_count += 1
-	if enemy_count > 0:
-		target_pos /= float(enemy_count + 1)
-	else:
-		target_pos = Vector2(BOARD_W * 0.72, BOARD_H * 0.5)
-	var to_target: Vector2 = target_pos - shooter_pos
-	var dist: float = to_target.length()
-	if dist < MIN_SHOT_PULL:
-		to_target = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized() * MIN_SHOT_PULL
-		dist = MIN_SHOT_PULL
-	return {
-		"shooter": shooter_index,
-		"direction": to_target / dist,
-		"distance": dist,
-		"score": 0.0,
-		"kind": "break"
-	}
-
-func ai_apply_shot(shot: Dictionary, settings: Dictionary) -> void:
-	var shooter_index: int = int(shot.shooter)
-	if shooter_index < 0 or shooter_index >= balls.size() or not balls[shooter_index].alive:
-		return
-	var direction: Vector2 = shot.direction
-	var angle_error: float = float(settings.angle_error)
-	direction = direction.rotated(randf_range(-angle_error, angle_error))
-	if direction.length_squared() < 0.0001:
-		direction = Vector2.RIGHT
-	else:
-		direction = direction.normalized()
-	var base_strength: float = clampf(float(shot.distance) * 0.34, MIN_SHOT_PULL, 28.5)
-	var power_error: float = float(settings.power_error)
-	var strength: float = clampf(base_strength + randf_range(-power_error, power_error) * 12.0, MIN_SHOT_PULL, 30.0)
-	balls[shooter_index].v = direction * (strength * 0.078)
-	turn_shot_committed = true
-	turn_pending_resolve = true
-	turn_opponent_scored = false
-	ai_committed_shot = true
-	play_sound("shot")
-	status = "Blue player shot..." if ui_language != "he" else "×”×ž×—×©×‘ ×™×•×¨×”..."
-
-func ai_shot() -> void:
-	var settings := ai_difficulty_settings()
-	var candidates := ai_collect_shot_candidates(settings)
-	var shot: Dictionary = ai_pick_shot(candidates, settings)
-	if shot.is_empty():
-		shot = ai_fallback_shot()
-	if shot.is_empty():
-		finish_ai_turn()
-		return
-	ai_apply_shot(shot, settings)
-
-func finish_ai_turn() -> void:
-	turn = 0
-	turn_shot_committed = false
-	turn_pending_resolve = false
-	turn_opponent_scored = false
-	status = "Your turn - touch a red ball, pull back and release"
-
-func resolve_pending_turn() -> void:
-	if match_finished or not turn_pending_resolve or any_ball_moving() or not effects_allow_next_turn():
-		return
-	var continue_turn := turn_opponent_scored
-	turn_opponent_scored = false
-	if game_mode == "online":
-		if turn == multiplayer_slot:
-			send_multiplayer({"type": "resolve_turn", "continueTurn": continue_turn})
-		return
-	apply_turn_after_shot(continue_turn)
-
-func apply_turn_after_shot(continue_turn: bool) -> void:
-	turn_pending_resolve = false
-	turn_shot_committed = false
-	if continue_turn:
-		if game_mode == "computer" and turn == 1:
-			ai_committed_shot = false
-			ai_pending = true
-			ai_timer = ai_think_delay()
-			status = ui_text("extra_turn")
-		else:
-			status = ui_text("extra_turn")
-		return
-	if game_mode == "computer":
-		if turn == 0:
-			turn = 1
-			ai_committed_shot = false
-			ai_pending = true
-			ai_timer = ai_think_delay()
-			status = ("×ª×•×¨ ×”×ž×—×©×‘" if ui_language == "he" else "Computer's turn")
-		else:
-			finish_ai_turn()
-	elif game_mode == "online":
-		pass
-	else:
-		turn = 1 - turn
-		status = ("×ª×•×¨ ×©×—×§×Ÿ " if ui_language == "he" else "Player ") + str(turn + 1)
-
-func update_turn_status_from_server(continued: bool) -> void:
-	if continued:
-		status = ui_text("extra_turn")
-		return
-	if game_mode == "online":
-		if turn == multiplayer_slot:
-			status = "×”×ª×•×¨ ×©×œ×›×" if ui_language == "he" else "Your turn"
-		else:
-			status = "×ª×•×¨ ×”×™×¨×™×‘" if ui_language == "he" else "Opponent's turn"
-
-func any_ball_moving() -> bool:
-	for ball in balls:
-		if ball.alive and ball.v.length_squared() > 0.0001: return true
-	return false
-
-func show_turn_ball_hint() -> bool:
-	if effect_editor_enabled or customizer_open or match_finished or turn_shot_committed:
-		return false
-	if any_ball_moving() or not effects_allow_next_turn():
-		return false
-	return true
-
-func show_turn_ball_hint_for_team(team: int) -> bool:
-	if not show_turn_ball_hint() or team != turn:
-		return false
-	if game_mode == "computer" and team != 0:
-		return false
-	if game_mode == "online" and team != multiplayer_slot:
-		return false
-	return true
-
-func board_to_screen(p: Vector2) -> Vector2:
-	# Rotate the original portrait coordinates clockwise into the landscape board.
-	return board_rect.position + Vector2(
-		(BOARD_H - p.y) / BOARD_H * board_rect.size.x,
-		p.x / BOARD_W * board_rect.size.y
-	)
-
-func screen_to_board(p: Vector2) -> Vector2:
-	var local: Vector2 = p - board_rect.position
-	return Vector2(
-		local.y / board_rect.size.y * BOARD_W,
-		BOARD_H - (local.x / board_rect.size.x * BOARD_H)
-	)
-
-func _draw() -> void:
-	var viewport_size := get_viewport_rect().size
-	draw_ocean(viewport_size)
-	if viewport_size.y > viewport_size.x:
-		var launch_width: float = minf(viewport_size.x * 0.82, 620.0)
-		var launch_rect := Rect2(
-			(viewport_size.x - launch_width) * 0.5,
-			viewport_size.y * 0.38,
-			launch_width,
-			112.0
-		)
-		var launch_shadow := Rect2(launch_rect.position + Vector2(0.0, 8.0), launch_rect.size).grow(8.0)
-		draw_style_box(make_box(Color(0.01, 0.04, 0.08, 0.42), 30.0), launch_shadow)
-		draw_style_box(make_box(Color("70df12"), 26.0), launch_rect)
-		draw_string(ui_font, Vector2(launch_rect.position.x, launch_rect.position.y + 67.0), "×œ×—×¦×• ×›××Ÿ" if ui_language == "he" else "TAP HERE", HORIZONTAL_ALIGNMENT_CENTER, launch_rect.size.x, 46, Color.WHITE)
-		draw_string(ui_font, Vector2(0, launch_rect.end.y + 52.0), "×”×ž×©×—×§ ×™×™×¤×ª×— ×œ×¨×•×—×‘ ×•×‘×ž×¡×š ×ž×œ×" if ui_language == "he" else "The game will open fullscreen in landscape", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 22, Color.WHITE)
-		return
-	if app_screen == APP_SPLASH:
-		draw_splash_screen(viewport_size)
-		return
-	if app_screen != APP_GAME:
-		draw_frontend(viewport_size)
-		return
-	# Floating animals stay behind the elevated table and only remain visible on
-	# the surrounding water.
-	draw_water_floaters(viewport_size)
-	# Each table theme keeps the exact approved gameplay geometry while using
-	# its own production texture.
-	var active_board_texture := board_theme_texture(active_board_theme())
-	if active_board_texture != null:
-		draw_texture_rect(active_board_texture, board_rect, false)
-	draw_scoreboards()
-	draw_rubber_launchers_idle()
-	draw_press_weapons_idle()
-	draw_electric_weapons_idle()
-	draw_ice_weapons_idle()
-	draw_fire_weapons_idle()
-	draw_hammer_weapons_idle()
-	draw_modern_game_fx(false)
-
-	for i in balls.size():
-		var ball: Dictionary = balls[i]
-		if not ball.alive: continue
-		var sp := board_to_screen(ball.p)
-		var visual_radius := GAME_BALL_VISUAL_RADIUS * board_scale
-		if show_turn_ball_hint_for_team(ball.team):
-			var pulse := (sin(float(Time.get_ticks_msec()) * 0.006) + 1.0) * 0.5
-			var halo_radius := visual_radius * (1.34 + pulse * 0.10)
-			draw_circle(sp, halo_radius, Color(0.54, 1.0, 0.62, 0.16 + pulse * 0.08))
-			draw_circle(sp, halo_radius, Color(0.76, 1.0, 0.80, 0.68), false, maxf(2.0, visual_radius * 0.12), true)
-		draw_rubber_game_ball(sp, visual_radius, ball.team, i, 1.0)
-
-	for effect in active_effects:
-		if effect.hole == RUBBER_TRAP_HOLE:
-			draw_rubber_trap(effect)
-		elif effect.hole == PRESS_TRAP_HOLE:
-			draw_press_trap(effect)
-		elif effect.hole == ICE_TRAP_HOLE:
-			draw_ice_trap(effect)
-		elif effect.hole == FIRE_TRAP_HOLE:
-			draw_fire_trap(effect)
-		elif effect.hole == ELECTRIC_TRAP_HOLE:
-			draw_electric_trap(effect)
-		elif effect.hole == HAMMER_TRAP_HOLE:
-			draw_hammer_trap(effect)
-		else:
-			draw_hole_effect(effect.hole, effect.elapsed / EFFECT_DURATION)
-	draw_modern_game_fx(true)
-
-	if dragging and selected >= 0:
-		var start := board_to_screen(balls[selected].p)
-		var end := board_to_screen(drag_point)
-		draw_original_style_aim(start, end)
-
-	draw_ball_hitbox_editor_overlay()
-	draw_entry_editor_marker()
-	draw_table_wall_editor_overlay()
-
-	draw_hud(viewport_size)
-	draw_modern_match_overlay(viewport_size)
-	draw_effect_editor(viewport_size)
-	draw_customizer(viewport_size)
-
-func draw_modern_game_fx(foreground: bool) -> void:
-	if not foreground:
-		for trail in motion_trails:
-			var life: float = 1.0 - float(trail.age) / 0.30
-			var center := board_to_screen(trail.p)
-			var color := team_marker_color(int(trail.team))
-			color.a = 0.20 * life
-			draw_circle(center, GAME_BALL_VISUAL_RADIUS * board_scale * (0.58 + life * 0.20), color)
-		return
-	for burst in impact_bursts:
-		var t: float = clampf(float(burst.age) / 0.42, 0.0, 1.0)
-		var center := board_to_screen(burst.p)
-		var power: float = float(burst.power)
-		var radius: float = (8.0 + 28.0 * t) * board_scale * power
-		draw_circle(center, radius, Color(0.75, 0.96, 1.0, (1.0 - t) * 0.20), false, maxf(2.0, 4.0 * board_scale), true)
-		for ray in 8:
-			var direction := Vector2.RIGHT.rotated(float(ray) * TAU / 8.0 + t * 0.35)
-			draw_line(center + direction * radius * 0.42, center + direction * radius, Color(0.88, 0.98, 1.0, (1.0 - t) * 0.85), maxf(1.0, 2.4 * board_scale), true)
-	for burst in score_bursts:
-		var t: float = clampf(float(burst.age) / 1.15, 0.0, 1.0)
-		var center := board_to_screen(burst.p)
-		var team_color := team_marker_color(int(burst.team))
-		var wave := sin(t * PI)
-		team_color.a = (1.0 - t) * 0.75
-		draw_circle(center, (14.0 + 42.0 * t) * board_scale, team_color, false, maxf(2.0, 5.0 * board_scale), true)
-		draw_circle(center, (10.0 + 18.0 * wave) * board_scale, Color(1.0, 0.88, 0.34, (1.0 - t) * 0.42))
-		for spark in 12:
-			var direction := Vector2.UP.rotated(float(spark) * TAU / 12.0)
-			var spark_pos := center + direction * (18.0 + 38.0 * t) * board_scale
-			draw_circle(spark_pos, maxf(1.5, 3.4 * board_scale * (1.0 - t)), Color(1.0, 0.90, 0.45, 1.0 - t))
-
-func draw_modern_match_overlay(viewport_size: Vector2) -> void:
-	# Compact animated turn indicator that stays clear of the board and player cards.
-	var banner_width := minf(250.0, viewport_size.x * 0.24)
-	var banner := Rect2((viewport_size.x - banner_width) * 0.5, 8.0, banner_width, 48.0)
-	var pulse := (sin(menu_elapsed * 4.4) + 1.0) * 0.5
-	var accent := team_marker_color(turn)
-	draw_style_box(make_box(Color(0.015, 0.045, 0.085, 0.93), 18.0), banner)
-	draw_rect(banner.grow(2.0 + pulse), Color(accent.r, accent.g, accent.b, 0.72), false, 2.0 + pulse, true)
-	draw_circle(banner.position + Vector2(24.0, 24.0), 6.0 + pulse * 1.5, accent)
-	draw_string(ui_font, banner.position + Vector2(40.0, 31.0), match_turn_text(), HORIZONTAL_ALIGNMENT_CENTER, banner.size.x - 54.0, 17, Color.WHITE)
-	if modern_match_intro < 2.4:
-		var intro_t := modern_match_intro / 2.4
-		var opacity := clampf(sin(intro_t * PI) * 1.35, 0.0, 1.0)
-		var title_width := minf(520.0, viewport_size.x * 0.56)
-		var title_rect := Rect2((viewport_size.x - title_width) * 0.5, viewport_size.y * 0.43, title_width, 92.0)
-		draw_style_box(make_box(Color(0.01, 0.03, 0.07, 0.78 * opacity), 28.0), title_rect)
-		draw_rect(title_rect.grow(2.0), Color(0.35, 0.88, 1.0, 0.55 * opacity), false, 3.0, true)
-		var title := "×”×§×¨×‘ ×ž×ª×—×™×œ" if ui_language == "he" else "BATTLE START"
-		draw_string(ui_font, title_rect.position + Vector2(0.0, 57.0), title, HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, 34, Color(1.0, 0.93, 0.58, opacity))
-	if turn_banner_age < 0.72 and modern_match_intro >= 2.2:
-		var pop := sin(clampf(turn_banner_age / 0.72, 0.0, 1.0) * PI)
-		var glow := banner.grow(8.0 + pop * 10.0)
-		draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.12 * pop), 24.0), glow)
-
-func draw_aim_arrow(origin: Vector2, direction: Vector2, length: float) -> void:
-	var tip := origin + direction * length
-	var head_base := tip - direction * 22.0
-	var normal := Vector2(-direction.y, direction.x)
-	var arrow_color := Color(0.86, 1.0, 0.88, 0.88)
-	# Soft wide glow plus a solid inner shaft reproduces the chunky original
-	# direction arrow and keeps it readable over the green field.
-	draw_line(origin, head_base, Color(0.78, 1.0, 0.82, 0.24), 18.0, true)
-	draw_line(origin, head_base, arrow_color, 8.0, true)
-	var head := PackedVector2Array([
-		tip,
-		head_base + normal * 15.0,
-		head_base - normal * 15.0
-	])
-	draw_colored_polygon(head, arrow_color)
-
-func predicted_aim_collision(origin: Vector2, direction: Vector2, combined_radius: float) -> Dictionary:
-	var best_distance := INF
-	var best_center := Vector2.ZERO
-	for i in balls.size():
-		if i == selected or not balls[i].alive:
-			continue
-		# Perform prediction in the same portrait physics coordinates used by
-		# resolve_collision(). Screen coordinates are rotated and stretched.
-		var center: Vector2 = balls[i].p
-		var delta := center - origin
-		var along := delta.dot(direction)
-		if along <= 0.0:
-			continue
-		var perpendicular_squared := delta.length_squared() - along * along
-		var radius_squared := combined_radius * combined_radius
-		if perpendicular_squared > radius_squared:
-			continue
-		var contact_distance := along - sqrt(maxf(0.0, radius_squared - perpendicular_squared))
-		if contact_distance < best_distance:
-			best_distance = contact_distance
-			best_center = center
-	if best_distance == INF:
-		return {}
-	var moving_center_at_contact := origin + direction * best_distance
-	var target_direction := (best_center - moving_center_at_contact).normalized()
-	return {
-		"distance": best_distance,
-		"center": best_center,
-		"direction": target_direction
-	}
-
-func draw_original_style_aim(ball_center: Vector2, pull_point: Vector2) -> void:
-	var screen_pull := pull_point - ball_center
-	var physics_origin: Vector2 = balls[selected].p
-	var physics_shot := physics_origin - drag_point
-	if screen_pull.length_squared() < 4.0 or physics_shot.length_squared() < 0.01:
-		return
-	var physics_direction := physics_shot.normalized()
-	var shot_direction := (board_to_screen(physics_origin + physics_direction) - ball_center).normalized()
-	var pull_direction := -shot_direction
-	var visual_ball_radius := GAME_BALL_VISUAL_RADIUS * board_scale
-	var pull_length := screen_pull.length()
-
-	# Mechanical cue behind the ball: dark outline, silver body, highlight and
-	# the pale round cap visible in the supplied original-game screenshot.
-	var cue_near := ball_center + pull_direction * (visual_ball_radius * 0.92)
-	var cue_length := clampf(pull_length, 72.0, 142.0)
-	var cue_far := cue_near + pull_direction * cue_length
-	var cue_normal := Vector2(-pull_direction.y, pull_direction.x)
-	draw_line(cue_near, cue_far, Color("17212b"), 18.0, true)
-	draw_line(cue_near, cue_far, Color("697985"), 12.0, true)
-	draw_line(cue_near + cue_normal * 2.0, cue_far + cue_normal * 2.0, Color("d9e2e6"), 4.0, true)
-	draw_circle(cue_far, 11.0, Color("263441"))
-	draw_circle(cue_far, 7.5, Color("c7d9ef"))
-	draw_circle(cue_near, 6.0, Color("d6e0e5"))
-
-	var arrow_start := ball_center + shot_direction * (visual_ball_radius * 1.10)
-	var arrow_length := clampf(pull_length * 1.18, 88.0, 175.0)
-	var collision := predicted_aim_collision(physics_origin, physics_direction, RADIUS * 2.0)
-	if collision.is_empty():
-		draw_aim_arrow(arrow_start, shot_direction, arrow_length)
-	else:
-		# Stop the shooter's guide at the predicted contact point and show the
-		# second arrow on the ball that will receive the impact.
-		var contact_center := board_to_screen(physics_origin + physics_direction * float(collision.distance))
-		var contact_length: float = maxf(34.0, (contact_center - arrow_start).dot(shot_direction))
-		draw_aim_arrow(arrow_start, shot_direction, contact_length)
-		var target_physics_center: Vector2 = collision.center
-		var target_physics_direction: Vector2 = collision.direction
-		var target_center := board_to_screen(target_physics_center)
-		var target_direction := (board_to_screen(target_physics_center + target_physics_direction) - target_center).normalized()
-		var target_start := target_center + target_direction * (visual_ball_radius * 1.10)
-		var target_length := clampf(pull_length * 0.82, 62.0, 128.0)
-		draw_aim_arrow(target_start, target_direction, target_length)
-
-func draw_entry_editor_marker() -> void:
-	if not effect_editor_enabled or editor_target != 4:
-		return
-	var trigger_center := entry_trigger_center(editor_hole)
-	var marker := board_to_screen(trigger_center)
-	var radius := trap_entry_radii[editor_hole]
-	var color := Color("ffdf3d")
-	var glow := Color(1.0, 0.24, 0.18, 0.30)
-	var ring := PackedVector2Array()
-	for i in 49:
-		var angle := TAU * float(i) / 48.0
-		ring.append(board_to_screen(trigger_center + Vector2(cos(angle), sin(angle)) * radius))
-	draw_colored_polygon(ring, Color(1.0, 0.24, 0.18, 0.14))
-	draw_polyline(ring, color, 4.0, true)
-	draw_circle(marker, 19.0, glow)
-	draw_circle(marker, 12.0, color, false, 4.0, true)
-	draw_line(marker + Vector2(-22.0, 0.0), marker + Vector2(22.0, 0.0), color, 3.0, true)
-	draw_line(marker + Vector2(0.0, -22.0), marker + Vector2(0.0, 22.0), color, 3.0, true)
-	draw_string(ui_font, marker + Vector2(-34.0, -27.0), "ENTRY", HORIZONTAL_ALIGNMENT_CENTER, 68.0, 13, Color.WHITE)
-
-func draw_physics_radius_ring(center: Vector2, radius: float, color: Color, width: float) -> void:
-	var ring := PackedVector2Array()
-	for i in 33:
-		var angle := TAU * float(i) / 32.0
-		ring.append(board_to_screen(center + Vector2(cos(angle), sin(angle)) * radius))
-	draw_polyline(ring, color, width, true)
-
-func draw_ball_hitbox_editor_overlay() -> void:
-	if not effect_editor_enabled or editor_target not in [2, 4, 5]:
-		return
-	var color := Color(0.20, 0.92, 1.0, 0.90)
-	# Outline the real collision radius around every live gameplay ball.
-	for ball in balls:
-		if ball.alive:
-			draw_physics_radius_ring(ball.p, RADIUS, color, 3.0)
-	# Also place a same-size reference ring at the selected hole so ENTRY and
-	# WALL can be compared directly with the incoming ball's collider.
-	if editor_target == 4 or editor_target == 5:
-		var center := entry_trigger_center(editor_hole)
-		draw_physics_radius_ring(center, RADIUS, Color(0.20, 0.92, 1.0, 0.72), 3.0)
-		var label_position := board_to_screen(center) + Vector2(-48.0, 38.0)
-		draw_string(ui_font, label_position, "BALL HITBOX", HORIZONTAL_ALIGNMENT_CENTER, 96.0, 12, Color.WHITE)
-
-func draw_table_wall_editor_overlay() -> void:
-	if not effect_editor_enabled or editor_target != 5:
-		return
-	var selected_side := editor_wall_side(editor_hole)
-	var top_y := board_to_screen(Vector2(effective_wall_min_x(), 0.0)).y
-	var bottom_y := board_to_screen(Vector2(effective_wall_max_x(), 0.0)).y
-	var left_x := board_to_screen(Vector2(0.0, effective_wall_max_y())).x
-	var right_x := board_to_screen(Vector2(0.0, effective_wall_min_y())).x
-	var positions := [left_x, top_y, right_x, bottom_y]
-	for side in 4:
-		var selected_wall := side == selected_side
-		var color := Color(1.0, 0.20, 0.12, 0.72 if selected_wall else 0.30)
-		var thickness := maxf(4.0, table_wall_sizes[side] * 3.0)
-		if side == 0 or side == 2:
-			draw_line(Vector2(positions[side], board_rect.position.y), Vector2(positions[side], board_rect.end.y), color, thickness, true)
-		else:
-			draw_line(Vector2(board_rect.position.x, positions[side]), Vector2(board_rect.end.x, positions[side]), color, thickness, true)
-	# Hole openings remain editable through ENTRY, but show all of them here so
-	# the relationship between the rails and each opening is visible at once.
-	for hole in 6:
-		var trigger_center := entry_trigger_center(hole)
-		var ring := PackedVector2Array()
-		for i in 33:
-			var angle := TAU * float(i) / 32.0
-			ring.append(board_to_screen(trigger_center + Vector2(cos(angle), sin(angle)) * trap_entry_radii[hole]))
-		draw_polyline(ring, Color(1.0, 0.88, 0.24, 0.72), 3.0, true)
-	var side_names := ["LEFT WALL", "TOP WALL", "RIGHT WALL", "BOTTOM WALL"]
-	draw_string(ui_font, board_rect.position + Vector2(12.0, 24.0), side_names[selected_side], HORIZONTAL_ALIGNMENT_LEFT, 180.0, 16, Color.WHITE)
-
-func draw_ocean(viewport_size: Vector2) -> void:
-	# Bright layered water makes the space around the table read as sea even on
-	# small phone screens. The curves are intentionally subtle so they do not
-	# compete with the balls or the weapon effects.
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color("087fa8"))
-	var band_height := maxf(34.0, viewport_size.y / 10.0)
-	for band in 10:
-		var y := float(band) * band_height
-		var band_color := Color("0797bd") if band % 2 == 0 else Color("078db5")
-		draw_rect(Rect2(0.0, y, viewport_size.x, band_height + 1.0), band_color)
-	var wave_color := Color(0.68, 0.94, 1.0, 0.34)
-	var wave_shadow := Color(0.01, 0.39, 0.60, 0.28)
-	var spacing := maxf(46.0, viewport_size.y / 9.0)
-	var amplitude := clampf(viewport_size.y * 0.011, 5.0, 10.0)
-	for row in 11:
-		var points := PackedVector2Array()
-		var shadow_points := PackedVector2Array()
-		var base_y := float(row) * spacing + 12.0
-		var phase := float(row % 2) * PI
-		for x_step in 33:
-			var x := float(x_step) / 32.0 * viewport_size.x
-			var y := base_y + sin(float(x_step) * 0.72 + phase) * amplitude
-			points.append(Vector2(x, y))
-			shadow_points.append(Vector2(x, y + 7.0))
-		draw_polyline(shadow_points, wave_shadow, 3.0, true)
-		draw_polyline(points, wave_color, 2.0, true)
-
-func draw_water_floaters(viewport_size: Vector2) -> void:
-	for floater in water_floaters:
-		var seconds: float = floater.elapsed
-		var direction: Vector2 = floater.direction
-		var start: Vector2 = floater.start
-		var drift := smooth_step((seconds - WATER_DRIFT_DELAY) / (WATER_FLOAT_TIME - WATER_DRIFT_DELAY))
-		var drift_distance := maxf(viewport_size.x, viewport_size.y) * 0.72
-		var settle := smooth_step(seconds / 0.75)
-		var sideways := direction.orthogonal() * sin(seconds * 1.25 + float(floater.piece)) * 12.0 * settle
-		var bob := Vector2(0.0, sin(seconds * 3.1 + float(floater.piece)) * 5.0 * settle)
-		var position := start + direction * drift_distance * drift * drift + sideways + bob
-		var radius: float = floater.radius
-		var splash := 1.0 - smooth_step(seconds / 0.65)
-		if splash > 0.01:
-			draw_circle(position, radius * (1.1 + (1.0 - splash) * 1.25), Color(0.78, 0.96, 1.0, splash * 0.58), false, maxf(2.0, radius * 0.14), true)
-			for i in 7:
-				var angle := TAU * float(i) / 7.0
-				var drop_start := position + Vector2(cos(angle), sin(angle)) * radius * 1.05
-				var drop_end := position + Vector2(cos(angle), sin(angle)) * radius * (1.22 + (1.0 - splash) * 0.65)
-				draw_line(drop_start, drop_end, Color(0.84, 0.98, 1.0, splash * 0.75), maxf(1.0, radius * 0.10), true)
-		var ripple_alpha := 0.34 * (1.0 - drift * 0.45)
-		draw_arc(position + Vector2(0.0, radius * 0.55), radius * 1.22, 0.08, PI - 0.08, 28, Color(0.72, 0.95, 1.0, ripple_alpha), maxf(1.5, radius * 0.10), true)
-		draw_rubber_game_ball(position, radius, floater.team, floater.piece, 1.0)
-
-func fallen_count(team: int) -> int:
-	var count := 0
-	for ball in balls:
-		if ball.team == team and not ball.alive:
-			count += 1
-	return count
-
-func team_alive_count(team: int) -> int:
-	var count := 0
-	for ball in balls:
-		if ball.team == team and ball.alive:
-			count += 1
-	return count
-
-func check_match_end() -> void:
-	if match_finished:
-		return
-	var alive_a := team_alive_count(0)
-	var alive_b := team_alive_count(1)
-	if alive_a > 0 and alive_b > 0:
-		return
-	var winner := 0 if alive_b == 0 else 1
-	if alive_a == 0 and alive_b == 0:
-		winner = 0 if turn == 1 else 1
-	if game_mode == "online":
-		match_finished = true
-		dragging = false
-		selected = -1
-		send_multiplayer({"type": "match_result", "winnerSlot": winner})
-		return
-	finish_match(winner)
-
-func finish_match(winner_team: int) -> void:
-	match_finished = true
-	if match_result_open:
-		return
-	match_result_open = true
-	match_result_winner = winner_team
-	dragging = false
-	selected = -1
-	ai_pending = false
-	ai_committed_shot = false
-	chat_open = false
-	record_match_result(local_player_won(winner_team))
-	queue_redraw()
-
-func local_player_won(winner_team: int) -> bool:
-	if game_mode == "online":
-		return winner_team == multiplayer_slot
-	return winner_team == 0
-
-func match_prize_for_win() -> int:
-	if match_source == "arena":
-		return ARENA_WIN_PRIZES[clampi(selected_arena, 0, ARENA_WIN_PRIZES.size() - 1)]
-	if game_mode == "computer":
-		return COMPUTER_WIN_COINS
-	return FRIEND_WIN_COINS
-
-func record_match_result(did_win: bool) -> void:
-	if match_result_recorded:
-		return
-	match_result_recorded = true
-	if did_win:
-		player_wins += 1
-		player_current_streak += 1
-		player_best_streak = maxi(player_best_streak, player_current_streak)
-		player_xp += 80
-		match_result_coins = match_prize_for_win()
-		player_coins += match_result_coins
-	else:
-		player_losses += 1
-		player_current_streak = 0
-		player_xp += 20
-		match_result_coins = 0
-	while player_xp >= player_next_level_xp:
-		player_xp -= player_next_level_xp
-		player_level += 1
-		player_next_level_xp = 500 + (player_level - 1) * 75
-	if game_mode == "online":
-		var opponent_rating := 1000
-		if multiplayer_players.size() > 1:
-			var opponent_slot := 1 - multiplayer_slot if multiplayer_slot >= 0 else 1
-			for player_data in multiplayer_players:
-				if int(player_data.get("slot", -1)) == opponent_slot:
-					opponent_rating = int(player_data.get("rating", 1000))
-					break
-		apply_rating_change(did_win, opponent_rating)
-	elif game_mode == "computer":
-		apply_rating_change(did_win, ai_opponent_rating())
-	if did_win:
-		play_sound("win")
-	save_player_profile()
-
-func match_result_panel(viewport_size: Vector2) -> Rect2:
-	return Rect2((viewport_size - Vector2(560.0, 310.0)) * 0.5, Vector2(560.0, 310.0))
-
-func match_result_home_rect(viewport_size: Vector2) -> Rect2:
-	var panel := match_result_panel(viewport_size)
-	if game_mode == "computer":
-		return Rect2(panel.position + Vector2(40.0, 215.0), Vector2(220.0, 58.0))
-	return Rect2(panel.position + Vector2(150.0, 215.0), Vector2(260.0, 58.0))
-
-func match_result_again_rect(viewport_size: Vector2) -> Rect2:
-	var panel := match_result_panel(viewport_size)
-	return Rect2(panel.position + Vector2(300.0, 215.0), Vector2(220.0, 58.0))
-
-func draw_match_result(viewport_size: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.06, 0.74))
-	var panel := match_result_panel(viewport_size)
-	draw_style_box(make_box(Color("10283b"), 26.0), panel)
-	var won := local_player_won(match_result_winner)
-	var title := ui_text("match_win") if won else ui_text("match_lose")
-	draw_string(ui_font, panel.position + Vector2(0.0, 78.0), title, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 36, Color("f6d365") if won else Color("ff8c7a"))
-	var subtitle := match_player_name(match_result_winner) + " â€¢ " + str(fallen_count(0)) + " - " + str(fallen_count(1))
-	draw_string(ui_font, panel.position + Vector2(30.0, 128.0), subtitle, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 60.0, 20, Color.WHITE)
-	if won and match_result_coins > 0:
-		draw_string(ui_font, panel.position + Vector2(30.0, 168.0), ui_text("you_won_coins") + str(match_result_coins) + ui_text("coins"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 60.0, 18, Color("ffe25d"))
-	var home := match_result_home_rect(viewport_size)
-	draw_style_box(make_box(Color("1b91a8"), 16.0), home)
-	draw_string(ui_font, home.position + Vector2(0.0, 38.0), ui_text("back_home"), HORIZONTAL_ALIGNMENT_CENTER, home.size.x, 18, Color.WHITE)
-	if game_mode == "computer":
-		var again := match_result_again_rect(viewport_size)
-		draw_style_box(make_box(Color("12a96b"), 16.0), again)
-		draw_string(ui_font, again.position + Vector2(0.0, 38.0), ui_text("play_again"), HORIZONTAL_ALIGNMENT_CENTER, again.size.x, 18, Color.WHITE)
-
-func daily_claim_key() -> String:
-	return Time.get_date_string_from_system()
-
-func can_claim_daily() -> bool:
-	return last_daily_claim != daily_claim_key()
-
-func claim_daily_reward() -> void:
-	if not can_claim_daily():
-		show_menu_notice(ui_text("claimed"))
-		return
-	player_coins += DAILY_REWARD_COINS
-	last_daily_claim = daily_claim_key()
-	save_player_profile()
-	show_menu_notice(ui_text("daily_claimed_toast"))
-
-func draw_scoreboards() -> void:
-	# The blue and purple displays baked into the board art are covered by these
-	# live panels. Their colors follow each player's selected lifebuoy.
-	var centers := [
-		board_rect.position + Vector2(board_rect.size.x * 0.289, board_rect.size.y * 0.052),
-		board_rect.position + Vector2(board_rect.size.x * 0.683, board_rect.size.y * 0.052)
-	]
-	var colors := [RING_COLORS[team_ring_color_index(0)], RING_COLORS[team_ring_color_index(1)]]
-	var panel_size := Vector2(board_rect.size.x * 0.075, board_rect.size.y * 0.060)
-	var corner := maxf(5.0, board_rect.size.y * 0.012)
-	var shared_rings := teams_share_ring_color()
-	for team in 2:
-		var outer_rect := Rect2(centers[team] - panel_size * 0.5, panel_size)
-		draw_style_box(make_box(Color(0.08, 0.13, 0.14, 0.96), corner + 3.0), outer_rect.grow(4.0))
-		draw_style_box(make_box(colors[team].darkened(0.16), corner), outer_rect)
-		if shared_rings:
-			draw_style_box(make_box(team_marker_color(team), corner), Rect2(outer_rect.position + Vector2(2.0, 2.0), Vector2(outer_rect.size.x - 4.0, 4.0)))
-		var shine_rect := Rect2(outer_rect.position + Vector2(3.0, 3.0), Vector2(outer_rect.size.x - 6.0, outer_rect.size.y * 0.28))
-		draw_style_box(make_box(Color(1.0, 1.0, 1.0, 0.20), corner * 0.55), shine_rect)
-		var score := str(fallen_count(team))
-		var font_size := maxi(18, int(panel_size.y * 0.82))
-		var baseline: float = float(centers[team].y) + float(font_size) * 0.34
-		draw_string(ui_font, Vector2(outer_rect.position.x, baseline), score, HORIZONTAL_ALIGNMENT_CENTER, outer_rect.size.x, font_size, Color.WHITE)
-
-func draw_hud(viewport_size: Vector2) -> void:
-	var back := game_back_rect()
-	draw_style_box(make_box(Color(0.04, 0.09, 0.16, 0.94), 18.0), back)
-	draw_string(ui_font, back.position + Vector2(0.0, 30.0), "â€¹", HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 27, Color.WHITE)
-	var card_width: float = minf(270.0, viewport_size.x * 0.22)
-	# Keep the whole HUD on the water strip, with player identity at the edges.
-	draw_match_player_card(Rect2(8.0, 6.0, card_width, 58.0), 0)
-	draw_match_player_card(Rect2(viewport_size.x - card_width - 8.0, 6.0, card_width, 58.0), 1)
-	if game_mode == "online":
-		var chat_rect := game_chat_rect(viewport_size)
-		draw_style_box(make_box(Color("1b91a8"), 14.0), chat_rect)
-		draw_string(ui_font, chat_rect.position + Vector2(0.0, 31.0), "×¦×³××˜" if ui_language == "he" else "CHAT", HORIZONTAL_ALIGNMENT_CENTER, chat_rect.size.x, 17, Color.WHITE)
-	if exit_confirm_open:
-		draw_exit_confirmation(viewport_size)
-	elif chat_open:
-		draw_match_chat(viewport_size)
-	if match_result_open:
-		draw_match_result(viewport_size)
-
-func game_back_rect() -> Rect2:
-	return Rect2(286.0, 12.0, 46.0, 44.0)
-
-func game_chat_rect(viewport_size: Vector2) -> Rect2:
-	return Rect2(viewport_size.x - 382.0, 10.0, 92.0, 48.0)
-
-func match_turn_text() -> String:
-	if game_mode == "online":
-		return ("×”×ª×•×¨ ×©×œ×›×" if turn == multiplayer_slot else "×ª×•×¨ ×”×™×¨×™×‘") if ui_language == "he" else ("YOUR TURN" if turn == multiplayer_slot else "OPPONENT TURN")
-	if game_mode == "computer":
-		return ("×”×ª×•×¨ ×©×œ×›×" if turn == 0 else "×ª×•×¨ ×”×ž×—×©×‘") if ui_language == "he" else ("YOUR TURN" if turn == 0 else "COMPUTER TURN")
-	return ("×ª×•×¨ ×©×—×§×Ÿ " if ui_language == "he" else "PLAYER ") + str(turn + 1)
-
-func match_player_name(team: int) -> String:
-	if game_mode == "online" and team < multiplayer_players.size():
-		return str(multiplayer_players[team].get("name", "×©×—×§×Ÿ " + str(team + 1)))
-	if team == 0:
-		return profile_name
-	return ai_display_name() if game_mode == "computer" else ("×©×—×§×Ÿ 2" if ui_language == "he" else "PLAYER 2")
-
-func draw_match_player_card(rect: Rect2, team: int) -> void:
-	var active := turn == team
-	var pulse := (sin(float(Time.get_ticks_msec()) * 0.005) + 1.0) * 0.5 if active else 0.0
-	if active:
-		var glow_rect := rect.grow(4.0 + pulse * 3.0)
-		draw_style_box(make_box(Color(0.94, 0.82, 0.39, 0.20 + pulse * 0.10), 16.0), glow_rect)
-	draw_style_box(make_box(Color(0.03, 0.08, 0.14, 0.94), 14.0), rect)
-	if teams_share_ring_color():
-		draw_style_box(make_box(team_marker_color(team), 10.0), Rect2(rect.position + Vector2(0.0, 6.0), Vector2(5.0, rect.size.y - 12.0)))
-	if active:
-		draw_rect(rect.grow(2.0 + pulse * 2.0), Color("f6d365"), false, 3.0 + pulse)
-		var badge := ui_text("your_turn_badge") if is_local_player_team(team) else ("×ª×•×¨ ×”×™×¨×™×‘" if ui_language == "he" else "THEIR TURN")
-		var badge_rect := Rect2(rect.position.x + rect.size.x - 92.0, rect.position.y - 10.0, 88.0, 22.0)
-		draw_style_box(make_box(Color("12a96b") if is_local_player_team(team) else Color("7256d8"), 10.0), badge_rect)
-		draw_string(ui_font, badge_rect.position + Vector2(0.0, 16.0), badge, HORIZONTAL_ALIGNMENT_CENTER, badge_rect.size.x, 11, Color.WHITE)
-	if team_piece_textures.size() > team and team_piece_textures[team] != null:
-		draw_texture_rect(team_piece_textures[team], Rect2(rect.position + Vector2(7.0, 5.0), Vector2(48.0, 48.0)), false)
-	var animal_index := player_animal if team == 0 else ai_animal
-	var team_rating := player_rating if team == 0 else ai_opponent_rating()
-	var team_league := player_league_tier if team == 0 else league_tier_for_rating(ai_opponent_rating())
-	if game_mode == "online" and team < multiplayer_players.size():
-		var pdata: Dictionary = multiplayer_players[team]
-		team_rating = int(pdata.get("rating", team_rating))
-		team_league = int(pdata.get("leagueTier", team_league))
-	draw_string(ui_font, rect.position + Vector2(62.0, 25.0), match_player_name(team), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 16, Color.WHITE)
-	draw_string(ui_font, rect.position + Vector2(62.0, 46.0), league_name(team_league) + " â€¢ " + str(team_rating), HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 68.0, 11, RING_COLORS[team_ring_color_index(team)].lightened(0.28))
-
-func is_local_player_team(team: int) -> bool:
-	if game_mode == "online":
-		return team == multiplayer_slot
-	if game_mode == "computer":
-		return team == 0
-	return true
-
-func exit_confirm_panel(viewport_size: Vector2) -> Rect2:
-	return Rect2((viewport_size - Vector2(520.0, 245.0)) * 0.5, Vector2(520.0, 245.0))
-
-func exit_confirm_yes_rect(viewport_size: Vector2) -> Rect2:
-	var panel := exit_confirm_panel(viewport_size)
-	return Rect2(panel.position + Vector2(45.0, 157.0), Vector2(195.0, 58.0))
-
-func exit_confirm_no_rect(viewport_size: Vector2) -> Rect2:
-	var panel := exit_confirm_panel(viewport_size)
-	return Rect2(panel.position + Vector2(280.0, 157.0), Vector2(195.0, 58.0))
-
-func draw_exit_confirmation(viewport_size: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.06, 0.72))
-	var panel := exit_confirm_panel(viewport_size)
-	draw_style_box(make_box(Color("10283b"), 24.0), panel)
-	draw_string(ui_font, panel.position + Vector2(0.0, 66.0), "×œ×¦××ª ×ž×”×ž×©×—×§?" if ui_language == "he" else "LEAVE THE MATCH?", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 30, Color("f6d365"))
-	draw_string(ui_font, panel.position + Vector2(0.0, 112.0), "×”×ž×©×—×§ ×¢×“×™×™×Ÿ ×ž×ª× ×”×œ. ×”×× ××ª× ×‘×˜×•×—×™×?" if ui_language == "he" else "The match is still in progress. Are you sure?", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 18, Color.WHITE)
-	var yes := exit_confirm_yes_rect(viewport_size)
-	var no := exit_confirm_no_rect(viewport_size)
-	draw_style_box(make_box(Color("ef5350"), 16.0), yes)
-	draw_style_box(make_box(Color("12a96b"), 16.0), no)
-	draw_string(ui_font, yes.position + Vector2(0.0, 37.0), "×›×Ÿ, ×œ×¦××ª" if ui_language == "he" else "LEAVE", HORIZONTAL_ALIGNMENT_CENTER, yes.size.x, 19, Color.WHITE)
-	draw_string(ui_font, no.position + Vector2(0.0, 37.0), "×œ×”×ž×©×™×š ×œ×©×—×§" if ui_language == "he" else "KEEP PLAYING", HORIZONTAL_ALIGNMENT_CENTER, no.size.x, 19, Color.WHITE)
-
-func exit_current_match() -> void:
-	exit_confirm_open = false
-	chat_open = false
-	leave_multiplayer_room()
-	app_screen = APP_HOME
-	selected = -1
-	dragging = false
-	active_effects.clear()
-	queue_redraw()
-
-func draw_hole_effect(hole: int, progress: float) -> void:
-	var center := board_to_screen(SCORING_HOLE_CENTERS[hole])
-	var texture: Texture2D = effect_textures[hole]
-	if texture == null:
-		return
-	var appear := clampf(progress / 0.16, 0.0, 1.0)
-	var disappear := clampf((1.0 - progress) / 0.22, 0.0, 1.0)
-	var alpha := minf(appear, disappear)
-	var pulse := 0.82 + sin(progress * PI) * 0.28
-	var max_size := board_rect.size.y * (0.31 if hole in [0, 3, 4] else 0.24)
-	var source_size := texture.get_size()
-	var scale_factor := max_size / maxf(source_size.x, source_size.y) * pulse
-	var size := source_size * scale_factor
-	var rotation := sin(progress * TAU * 1.4) * 0.035
-	# Hole 2 received the trap from the opposite side, so mirror its artwork.
-	var effect_scale := Vector2(-1.0, 1.0) if hole == 2 else Vector2.ONE
-	draw_set_transform(center, rotation, effect_scale)
-	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1,1,1,alpha))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func trap_weapon_offset(hole: int, weapon: int) -> Vector2:
-	return trap_weapon_offsets[hole * 2 + weapon] * (board_rect.size.y / 600.0)
-
-func trap_weapon_scale(hole: int, weapon: int) -> float:
-	return trap_weapon_scales[hole * 2 + weapon]
-
-func trap_ball_position(hole: int, base: Vector2) -> Vector2:
-	return base + trap_ball_offsets[hole] * (board_rect.size.y / 600.0)
-
-func trap_ball_radius(hole: int, base: float) -> float:
-	return base * trap_ball_scales[hole]
-
-func press_point(x: float, y: float) -> Vector2:
-	return board_rect.position + Vector2(x / 1276.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
-
-func draw_press_rod(anchor_x: float, y: float, tip_x: float, left_side: bool, compression: float, machine_activity: float = 0.0) -> void:
-	var anchor: Vector2 = press_point(anchor_x, y)
-	var tip: Vector2 = press_point(tip_x, y)
-	var weapon_index := 0 if left_side else 1
-	var edit_offset := trap_weapon_offset(PRESS_TRAP_HOLE, weapon_index)
-	var edit_scale := trap_weapon_scale(PRESS_TRAP_HOLE, weapon_index)
-	anchor += edit_offset
-	tip += edit_offset
-	var direction := 1.0 if left_side else -1.0
-	var unit_x := board_rect.size.x / 1276.0
-	var unit_y := board_rect.size.y / 600.0
-	# High-detail scalable industrial press sprite. The animation keeps the rod and
-	# plate procedural, but the fixed machine is now a serious hydraulic assembly.
-	var base_radius := 22.0 * unit_y * edit_scale
-	var machine_height := 68.0 * unit_y * edit_scale
-	if press_machine_texture != null:
-		var source := press_machine_texture.get_size()
-		var factor := machine_height / maxf(1.0, source.y)
-		var machine_size := source * factor
-		var pivot := Vector2(source.x * 0.46, source.y * 0.50) * factor
-		draw_set_transform(anchor, 0.0 if left_side else PI, Vector2.ONE)
-		draw_texture_rect(press_machine_texture, Rect2(-pivot, machine_size), false)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		# Animated gearbox overlay centered exactly over the large gear in the
-		# vector machine. It spins only while the hydraulic piston is moving.
-		var gear_local := Vector2(158.0 - source.x * 0.46, 185.0 - source.y * 0.50) * factor
-		var gear_center: Vector2 = anchor + gear_local * direction
-		var gear_radius := 57.0 * factor
-		var spin_direction := 1.0 if left_side else -1.0
-		var gear_rotation := float(Time.get_ticks_msec()) * 0.010 * spin_direction
-		var gear_points := PackedVector2Array()
-		for tooth in 24:
-			var tooth_angle := gear_rotation + TAU * float(tooth) / 24.0
-			var tooth_radius := gear_radius * (1.0 if tooth % 2 == 0 else 0.80)
-			gear_points.append(gear_center + Vector2(cos(tooth_angle), sin(tooth_angle)) * tooth_radius)
-		if machine_activity > 0.01:
-			draw_colored_polygon(gear_points, Color("30464f"))
-			var gear_outline := gear_points.duplicate()
-			gear_outline.append(gear_points[0])
-			draw_polyline(gear_outline, Color(0.76, 0.84, 0.84, 0.70 + machine_activity * 0.25), maxf(1.0, gear_radius * 0.10), true)
-			draw_circle(gear_center, gear_radius * 0.47, Color("162a32"))
-			draw_circle(gear_center, gear_radius * 0.20, Color("e0b33e"))
-			draw_circle(gear_center - Vector2(gear_radius * 0.13, gear_radius * 0.17), gear_radius * 0.10, Color(0.96, 1.0, 1.0, 0.42 * machine_activity))
-	else:
-		draw_circle(anchor, base_radius, Color("31464f"))
-		draw_circle(anchor, base_radius * 0.62, Color("a9b9ba"))
-	var collar_center := anchor + Vector2(direction * 25.0 * unit_x * edit_scale, 0.0)
-	var collar_size := Vector2(13.0 * unit_x, 38.0 * unit_y) * edit_scale
-	var rod_start := collar_center + Vector2(direction * collar_size.x * 0.38, 0.0)
-	var rod_end := tip - Vector2(direction * 8.0 * unit_x, 0.0)
-	draw_line(rod_start, rod_end, Color("263944"), 15.0 * unit_y * edit_scale, true)
-	draw_line(rod_start - Vector2(0, 1.5 * unit_y), rod_end - Vector2(0, 1.5 * unit_y), Color("b9cbd0"), 7.0 * unit_y * edit_scale, true)
-	var plate_size := Vector2(18.0 * unit_x, 48.0 * unit_y) * edit_scale
-	draw_style_box(make_box(Color("273943"), 4.0 * unit_y), Rect2(tip - plate_size * 0.5, plate_size))
-	draw_rect(Rect2(tip - plate_size * 0.34, plate_size * 0.68), Color("91a5aa"))
-	var glow_width := 6.0 * unit_x
-	var glow_rect := Rect2(tip.x - glow_width * 0.5, tip.y - 19.0 * unit_y, glow_width, 38.0 * unit_y)
-	draw_rect(glow_rect, Color(0.72, 0.34, 1.0, 0.48 * compression))
-
-func press_trap_is_active() -> bool:
-	for effect in active_effects:
-		if effect.hole == PRESS_TRAP_HOLE:
-			return true
-	return false
-
-func draw_press_weapons_idle() -> void:
-	if customizer_open or press_trap_is_active():
-		return
-	# The plates rest close to their stone-mounted motors, exactly as in the
-	# source animation, instead of disappearing until a ball reaches the pocket.
-	draw_press_rod(546.0, 55.0, 570.0, true, 0.0)
-	draw_press_rod(695.0, 55.0, 671.0, false, 0.0)
-
-func draw_press_ball(center: Vector2, radius: float, rx_scale: float, ry_scale: float, rotation: float, team: int, piece: int, alpha: float) -> void:
-	draw_set_transform(center, rotation, Vector2(rx_scale, ry_scale))
-	draw_rubber_game_ball(Vector2.ZERO, radius, team, piece, alpha)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func draw_press_trap(effect: Dictionary) -> void:
-	var seconds: float = effect.elapsed
-	var cx := 621.0
-	var cy := 55.0
-	var radius := 26.0
-	# The physics ball has already crossed the scoring boundary. Start the
-	# animated press ball directly in the opening; never replay a pull from the grass.
-	var ball_y := cy
-	var rx_scale := 1.0
-	var ry_scale := 1.0
-	var rotation := 0.0
-	# The physics ball is hidden as soon as it scores, so its effect replacement
-	# must be visible immediately while the pistons approach.
-	var alpha := 1.0
-	var extend := 0.0
-	var retract := 0.0
-	var release := 0.0
-	# Close steadily instead of delivering a sudden final hit. Compression begins
-	# while the plates are approaching and increases continuously until contact.
-	extend = smooth_step((seconds - 0.10) / 1.02)
-	if seconds >= 1.32:
-		retract = smooth_step((seconds - 1.32) / 0.58)
-	var squeeze := smooth_step(clampf((extend - 0.18) / 0.82, 0.0, 1.0))
-	var arm_amount := extend * (1.0 - retract)
-	# Keep the gearbox running throughout extension and retraction, then ease it
-	# to a stop as the plates settle at their front collars.
-	var machine_activity := smooth_step(extend) * (1.0 - smooth_step((retract - 0.78) / 0.22))
-	var compressed_rx := lerpf(radius, radius * 0.32, squeeze)
-	# Rest at the front collars, never at the center of the weapon housing.
-	var left_rest_tip := 570.0
-	var right_rest_tip := 671.0
-	var left_tip := lerpf(left_rest_tip, cx - compressed_rx - 9.0, arm_amount)
-	var right_tip := lerpf(right_rest_tip, cx + compressed_rx + 9.0, arm_amount)
-	rx_scale = lerpf(1.0, 0.32, squeeze)
-	ry_scale = lerpf(1.0, 1.10, squeeze)
-	if seconds >= 1.79:
-		rx_scale = 0.32
-		ry_scale = 1.10
-		var wait := clampf((seconds - 1.79) / (TRAP_CAPTURE_TIME - 1.79), 0.0, 1.0)
-		release = smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
-		var motion := release * release
-		rotation = sin(wait * PI) * 0.045 - motion * 0.34
-		# Land just above the table in visible water; the previous -121 target
-		# continued behind the HUD before the floating phase began.
-		ball_y = cy - lerpf(0.0, 67.0, motion)
-		alpha = 1.0 - release * 0.08
-		var shrink := 1.0 - release * 0.30
-		rx_scale *= shrink
-		ry_scale *= shrink
-	var radius_screen := trap_ball_radius(PRESS_TRAP_HOLE, radius * board_rect.size.y / 600.0)
-	var press_center := trap_ball_position(PRESS_TRAP_HOLE, press_point(cx, ball_y))
-	if release > 0.0:
-		var press_start := trap_ball_position(PRESS_TRAP_HOLE, press_point(cx, cy))
-		press_center = press_start.lerp(effect_fall_endpoint(PRESS_TRAP_HOLE), release * release)
-	# Draw the animal first so both plates visibly close over it. The old order
-	# placed the ball on top of the pistons and made the squeeze look fake.
-	draw_press_ball(press_center, radius_screen, rx_scale, ry_scale, rotation, effect.team, effect.piece, alpha)
-	# Always draw the complete machines. During retraction they return to their
-	# idle positions while the crushed disc remains in the center.
-	draw_press_rod(546.0, cy, left_tip, true, squeeze, machine_activity)
-	draw_press_rod(695.0, cy, right_tip, false, squeeze, machine_activity)
-
-func hammer_point(x: float, y: float) -> Vector2:
-	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
-
-func hammer_trap_is_active() -> bool:
-	for effect in active_effects:
-		if effect.hole == HAMMER_TRAP_HOLE:
-			return true
-	return false
-
-func hammer_weapon_points() -> Dictionary:
-	var hit := trap_ball_position(HAMMER_TRAP_HOLE, hammer_point(1072.0, 522.0))
-	var scale_y := board_rect.size.y / 600.0
-	return {
-		# Mounts sit deep on the two stones, far away from the capture point, just
-		# like the supplied original screenshots. The heads point away from the
-		# hole while idle and swing inward only during a strike.
-		"right": hit + Vector2(12.0, -52.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
-		"bottom": hit + Vector2(-64.0, 22.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
-		"hit": hit
-	}
-
-func hammer_strike_amount(seconds: float, first_start: float) -> float:
-	# Each hammer gets its own repeated stroke. Their starts are separated by
-	# half a cycle, producing right-left-right-left impacts without overlap.
-	if seconds < first_start or seconds >= 2.20:
-		return 0.0
-	var local := fmod(seconds - first_start, 0.68)
-	if local < 0.12:
-		return smooth_step(local / 0.12)
-	if local < 0.17:
-		return 1.0
-	if local < 0.32:
-		return 1.0 - smooth_step((local - 0.17) / 0.15)
-	return 0.0
-
-func draw_hammer_sprite_frame(texture: Texture2D, anchor: Vector2, angle: float, target_length: float, pivot_ratio: Vector2, head_ratio: Vector2, alpha: float) -> void:
-	if texture == null or alpha <= 0.01:
-		return
-	var source := texture.get_size()
-	var pivot := source * pivot_ratio
-	var head := source * head_ratio
-	var internal_angle := (head - pivot).angle()
-	var internal_length := maxf(1.0, pivot.distance_to(head))
-	var factor := target_length / internal_length
-	draw_set_transform(anchor, angle - internal_angle, Vector2.ONE)
-	draw_texture_rect(texture, Rect2(-pivot * factor, source * factor), false, Color(1.0, 1.0, 1.0, alpha))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func draw_hammer_cutout(texture: Texture2D, center: Vector2, target_height: float, rotation: float, alpha: float = 1.0) -> void:
-	if texture == null or alpha <= 0.01:
-		return
-	var source := texture.get_size()
-	var factor := target_height / maxf(1.0, source.y)
-	var size := source * factor
-	draw_set_transform(center, rotation, Vector2.ONE)
-	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, alpha))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, weapon_scale: float, mirrored: bool) -> void:
-	var strike_angle := (hit_point - anchor).angle()
-	var angle := lerp_angle(rest_angle, strike_angle, amount)
-	var target_length := anchor.distance_to(hit_point) * weapon_scale
-	# Rotate the complete restored hammer around the center of its stone-mounted
-	# base. Nothing is translated into the pocket; only the arm swings inward.
-	var swing_mix := smooth_step((amount - 0.52) / 0.28)
-	draw_hammer_sprite_frame(hammer_idle_texture, anchor, angle, target_length, Vector2(0.50, 0.91), Vector2(0.50, 0.15), 1.0 - swing_mix)
-	draw_hammer_sprite_frame(hammer_swing_texture, anchor, angle, target_length, Vector2(0.75, 0.17), Vector2(0.38, 0.78), swing_mix)
-
-func draw_hammer_weapons_idle() -> void:
-	if hammer_trap_is_active():
-		return
-	var points := hammer_weapon_points()
-	draw_trap_hammer(points.right, points.hit, deg_to_rad(-90.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
-	draw_trap_hammer(points.bottom, points.hit, deg_to_rad(180.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
-
-func draw_hammer_trap(effect: Dictionary) -> void:
-	var seconds: float = effect.elapsed
-	var scale_y := board_rect.size.y / 600.0
-	var points := hammer_weapon_points()
-	var right_weapon: Vector2 = points.right
-	var bottom_weapon: Vector2 = points.bottom
-	var hit_point: Vector2 = points.hit
-	var radius := trap_ball_radius(HAMMER_TRAP_HOLE, 27.0 * scale_y)
-	var right_amount := hammer_strike_amount(seconds, 0.20)
-	var bottom_amount := hammer_strike_amount(seconds, 0.54)
-	var impact := maxf(
-		smooth_step((right_amount - 0.52) / 0.44),
-		smooth_step((bottom_amount - 0.52) / 0.44)
-	)
-	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
-	var center := hit_point
-	var ball_radius := radius
-	var alpha := 1.0
-	if release > 0.0:
-		var fall := release * release
-		center = hit_point.lerp(effect_fall_endpoint(HAMMER_TRAP_HOLE), fall)
-		center.y -= sin(release * PI) * 5.0 * scale_y
-		ball_radius *= 1.0 - release * 0.32
-		alpha = 1.0 - release * 0.10
-
-	var squash_x := 1.0
-	var squash_y := 1.0
-	var ball_rotation := 0.0
-	# The ball stays progressively crushed after every alternating blow instead
-	# of returning completely to its original size between hits.
-	var completed_hits := clampi(int(floor((seconds - 0.20) / 0.34)) + 1, 0, 6)
-	var permanent_crush := float(completed_hits) / 6.0
-	# Keep the accumulated crushed shape during the fall as well. Previously
-	# this was applied only before release, so the ball briefly grew back.
-	ball_radius *= lerpf(1.0, 0.72, permanent_crush)
-	squash_x = lerpf(1.0, 1.10, permanent_crush)
-	squash_y = lerpf(1.0, 0.70, permanent_crush)
-	if release <= 0.0 and impact > 0.01:
-		ball_radius *= lerpf(1.0, 0.88, impact)
-		if right_amount >= bottom_amount:
-			squash_x *= lerpf(1.0, 0.48, impact)
-			squash_y *= lerpf(1.0, 1.42, impact)
-			ball_rotation = -0.13 * impact
-		else:
-			squash_x *= lerpf(1.0, 1.42, impact)
-			squash_y *= lerpf(1.0, 0.48, impact)
-			ball_rotation = 0.13 * impact
-
-	# Draw the ball first, then the hammers, so their heads visibly land on top.
-	draw_press_ball(center, ball_radius, squash_x, squash_y, ball_rotation, effect.team, effect.piece, alpha)
-	if release <= 0.0:
-		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.12, -radius * 0.08), deg_to_rad(-90.0), right_amount, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
-		draw_trap_hammer(bottom_weapon, hit_point + Vector2(-radius * 0.08, radius * 0.12), deg_to_rad(180.0), bottom_amount, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
-	else:
-		# Return both hammers to their stone-mounted idle poses as soon as the
-		# crushing ends. The active fall continues, but the weapons never vanish.
-		draw_trap_hammer(right_weapon, hit_point, deg_to_rad(-90.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
-		draw_trap_hammer(bottom_weapon, hit_point, deg_to_rad(180.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
-
-	if impact > 0.05 and release <= 0.0:
-		draw_circle(center, ball_radius * 0.78, Color(1.0, 0.98, 0.82, 0.72 * impact))
-		draw_circle(center, ball_radius * (1.32 + impact * 0.18), Color(1.0, 0.77, 0.25, 0.28 * impact), false, maxf(2.0, 4.0 * scale_y))
-		for i in 6:
-			var a := TAU * float(i) / 6.0
-			var p1 := center + Vector2(cos(a), sin(a)) * ball_radius * 1.10
-			var p2 := center + Vector2(cos(a), sin(a)) * ball_radius * (1.35 + impact * 0.28)
-			draw_line(p1, p2, Color(1.0, 0.90, 0.50, 0.82 * impact), maxf(1.0, 2.0 * scale_y), true)
-
-func electric_point(x: float, y: float) -> Vector2:
-	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
-
-func draw_electric_arc(start: Vector2, finish: Vector2, phase: float, alpha: float, width: float) -> void:
-	var points := PackedVector2Array()
-	var delta := finish - start
-	var normal := delta.normalized().orthogonal() if delta.length_squared() > 0.01 else Vector2.UP
-	for i in 11:
-		var t := float(i) / 10.0
-		var jitter := 0.0
-		if i > 0 and i < 10:
-			jitter = sin(float(i) * 12.73 + phase * 19.0) * width * 2.2
-			jitter += cos(float(i) * 7.31 + phase * 11.0) * width
-		points.append(start.lerp(finish, t) + normal * jitter)
-	draw_polyline(points, Color(0.72, 0.93, 1.0, alpha * 0.52), width * 2.4, true)
-	draw_polyline(points, Color(0.96, 1.0, 1.0, alpha), width, true)
-
-func electric_trap_is_active() -> bool:
-	for effect in active_effects:
-		if effect.hole == ELECTRIC_TRAP_HOLE:
-			return true
-	return false
-
-func electric_weapon_points() -> Dictionary:
-	var capture := trap_ball_position(ELECTRIC_TRAP_HOLE, board_to_screen(SCORING_HOLE_CENTERS[ELECTRIC_TRAP_HOLE]))
-	var scale_y := board_rect.size.y / 600.0
-	return {
-		"capture": capture,
-		"top": capture + electric_top_offset * scale_y + trap_weapon_offset(ELECTRIC_TRAP_HOLE, 0),
-		"right": capture + electric_right_offset * scale_y + trap_weapon_offset(ELECTRIC_TRAP_HOLE, 1)
-	}
-
-func draw_electric_emitter(center: Vector2, target: Vector2, size: float, power: float = 0.0) -> Vector2:
-	var direction := (target - center).normalized()
-	if direction.length_squared() < 0.01:
-		direction = Vector2.RIGHT
-	var angle := direction.angle()
-	# Heavy stone-mounted high-voltage generator: steel housing, copper coil,
-	# ceramic insulators and a forked discharge head. Everything is drawn in the
-	# weapon's local axis so both emitters retain the editor-approved positions.
-	draw_set_transform(center + Vector2(0.0, size * 0.10), angle, Vector2.ONE)
-	var shadow_rect := Rect2(Vector2(-size * 0.52, -size * 0.39) + Vector2(0.0, size * 0.10), Vector2(size * 0.86, size * 0.78))
-	draw_style_box(make_box(Color(0.02, 0.04, 0.06, 0.32), size * 0.14), shadow_rect)
-	var body_rect := Rect2(Vector2(-size * 0.52, -size * 0.39), Vector2(size * 0.86, size * 0.78))
-	draw_style_box(make_box(Color("1f3039"), size * 0.13), body_rect)
-	var inner_rect := Rect2(Vector2(-size * 0.43, -size * 0.30), Vector2(size * 0.65, size * 0.60))
-	draw_style_box(make_box(Color("6f858e"), size * 0.10), inner_rect)
-	# Rear mounting band and four warm metal bolts.
-	draw_rect(Rect2(Vector2(-size * 0.47, -size * 0.32), Vector2(size * 0.13, size * 0.64)), Color("314650"))
-	for bolt_y in [-0.22, 0.22]:
-		draw_circle(Vector2(-size * 0.405, size * bolt_y), size * 0.045, Color("e6bd43"))
-	# Bright copper induction coil wrapped around a dark magnetic core.
-	draw_rect(Rect2(Vector2(-size * 0.27, -size * 0.20), Vector2(size * 0.39, size * 0.40)), Color("243740"))
-	for i in 5:
-		var coil_x := size * (-0.235 + float(i) * 0.078)
-		draw_line(Vector2(coil_x, -size * 0.22), Vector2(coil_x, size * 0.22), Color("6f2b18"), size * 0.090, true)
-		draw_line(Vector2(coil_x - size * 0.012, -size * 0.20), Vector2(coil_x - size * 0.012, size * 0.20), Color("f18a2b"), size * 0.045, true)
-	# Two pale ceramic insulators lead into the forked electrode.
-	for insulator_y in [-0.17, 0.17]:
-		draw_line(Vector2(size * 0.14, size * insulator_y), Vector2(size * 0.42, size * insulator_y), Color("24343b"), size * 0.15, true)
-		draw_line(Vector2(size * 0.16, size * insulator_y), Vector2(size * 0.39, size * insulator_y), Color("d9e7e4"), size * 0.085, true)
-		for ring_x in [0.20, 0.29, 0.38]:
-			draw_line(Vector2(size * ring_x, size * (insulator_y - 0.075)), Vector2(size * ring_x, size * (insulator_y + 0.075)), Color("6d8790"), size * 0.035, true)
-	# Fork tips focus the discharge into a single bright muzzle point.
-	var fork_color := Color("a9c0c5")
-	draw_line(Vector2(size * 0.40, -size * 0.17), Vector2(size * 0.62, -size * 0.08), fork_color, size * 0.075, true)
-	draw_line(Vector2(size * 0.40, size * 0.17), Vector2(size * 0.62, size * 0.08), fork_color, size * 0.075, true)
-	draw_circle(Vector2(size * 0.62, -size * 0.08), size * 0.065, Color("d8f6ff"))
-	draw_circle(Vector2(size * 0.62, size * 0.08), size * 0.065, Color("d8f6ff"))
-	# Animated energy window remains subtle at idle and brightens before firing.
-	var core_alpha := 0.34 + power * 0.58
-	draw_circle(Vector2(-size * 0.07, 0.0), size * (0.095 + power * 0.018), Color(0.35, 0.88, 1.0, core_alpha))
-	draw_circle(Vector2(-size * 0.07, 0.0), size * 0.17, Color(0.18, 0.70, 1.0, 0.10 + power * 0.16), false, maxf(1.0, size * 0.035), true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var upper_tip := center + direction * size * 0.62 - direction.orthogonal() * size * 0.08
-	var lower_tip := center + direction * size * 0.62 + direction.orthogonal() * size * 0.08
-	var tip := center + direction * size * 0.70
-	if power > 0.01:
-		draw_electric_arc(upper_tip, lower_tip, float(Time.get_ticks_msec()) * 0.006, 0.30 + power * 0.65, maxf(1.0, size * 0.035))
-		draw_circle(tip, size * (0.08 + power * 0.045), Color(0.82, 0.97, 1.0, 0.42 + power * 0.50))
-	return tip
-
-func draw_electric_weapons_idle() -> void:
-	if customizer_open or electric_trap_is_active():
-		return
-	var points := electric_weapon_points()
-	var scale_y := board_rect.size.y / 600.0
-	var pulse := (sin(float(Time.get_ticks_msec()) * 0.0045) + 1.0) * 0.5
-	draw_electric_emitter(points.top, points.capture, electric_top_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 0), pulse * 0.20)
-	draw_electric_emitter(points.right, points.capture, electric_right_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 1), pulse * 0.20)
-
-func draw_electric_trap(effect: Dictionary) -> void:
-	var seconds: float = effect.elapsed
-	var scale_y := board_rect.size.y / 600.0
-	var points := electric_weapon_points()
-	var top_weapon: Vector2 = points.top
-	var right_weapon: Vector2 = points.right
-	var shock_point: Vector2 = points.capture
-	var radius := trap_ball_radius(ELECTRIC_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale)
-	var charge := smooth_step(seconds / 0.30)
-	var charge_fade := 1.0 - smooth_step((seconds - 1.12) / 0.28)
-	var beam_power := charge * charge_fade
-	var electrified := smooth_step((seconds - 0.10) / 0.38)
-	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
-	var center := shock_point
-	var ball_radius := radius
-	var alpha := 1.0
-
-	if release > 0.0:
-		# Fall out through the nearby upper-right opening while remaining charged.
-		var fall := release * release
-		center = shock_point.lerp(effect_fall_endpoint(ELECTRIC_TRAP_HOLE), fall)
-		center.y -= sin(release * PI) * 7.0 * scale_y
-		ball_radius *= 1.0 - release * 0.34
-		alpha = 1.0 - release * 0.10
-
-	var top_tip := draw_electric_emitter(top_weapon, shock_point, electric_top_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 0), beam_power)
-	var right_tip := draw_electric_emitter(right_weapon, shock_point, electric_right_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 1), beam_power)
-
-	# One short, bright discharge from each weapon, as in the source animation.
-	if beam_power > 0.01 and release <= 0.0:
-		draw_electric_arc(top_tip, shock_point - Vector2(radius * 0.34, radius * 0.30), seconds * 2.3, beam_power, maxf(1.4, 2.5 * scale_y))
-		draw_electric_arc(right_tip, shock_point + Vector2(radius * 0.34, radius * 0.28), seconds * 2.7 + 0.43, beam_power, maxf(1.4, 2.5 * scale_y))
-
-	# Keep the real character ball visible under the electric glow.
-	var shake := Vector2.ZERO
-	if electrified > 0.05 and release <= 0.0:
-		shake = Vector2(sin(seconds * 43.0), cos(seconds * 37.0)) * 2.5 * scale_y * electrified
-	draw_rubber_game_ball(center + shake, ball_radius, effect.team, effect.piece, alpha)
-	# Strong irregular white/yellow flashes repeatedly wash over the whole ball.
-	var flash_wave := sin(seconds * 17.0) * 0.5 + sin(seconds * 29.0 + 0.7) * 0.3 + 0.2
-	var flash := smooth_step(clampf((flash_wave - 0.12) / 0.48, 0.0, 1.0)) * electrified
-	if flash > 0.02:
-		draw_circle(center + shake, ball_radius * (1.04 + flash * 0.10), Color(1.0, 0.96, 0.60, flash * 0.72 * alpha), true, -1.0, true)
-		draw_circle(center + shake, ball_radius * (1.36 + flash * 0.18), Color(1.0, 0.88, 0.24, flash * 0.20 * alpha), false, maxf(2.0, 4.0 * scale_y), true)
-
-	# Compact lightning remains wrapped around the ball, including during its fall.
-	var local_power := electrified * (1.0 - release * 0.18)
-	if local_power > 0.01:
-		draw_circle(center + shake, ball_radius * (1.30 + sin(seconds * 24.0) * 0.07), Color(0.82, 0.96, 1.0, 0.18 * local_power * alpha))
-		for i in 10:
-			var a := TAU * float(i) / 10.0 + seconds * (2.1 + float(i % 3) * 0.2)
-			var inner := center + shake + Vector2(cos(a), sin(a)) * ball_radius * 0.82
-			var outer_angle := a + sin(seconds * 17.0 + float(i)) * 0.28
-			var outer := center + shake + Vector2(cos(outer_angle), sin(outer_angle)) * ball_radius * (1.30 + 0.22 * sin(seconds * 21.0 + float(i)))
-			draw_electric_arc(inner, outer, seconds * 1.4 + float(i), local_power * alpha * 0.92, maxf(1.0, 1.8 * scale_y))
-
-
-func fire_point(x: float, y: float) -> Vector2:
-	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
-
-func fire_trap_is_active() -> bool:
-	for effect in active_effects:
-		if effect.hole == FIRE_TRAP_HOLE:
-			return true
-	return false
-
-func draw_fire_emitter(center: Vector2, target: Vector2, size: float, heat: float = 0.0) -> Vector2:
-	var direction := (target - center).normalized()
-	if fire_launcher_texture == null:
-		return center
-	var source := fire_launcher_texture.get_size()
-	var factor := size / source.y
-	# The generated turret's rotation center is inside the large round base,
-	# not at the center of its square canvas.
-	var pivot := Vector2(source.x * 0.43, source.y * 0.52)
-	var draw_size := source * factor
-	draw_set_transform(center, direction.angle(), Vector2.ONE)
-	draw_texture_rect(fire_launcher_texture, Rect2(-pivot * factor, draw_size), false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var nozzle_tip := center + direction * (source.x - pivot.x) * factor
-	if heat > 0.01:
-		draw_circle(nozzle_tip, size * (0.055 + heat * 0.035), Color(1.0, 0.66, 0.12, 0.45 + heat * 0.45))
-	return nozzle_tip
-
-func fire_weapon_points() -> Dictionary:
-	var burn := trap_ball_position(FIRE_TRAP_HOLE, fire_point(112.0, 536.0))
-	return {
-		"burn": burn,
-		"left": fire_point(78.0, 492.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 0),
-		"bottom": fire_point(188.0, 565.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 1)
-	}
-
-func draw_fire_weapons_idle() -> void:
-	if customizer_open or fire_trap_is_active():
-		return
-	var points := fire_weapon_points()
-	var scale_y := board_rect.size.y / 600.0
-	draw_fire_emitter(points.left, points.burn, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0))
-	draw_fire_emitter(points.bottom, points.burn, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1))
-
-func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
-	if amount <= 0.01:
-		return
-	var end := origin.lerp(target, amount)
-	var direction := end - origin
-	if direction.length_squared() < 0.01:
-		return
-	var normal := direction.normalized().orthogonal()
-	var scale_y := board_rect.size.y / 600.0 * edit_scale
-	var outer := PackedVector2Array()
-	var inner := PackedVector2Array()
-	for i in 14:
-		var t := float(i) / 13.0
-		var wave := sin(t * 18.0 + seed_offset * 13.0 + float(Time.get_ticks_msec()) * 0.018) * 7.0 * scale_y
-		outer.append(origin.lerp(end, t) + normal * wave)
-		inner.append(origin.lerp(end, t) + normal * wave * 0.42)
-	draw_polyline(outer, Color(0.82, 0.08, 0.005, 0.92), 24.0 * scale_y, true)
-	draw_polyline(outer, Color(1.0, 0.32, 0.01, 0.98), 16.0 * scale_y, true)
-	draw_polyline(inner, Color(1.0, 0.82, 0.12, 0.98), 7.0 * scale_y, true)
-	for i in 12:
-		var phase := fmod(float(i) / 11.0 + seed_offset + float(Time.get_ticks_msec()) * 0.0007, 1.0) * amount
-		var p := origin.lerp(target, phase)
-		p += normal * sin(phase * 29.0 + seed_offset * 17.0) * 13.0 * scale_y
-		var r := (3.5 + float(i % 4) * 1.7) * scale_y
-		draw_circle(p, r, Color(1.0, 0.20 + 0.14 * float(i % 3), 0.005, 0.88))
-
-func draw_burning_ball(center: Vector2, radius: float, burn: float, team: int, piece: int, alpha: float) -> void:
-	var now := float(Time.get_ticks_msec()) * 0.001
-	# Let the animal remain visible while soot spreads over it instead of
-	# replacing it instantly with a flat black fire icon.
-	draw_rubber_game_ball(center, radius, team, piece, (1.0 - burn * 0.78) * alpha)
-	var ember_radius := radius * lerpf(0.88, 1.02, burn)
-	# Soft heat haze and deep ember body.
-	draw_circle(center, ember_radius * 1.34, Color(1.0, 0.14, 0.01, 0.10 * burn * alpha))
-	draw_circle(center, ember_radius * 1.15, Color(1.0, 0.30, 0.015, 0.12 * burn * alpha))
-	draw_circle(center, ember_radius, Color(0.025, 0.018, 0.014, 0.82 * burn * alpha))
-	# Irregular soot patches keep the surface organic and textured.
-	for i in 13:
-		var a := float(i) * 2.399 + 0.31
-		var distance := ember_radius * (0.18 + 0.56 * absf(sin(float(i) * 1.73)))
-		var soot_center: Vector2 = center + Vector2(cos(a), sin(a)) * distance
-		var soot_size := ember_radius * (0.13 + 0.09 * absf(cos(float(i) * 2.11)))
-		draw_circle(soot_center, soot_size, Color(0.005, 0.004, 0.003, (0.34 + float(i % 3) * 0.10) * burn * alpha))
-	# Fine glowing fissures rather than thick cartoon spokes.
-	for i in 7:
-		var a := float(i) * 2.31 + 0.52
-		var crack_a: Vector2 = center + Vector2(cos(a), sin(a)) * ember_radius * 0.18
-		var elbow: Vector2 = center + Vector2(cos(a + 0.20), sin(a + 0.20)) * ember_radius * 0.46
-		var crack_b: Vector2 = center + Vector2(cos(a - 0.10), sin(a - 0.10)) * ember_radius * 0.78
-		var heat := (0.58 + 0.42 * sin(now * 7.0 + float(i) * 1.7)) * burn * alpha
-		draw_line(crack_a, elbow, Color(1.0, 0.16, 0.005, heat * 0.75), maxf(1.0, radius * 0.035), true)
-		draw_line(elbow, crack_b, Color(1.0, 0.42, 0.015, heat), maxf(1.0, radius * 0.045), true)
-	# Flames rise upward in translucent, constantly changing tongues.
-	for i in 8:
-		var x_ratio := -0.82 + float(i) * 1.64 / 7.0
-		var surface_y := sqrt(maxf(0.0, 1.0 - x_ratio * x_ratio))
-		var flame_base: Vector2 = center + Vector2(x_ratio * ember_radius, -surface_y * ember_radius * 0.72)
-		var sway := sin(now * (5.2 + float(i % 3)) + float(i) * 1.91)
-		var flame_height := radius * (0.34 + 0.30 * absf(sin(now * 6.4 + float(i)))) * burn
-		var flame_tip: Vector2 = flame_base + Vector2(sway * radius * 0.16, -flame_height)
-		var flame_width := radius * (0.09 + 0.035 * float(i % 3)) * burn
-		var tongue := PackedVector2Array([
-			flame_base - Vector2(flame_width, 0.0),
-			flame_tip,
-			flame_base + Vector2(flame_width, 0.0)
-		])
-		draw_colored_polygon(tongue, Color(1.0, 0.15, 0.005, 0.48 * burn * alpha))
-		draw_line(flame_base, flame_tip.lerp(flame_base, 0.36), Color(1.0, 0.72, 0.10, 0.66 * burn * alpha), maxf(1.0, flame_width * 0.48), true)
-	# Sparse sparks and smoke sell the heat without forming a uniform outline.
-	for i in 7:
-		var phase := fmod(now * (0.52 + float(i) * 0.035) + float(i) * 0.173, 1.0)
-		var spark: Vector2 = center + Vector2(sin(float(i) * 3.17 + now) * radius * 0.72, -radius * (0.75 + phase * 1.75))
-		draw_circle(spark, maxf(0.8, radius * (0.045 - phase * 0.018)), Color(1.0, 0.55 + phase * 0.30, 0.08, (1.0 - phase) * burn * alpha))
-	for i in 4:
-		var smoke_phase := fmod(now * 0.22 + float(i) * 0.24, 1.0)
-		var smoke: Vector2 = center + Vector2(sin(now * 1.4 + float(i)) * radius * 0.45, -radius * (1.15 + smoke_phase * 1.65))
-		var smoke_radius := radius * (0.12 + smoke_phase * 0.18)
-		draw_circle(smoke, smoke_radius, Color(0.08, 0.075, 0.07, (1.0 - smoke_phase) * 0.18 * burn * alpha))
-
-func draw_fire_trap(effect: Dictionary) -> void:
-	var seconds: float = effect.elapsed
-	var scale_y := board_rect.size.y / 600.0
-	var points := fire_weapon_points()
-	var left_weapon: Vector2 = points.left
-	var bottom_weapon: Vector2 = points.bottom
-	var burn_point: Vector2 = points.burn
-	var radius := trap_ball_radius(FIRE_TRAP_HOLE, 27.0 * scale_y)
-	var ignition := smooth_step(seconds / 0.38)
-	var burn := smooth_step((seconds - 0.12) / 1.48)
-	var fire_fall_start := 2.72
-	var release := smooth_step((seconds - fire_fall_start) / (FIRE_EFFECT_DURATION - fire_fall_start))
-	var center := burn_point
-	var alpha := 1.0
-	if release > 0.0:
-		var gravity_fall := release * release
-		# End in the visible water strip close to the lower-left corner.
-		center = burn_point.lerp(effect_fall_endpoint(FIRE_TRAP_HOLE), gravity_fall)
-		center.x += sin(release * PI) * -6.0 * scale_y
-		radius *= 1.0 - release * 0.22
-		alpha = 1.0 - release * 0.10
-	var stream_strength := ignition * (1.0 - smooth_step((seconds - 1.62) / 0.42))
-	var left_tip := draw_fire_emitter(left_weapon, burn_point, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0), stream_strength)
-	var bottom_tip := draw_fire_emitter(bottom_weapon, burn_point, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1), stream_strength)
-	if stream_strength > 0.01:
-		draw_fire_stream(left_tip, burn_point, stream_strength, 0.17, trap_weapon_scale(FIRE_TRAP_HOLE, 0))
-		draw_fire_stream(bottom_tip, burn_point, stream_strength, 0.63, trap_weapon_scale(FIRE_TRAP_HOLE, 1))
-	draw_burning_ball(center, radius, burn, effect.team, effect.piece, alpha)
-
-func ice_point(x: float, y: float) -> Vector2:
-	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
-
-func ice_weapon_points() -> Dictionary:
-	var freeze := trap_ball_position(ICE_TRAP_HOLE, ice_point(600.0, 548.0))
-	return {
-		"freeze": freeze,
-		"left": ice_point(470.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 0),
-		"right": ice_point(730.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 1)
-	}
-
-func ice_trap_is_active() -> bool:
-	for effect in active_effects:
-		if effect.hole == ICE_TRAP_HOLE:
-			return true
-	return false
-
-func draw_ice_emitter(center: Vector2, target: Vector2, size: float, frost_power: float = 0.0) -> Vector2:
-	var direction := (target - center).normalized()
-	if direction.length_squared() < 0.01:
-		direction = Vector2.RIGHT
-	var angle := direction.angle()
-	# Detailed cryogenic cannon based on the source animation: a permanent
-	# stone-mounted base, violet coolant reservoir and stepped silver nozzle.
-	draw_set_transform(center, angle, Vector2.ONE)
-	var shadow := Rect2(Vector2(-size * 0.53, -size * 0.34) + Vector2(0.0, size * 0.10), Vector2(size * 0.86, size * 0.68))
-	draw_style_box(make_box(Color(0.02, 0.04, 0.07, 0.30), size * 0.15), shadow)
-	var mount := Rect2(Vector2(-size * 0.53, -size * 0.34), Vector2(size * 0.45, size * 0.68))
-	draw_style_box(make_box(Color("253844"), size * 0.14), mount)
-	var mount_inner := Rect2(Vector2(-size * 0.45, -size * 0.26), Vector2(size * 0.30, size * 0.52))
-	draw_style_box(make_box(Color("8498a0"), size * 0.11), mount_inner)
-	for bolt_y in [-0.20, 0.20]:
-		draw_circle(Vector2(-size * 0.39, size * bolt_y), size * 0.043, Color("d7e5e7"))
-	# Rounded insulated coolant tank with layered shading and a polished highlight.
-	var tank_start := Vector2(-size * 0.12, 0.0)
-	var tank_end := Vector2(size * 0.25, 0.0)
-	draw_line(tank_start, tank_end, Color("171d3a"), size * 0.58, true)
-	draw_line(tank_start, tank_end, Color("4a43aa"), size * 0.48, true)
-	draw_line(tank_start, tank_end, Color("6860d5"), size * 0.38, true)
-	draw_line(tank_start - Vector2(0.0, size * 0.075), tank_end - Vector2(0.0, size * 0.075), Color(0.76, 0.72, 1.0, 0.80), size * 0.085, true)
-	draw_line(tank_start + Vector2(0.0, size * 0.12), tank_end + Vector2(0.0, size * 0.12), Color(0.10, 0.12, 0.30, 0.55), size * 0.07, true)
-	# Cooling bands use a dark rim and a bright steel center.
-	for band_x in [-0.07, 0.08, 0.22]:
-		draw_line(Vector2(size * band_x, -size * 0.27), Vector2(size * band_x, size * 0.27), Color("182934"), size * 0.095, true)
-		draw_line(Vector2(size * band_x, -size * 0.24), Vector2(size * band_x, size * 0.24), Color("9fb3ba"), size * 0.045, true)
-	# Illuminated snowflake pressure window.
-	var gauge_center := Vector2(size * 0.01, 0.0)
-	draw_circle(gauge_center, size * 0.12, Color("172b39"))
-	draw_circle(gauge_center, size * 0.085, Color(0.42, 0.88, 1.0, 0.42 + frost_power * 0.48))
-	for spoke in 3:
-		var spoke_angle := float(spoke) * PI / 3.0
-		var spoke_vector := Vector2(cos(spoke_angle), sin(spoke_angle)) * size * 0.061
-		draw_line(gauge_center - spoke_vector, gauge_center + spoke_vector, Color(0.91, 1.0, 1.0, 0.88), maxf(1.0, size * 0.018), true)
-	# Stepped nozzle with a pale ceramic cold tip.
-	draw_line(Vector2(size * 0.27, 0.0), Vector2(size * 0.53, 0.0), Color("263844"), size * 0.27, true)
-	draw_line(Vector2(size * 0.29, 0.0), Vector2(size * 0.51, 0.0), Color("a8bcc1"), size * 0.15, true)
-	for ring_x in [0.31, 0.42, 0.52]:
-		draw_line(Vector2(size * ring_x, -size * 0.18), Vector2(size * ring_x, size * 0.18), Color("343768"), size * 0.07, true)
-	var local_tip := Vector2(size * 0.62, 0.0)
-	draw_circle(local_tip, size * 0.12, Color("25364b"))
-	draw_circle(local_tip, size * (0.072 + frost_power * 0.018), Color(0.83, 0.98, 1.0, 0.62 + frost_power * 0.34))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var tip := center + direction * size * 0.62
-	# Cold vapor and tiny ice crystals make the nozzle feel active without
-	# obscuring the weapon or the gameplay ball.
-	var vapor_phase := float(Time.get_ticks_msec()) * 0.0025
-	for i in 4:
-		var drift := fmod(vapor_phase + float(i) * 0.24, 1.0)
-		var vapor_center := tip + direction * size * drift * 0.23 + direction.orthogonal() * sin(vapor_phase * 3.0 + float(i)) * size * 0.055
-		var vapor_alpha := (1.0 - drift) * (0.08 + frost_power * 0.18)
-		draw_circle(vapor_center, size * (0.035 + drift * 0.055), Color(0.78, 0.96, 1.0, vapor_alpha))
-	if frost_power > 0.01:
-		draw_circle(tip, size * (0.12 + frost_power * 0.04), Color(0.63, 0.92, 1.0, 0.14 + frost_power * 0.20))
-		for i in 3:
-			var crystal_angle := vapor_phase * 4.0 + TAU * float(i) / 3.0
-			var crystal := tip + Vector2(cos(crystal_angle), sin(crystal_angle)) * size * 0.16
-			draw_circle(crystal, maxf(1.0, size * 0.022), Color(0.91, 1.0, 1.0, 0.60 * frost_power))
-	return tip
-
-func draw_ice_weapons_idle() -> void:
-	if customizer_open or ice_trap_is_active():
-		return
-	var points := ice_weapon_points()
-	var scale_y := board_rect.size.y / 600.0
-	var pulse := (sin(float(Time.get_ticks_msec()) * 0.0038) + 1.0) * 0.5
-	draw_ice_emitter(points.left, points.freeze, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 0), pulse * 0.16)
-	draw_ice_emitter(points.right, points.freeze, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 1), pulse * 0.16)
-
-func draw_ice_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
-	if amount <= 0.01:
-		return
-	var direction := target - origin
-	var normal := direction.normalized().orthogonal()
-	var end := origin.lerp(target, amount)
-	var width := maxf(2.0, board_rect.size.y / 600.0 * 7.0 * edit_scale)
-	draw_line(origin, end, Color(0.67, 0.93, 1.0, 0.46), width * 2.1, true)
-	draw_line(origin, end, Color(0.92, 0.99, 1.0, 0.94), width, true)
-	for i in 13:
-		var phase := fmod(float(i) / 12.0 + seed_offset + amount * 0.9, 1.0)
-		if phase > amount:
-			continue
-		var p := origin.lerp(target, phase)
-		var wobble := sin(phase * 31.0 + seed_offset * 17.0) * width * 1.3
-		p += normal * wobble
-		var particle_radius := width * (0.38 + float(i % 3) * 0.16)
-		draw_circle(p, particle_radius, Color(0.82, 0.97, 1.0, 0.88))
-
-func draw_ice_shell(center: Vector2, radius: float, amount: float, alpha: float = 1.0) -> void:
-	if amount <= 0.01:
-		return
-	var shell_radius := radius * lerpf(0.72, 1.32, amount)
-	var points := PackedVector2Array()
-	for i in 16:
-		var angle := TAU * float(i) / 16.0
-		var jag := 1.0 + (0.10 if i % 2 == 0 else -0.04) * amount
-		points.append(center + Vector2(cos(angle), sin(angle)) * shell_radius * jag)
-	draw_colored_polygon(points, Color(0.64, 0.91, 1.0, (0.18 + amount * 0.46) * alpha))
-	var outline := points.duplicate()
-	outline.append(points[0])
-	draw_polyline(outline, Color(0.88, 0.98, 1.0, 0.92 * alpha), maxf(2.0, radius * 0.09), true)
-	for i in 7:
-		var a := float(i) * 2.21 + amount
-		var inner := center + Vector2(cos(a), sin(a)) * shell_radius * 0.28
-		var outer := center + Vector2(cos(a + 0.22), sin(a + 0.22)) * shell_radius * (0.58 + 0.28 * amount)
-		draw_line(inner, outer, Color(0.90, 0.99, 1.0, 0.72 * amount * alpha), maxf(1.0, radius * 0.055), true)
-
-func draw_ice_trap(effect: Dictionary) -> void:
-	var seconds: float = effect.elapsed
-	var scale_y := board_rect.size.y / 600.0
-	var points := ice_weapon_points()
-	var left_weapon: Vector2 = points.left
-	var right_weapon: Vector2 = points.right
-	var freeze_point: Vector2 = points.freeze
-	var radius := trap_ball_radius(ICE_TRAP_HOLE, 27.0 * scale_y)
-	var spray := smooth_step(seconds / 0.82)
-	var freeze := smooth_step((seconds - 0.22) / 1.18)
-	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
-	var center := freeze_point
-	var alpha := 1.0
-	if release > 0.0:
-		var gravity_fall := release * release
-		# Finish just below the table so the small frozen animal remains visible
-		# when the water-floating phase takes over.
-		center = freeze_point.lerp(effect_fall_endpoint(ICE_TRAP_HOLE), gravity_fall)
-		center.x += sin(release * PI) * 5.0 * scale_y
-		radius *= 1.0 - release * 0.28
-		alpha = 1.0 - release * 0.12
-	var stream_strength := spray * (1.0 - smooth_step((seconds - 1.28) / 0.37))
-	var left_tip := draw_ice_emitter(left_weapon, freeze_point, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 0), stream_strength)
-	var right_tip := draw_ice_emitter(right_weapon, freeze_point, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 1), stream_strength)
-	if seconds < 1.65:
-		draw_ice_stream(left_tip, freeze_point, stream_strength, 0.13, trap_weapon_scale(ICE_TRAP_HOLE, 0))
-		draw_ice_stream(right_tip, freeze_point, stream_strength, 0.61, trap_weapon_scale(ICE_TRAP_HOLE, 1))
-	draw_rubber_game_ball(center, radius, effect.team, effect.piece, 1.0 - freeze * 0.58)
-	draw_ice_shell(center, radius, freeze, alpha)
-	if freeze > 0.55 and release <= 0.0:
-		var sparkle := 0.55 + sin(seconds * 18.0) * 0.35
-		for i in 6:
-			var a := TAU * float(i) / 6.0 + seconds * 0.7
-			var p := center + Vector2(cos(a), sin(a)) * radius * 1.48
-			draw_circle(p, maxf(1.5, 2.4 * scale_y), Color(0.91, 1.0, 1.0, sparkle))
-
-func rubber_point(x: float, y: float) -> Vector2:
-	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
-
-func smooth_step(value: float) -> float:
-	var v := clampf(value, 0.0, 1.0)
-	return v * v * (3.0 - 2.0 * v)
-
-func rubber_hand_pose(value: float) -> int:
-	if value < 0.25: return 0
-	if value < 0.48: return 1
-	if value < 0.68: return 2
-	if value < 0.86: return 3
-	return 4
-
-func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: int, alpha: float) -> void:
-	if team_piece_textures.size() < 2 or team_piece_textures[team] == null:
-		return
-	var texture := team_piece_textures[team]
-	var size := Vector2.ONE * radius * 2.34
-	draw_circle(position + Vector2(radius * 0.09, radius * 0.15), radius * 1.08, Color(0, 0, 0, 0.30 * alpha), true, -1.0, true)
-	draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, alpha))
-	if teams_share_ring_color():
-		var marker := team_marker_color(team)
-		draw_arc(position, radius * 1.16, 0.0, TAU, 36, marker, maxf(2.5, radius * 0.16), true)
-		draw_circle(position + Vector2(radius * 0.72, -radius * 0.72), radius * 0.22, marker)
-		draw_string(ui_font, position + Vector2(radius * 0.56, -radius * 0.58), str(team + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 0.45, maxi(10, int(radius * 0.42)), Color("173249"))
-
-func rebuild_team_piece_textures() -> void:
-	team_piece_textures.clear()
-	team_piece_textures.append(make_colored_animal_texture(player_animal, RING_COLORS[player_ring_color]))
-	team_piece_textures.append(make_colored_animal_texture(ai_animal, RING_COLORS[ai_ring_color]))
-
-func make_colored_animal_texture(animal_index: int, target_color: Color) -> Texture2D:
-	if animal_index < 0 or animal_index >= animal_textures.size():
-		return null
-	var image: Image = animal_textures[animal_index].get_image().duplicate()
-	var mask: Image = animal_ring_masks[animal_index].get_image()
-	for y in image.get_height():
-		for x in image.get_width():
-			var amount: float = mask.get_pixel(x, y).r
-			if amount <= 0.001:
-				continue
-			var original: Color = image.get_pixel(x, y)
-			var recolored: Color = Color.from_hsv(target_color.h, maxf(original.s, target_color.s * 0.82), original.v, original.a)
-			image.set_pixel(x, y, original.lerp(recolored, amount))
-	return ImageTexture.create_from_image(image)
-
-func customizer_panel(viewport_size: Vector2) -> Rect2:
-	var size := Vector2(minf(820.0, viewport_size.x - 36.0), minf(560.0, viewport_size.y - 34.0))
-	return Rect2((viewport_size - size) * 0.5, size)
-
-func customizer_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var panel := customizer_panel(viewport_size)
-	var gap := 8.0
-	var width := (panel.size.x - 40.0 - gap * float(ANIMAL_NAMES.size() - 1)) / float(ANIMAL_NAMES.size())
-	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 82.0), Vector2(width, 68.0))
-
-func customizer_color_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var panel := customizer_panel(viewport_size)
-	var gap := 8.0
-	var width := (panel.size.x - 40.0 - gap * float(RING_COLOR_NAMES.size() - 1)) / float(RING_COLOR_NAMES.size())
-	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 205.0), Vector2(width, 58.0))
-
-func customizer_board_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var panel := customizer_panel(viewport_size)
-	var gap := 10.0
-	var width := (panel.size.x - 40.0 - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT)
-	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 262.0), Vector2(width, 76.0))
-
-func customizer_difficulty_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var panel := customizer_panel(viewport_size)
-	var gap := 12.0
-	var width := (panel.size.x - 40.0 - gap * 2.0) / 3.0
-	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 368.0), Vector2(width, 54.0))
-
-func customizer_start_rect(viewport_size: Vector2) -> Rect2:
-	var panel := customizer_panel(viewport_size)
-	return Rect2(panel.position + Vector2(panel.size.x * 0.5 - 110.0, panel.size.y - 68.0), Vector2(220.0, 48.0))
-
-func handle_customizer_touch(screen_pos: Vector2) -> bool:
-	var viewport_size := get_viewport_rect().size
-	if not customizer_open:
-		return false
-	for i in ANIMAL_NAMES.size():
-		if customizer_animal_rect(i, viewport_size).has_point(screen_pos):
-			try_select_animal(i)
-			queue_redraw()
-			return true
-	for i in RING_COLOR_NAMES.size():
-		if customizer_color_rect(i, viewport_size).has_point(screen_pos):
-			try_select_ring(i)
-			queue_redraw()
-			return true
-	for i in BOARD_THEME_COUNT:
-		if customizer_board_rect(i, viewport_size).has_point(screen_pos):
-			selected_board_theme = i
-			save_player_profile()
-			play_sound("ui")
-			queue_redraw()
-			return true
-	for i in 3:
-		if customizer_difficulty_rect(i, viewport_size).has_point(screen_pos):
-			computer_difficulty = i
-			save_player_profile()
-			play_sound("ui")
-			queue_redraw()
-			return true
-	if customizer_start_rect(viewport_size).has_point(screen_pos):
-		ai_animal = randi() % ANIMAL_NAMES.size()
-		ai_ring_color = randi() % RING_COLOR_NAMES.size()
-		rebuild_team_piece_textures()
-		customizer_open = false
-		new_game()
-		return true
-	return true
-
-func draw_customizer(viewport_size: Vector2) -> void:
-	if not customizer_open:
-		return
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.04, 0.08, 0.72))
-	var panel := customizer_panel(viewport_size)
-	draw_style_box(make_box(Color("122337"), 18.0), panel)
-	draw_string(ui_font, panel.position + Vector2(0, 38), ui_text("choose_setup"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 22, Color("f6d365"))
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_string(ui_font, panel.position + Vector2(20, 72), "×“×ž×•×ª" if ui_language == "he" else "ANIMAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
-	for i in ANIMAL_NAMES.size():
-		var rect := customizer_animal_rect(i, viewport_size)
-		draw_style_box(make_box(Color("7256d8") if i == player_animal else Color("26384b"), 10.0), rect)
-		if i < full_body_animal_textures.size() and full_body_animal_textures[i] != null:
-			var portrait := Rect2(rect.position + Vector2(rect.size.x * 0.5 - 22.0, 4.0), Vector2(44.0, 48.0))
-			draw_texture_rect(full_body_animal_textures[i], portrait, false)
-		draw_collection_lock_overlay(rect, i, false, unit)
-		draw_string(ui_font, rect.position + Vector2(0, 62), ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
-	draw_string(ui_font, panel.position + Vector2(20, 195), "×¦×‘×¢ ×”×’×œ×’×œ" if ui_language == "he" else "LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
-	for i in RING_COLOR_NAMES.size():
-		var rect := customizer_color_rect(i, viewport_size)
-		draw_style_box(make_box(RING_COLORS[i], 10.0), rect)
-		if i == player_ring_color:
-			draw_rect(rect.grow(3.0), Color.WHITE, false, 3.0)
-		draw_collection_lock_overlay(rect, i, true, unit)
-		draw_string(ui_font, rect.position + Vector2(0, 36), RING_COLOR_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
-	draw_string(ui_font, panel.position + Vector2(20, 248), ui_text("choose_board"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
-	for i in BOARD_THEME_COUNT:
-		draw_board_theme_card(i, customizer_board_rect(i, viewport_size), i == selected_board_theme, unit)
-	draw_string(ui_font, panel.position + Vector2(20, 354), ui_text("difficulty"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
-	var diff_labels := [ui_text("difficulty_easy"), ui_text("difficulty_medium"), ui_text("difficulty_hard")]
-	var diff_colors := [Color("51d995"), Color("f6aa20"), Color("e94f78")]
-	for i in 3:
-		var diff_rect := customizer_difficulty_rect(i, viewport_size)
-		var selected := i == computer_difficulty
-		draw_style_box(make_box(diff_colors[i] if selected else Color("26384b"), 12.0), diff_rect)
-		if selected:
-			draw_rect(diff_rect.grow(3.0), Color.WHITE, false, 3.0)
-		draw_string(ui_font, diff_rect.position + Vector2(0, 34), diff_labels[i], HORIZONTAL_ALIGNMENT_CENTER, diff_rect.size.x, 14, Color.WHITE)
-	var start_rect := customizer_start_rect(viewport_size)
-	draw_style_box(make_box(Color("12a96b"), 14.0), start_rect)
-	draw_string(ui_font, start_rect.position + Vector2(0, 31), "×”×ª×—×œ×ª ×ž×©×—×§" if ui_language == "he" else "START MATCH", HORIZONTAL_ALIGNMENT_CENTER, start_rect.size.x, 17, Color.WHITE)
-
-func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
-	if texture == null: return
-	var delta := target - anchor
-	# Fit the arm to the actual weapon-to-ball distance. The former large
-	# minimum made short upper-left arms overshoot the hole and leave the board.
-	var height := maxf(width * 1.02, delta.length() * 1.04)
-	var angle := delta.angle() + PI * 0.5 + rotation_offset
-	draw_set_transform(anchor, angle, Vector2(-1.0 if mirror else 1.0, 1.0))
-	draw_texture_rect(texture, Rect2(-width * 0.5, -height, width, height), false, Color(1, 1, 1, alpha))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: float) -> void:
-	if rubber_wrap_texture == null or amount <= 0.001:
-		return
-	# Twelve extracted stages reproduce the original wide crossing strips,
-	# irregular outer loops and final compact cocoon instead of invented rings.
-	var frame := clampi(int(floor(amount * 11.99)), 0, 11)
-	var source := Rect2(0.0, float(frame * 210), 210.0, 210.0)
-	var size := Vector2.ONE * radius * 5.35
-	var top_left := position - Vector2(102.0, 108.0) / 210.0 * size
-	draw_texture_rect_region(rubber_wrap_texture, Rect2(top_left, size), source, Color.WHITE)
-
-func rubber_launcher_points() -> Dictionary:
-	var capture := trap_ball_position(RUBBER_TRAP_HOLE, rubber_point(128.0, 104.0))
-	return {
-		"capture": capture,
-		# Measured from the source video: the launchers sit diagonally across
-		# the opening, not directly above and left of the captured ball.
-		"top": rubber_point(223.0, 33.0) + trap_weapon_offset(RUBBER_TRAP_HOLE, 0),
-		"side": rubber_point(54.0, 177.0) + trap_weapon_offset(RUBBER_TRAP_HOLE, 1)
-	}
-
-func rubber_trap_is_active() -> bool:
-	for effect in active_effects:
-		if effect.hole == RUBBER_TRAP_HOLE:
-			return true
-	return false
-
-func draw_rubber_launcher(center: Vector2, target: Vector2, size: float, pulse: float = 0.0) -> Vector2:
-	var direction := (target - center).normalized()
-	if rubber_launcher_texture == null:
-		return center
-	# The HD sprite faces right. Its body center is at x=205 in a 512x412
-	# image, so rotate around the machine body rather than the image midpoint.
-	# This keeps both launchers seated on their stones like the original.
-	var source := rubber_launcher_texture.get_size()
-	var draw_height := size * (1.0 + pulse * 0.025)
-	var factor := draw_height / source.y
-	var draw_size := source * factor
-	var body_center_x := 205.0 * factor
-	draw_set_transform(center, direction.angle(), Vector2.ONE)
-	draw_texture_rect(rubber_launcher_texture, Rect2(Vector2(-body_center_x, -draw_size.y * 0.5), draw_size), false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	return center + direction * (307.0 * factor)
-
-func draw_rubber_launchers_idle() -> void:
-	if customizer_open or rubber_trap_is_active():
-		return
-	var points := rubber_launcher_points()
-	var scale_y := board_rect.size.y / 600.0
-	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
-	draw_rubber_launcher(points.top, points.capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 0), pulse * 0.18)
-	draw_rubber_launcher(points.side, points.capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 1), pulse * 0.18)
-
-func draw_elastic_tape(origin: Vector2, target: Vector2, amount: float, bend: float, width: float) -> void:
-	if amount <= 0.001:
-		return
-	var end := origin.lerp(target, amount)
-	var delta := end - origin
-	var normal := Vector2(-delta.y, delta.x).normalized()
-	var points := PackedVector2Array()
-	for i in 17:
-		var u := float(i) / 16.0
-		var wave := sin(u * PI) * bend + sin(u * TAU * 2.0 + amount * 8.0) * bend * 0.12
-		points.append(origin.lerp(end, u) + normal * wave)
-	draw_polyline(points, Color(0.43, 0.45, 0.48, 0.90), width * 1.55, true)
-	draw_polyline(points, Color("faf8f0"), width, true)
-	# A slim pink edge reproduces the colored elastic seam seen in the frames.
-	var seam := PackedVector2Array()
-	for p in points:
-		seam.append(p + normal * width * 0.32)
-	draw_polyline(seam, Color("d95caf"), maxf(1.0, width * 0.22), true)
-
-func draw_rubber_trap(effect: Dictionary) -> void:
-	var elapsed: float = effect.elapsed
-	var t := elapsed / RUBBER_CAPTURE_TIME
-	var scale_y := board_rect.size.y / 600.0
-	var points := rubber_launcher_points()
-	var anchor_top: Vector2 = points.top
-	var anchor_left: Vector2 = points.side
-	var capture: Vector2 = points.capture
-	# Use exactly the same on-screen radius as the live gameplay piece. The old
-	# fixed effect radius was about 1.5x larger and caused a visible size pop on
-	# the first wrapping frame.
-	var ball_radius := trap_ball_radius(RUBBER_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale)
-	# The real gameplay ball has already entered this hole. Start the trap at
-	# the capture point so the V4 preview's staged entry is not replayed.
-	var ball := capture
-	var reach := smooth_step((t - 0.04) / 0.18)
-	var wrap := smooth_step((t - 0.05) / 0.72)
-	var team: int = effect.team
-	var piece: int = effect.piece
-	draw_rubber_launcher(anchor_top, capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 0), reach)
-	draw_rubber_launcher(anchor_left, capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 1), reach)
-	if elapsed < RUBBER_CAPTURE_TIME:
-		var focus := wrap * (1.0 - wrap * 0.45)
-		draw_circle(ball, ball_radius * (1.45 + sin(t * 45.0) * 0.08), Color(1.0, 0.965, 0.72, 0.28 * focus))
-		# Once wrapping begins, draw only the cocoon. Fading the original ball
-		# underneath it left a visible duplicate through the first wrapping pass.
-		if wrap <= 0.001:
-			draw_rubber_game_ball(ball, ball_radius, team, piece, 1.0)
-		if wrap > 0.0:
-			draw_rubber_wrap(ball, ball_radius, wrap, 0.0)
-	else:
-		var release := smooth_step((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME)
-		var fall := release * release
-		var out := effect_fall_endpoint(RUBBER_TRAP_HOLE)
-		ball = capture.lerp(out, fall)
-		ball_radius *= 1.0 - release * 0.42
-		# Keep the cocoon on the falling ball exactly like the source frames.
-		draw_rubber_wrap(ball, ball_radius, 1.0, 0.0)
-
-func editor_panel_rect(viewport_size: Vector2) -> Rect2:
-	# Keep the editor in the vertical center so it does not cover the weapons
-	# and capture points along the bottom edge of the table.
-	var panel_width := minf(980.0, viewport_size.x - 24.0)
-	return Rect2((viewport_size.x - panel_width) * 0.5, (viewport_size.y - 150.0) * 0.5, panel_width, 150.0)
-
-func editor_button(index: int, viewport_size: Vector2) -> Rect2:
-	var panel := editor_panel_rect(viewport_size)
-	var button_w := (panel.size.x - 22.0) / 14.0
-	return Rect2(panel.position + Vector2(6.0 + index * button_w, 82.0), Vector2(button_w - 4.0, 56.0))
-
-func editor_top_button(index: int, viewport_size: Vector2) -> Rect2:
-	var panel := editor_panel_rect(viewport_size)
-	var button_w := (panel.size.x - 12.0) / 7.0
-	return Rect2(panel.position + Vector2(6.0 + index * button_w, 8.0), Vector2(button_w - 4.0, 46.0))
-
-func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
-	var viewport_size := get_viewport_rect().size
-	var toggle := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
-	if toggle.has_point(screen_pos):
-		effect_editor_enabled = not effect_editor_enabled
-		if effect_editor_enabled:
-			replay_effect_editor()
-		queue_redraw()
-		return true
-	if not effect_editor_enabled:
-		return false
-	for i in 7:
-		if not editor_top_button(i, viewport_size).has_point(screen_pos):
-			continue
-		if i == 0:
-			DisplayServer.clipboard_set(editor_settings_text())
-			status = "Effect settings copied"
-		else:
-			editor_hole = i - 1
-			editor_target = 0
-			replay_effect_editor()
-		queue_redraw()
-		return true
-	for i in 14:
-		if not editor_button(i, viewport_size).has_point(screen_pos):
-			continue
-		match i:
-			0: editor_target = 0
-			1: editor_target = 1
-			2: editor_target = 2
-			3: editor_target = 3
-			4: editor_target = 4
-			5: editor_target = 5
-			6: change_editor_offset(Vector2(-1, 0))
-			7: change_editor_offset(Vector2(1, 0))
-			8: change_editor_offset(Vector2(0, -1))
-			9: change_editor_offset(Vector2(0, 1))
-			10: change_editor_width(-0.10)
-			11: change_editor_width(0.10)
-			12: reset_editor_target()
-			13: replay_effect_editor()
-		replay_effect_editor()
-		queue_redraw()
-		return true
-	return editor_panel_rect(viewport_size).has_point(screen_pos)
-
-func change_editor_offset(amount: Vector2) -> void:
-	if editor_target == 5:
-		var side := editor_wall_side(editor_hole)
-		if side == 0 or side == 2:
-			table_wall_offsets[side] += amount.x
-		else:
-			table_wall_offsets[side] += amount.y
-	elif editor_target == 4:
-		trap_entry_offsets[editor_hole] += amount
-	elif editor_target == 3:
-		trap_fall_offsets[editor_hole] += amount
-	elif editor_target == 2:
-		trap_ball_offsets[editor_hole] += amount
-	else:
-		trap_weapon_offsets[editor_hole * 2 + editor_target] += amount
-
-func change_editor_width(amount: float) -> void:
-	if editor_target == 5:
-		var side := editor_wall_side(editor_hole)
-		table_wall_sizes[side] = clampf(table_wall_sizes[side] + amount * 10.0, 1.0, 12.0)
-		return
-	if editor_target == 4:
-		trap_entry_radii[editor_hole] = clampf(trap_entry_radii[editor_hole] + amount * 10.0, 2.0, 40.0)
-		return
-	if editor_target == 3:
-		return
-	if editor_target == 2:
-		trap_ball_scales[editor_hole] = clampf(trap_ball_scales[editor_hole] + amount, 0.4, 2.0)
-	else:
-		var index := editor_hole * 2 + editor_target
-		trap_weapon_scales[index] = clampf(trap_weapon_scales[index] + amount, 0.4, 2.0)
-
-func approved_weapon_offset(hole: int, weapon: int) -> Vector2:
-	var approved: Array[Vector2] = [
-		Vector2(0.0, 15.0), Vector2(10.0, -5.0),
-		Vector2(-3.0, 0.0), Vector2(14.0, -1.0),
-		Vector2(10.0, 40.0), Vector2(-27.0, -3.0),
-		Vector2(20.0, 5.0), Vector2(0.0, 5.0),
-		Vector2(26.0, 1.0), Vector2(-16.0, 2.0),
-		Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
-	]
-	return approved[hole * 2 + weapon]
-
-func approved_weapon_scale(hole: int, weapon: int) -> float:
-	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.2, 1.2, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
-	return approved[hole * 2 + weapon]
-
-func approved_ball_offset(hole: int) -> Vector2:
-	var approved: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(4.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
-	return approved[hole]
-
-func approved_ball_scale(hole: int) -> float:
-	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-	return approved[hole]
-
-func approved_fall_offset(hole: int) -> Vector2:
-	var approved: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
-	return approved[hole]
-
-func approved_entry_offset(hole: int) -> Vector2:
-	var approved: Array[Vector2] = [
-		Vector2(-13.0, 0.0), Vector2(-1.0, -11.0), Vector2(11.0, -2.0),
-		Vector2(12.0, 14.0), Vector2(1.0, 19.0), Vector2(-12.0, 14.0)
-	]
-	return approved[hole]
-
-func approved_entry_radius(hole: int) -> float:
-	var approved: Array[float] = [13.0, 12.0, 12.0, 12.0, 11.0, 12.0]
-	return approved[hole]
-
-func approved_wall_offset(side: int) -> float:
-	var approved: Array[float] = [-2.0, -7.0, 5.0, 8.0]
-	return approved[side]
-
-func approved_wall_size(side: int) -> float:
-	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0]
-	return approved[side]
-
-func reset_editor_target() -> void:
-	if editor_target == 5:
-		var side := editor_wall_side(editor_hole)
-		table_wall_offsets[side] = approved_wall_offset(side)
-		table_wall_sizes[side] = approved_wall_size(side)
-	elif editor_target == 4:
-		trap_entry_offsets[editor_hole] = approved_entry_offset(editor_hole)
-		trap_entry_radii[editor_hole] = approved_entry_radius(editor_hole)
-	elif editor_target == 3:
-		trap_fall_offsets[editor_hole] = approved_fall_offset(editor_hole)
-	elif editor_target == 2:
-		trap_ball_offsets[editor_hole] = approved_ball_offset(editor_hole)
-		trap_ball_scales[editor_hole] = approved_ball_scale(editor_hole)
-	else:
-		var index := editor_hole * 2 + editor_target
-		trap_weapon_offsets[index] = approved_weapon_offset(editor_hole, editor_target)
-		trap_weapon_scales[index] = approved_weapon_scale(editor_hole, editor_target)
-
-func change_editor_rotation(amount: float) -> void:
-	if effect_editor_mode == "electric":
-		return
-	if editor_selected_hand == 0:
-		rubber_top_rotation += amount
-	else:
-		rubber_side_rotation += amount
-
-func toggle_editor_mirror() -> void:
-	if effect_editor_mode == "electric":
-		return
-	if editor_selected_hand == 0:
-		rubber_top_mirror = not rubber_top_mirror
-	else:
-		rubber_side_mirror = not rubber_side_mirror
-
-func apply_rubber_preset_a() -> void:
-	rubber_top_offset = Vector2(-60.0, -10.0)
-	rubber_side_offset = Vector2(20.0, 20.0)
-	rubber_top_width = 72.0
-	rubber_side_width = 72.0
-	rubber_top_rotation = deg_to_rad(-20.0)
-	rubber_side_rotation = deg_to_rad(-5.0)
-	rubber_top_mirror = false
-	rubber_side_mirror = false
-	status = "Rubber preset A"
-
-func apply_rubber_preset_b() -> void:
-	rubber_top_offset = Vector2(-40.0, 25.0)
-	rubber_side_offset = Vector2(10.0, -20.0)
-	rubber_top_width = 72.0
-	rubber_side_width = 72.0
-	rubber_top_rotation = deg_to_rad(-175.0)
-	rubber_side_rotation = deg_to_rad(-165.0)
-	rubber_top_mirror = true
-	rubber_side_mirror = true
-	status = "Rubber preset B"
-
-func replay_rubber_editor() -> void:
-	active_effects.clear()
-	active_effects.append({"hole":RUBBER_TRAP_HOLE, "elapsed":0.0, "team":0, "piece":0})
-
-func replay_effect_editor() -> void:
-	active_effects.clear()
-	active_effects.append({"hole":editor_hole, "elapsed":0.0, "team":0, "piece":0})
-
-func editor_settings_text() -> String:
-	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
-	var first := editor_hole * 2
-	var wall_side := editor_wall_side(editor_hole)
-	var wall_names := ["left", "top", "right", "bottom"]
-	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s; entry=%s radius=%.1f; wall=%s offset=%.1f size=%.1f" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole], trap_entry_offsets[editor_hole], trap_entry_radii[editor_hole], wall_names[wall_side], table_wall_offsets[wall_side], table_wall_sizes[wall_side]]
-
-func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
-	draw_style_box(make_box(Color("7256d8") if selected_button else Color("26384b"), 8.0), rect)
-	draw_string(ui_font, rect.position + Vector2(0, 36), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 16, Color.WHITE)
-
-func draw_effect_editor(viewport_size: Vector2) -> void:
-	if not effect_editor_enabled:
-		return
-	var panel := editor_panel_rect(viewport_size)
-	draw_style_box(make_box(Color(0.04, 0.07, 0.12, 0.94), 12.0), panel)
-	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
-	var editor_title := "ALL WEAPONS + CAPTURE BALL EDITOR"
-	draw_string(ui_font, panel.position + Vector2(8, 76), editor_title, HORIZONTAL_ALIGNMENT_LEFT, 330, 14, Color("f6d365"))
-	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "WALL"][editor_target]
-	var values := editor_settings_text()
-	draw_string(ui_font, panel.position + Vector2(345, 76), names[editor_hole] + " / " + selected_name, HORIZONTAL_ALIGNMENT_LEFT, 180, 13, Color.WHITE)
-	draw_string(ui_font, panel.position + Vector2(530, 76), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 540, 9, Color("dbe7f3"))
-	draw_editor_button(editor_top_button(0, viewport_size), "COPY")
-	for i in 6:
-		draw_editor_button(editor_top_button(i + 1, viewport_size), names[i], editor_hole == i)
-	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "WALL", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
-	for i in 14:
-		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 6))
-
-func frontend_top_button(index: int, viewport_size: Vector2) -> Rect2:
-	return Rect2(viewport_size.x - 300.0 + index * 142.0, 22.0, 126.0, 48.0)
-
-func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var card_width := minf(286.0, (viewport_size.x - 128.0) / 3.0)
-	var total_width := card_width * 3.0 + 32.0
-	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + index * (card_width + 16.0), viewport_size.y * 0.43), Vector2(card_width, minf(225.0, viewport_size.y * 0.34)))
-
-func home_layout(viewport_size: Vector2) -> Dictionary:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var header_h := 96.0 * unit
-	var left_x := 18.0 * unit
-	var left_w := 164.0 * unit
-	var right_w := 258.0 * unit
-	var right_x := viewport_size.x - right_w - 14.0 * unit
-	var bottom_bar_h := 88.0 * unit
-	var content_top := header_h + 10.0 * unit
-	var content_bottom := viewport_size.y - bottom_bar_h - 12.0 * unit
-	var center_left := left_x + left_w + 16.0 * unit
-	var center_right := right_x - 16.0 * unit
-	var center_w := maxf(140.0 * unit, center_right - center_left)
-	var stats_h := 58.0 * unit
-	var rail_button_h := 74.0 * unit
-	var rail_gap := 10.0 * unit
-	var rail_start_y := content_top + stats_h + 10.0 * unit
-	var bottom_y := viewport_size.y - bottom_bar_h - 4.0 * unit
-	var bottom_button_h := 78.0 * unit
-	var bottom_gap := 10.0 * unit
-	var bottom_avail_w := center_w - bottom_gap * 2.0
-	var arena_w := bottom_avail_w * 0.30
-	var friend_w := bottom_avail_w * 0.32
-	var play_w := bottom_avail_w * 0.38
-	var arena_x := center_left
-	var friend_x := arena_x + arena_w + bottom_gap
-	var play_x := friend_x + friend_w + bottom_gap
-	return {
-		"unit": unit,
-		"header_h": header_h,
-		"left_x": left_x,
-		"left_w": left_w,
-		"right_x": right_x,
-		"right_w": right_w,
-		"content_top": content_top,
-		"content_bottom": content_bottom,
-		"center_left": center_left,
-		"center_right": center_right,
-		"center_w": center_w,
-		"stats_h": stats_h,
-		"rail_button_h": rail_button_h,
-		"rail_gap": rail_gap,
-		"rail_start_y": rail_start_y,
-		"bottom_y": bottom_y,
-		"bottom_button_h": bottom_button_h,
-		"arena_w": arena_w,
-		"friend_w": friend_w,
-		"play_w": play_w,
-		"arena_x": arena_x,
-		"friend_x": friend_x,
-		"play_x": play_x,
-	}
-
-func home_stats_rect(viewport_size: Vector2) -> Rect2:
-	var layout := home_layout(viewport_size)
-	return Rect2(layout.left_x, layout.content_top, layout.left_w, layout.stats_h)
-
-func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	if index == 0:
-		return Rect2(Vector2(936.0, 490.0) * unit, Vector2(286.0, 72.0) * unit)
-	if index == 1:
-		return Rect2(Vector2(58.0, 490.0) * unit, Vector2(286.0, 72.0) * unit)
-	if index == 2:
-		return Rect2(Vector2(428.0, 510.0) * unit, Vector2(424.0, 86.0) * unit)
-	return Rect2()
-
-func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var card_size := Vector2(350.0, 430.0) * unit
-	var gap := 24.0 * unit
-	var total_width := card_size.x * 3.0 + gap * 2.0
-	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + float(index) * (card_size.x + gap), 142.0 * unit), card_size)
-
-func arena_play_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((viewport_size.x - 290.0 * unit) * 0.5, viewport_size.y - 78.0 * unit), Vector2(290.0, 58.0) * unit)
-
-func arena_board_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var gap := 14.0 * unit
-	var card_w := minf(200.0 * unit, (viewport_size.x - 100.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
-	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
-	var start_x := (viewport_size.x - total_w) * 0.5
-	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 556.0 * unit), Vector2(card_w, 72.0 * unit))
-
-func player_profile_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((62.0 + float(index) * 62.0) * unit, 526.0 * unit), Vector2(54.0, 62.0) * unit)
-
-func player_profile_color_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((70.0 + float(index) * 60.0) * unit, 614.0 * unit), Vector2(44.0, 44.0) * unit)
-
-func player_id_copy_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(1060.0, 620.0) * unit, Vector2(150.0, 42.0) * unit)
-
-func player_google_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(870.0, 620.0) * unit, Vector2(175.0, 42.0) * unit)
-
-func home_profile_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
-
-func home_top_control_rects(viewport_size: Vector2) -> Dictionary:
-	var layout := home_layout(viewport_size)
-	var unit: float = layout.unit
-	var right_x: float = layout.right_x
-	var y: float = 22.0 * unit
-	var h: float = 54.0 * unit
-	var gap: float = 8.0 * unit
-	var coin_w: float = 154.0 * unit
-	var gem_w: float = 120.0 * unit
-	var small_w: float = 54.0 * unit
-	var coin_x: float = right_x - coin_w - gap
-	var gem_x: float = coin_x - gem_w - gap
-	var sound_x: float = gem_x - small_w - gap
-	var help_x: float = sound_x - small_w - gap
-	var settings_x: float = help_x - small_w - gap
-	return {
-		"coin": Rect2(coin_x, y, coin_w, h),
-		"gems": Rect2(gem_x, y, gem_w, h),
-		"sound": Rect2(sound_x, y, small_w, h),
-		"help": Rect2(help_x, y, small_w, h),
-		"settings": Rect2(settings_x, y, small_w, h),
-	}
-
-func home_coin_rect(viewport_size: Vector2) -> Rect2:
-	return home_top_control_rects(viewport_size).coin
-
-func home_settings_rect(viewport_size: Vector2) -> Rect2:
-	return home_top_control_rects(viewport_size).settings
-
-func home_help_rect(viewport_size: Vector2) -> Rect2:
-	return home_top_control_rects(viewport_size).help
-
-func home_sound_toggle_rect(viewport_size: Vector2) -> Rect2:
-	return home_top_control_rects(viewport_size).sound
-
-func home_gems_rect(viewport_size: Vector2) -> Rect2:
-	return home_top_control_rects(viewport_size).gems
-
-func tutorial_step_data(step: int) -> Dictionary:
-	var steps := TUTORIAL_STEPS_HE if ui_language == "he" else TUTORIAL_STEPS_EN
-	return steps[clampi(step, 0, steps.size() - 1)]
-
-func tutorial_panel_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var width := minf(760.0 * unit, viewport_size.x - 48.0 * unit)
-	var height := minf(520.0 * unit, viewport_size.y - 72.0 * unit)
-	return Rect2(Vector2((viewport_size.x - width) * 0.5, (viewport_size.y - height) * 0.5), Vector2(width, height))
-
-func tutorial_prev_rect(viewport_size: Vector2) -> Rect2:
-	var panel := tutorial_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(panel.position + Vector2(24.0 * unit, panel.size.y - 64.0 * unit), Vector2(120.0 * unit, 44.0 * unit))
-
-func tutorial_next_rect(viewport_size: Vector2) -> Rect2:
-	var panel := tutorial_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(panel.end - Vector2(144.0 * unit, 64.0 * unit), Vector2(120.0 * unit, 44.0 * unit))
-
-func tutorial_skip_rect(viewport_size: Vector2) -> Rect2:
-	var panel := tutorial_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(panel.end - Vector2(54.0 * unit, panel.size.y - 8.0 * unit), Vector2(36.0 * unit, 36.0 * unit))
-
-func tutorial_highlight_rect(step: int, viewport_size: Vector2) -> Rect2:
-	match step:
-		5:
-			return home_mode_rect(2, viewport_size).grow(8.0)
-		6:
-			return home_social_panel_rect(viewport_size).grow(6.0)
-		7:
-			return home_mode_rect(2, viewport_size).grow(12.0)
-	return Rect2()
-
-func maybe_start_tutorial() -> void:
-	if tutorial_completed or tutorial_open or tutorial_dismissed_session:
-		return
-	open_tutorial()
-
-func open_tutorial(from_step: int = 0) -> void:
-	tutorial_open = true
-	tutorial_step = clampi(from_step, 0, TUTORIAL_STEP_COUNT - 1)
-	play_sound("ui")
-	queue_redraw()
-
-func complete_tutorial() -> void:
-	tutorial_open = false
-	tutorial_completed = true
-	save_player_profile()
-	play_sound("ui")
-	queue_redraw()
-
-func advance_tutorial_step() -> void:
-	if tutorial_step >= TUTORIAL_STEP_COUNT - 1:
-		complete_tutorial()
-	else:
-		tutorial_step += 1
-		play_sound("ui")
-		queue_redraw()
-
-func retreat_tutorial_step() -> void:
-	tutorial_step = maxi(0, tutorial_step - 1)
-	play_sound("ui")
-	queue_redraw()
-
-func handle_tutorial_touch(screen_pos: Vector2, viewport_size: Vector2) -> void:
-	if tutorial_skip_rect(viewport_size).has_point(screen_pos):
-		complete_tutorial()
-		return
-	if tutorial_step > 0 and tutorial_prev_rect(viewport_size).has_point(screen_pos):
-		retreat_tutorial_step()
-		return
-	if tutorial_next_rect(viewport_size).has_point(screen_pos):
-		advance_tutorial_step()
-		return
-
-func draw_tutorial_art(art_id: String, rect: Rect2, unit: float) -> void:
-	var center := rect.get_center()
-	match art_id:
-		"welcome":
-			draw_circle(center, 58.0 * unit, Color("8cecff", 0.22))
-			draw_circle(center + Vector2(-28.0, 8.0) * unit, 22.0 * unit, Color("ef3340"))
-			draw_circle(center + Vector2(24.0, -6.0) * unit, 22.0 * unit, Color("1677ff"))
-			draw_string(ui_font, center + Vector2(-34.0, 58.0) * unit, "ZOOPA", HORIZONTAL_ALIGNMENT_CENTER, 68.0 * unit, int(22.0 * unit), Color("ffe25d"))
-		"shoot":
-			var ball_pos := center + Vector2(36.0, 10.0) * unit
-			draw_circle(ball_pos, 18.0 * unit, Color("ef3340"))
-			draw_line(ball_pos, ball_pos + Vector2(-72.0, 28.0) * unit, Color("ffe25d"), 5.0 * unit, true)
-			draw_circle(ball_pos + Vector2(-72.0, 28.0) * unit, 10.0 * unit, Color("ffe25d", 0.55))
-			draw_string(ui_font, center + Vector2(-80.0, -42.0) * unit, "â† PULL", HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(14.0 * unit), Color.WHITE)
-		"goal":
-			var board := Rect2(center + Vector2(-88.0, -48.0) * unit, Vector2(176.0, 176.0) * unit)
-			draw_style_box(make_box(Color("5d7f4f"), 12.0 * unit), board)
-			for corner in [board.position, board.position + Vector2(board.size.x, 0.0), board.end - board.size, board.end]:
-				draw_circle(corner, 14.0 * unit, Color("173249"))
-			draw_circle(board.get_center(), 12.0 * unit, Color("ef3340"))
-			draw_circle(board.get_center() + Vector2(34.0, -18.0) * unit, 12.0 * unit, Color("1677ff"))
-		"weapons":
-			var icons := [Color("ef3340"), Color("9d59e8"), Color("ff8a00"), Color("12c95b")]
-			for i in icons.size():
-				var pos := center + Vector2(-54.0 + float(i) * 36.0, float((i % 2) * 20 - 10)) * unit
-				draw_circle(pos, 16.0 * unit, icons[i])
-		"turns":
-			var left_card := Rect2(center + Vector2(-92.0, -34.0) * unit, Vector2(84.0, 68.0) * unit)
-			var right_card := Rect2(center + Vector2(8.0, -34.0) * unit, Vector2(84.0, 68.0) * unit)
-			draw_style_box(make_box(Color("ffe25d"), 10.0 * unit), left_card.grow(4.0 * unit))
-			draw_style_box(make_box(Color("173249"), 8.0 * unit), left_card)
-			draw_style_box(make_box(Color("244d70"), 8.0 * unit), right_card)
-			draw_string(ui_font, left_card.position + Vector2(0.0, 42.0) * unit, "YOU", HORIZONTAL_ALIGNMENT_CENTER, left_card.size.x, int(12.0 * unit), Color.WHITE)
-		"modes":
-			var labels := ["PC", "FR", "AR"]
-			var colors := [Color("f6aa20"), Color("315fd0"), Color("7258df")]
-			for i in 3:
-				var chip := Rect2(center + Vector2(-78.0 + float(i) * 52.0, -18.0) * unit, Vector2(44.0, 44.0) * unit)
-				draw_style_box(make_box(colors[i], 10.0 * unit), chip)
-				draw_string(ui_font, chip.position + Vector2(0.0, 28.0) * unit, labels[i], HORIZONTAL_ALIGNMENT_CENTER, chip.size.x, int(11.0 * unit), Color.WHITE)
-		"hub":
-			draw_style_box(make_box(Color("315fd0"), 12.0 * unit), Rect2(center + Vector2(-70.0, -30.0) * unit, Vector2(140.0, 60.0) * unit))
-			draw_circle(center + Vector2(-48.0, 42.0) * unit, 14.0 * unit, Color("6965d8"))
-			draw_circle(center + Vector2(-16.0, 42.0) * unit, 14.0 * unit, Color("51d995"))
-			draw_circle(center + Vector2(16.0, 42.0) * unit, 14.0 * unit, Color("ffe25d"))
-		"ready":
-			draw_circle(center, 42.0 * unit, Color("6fda18", 0.25))
-			draw_string(ui_font, center + Vector2(-28.0, 12.0) * unit, "GO!", HORIZONTAL_ALIGNMENT_CENTER, 56.0 * unit, int(34.0 * unit), Color("6fda18"))
-
-func draw_tutorial_overlay(viewport_size: Vector2) -> void:
-	if not tutorial_open:
-		return
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var highlight := tutorial_highlight_rect(tutorial_step, viewport_size)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.72))
-	if highlight.size.x > 0.0:
-		var pulse := 0.55 + sin(menu_elapsed * 5.0) * 0.2
-		draw_style_box(make_box(Color("ffe25d", pulse), 18.0 * unit), highlight.grow(6.0 * unit))
-	var panel := tutorial_panel_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.13, 0.96), 26.0 * unit), panel.grow(6.0 * unit))
-	draw_style_box(make_box(Color("eaf8f1"), 24.0 * unit), panel)
-	var step_data := tutorial_step_data(tutorial_step)
-	draw_string(ui_font, panel.position + Vector2(0.0, 42.0) * unit, ui_text("tutorial_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(14.0 * unit), Color("2982a6"))
-	draw_string(ui_font, panel.position + Vector2(24.0 * unit, 78.0) * unit, str(step_data.get("title", "")), HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 48.0 * unit, int(26.0 * unit), Color("173249"))
-	var art_rect := Rect2(panel.position + Vector2(panel.size.x * 0.5 - 100.0 * unit, 112.0 * unit), Vector2(200.0, 120.0) * unit)
-	draw_tutorial_art(str(step_data.get("art", "")), art_rect, unit)
-	var body_y := 250.0 * unit
-	var body_lines := str(step_data.get("body", "")).split("\n")
-	for line in body_lines:
-		draw_string(ui_font, panel.position + Vector2(28.0 * unit, body_y), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 56.0 * unit, int(16.0 * unit), Color("354522"))
-		body_y += 28.0 * unit
-	var dots_x := panel.position.x + panel.size.x * 0.5 - float(TUTORIAL_STEP_COUNT - 1) * 10.0 * unit
-	for i in TUTORIAL_STEP_COUNT:
-		var dot_center := Vector2(dots_x + float(i) * 20.0 * unit, panel.end.y - 78.0 * unit)
-		draw_circle(dot_center, 5.0 * unit, Color("ffe25d") if i == tutorial_step else Color("9ab0c2"))
-	if tutorial_step > 0:
-		draw_style_box(make_box(Color("244d70"), 12.0 * unit), tutorial_prev_rect(viewport_size))
-		draw_string(ui_font, tutorial_prev_rect(viewport_size).position + Vector2(0.0, 29.0) * unit, ui_text("tutorial_prev"), HORIZONTAL_ALIGNMENT_CENTER, tutorial_prev_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
-	var next_label := ui_text("tutorial_done") if tutorial_step >= TUTORIAL_STEP_COUNT - 1 else ui_text("tutorial_next")
-	draw_style_box(make_box(Color("35b96f"), 12.0 * unit), tutorial_next_rect(viewport_size))
-	draw_string(ui_font, tutorial_next_rect(viewport_size).position + Vector2(0.0, 29.0) * unit, next_label, HORIZONTAL_ALIGNMENT_CENTER, tutorial_next_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
-	draw_string(ui_font, tutorial_skip_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, "Ã—", HORIZONTAL_ALIGNMENT_CENTER, tutorial_skip_rect(viewport_size).size.x, int(22.0 * unit), Color("607080"))
-
-func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(458.0 + float(index) * 190.0, 642.0) * unit, Vector2(176.0, 62.0) * unit)
-
-func home_character_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(356.0, 292.0) * unit, Vector2(210.0, 230.0) * unit)
-
-func draw_home_ambient_effects(viewport_size: Vector2) -> void:
-	init_home_ambient_particles()
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	for particle in home_ambient_particles:
-		var px: float = float(particle.x) * viewport_size.x
-		var py: float = fmod(float(particle.y) + menu_elapsed * float(particle.speed), 1.08) * viewport_size.y - viewport_size.y * 0.04
-		var pulse := 0.55 + sin(menu_elapsed * 2.2 + float(particle.phase)) * 0.25
-		var size: float = float(particle.size) * unit * pulse
-		var color := Color("8cecff", 0.10 + pulse * 0.08) if int(particle.kind) == 0 else Color("ffe25d", 0.08 + pulse * 0.07)
-		if int(particle.kind) == 2:
-			color = Color("c77dff", 0.07 + pulse * 0.06)
-		draw_circle(Vector2(px, py), size, color)
-	var ray_alpha := 0.05 + sin(menu_elapsed * 0.7) * 0.02
-	draw_rect(Rect2(viewport_size.x * 0.18, 0.0, viewport_size.x * 0.22, viewport_size.y), Color(1.0, 1.0, 1.0, ray_alpha))
-	draw_rect(Rect2(viewport_size.x * 0.62, 0.0, viewport_size.x * 0.16, viewport_size.y), Color("8cecff", ray_alpha * 0.8))
-
-func draw_pending_invite_banner(viewport_size: Vector2) -> void:
-	if pending_friend_invite.is_empty():
-		return
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var banner := Rect2(viewport_size.x * 0.28, 102.0 * unit, viewport_size.x * 0.44, 54.0 * unit)
-	draw_style_box(make_box(Color("e94f78"), 16.0 * unit), banner)
-	var text := ui_text("invite_received") + str(pending_friend_invite.get("fromName", ""))
-	draw_string(ui_font, banner.position + Vector2(16.0 * unit, 22.0 * unit), text, HORIZONTAL_ALIGNMENT_LEFT, banner.size.x - 130.0 * unit, int(14.0 * unit), Color.WHITE)
-	var join_rect := Rect2(banner.end.x - 112.0 * unit, banner.position.y + 10.0 * unit, 96.0 * unit, 34.0 * unit)
-	draw_style_box(make_box(Color("35b96f"), 12.0 * unit), join_rect)
-	draw_string(ui_font, join_rect.position + Vector2(0.0, 23.0) * unit, ui_text("join_invite"), HORIZONTAL_ALIGNMENT_CENTER, join_rect.size.x, int(14.0 * unit), Color.WHITE)
-
-func home_invite_join_rect(viewport_size: Vector2) -> Rect2:
-	if pending_friend_invite.is_empty():
-		return Rect2()
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var banner := Rect2(viewport_size.x * 0.28, 102.0 * unit, viewport_size.x * 0.44, 54.0 * unit)
-	return Rect2(banner.end.x - 112.0 * unit, banner.position.y + 10.0 * unit, 96.0 * unit, 34.0 * unit)
-
-func accept_pending_friend_invite() -> void:
-	if pending_friend_invite.is_empty():
-		return
-	var code := str(pending_friend_invite.get("roomCode", ""))
-	pending_friend_invite = {}
-	if code.is_empty():
-		return
-	app_screen = APP_FRIEND
-	room_code_input.text = code
-	connect_multiplayer()
-	if multiplayer_state == "connected":
-		join_multiplayer_room()
-	else:
-		pending_shared_room_code = code
-	play_sound("ui")
-
-func friend_room_chat_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(840.0, 320.0) * unit, Vector2(205.0, 48.0) * unit)
-
-func home_social_panel_rect(viewport_size: Vector2) -> Rect2:
-	var layout := home_layout(viewport_size)
-	return Rect2(layout.right_x, layout.content_top, layout.right_w, layout.content_bottom - layout.content_top)
-
-func home_social_tab_rect(tab: int, viewport_size: Vector2) -> Rect2:
-	var panel := home_social_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var width := (panel.size.x - 22.0 * unit) / 3.0
-	return Rect2(panel.position + Vector2(9.0 * unit + float(tab) * (width + 2.0 * unit), 14.0 * unit), Vector2(width, 38.0 * unit))
-
-func home_add_friend_rect(viewport_size: Vector2) -> Rect2:
-	var panel := home_social_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 98.0 * unit), Vector2(panel.size.x - 28.0 * unit, 38.0 * unit))
-
-func home_add_friend_button_rect(viewport_size: Vector2) -> Rect2:
-	var panel := home_social_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 28.0 * unit, 36.0 * unit))
-
-func home_friend_row_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var panel := home_social_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var start_y := home_friends_content_top(viewport_size)
-	return Rect2(panel.position + Vector2(14.0 * unit, start_y + float(index) * 58.0 * unit), Vector2(panel.size.x - 28.0 * unit, 52.0 * unit))
-
-func home_friends_content_top(viewport_size: Vector2) -> float:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var incoming_count := mini(2, incoming_friend_requests.size())
-	var header_h := 18.0 * unit if incoming_count > 0 else 0.0
-	return 72.0 * unit + header_h + float(incoming_count) * 58.0 * unit
-
-func home_incoming_request_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var panel := home_social_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var start_y := 90.0 * unit + float(index) * 58.0 * unit
-	return Rect2(panel.position + Vector2(14.0 * unit, start_y), Vector2(panel.size.x - 28.0 * unit, 48.0 * unit))
-
-func home_incoming_accept_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var row := home_incoming_request_rect(index, viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(row.position + Vector2(row.size.x - 150.0 * unit, 8.0 * unit), Vector2(68.0, 32.0) * unit)
-
-func home_incoming_decline_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var row := home_incoming_request_rect(index, viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(row.position + Vector2(row.size.x - 76.0 * unit, 8.0 * unit), Vector2(68.0, 32.0) * unit)
-
-func home_friend_invite_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var row := home_friend_row_rect(index, viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(row.position + Vector2(row.size.x - 86.0 * unit, 10.0 * unit), Vector2(72.0, 32.0) * unit)
-
-func home_friend_profile_modal_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var width := minf(420.0 * unit, viewport_size.x - 80.0 * unit)
-	var height := minf(360.0 * unit, viewport_size.y - 120.0 * unit)
-	return Rect2(Vector2((viewport_size.x - width) * 0.5, (viewport_size.y - height) * 0.5), Vector2(width, height))
-
-func home_friend_profile_close_rect(viewport_size: Vector2) -> Rect2:
-	var modal := home_friend_profile_modal_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(modal.end - Vector2(42.0 * unit, modal.size.y - 10.0 * unit), Vector2(32.0 * unit, 32.0 * unit))
-
-func home_friend_profile_invite_rect(viewport_size: Vector2) -> Rect2:
-	var modal := home_friend_profile_modal_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(modal.position + Vector2(24.0 * unit, modal.size.y - 64.0 * unit), Vector2((modal.size.x - 58.0 * unit) * 0.5, 40.0 * unit))
-
-func home_friend_profile_remove_rect(viewport_size: Vector2) -> Rect2:
-	var modal := home_friend_profile_modal_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(modal.position + Vector2(modal.size.x * 0.5 + 5.0 * unit, modal.size.y - 64.0 * unit), Vector2((modal.size.x - 58.0 * unit) * 0.5, 40.0 * unit))
-
-func home_lobby_send_rect(viewport_size: Vector2) -> Rect2:
-	var panel := home_social_panel_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(panel.position + Vector2(panel.size.x - 96.0 * unit, panel.size.y - 52.0 * unit), Vector2(82.0 * unit, 36.0 * unit))
-
-func ensure_home_connected() -> void:
-	if app_screen != APP_HOME:
-		return
-	if multiplayer_state in ["connected", "connecting"]:
-		return
-	connect_multiplayer()
-
-func park_line_edit(control: LineEdit) -> void:
-	if control == null:
-		return
-	control.visible = false
-	if control.has_focus():
-		control.release_focus()
-	control.position = Vector2(-4000.0, -4000.0)
-	control.size = Vector2(1.0, 1.0)
-
-func update_home_social_inputs() -> void:
-	var viewport_size := get_viewport_rect().size
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var panel := home_social_panel_rect(viewport_size)
-	var show_social_inputs := app_screen == APP_HOME and not tutorial_open and not customizer_open and not friend_customizer_open
-	if friend_id_input != null:
-		var show_friend_input := show_social_inputs and home_social_tab == 0
-		if show_friend_input:
-			friend_id_input.visible = true
-			friend_id_input.position = home_add_friend_rect(viewport_size).position
-			friend_id_input.size = home_add_friend_rect(viewport_size).size
-			friend_id_input.placeholder_text = ui_text("friend_id_hint")
-		else:
-			park_line_edit(friend_id_input)
-	if lobby_chat_input != null:
-		var show_chat_input := show_social_inputs and home_social_tab == 1
-		if show_chat_input:
-			var input_rect := Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 118.0 * unit, 36.0 * unit))
-			lobby_chat_input.visible = true
-			lobby_chat_input.position = input_rect.position
-			lobby_chat_input.size = input_rect.size
-			lobby_chat_input.placeholder_text = ui_text("lobby_chat_hint")
-		else:
-			park_line_edit(lobby_chat_input)
-
-func send_lobby_chat_message() -> void:
-	if lobby_chat_input == null:
-		return
-	var message := lobby_chat_input.text.strip_edges()
-	if message.is_empty():
-		return
-	if multiplayer_state == "connected":
-		send_multiplayer({"type": "lobby_chat", "name": profile_name, "message": message.left(80)})
-	else:
-		lobby_chat_messages.append({"name": profile_name, "message": message.left(80)})
-		while lobby_chat_messages.size() > 30:
-			lobby_chat_messages.pop_front()
-	lobby_chat_input.clear()
-	lobby_chat_input.grab_focus()
-	queue_redraw()
-
-func _on_lobby_chat_submitted(_text: String) -> void:
-	send_lobby_chat_message()
-
-func normalize_friend_public_id(raw: String) -> String:
-	var clean := raw.strip_edges().to_upper().replace(" ", "")
-	if clean.is_empty():
-		return ""
-	if not clean.begins_with("ZP-"):
-		clean = "ZP-" + clean.trim_prefix("ZP")
-	return clean.left(12)
-
-func friend_already_added(public_id: String) -> bool:
-	for entry in friends_list:
-		if typeof(entry) == TYPE_DICTIONARY and str(entry.get("id", "")) == public_id:
-			return true
-	return false
-
-func friend_display_name(entry: Dictionary) -> String:
-	var pid := str(entry.get("id", ""))
-	var name := str(entry.get("name", "")).strip_edges()
-	if not name.is_empty() and name != pid and not name.begins_with("ZP-"):
-		return name.left(20)
-	for lb_entry in global_leaderboard:
-		if typeof(lb_entry) == TYPE_DICTIONARY and str(lb_entry.get("publicId", "")) == pid:
-			var lb_name := str(lb_entry.get("name", "")).strip_edges()
-			if not lb_name.is_empty():
-				return lb_name.left(20)
-	return pid
-
-func upsert_local_friend(entry: Dictionary) -> void:
-	var pid := normalize_friend_public_id(str(entry.get("id", "")))
-	if pid.is_empty():
-		return
-	var normalized := {
-		"id": pid,
-		"name": str(entry.get("name", "")).strip_edges().left(20),
-		"rating": int(entry.get("rating", 1000)),
-		"wins": int(entry.get("wins", 0)),
-		"losses": int(entry.get("losses", 0)),
-		"leagueTier": int(entry.get("leagueTier", 0)),
-		"online": bool(entry.get("online", false))
-	}
-	normalized.name = friend_display_name(normalized)
-	for i in friends_list.size():
-		if str(friends_list[i].get("id", "")) == pid:
-			friends_list[i] = normalized
-			save_player_profile()
-			queue_redraw()
-			return
-	friends_list.append(normalized)
-	save_player_profile()
-	queue_redraw()
-
-func apply_friends_list_from_server(friends: Array) -> void:
-	var merged: Array = []
-	for item in friends:
-		if typeof(item) != TYPE_DICTIONARY:
-			continue
-		var pid := normalize_friend_public_id(str(item.get("id", "")))
-		if pid.is_empty():
-			continue
-		merged.append({
-			"id": pid,
-			"name": str(item.get("name", pid)).strip_edges().left(20),
-			"rating": int(item.get("rating", 1000)),
-			"wins": int(item.get("wins", 0)),
-			"losses": int(item.get("losses", 0)),
-			"leagueTier": int(item.get("leagueTier", 0)),
-			"online": bool(item.get("online", false))
-		})
-	for i in merged.size():
-		var entry: Dictionary = merged[i]
-		if str(entry.get("name", "")).begins_with("ZP-"):
-			entry.name = friend_display_name(entry)
-	if merged.is_empty():
-		# The match server keeps friends in memory; an empty response must not
-		# wipe friends that are still saved locally on the device.
-		return
-	friends_list = merged
-	save_player_profile()
-	queue_redraw()
-
-func refresh_friend_names_from_leaderboard() -> void:
-	var changed := false
-	for i in friends_list.size():
-		var entry: Dictionary = friends_list[i]
-		var display := friend_display_name(entry)
-		if display != str(entry.get("name", "")):
-			entry.name = display
-			friends_list[i] = entry
-			changed = true
-	if changed:
-		save_player_profile()
-
-func friend_request_display_name(entry: Dictionary) -> String:
-	var pid := str(entry.get("id", ""))
-	var name := str(entry.get("name", "")).strip_edges()
-	if not name.is_empty() and name != pid and not name.begins_with("ZP-"):
-		return name.left(20)
-	return friend_display_name(entry)
-
-func apply_social_state_from_server(payload: Dictionary) -> void:
-	apply_friends_list_from_server(payload.get("friends", []))
-	incoming_friend_requests = []
-	for item in payload.get("incoming", []):
-		if typeof(item) == TYPE_DICTIONARY:
-			incoming_friend_requests.append(item)
-	outgoing_friend_requests = []
-	for item in payload.get("outgoing", []):
-		if typeof(item) == TYPE_DICTIONARY:
-			outgoing_friend_requests.append(item)
-	save_player_profile()
-	queue_redraw()
-
-func friend_request_already_sent(public_id: String) -> bool:
-	for entry in outgoing_friend_requests:
-		if typeof(entry) == TYPE_DICTIONARY and str(entry.get("id", "")) == public_id:
-			return true
-	return false
-
-func send_friend_request_by_id(raw_id: String) -> void:
-	var public_id := normalize_friend_public_id(raw_id)
-	if public_id.length() < 5:
-		show_menu_notice(ui_text("friend_not_found"))
-		return
-	if public_id == firebase_public_id:
-		show_menu_notice(ui_text("friend_exists"))
-		return
-	if friend_already_added(public_id):
-		show_menu_notice(ui_text("friend_exists"))
-		return
-	if friend_request_already_sent(public_id):
-		show_menu_notice(ui_text("friend_request_exists"))
-		return
-	for entry in incoming_friend_requests:
-		if str(entry.get("id", "")) == public_id:
-			accept_friend_request_from(str(entry.get("id", "")))
-			return
-	if multiplayer_state == "connected" and not firebase_public_id.is_empty():
-		send_multiplayer({
-			"type": "send_friend_request",
-			"fromPublicId": firebase_public_id,
-			"targetPublicId": public_id,
-			"fromName": profile_name,
-			"rating": player_rating,
-			"wins": player_wins,
-			"losses": player_losses,
-			"leagueTier": player_league_tier
-		})
-		if friend_id_input != null:
-			friend_id_input.clear()
-		return
-	outgoing_friend_requests.append({"id": public_id, "name": public_id})
-	save_player_profile()
-	show_menu_notice(ui_text("friend_request_sent"))
-	if friend_id_input != null:
-		friend_id_input.clear()
-	queue_redraw()
-
-func accept_friend_request_from(from_public_id: String) -> void:
-	var public_id := normalize_friend_public_id(from_public_id)
-	if public_id.is_empty():
-		return
-	if multiplayer_state == "connected" and not firebase_public_id.is_empty():
-		send_multiplayer({
-			"type": "accept_friend_request",
-			"publicId": firebase_public_id,
-			"fromPublicId": public_id,
-			"name": profile_name,
-			"rating": player_rating,
-			"wins": player_wins,
-			"losses": player_losses,
-			"leagueTier": player_league_tier
-		})
-		return
-	for i in incoming_friend_requests.size():
-		if str(incoming_friend_requests[i].get("id", "")) == public_id:
-			upsert_local_friend(incoming_friend_requests[i])
-			incoming_friend_requests.remove_at(i)
-			break
-	show_menu_notice(ui_text("friend_accepted"))
-	queue_redraw()
-
-func decline_friend_request_at(index: int) -> void:
-	if index < 0 or index >= incoming_friend_requests.size():
-		return
-	var public_id := str(incoming_friend_requests[index].get("id", ""))
-	incoming_friend_requests.remove_at(index)
-	if multiplayer_state == "connected" and not firebase_public_id.is_empty() and not public_id.is_empty():
-		send_multiplayer({
-			"type": "decline_friend_request",
-			"publicId": firebase_public_id,
-			"fromPublicId": public_id
-		})
-	save_player_profile()
-	queue_redraw()
-
-func add_friend_by_public_id(raw_id: String) -> void:
-	send_friend_request_by_id(raw_id)
-
-func _on_friend_lookup_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	var public_id := pending_friend_lookup_id
-	pending_friend_lookup_id = ""
-	if public_id.is_empty():
-		return
-	var friend_name := public_id
-	if response_code >= 200 and response_code < 300:
-		var data: Variant = JSON.parse_string(body.get_string_from_utf8())
-		if data is Dictionary:
-			var fields: Dictionary = data.get("fields", {})
-			if fields.has("name"):
-				friend_name = str(fields.name.get("stringValue", friend_name)).strip_edges().left(20)
-	if response_code == 404:
-		show_menu_notice(ui_text("friend_not_found"))
-		queue_redraw()
-		return
-	if friend_already_added(public_id):
-		show_menu_notice(ui_text("friend_exists"))
-		return
-	upsert_local_friend({
-		"id": public_id,
-		"name": friend_name,
-		"rating": 1000,
-		"wins": 0,
-		"losses": 0,
-		"leagueTier": 0,
-		"online": false
-	})
-	show_menu_notice(ui_text("friend_added"))
-	if friend_id_input != null:
-		friend_id_input.clear()
-	queue_redraw()
-
-func remove_friend_at(index: int) -> void:
-	if index < 0 or index >= friends_list.size():
-		return
-	var target_id := str(friends_list[index].get("id", ""))
-	friends_list.remove_at(index)
-	if home_friend_profile_index == index:
-		home_friend_profile_index = -1
-	elif home_friend_profile_index > index:
-		home_friend_profile_index -= 1
-	save_player_profile()
-	if multiplayer_state == "connected" and not target_id.is_empty() and not firebase_public_id.is_empty():
-		send_multiplayer({
-			"type": "remove_friend",
-			"fromPublicId": firebase_public_id,
-			"targetPublicId": target_id
-		})
-	queue_redraw()
-
-func maybe_send_pending_friend_invite() -> void:
-	if pending_friend_invite_send.is_empty():
-		return
-	if multiplayer_state != "connected":
-		connect_multiplayer()
-		return
-	if multiplayer_room_code.is_empty():
-		create_multiplayer_room()
-		return
-	flush_pending_friend_invite_send()
-
-func flush_pending_friend_invite_send() -> void:
-	if pending_friend_invite_send.is_empty():
-		return
-	if multiplayer_state != "connected" or multiplayer_room_code.is_empty():
-		return
-	var target_id := normalize_friend_public_id(str(pending_friend_invite_send.get("targetPublicId", "")))
-	if target_id.is_empty():
-		pending_friend_invite_send = {}
-		return
-	pending_friend_invite_target_name = str(pending_friend_invite_send.get("targetName", ""))
-	pending_friend_invite_send = {}
-	send_multiplayer({
-		"type": "invite_friend",
-		"targetPublicId": target_id,
-		"roomCode": multiplayer_room_code,
-		"fromName": profile_name,
-		"fromPublicId": firebase_public_id
-	})
-
-func invite_friend_to_play(index: int) -> void:
-	if index < 0 or index >= friends_list.size():
-		return
-	var friend_entry: Dictionary = friends_list[index]
-	if not bool(friend_entry.get("online", false)):
-		show_menu_notice(ui_text("friend_invite_offline"))
-		return
-	play_sound("ui")
-	var target_id := normalize_friend_public_id(str(friend_entry.get("id", "")))
-	if target_id.is_empty():
-		return
-	pending_friend_invite_send = {
-		"targetPublicId": target_id,
-		"targetName": str(friend_entry.get("name", ""))
-	}
-	app_screen = APP_FRIEND
-	maybe_send_pending_friend_invite()
-
-func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var card_width := minf(158.0, (viewport_size.x / unit - 30.0 - 12.0 * float(ANIMAL_NAMES.size() - 1)) / float(ANIMAL_NAMES.size()))
-	var card_size := Vector2(card_width, 150.0) * unit
-	var gap := 12.0 * unit
-	var total_width := card_size.x * float(ANIMAL_NAMES.size()) + gap * float(ANIMAL_NAMES.size() - 1)
-	var start_x := (viewport_size.x - total_width) * 0.5
-	return Rect2(Vector2(start_x + float(index) * (card_size.x + gap), viewport_size.y - 174.0 * unit), card_size)
-
-func character_ring_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var size := Vector2(140.0, 78.0) * unit
-	var column := index % 4
-	var row := index / 4
-	return Rect2(Vector2((590.0 + float(column) * 151.0) * unit, (246.0 + float(row) * 94.0) * unit), size)
-
-func frontend_back_rect(viewport_size: Vector2) -> Rect2:
-	return Rect2(24.0, 22.0, 116.0, 48.0)
-
-func friend_create_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(250.0, 245.0) * unit, Vector2(330.0, 82.0) * unit)
-
-func friend_join_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(700.0, 355.0) * unit, Vector2(330.0, 72.0) * unit)
-
-func friend_ready_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(475.0, 570.0) * unit, Vector2(330.0, 72.0) * unit)
-
-func friend_share_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(840.0, 250.0) * unit, Vector2(205.0, 62.0) * unit)
-
-func friend_player_rect(slot: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((210.0 + float(slot) * 500.0) * unit, 345.0 * unit), Vector2(360.0, 165.0) * unit)
-
-func friend_edit_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var card := friend_player_rect(multiplayer_slot if multiplayer_slot >= 0 else 0, viewport_size)
-	return Rect2(card.position + Vector2(card.size.x - 125.0 * unit, card.size.y - 44.0 * unit), Vector2(112.0, 34.0) * unit)
-
-func friend_choice_rect(index: int, colors: bool, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((318.0 + float(index) * 110.0) * unit, (330.0 if colors else 220.0) * unit), Vector2(92.0, 92.0) * unit)
-
-func friend_board_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var gap := 12.0 * unit
-	var card_w := minf(158.0 * unit, (viewport_size.x - 90.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
-	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
-	var start_x := (viewport_size.x - total_w) * 0.5
-	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 418.0 * unit), Vector2(card_w, 82.0 * unit))
-
-func friend_modal_close_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(935.0, 155.0) * unit, Vector2(65.0, 48.0) * unit)
-
-func _on_room_code_changed(value: String) -> void:
-	var clean := ""
-	for character in value.to_upper():
-		if "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(character):
-			clean += character
-	if clean != value:
-		room_code_input.text = clean.left(4)
-		room_code_input.caret_column = room_code_input.text.length()
-
-func sync_web_auth_storage() -> void:
-	if not OS.has_feature("web"):
-		return
-	var saved_refresh := str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseRefreshToken') || ''", true))
-	if not saved_refresh.is_empty():
-		firebase_refresh_token = saved_refresh
-	var saved_provider := str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseProvider') || ''", true))
-	if not saved_provider.is_empty():
-		firebase_provider = saved_provider
-
-func persist_web_auth_storage() -> void:
-	if not OS.has_feature("web"):
-		return
-	var script := """
-localStorage.setItem('zpFirebaseRefreshToken', __REFRESH__);
-localStorage.setItem('zpFirebaseProvider', __PROVIDER__);
-"""
-	script = script.replace("__REFRESH__", JSON.stringify(firebase_refresh_token)).replace("__PROVIDER__", JSON.stringify(firebase_provider))
-	JavaScriptBridge.eval(script, true)
-
-func clear_saved_auth_session() -> void:
-	firebase_uid = ""
-	firebase_public_id = ""
-	firebase_id_token = ""
-	firebase_refresh_token = ""
-	firebase_token_expires_at = 0
-	firebase_email = ""
-	firebase_provider = "guest"
-	if OS.has_feature("web"):
-		JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken'); localStorage.removeItem('zpFirebaseProvider');", true)
-	save_player_profile(false)
-
-func auth_token_is_unrecoverable(message: String) -> bool:
-	var upper := message.to_upper()
-	return upper.contains("INVALID_REFRESH_TOKEN") or upper.contains("USER_DISABLED") or upper.contains("USER_NOT_FOUND") or upper.contains("INVALID_GRANT")
-
-func begin_silent_session_restore() -> void:
-	session_restore_pending = false
-	app_screen = APP_HOME
-	firebase_auth_mode = "resume"
-	firebase_status = ui_text("restoring_session")
-	start_firebase_auth()
-
-func initialize_saved_session() -> void:
-	if OS.has_feature("web"):
-		var shared_value: String = str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('room') || ''", true))
-		for character in shared_value.to_upper():
-			if "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(character):
-				pending_shared_room_code += character
-		pending_shared_room_code = pending_shared_room_code.left(4)
-		var handoff_value: String = str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('androidAuth') || ''", true))
-		for character in handoff_value.to_lower():
-			if "0123456789abcdef".contains(character):
-				pending_android_auth_handoff += character
-		pending_android_auth_handoff = pending_android_auth_handoff.left(64)
-	sync_web_auth_storage()
-	if firebase_refresh_token.is_empty():
-		if OS.has_feature("web"):
-			session_restore_pending = true
-			session_restore_deadline = menu_elapsed + SESSION_RESTORE_WAIT_SEC
-			firebase_status = ui_text("restoring_session")
-		return
-	begin_silent_session_restore()
-
-func open_pending_shared_room() -> void:
-	if pending_shared_room_code.is_empty() or room_code_input == null:
-		return
-	app_screen = APP_FRIEND
-	room_code_input.text = pending_shared_room_code
-	connect_multiplayer()
-	if multiplayer_state == "connected":
-		var shared_code: String = pending_shared_room_code
-		pending_shared_room_code = ""
-		room_code_input.text = shared_code
-		join_multiplayer_room()
-
-func share_friend_room() -> void:
-	if multiplayer_room_code.is_empty():
-		return
-	if OS.has_feature("web"):
-		var share_text: String = "×‘×•××• ×œ×©×—×§ ××™×ª×™ Zoopaloola!" if ui_language == "he" else "Join my Zoopaloola game!"
-		var script := """
-(() => {
-  const url = new URL(window.location.href);
-  url.searchParams.set('room', __ROOM__);
-  const data = {title: 'Zoopaloola', text: __TEXT__, url: url.toString()};
-  if (navigator.share) navigator.share(data).catch(() => {});
-  else if (navigator.clipboard) navigator.clipboard.writeText(data.text + ' ' + data.url);
-})();
-"""
-		script = script.replace("__ROOM__", JSON.stringify(multiplayer_room_code)).replace("__TEXT__", JSON.stringify(share_text))
-		JavaScriptBridge.eval(script, true)
-		show_menu_notice("× ×¤×ª×— ×ª×¤×¨×™×˜ ×”×©×™×ª×•×£" if ui_language == "he" else "SHARE MENU OPENED")
-	else:
-		DisplayServer.clipboard_set(multiplayer_room_code)
-		show_menu_notice("×§×•×“ ×”×—×“×¨ ×”×•×¢×ª×§" if ui_language == "he" else "ROOM CODE COPIED")
-
-func update_room_code_input() -> void:
-	if room_code_input == null:
-		return
-	var show_input := app_screen == APP_FRIEND and multiplayer_room_code.is_empty()
-	room_code_input.visible = show_input
-	if show_input:
-		var viewport_size := get_viewport_rect().size
-		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-		room_code_input.position = Vector2(700.0, 260.0) * unit
-		room_code_input.size = Vector2(330.0, 72.0) * unit
-
-func team_ring_color_index(team: int) -> int:
-	if game_mode == "online" and team >= 0 and team < multiplayer_players.size():
-		return int(multiplayer_players[team].get("ringColor", 0))
-	return player_ring_color if team == 0 else ai_ring_color
-
-func teams_share_ring_color() -> bool:
-	return team_ring_color_index(0) == team_ring_color_index(1)
-
-func team_marker_color(team: int) -> Color:
-	return Color("ffd447") if team == 0 else Color("4ad9ff")
-
-func active_board_theme() -> int:
-	if game_mode == "online":
-		return match_board_theme
-	return selected_board_theme
-
-func is_friend_room_host() -> bool:
-	return multiplayer_slot == 0
-
-func sync_match_board_from_payload(payload: Dictionary) -> void:
-	if not payload.has("boardTheme"):
-		return
-	var theme := clampi(int(payload.boardTheme), 0, BOARD_THEME_COUNT - 1)
-	room_board_theme = theme
-	match_board_theme = theme
-	if multiplayer_slot == 0:
-		selected_board_theme = theme
-
-func update_match_board(theme_index: int) -> void:
-	if multiplayer_slot != 0:
-		show_menu_notice(ui_text("guest_board_locked"))
-		return
-	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
-	selected_board_theme = theme
-	room_board_theme = theme
-	match_board_theme = theme
-	save_player_profile()
-	send_multiplayer({"type": "update_profile", "boardTheme": theme})
-	play_sound("ui")
-	queue_redraw()
-
-func arena_board_theme_for_level(arena_index: int) -> int:
-	return ARENA_BOARD_THEMES[clampi(arena_index, 0, ARENA_BOARD_THEMES.size() - 1)]
-
-func initialize_owned_collections() -> void:
-	owned_animals.clear()
-	owned_rings.clear()
-	for i in ANIMAL_NAMES.size():
-		owned_animals.append(animal_unlock_price(i) <= 0)
-	for i in RING_COLORS.size():
-		owned_rings.append(ring_unlock_price(i) <= 0)
-
-func is_animal_unlocked(index: int) -> bool:
-	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
-	return i < owned_animals.size() and bool(owned_animals[i])
-
-func is_ring_unlocked(index: int) -> bool:
-	var i := clampi(index, 0, RING_COLORS.size() - 1)
-	return i < owned_rings.size() and bool(owned_rings[i])
-
-func animal_unlock_price(index: int) -> int:
-	var i := clampi(index, 0, ANIMAL_UNLOCK_PRICES.size() - 1)
-	if i < FREE_UNLOCK_COUNT:
-		return 0
-	return ANIMAL_UNLOCK_PRICES[i]
-
-func ring_unlock_price(index: int) -> int:
-	var i := clampi(index, 0, RING_UNLOCK_PRICES.size() - 1)
-	if i < FREE_UNLOCK_COUNT:
-		return 0
-	return RING_UNLOCK_PRICES[i]
-
-func first_unlocked_animal() -> int:
-	for i in ANIMAL_NAMES.size():
-		if is_animal_unlocked(i):
-			return i
-	return 0
-
-func first_unlocked_ring() -> int:
-	for i in RING_COLORS.size():
-		if is_ring_unlocked(i):
-			return i
-	return 0
-
-func ensure_valid_loadout() -> void:
-	if not is_animal_unlocked(player_animal):
-		player_animal = first_unlocked_animal()
-	if not is_ring_unlocked(player_ring_color):
-		player_ring_color = first_unlocked_ring()
-	rebuild_team_piece_textures()
-
-func load_owned_collections(config: ConfigFile) -> void:
-	initialize_owned_collections()
-	var saved_animals: Variant = config.get_value("player", "owned_animals", [])
-	var saved_rings: Variant = config.get_value("player", "owned_rings", [])
-	if typeof(saved_animals) == TYPE_ARRAY:
-		for i in mini(saved_animals.size(), owned_animals.size()):
-			owned_animals[i] = bool(saved_animals[i]) or animal_unlock_price(i) <= 0
-	if typeof(saved_rings) == TYPE_ARRAY:
-		for i in mini(saved_rings.size(), owned_rings.size()):
-			owned_rings[i] = bool(saved_rings[i]) or ring_unlock_price(i) <= 0
-
-func apply_economy_migration(config: ConfigFile) -> void:
-	var saved_version := int(config.get_value("player", "economy_version", 0))
-	if saved_version >= ECONOMY_VERSION:
-		return
-	player_coins = 0
-	initialize_owned_collections()
-	ensure_valid_loadout()
-	config.set_value("player", "economy_version", ECONOMY_VERSION)
-	config.set_value("player", "coins", player_coins)
-	config.set_value("player", "owned_animals", owned_animals)
-	config.set_value("player", "owned_rings", owned_rings)
-	config.save(PLAYER_PROFILE_PATH)
-
-func try_select_animal(index: int) -> bool:
-	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
-	if not is_animal_unlocked(i):
-		show_menu_notice(ui_text("unlock_in_shop"))
-		return false
-	player_animal = i
-	rebuild_team_piece_textures()
-	save_player_profile()
-	return true
-
-func try_select_ring(index: int) -> bool:
-	var i := clampi(index, 0, RING_COLORS.size() - 1)
-	if not is_ring_unlocked(i):
-		show_menu_notice(ui_text("unlock_in_shop"))
-		return false
-	player_ring_color = i
-	rebuild_team_piece_textures()
-	save_player_profile()
-	return true
-
-func try_purchase_animal(index: int) -> bool:
-	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
-	if is_animal_unlocked(i):
-		return try_select_animal(i)
-	var price := animal_unlock_price(i)
-	if price <= 0:
-		return try_select_animal(i)
-	if player_coins < price:
-		show_menu_notice(ui_text("not_enough_coins"))
-		return false
-	player_coins -= price
-	owned_animals[i] = true
-	player_animal = i
-	rebuild_team_piece_textures()
-	save_player_profile()
-	show_menu_notice(ui_text("purchase_success"))
-	play_sound("ui")
-	return true
-
-func try_purchase_ring(index: int) -> bool:
-	var i := clampi(index, 0, RING_COLORS.size() - 1)
-	if is_ring_unlocked(i):
-		return try_select_ring(i)
-	var price := ring_unlock_price(i)
-	if price <= 0:
-		return try_select_ring(i)
-	if player_coins < price:
-		show_menu_notice(ui_text("not_enough_coins"))
-		return false
-	player_coins -= price
-	owned_rings[i] = true
-	player_ring_color = i
-	rebuild_team_piece_textures()
-	save_player_profile()
-	show_menu_notice(ui_text("purchase_success"))
-	play_sound("ui")
-	return true
-
-func collection_item_price_label(index: int, is_ring: bool) -> String:
-	if is_ring:
-		if is_ring_unlocked(index):
-			return ui_text("owned_item")
-		var price := ring_unlock_price(index)
-		return ui_text("free_item") if price <= 0 else str(price) + ui_text("coins")
-	if is_animal_unlocked(index):
-		return ui_text("owned_item")
-	var animal_price := animal_unlock_price(index)
-	return ui_text("free_item") if animal_price <= 0 else str(animal_price) + ui_text("coins")
-
-func draw_collection_lock_overlay(rect: Rect2, index: int, is_ring: bool, unit: float) -> void:
-	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
-	if unlocked:
-		return
-	draw_rect(rect, Color(0.01, 0.03, 0.08, 0.58))
-	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y * 0.42), "ðŸ”’", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(20.0 * unit), Color.WHITE)
-	var price_text := collection_item_price_label(index, is_ring)
-	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y * 0.68), price_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(11.0 * unit), Color("ffe25d"))
-
-func load_player_profile() -> void:
-	var config := ConfigFile.new()
-	initialize_owned_collections()
-	if config.load(PLAYER_PROFILE_PATH) != OK:
-		ensure_valid_loadout()
-		return
-	profile_name = str(config.get_value("player", "name", profile_name)).strip_edges().left(20)
-	if profile_name.is_empty():
-		profile_name = "PLAYER 1"
-	player_animal = clampi(int(config.get_value("player", "animal", player_animal)), 0, ANIMAL_NAMES.size() - 1)
-	player_ring_color = clampi(int(config.get_value("player", "ring_color", player_ring_color)), 0, RING_COLORS.size() - 1)
-	player_coins = maxi(0, int(config.get_value("player", "coins", player_coins)))
-	player_level = clampi(int(config.get_value("player", "level", player_level)), 1, 999)
-	player_xp = maxi(0, int(config.get_value("player", "xp", player_xp)))
-	player_wins = maxi(0, int(config.get_value("player", "wins", player_wins)))
-	player_losses = maxi(0, int(config.get_value("player", "losses", player_losses)))
-	player_best_streak = maxi(0, int(config.get_value("player", "best_streak", player_best_streak)))
-	player_current_streak = maxi(0, int(config.get_value("player", "current_streak", player_current_streak)))
-	player_rating = clampi(int(config.get_value("player", "rating", player_rating)), 100, 9999)
-	player_league_tier = clampi(int(config.get_value("player", "league_tier", player_league_tier)), 0, LEAGUE_NAME_KEYS.size() - 1)
-	sound_enabled = bool(config.get_value("settings", "sound_enabled", sound_enabled))
-	tutorial_completed = bool(config.get_value("settings", "tutorial_completed", tutorial_completed))
-	computer_difficulty = clampi(int(config.get_value("settings", "computer_difficulty", computer_difficulty)), 0, 2)
-	selected_board_theme = clampi(int(config.get_value("settings", "board_theme", selected_board_theme)), 0, BOARD_THEME_COUNT - 1)
-	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
-	ui_language = str(config.get_value("settings", "language", ui_language))
-	friends_list = config.get_value("social", "friends", [])
-	if typeof(friends_list) != TYPE_ARRAY:
-		friends_list = []
-	incoming_friend_requests = config.get_value("social", "incoming_requests", [])
-	if typeof(incoming_friend_requests) != TYPE_ARRAY:
-		incoming_friend_requests = []
-	outgoing_friend_requests = config.get_value("social", "outgoing_requests", [])
-	if typeof(outgoing_friend_requests) != TYPE_ARRAY:
-		outgoing_friend_requests = []
-	update_player_league_tier()
-	firebase_uid = str(config.get_value("firebase", "uid", ""))
-	firebase_public_id = str(config.get_value("firebase", "public_id", ""))
-	firebase_id_token = str(config.get_value("firebase", "id_token", ""))
-	firebase_refresh_token = str(config.get_value("firebase", "refresh_token", ""))
-	firebase_token_expires_at = int(config.get_value("firebase", "expires_at", 0))
-	firebase_provider = str(config.get_value("firebase", "provider", firebase_provider))
-	firebase_email = str(config.get_value("firebase", "email", firebase_email))
-	load_owned_collections(config)
-	apply_economy_migration(config)
-	ensure_valid_loadout()
-
-func save_player_profile(sync_cloud: bool = true) -> void:
-	var config := ConfigFile.new()
-	config.set_value("player", "name", profile_name)
-	config.set_value("player", "animal", player_animal)
-	config.set_value("player", "ring_color", player_ring_color)
-	config.set_value("player", "coins", player_coins)
-	config.set_value("player", "economy_version", ECONOMY_VERSION)
-	config.set_value("player", "owned_animals", owned_animals)
-	config.set_value("player", "owned_rings", owned_rings)
-	config.set_value("player", "level", player_level)
-	config.set_value("player", "xp", player_xp)
-	config.set_value("player", "wins", player_wins)
-	config.set_value("player", "losses", player_losses)
-	config.set_value("player", "best_streak", player_best_streak)
-	config.set_value("player", "current_streak", player_current_streak)
-	config.set_value("player", "rating", player_rating)
-	config.set_value("player", "league_tier", player_league_tier)
-	config.set_value("player", "last_daily_claim", last_daily_claim)
-	config.set_value("settings", "sound_enabled", sound_enabled)
-	config.set_value("settings", "tutorial_completed", tutorial_completed)
-	config.set_value("settings", "computer_difficulty", computer_difficulty)
-	config.set_value("settings", "board_theme", selected_board_theme)
-	config.set_value("settings", "language", ui_language)
-	config.set_value("social", "friends", friends_list)
-	config.set_value("social", "incoming_requests", incoming_friend_requests)
-	config.set_value("social", "outgoing_requests", outgoing_friend_requests)
-	config.set_value("firebase", "uid", firebase_uid)
-	config.set_value("firebase", "public_id", firebase_public_id)
-	config.set_value("firebase", "id_token", firebase_id_token)
-	config.set_value("firebase", "refresh_token", firebase_refresh_token)
-	config.set_value("firebase", "expires_at", firebase_token_expires_at)
-	config.set_value("firebase", "provider", firebase_provider)
-	config.set_value("firebase", "email", firebase_email)
-	config.save(PLAYER_PROFILE_PATH)
-	if sync_cloud and not firebase_uid.is_empty():
-		firebase_profile_dirty = true
-		firebase_sync_delay = 0.8
-
-func setup_firebase() -> void:
-	firebase_auth_request = HTTPRequest.new()
-	firebase_auth_request.request_completed.connect(_on_firebase_auth_completed)
-	add_child(firebase_auth_request)
-	firebase_profile_request = HTTPRequest.new()
-	firebase_profile_request.request_completed.connect(_on_firebase_profile_completed)
-	add_child(firebase_profile_request)
-	firebase_public_id_request = HTTPRequest.new()
-	firebase_public_id_request.request_completed.connect(_on_firebase_public_id_completed)
-	add_child(firebase_public_id_request)
-	firebase_status = "×‘×—×¨×• ×“×¨×š ×›× ×™×¡×”" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
-	if OS.has_feature("web"):
-		setup_firebase_google_web()
-
-func start_firebase_auth() -> void:
-	if firebase_auth_busy or firebase_auth_request == null:
-		return
-	firebase_auth_busy = true
-	firebase_status = "×ž×ª×—×‘×¨..." if ui_language == "he" else "CONNECTING..."
-	if OS.has_feature("web"):
-		start_firebase_web_auth()
-		return
-	var error := OK
-	if not firebase_refresh_token.is_empty():
-		var refresh_url := "https://securetoken.googleapis.com/v1/token?key=" + FIREBASE_API_KEY
-		var refresh_body := "grant_type=refresh_token&refresh_token=" + firebase_refresh_token.uri_encode()
-		error = firebase_auth_request.request(refresh_url, ["Content-Type: application/x-www-form-urlencoded", "Accept: application/json"], HTTPClient.METHOD_POST, refresh_body)
-	else:
-		var signup_url := "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + FIREBASE_API_KEY
-		error = firebase_auth_request.request(signup_url, ["Content-Type: application/json", "Accept: application/json"], HTTPClient.METHOD_POST, "{\"returnSecureToken\":true}")
-	if error != OK:
-		firebase_auth_busy = false
-		firebase_status = "××™×Ÿ ×—×™×‘×•×¨ ×œ×¢× ×Ÿ" if ui_language == "he" else "CLOUD OFFLINE"
-
-func begin_guest_sign_in() -> void:
-	if not firebase_refresh_token.is_empty():
-		firebase_auth_mode = "resume"
-		firebase_status = ui_text("restoring_session")
-		start_firebase_auth()
-		return
-	firebase_auth_mode = "guest"
-	firebase_provider = "guest"
-	firebase_email = ""
-	if OS.has_feature("web"):
-		JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken'); localStorage.removeItem('zpFirebaseProvider');", true)
-	firebase_uid = ""
-	firebase_public_id = ""
-	firebase_id_token = ""
-	firebase_refresh_token = ""
-	firebase_token_expires_at = 0
-	profile_name = ("××•×¨×—-" if ui_language == "he" else "Guest-") + str(randi_range(1000, 9999))
-	if profile_name_input != null:
-		profile_name_input.text = profile_name
-	start_firebase_auth()
-
-func start_email_auth(register_account: bool) -> void:
-	if firebase_auth_busy or auth_email_input == null or auth_password_input == null:
-		return
-	var email := auth_email_input.text.strip_edges()
-	var password := auth_password_input.text
-	if not email.contains("@"):
-		firebase_status = "×™×© ×œ×”×–×™×Ÿ ×›×ª×•×‘×ª ×ž×™×™×œ ×ª×§×™× ×”" if ui_language == "he" else "ENTER A VALID EMAIL"
-		return
-	if password.length() < 6:
-		firebase_status = "×”×¡×™×¡×ž×” ×—×™×™×‘×ª ×œ×”×›×™×œ ×œ×¤×—×•×ª 6 ×ª×•×•×™×" if ui_language == "he" else "PASSWORD MUST HAVE 6 CHARACTERS"
-		return
-	firebase_auth_busy = true
-	if OS.has_feature("web"):
-		JavaScriptBridge.eval("window.zpManualAuth = 'active';", true)
-	firebase_auth_mode = "register" if register_account else "email"
-	firebase_status = "×™×•×¦×¨ ×—×©×‘×•×Ÿ..." if register_account else "×ž×ª×—×‘×¨..."
-	var action := "signUp" if register_account else "signInWithPassword"
-	var url := "https://identitytoolkit.googleapis.com/v1/accounts:%s?key=%s" % [action, FIREBASE_API_KEY]
-	var payload := JSON.stringify({"email": email, "password": password, "returnSecureToken": true})
-	if OS.has_feature("web"):
-		var script := """
-window.zpAuthState = {status: 'loading'};
-(async () => {
-  try {
-    const response = await fetch(__URL__, {method:'POST', mode:'cors', credentials:'omit', headers:{'Content-Type':'application/json'}, body:__BODY__});
-    const data = await response.json();
-    if (!response.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
-    localStorage.setItem('zpFirebaseRefreshToken', data.refreshToken || '');
-    localStorage.setItem('zpFirebaseProvider', 'email');
-    window.zpAuthState = {status:'done', localId:data.localId, idToken:data.idToken, refreshToken:data.refreshToken, expiresIn:data.expiresIn || '3600', provider:'email', email:data.email || __EMAIL__};
-  } catch (error) { window.zpAuthState = {status:'error', message:String(error && error.message || error)}; }
-})();
-"""
-		script = script.replace("__URL__", JSON.stringify(url)).replace("__BODY__", JSON.stringify(payload)).replace("__EMAIL__", JSON.stringify(email))
-		JavaScriptBridge.eval(script, true)
-		firebase_web_poll_delay = 0.15
-	else:
-		var error := firebase_auth_request.request(url, ["Content-Type: application/json", "Accept: application/json"], HTTPClient.METHOD_POST, payload)
-		if error != OK:
-			firebase_auth_busy = false
-			firebase_status = "××™×Ÿ ×—×™×‘×•×¨ ×œ×¢× ×Ÿ" if ui_language == "he" else "CLOUD OFFLINE"
-
-func _on_auth_password_submitted(_value: String) -> void:
-	start_email_auth(auth_email_mode == "register")
-
-func start_firebase_web_auth() -> void:
-	var script := """
-window.zpAuthState = {status: 'loading'};
-(async () => {
-  try {
-    const key = '__API_KEY__';
-    const savedRefresh = __USE_REFRESH__ ? (localStorage.getItem('zpFirebaseRefreshToken') || '') : '';
-    let response;
-    if (savedRefresh) {
-      response = await fetch('https://securetoken.googleapis.com/v1/token?key=' + key, {
-        method: 'POST', mode: 'cors', credentials: 'omit',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(savedRefresh)
-      });
-    } else {
-      response = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + key, {
-        method: 'POST', mode: 'cors', credentials: 'omit',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({returnSecureToken: true})
-      });
-    }
-    const data = await response.json();
-    if (!response.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
-    const refreshToken = data.refreshToken || data.refresh_token || savedRefresh;
-    localStorage.setItem('zpFirebaseRefreshToken', refreshToken);
-    if (!savedRefresh) {
-      localStorage.setItem('zpFirebaseProvider', 'guest');
-    }
-    window.zpAuthState = {
-      status: 'done', localId: data.localId || data.user_id,
-      idToken: data.idToken || data.id_token, refreshToken: refreshToken,
-      expiresIn: data.expiresIn || data.expires_in || '3600'
-    };
-  } catch (error) {
-    window.zpAuthState = {status: 'error', message: String(error && error.message || error)};
-  }
-})();
-""".replace("__API_KEY__", FIREBASE_API_KEY).replace("__USE_REFRESH__", "true" if firebase_auth_mode != "guest" else "false")
-	JavaScriptBridge.eval(script, true)
-	firebase_web_poll_delay = 0.15
-
-func setup_firebase_google_web() -> void:
-	var script := """
-    window.zpGoogleState = {status: 'loading-sdk'};
-    window.zpManualAuth = 'idle';
-(async () => {
-  try {
-    const appSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js');
-    const authSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js');
-    const config = {
-      apiKey: '__API_KEY__', authDomain: 'zoopaloola-online.firebaseapp.com',
-      projectId: 'zoopaloola-online', storageBucket: 'zoopaloola-online.firebasestorage.app',
-      messagingSenderId: '386401966312', appId: '1:386401966312:web:0e781cb13c98fd6dc3515d'
-    };
-    const app = appSdk.getApps().length ? appSdk.getApps()[0] : appSdk.initializeApp(config);
-    const auth = authSdk.getAuth(app);
-    await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
-    const provider = new authSdk.GoogleAuthProvider();
-    const resolveProvider = (user) => {
-      if (!user) return 'guest';
-      if (user.isAnonymous) return 'guest';
-      const providerId = (user.providerData && user.providerData[0] && user.providerData[0].providerId) || '';
-      if (providerId === 'google.com') return 'google';
-      if (providerId === 'password') return 'email';
-      return 'google';
-    };
-    authSdk.onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        window.zpSessionRestoreChecked = true;
-        return;
-      }
-      if (window.zpManualAuth === 'active') return;
-      try {
-        const idToken = await user.getIdToken();
-        const refreshToken = user.refreshToken || '';
-        const provider = resolveProvider(user);
-        localStorage.setItem('zpFirebaseRefreshToken', refreshToken);
-        localStorage.setItem('zpFirebaseProvider', provider);
-        window.zpAuthState = {
-          status: 'done', localId: user.uid, idToken: idToken,
-          refreshToken: refreshToken, expiresIn: '3600',
-          provider: provider, email: user.email || '',
-          displayName: user.displayName || ''
-        };
-      } catch (error) {
-        window.zpAuthState = {status: 'error', message: String(error && (error.code || error.message) || error)};
-      } finally {
-        window.zpSessionRestoreChecked = true;
-      }
-    });
-    window.zpBeginGoogleLink = (oldToken, publicUrl, playerName) => {
-      window.zpManualAuth = 'active';
-      window.zpGoogleState = {status: 'opening'};
-      authSdk.signInWithPopup(auth, provider).then(async (result) => {
-        const user = result.user;
-        const idToken = await user.getIdToken(true);
-        localStorage.setItem('zpFirebaseRefreshToken', user.refreshToken || '');
-        localStorage.setItem('zpFirebaseProvider', 'google');
-        window.zpGoogleState = {
-          status: 'done', localId: user.uid, idToken: idToken,
-          refreshToken: user.refreshToken || '', expiresIn: '3600',
-          provider: 'google', email: user.email || '', displayName: user.displayName || ''
-        };
-      }).catch((error) => {
-        window.zpGoogleState = {status: 'error', message: String(error && (error.code || error.message) || error)};
-      }).finally(() => {
-        window.zpManualAuth = 'idle';
-      });
-    };
-    window.zpGoogleState = {status: 'ready'};
-  } catch (error) {
-    window.zpGoogleState = {status: 'error', message: String(error && error.message || error)};
-  }
-})();
-""".replace("__API_KEY__", FIREBASE_API_KEY)
-	JavaScriptBridge.eval(script, true)
-
-func begin_google_sign_in() -> void:
-	if OS.has_feature("web"):
-		JavaScriptBridge.eval("window.zpManualAuth = 'active';", true)
-	if OS.has_feature("android"):
-		firebase_status = "×¤×•×ª×— ×›× ×™×¡×” ×ž××•×‘×˜×—×ª ×œ-Google..." if ui_language == "he" else "OPENING SECURE GOOGLE SIGN-IN..."
-		pending_google_handoff_request = true
-		connect_multiplayer()
-		if multiplayer_state == "connected":
-			send_multiplayer({"type":"create_auth_handoff"})
-			pending_google_handoff_request = false
-		queue_redraw()
-		return
-	if not OS.has_feature("web"):
-		show_menu_notice("Google login is unavailable on this device")
-		return
-	var public_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
-	var call_script := "window.zpBeginGoogleLink && window.zpBeginGoogleLink(%s, %s, %s)" % [JSON.stringify(firebase_id_token), JSON.stringify(public_url), JSON.stringify(profile_name)]
-	JavaScriptBridge.eval(call_script, true)
-	firebase_status = "×¤×•×ª×— Google..." if ui_language == "he" else "OPENING GOOGLE..."
-	queue_redraw()
-
-func _on_firebase_auth_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	firebase_auth_busy = false
-	if response_code < 200 or response_code >= 300:
-		firebase_status = "××™×Ÿ ×—×™×‘×•×¨ ×œ×¢× ×Ÿ" if ui_language == "he" else "CLOUD OFFLINE"
-		if firebase_auth_mode == "resume" and response_code >= 400 and response_code < 500:
-			clear_saved_auth_session()
-			app_screen = APP_AUTH
-			firebase_status = "×‘×—×¨×• ×“×¨×š ×›× ×™×¡×”" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
-		return
-	var response_text := body.get_string_from_utf8().strip_edges()
-	var json := JSON.new()
-	var parse_error := json.parse(response_text)
-	if parse_error != OK or typeof(json.data) != TYPE_DICTIONARY:
-		var diagnostic := response_text.left(32).replace("\n", " ")
-		firebase_status = (("×©×’×™××ª ×—×©×‘×•×Ÿ: " if ui_language == "he" else "ACCOUNT ERROR: ") + diagnostic).strip_edges()
-		push_error("Firebase auth response could not be parsed (HTTP %d): %s" % [response_code, response_text.left(240)])
-		queue_redraw()
-		return
-	var response: Dictionary = json.data
-	apply_firebase_auth_response(response)
-
-func apply_firebase_auth_response(response: Dictionary) -> void:
-	firebase_auth_busy = false
-	session_restore_pending = false
-	var previous_uid := firebase_uid
-	firebase_uid = str(response.get("localId", response.get("user_id", firebase_uid)))
-	if response.has("provider"):
-		firebase_provider = str(response.provider)
-	if response.has("email"):
-		firebase_email = str(response.email)
-	elif firebase_auth_mode == "email" or firebase_auth_mode == "register":
-		firebase_provider = "email"
-		firebase_email = auth_email_input.text.strip_edges() if auth_email_input != null else ""
-	elif firebase_auth_mode == "guest" or firebase_auth_mode == "guest_resume":
-		firebase_provider = "guest"
-		firebase_email = ""
-	firebase_id_token = str(response.get("idToken", response.get("id_token", "")))
-	firebase_refresh_token = str(response.get("refreshToken", response.get("refresh_token", firebase_refresh_token)))
-	persist_web_auth_storage()
-	var expires_in := int(str(response.get("expiresIn", response.get("expires_in", "3600"))))
-	firebase_token_expires_at = int(Time.get_unix_time_from_system()) + maxi(60, expires_in)
-	if not firebase_uid.is_empty():
-		# The public ID is deterministic per Firebase user. This also repairs older
-		# profiles whose anonymous ID was carried into a Google account and caused
-		# Firestore ownership rules to return HTTP 403.
-		var expected_public_id := "ZP-" + firebase_uid.sha256_text().substr(0, 8).to_upper()
-		if firebase_public_id != expected_public_id or previous_uid != firebase_uid:
-			firebase_public_id = expected_public_id
-	save_player_profile(false)
-	firebase_status = "×ž×¡×•× ×›×¨×Ÿ" if ui_language == "he" else "SYNCED"
-	sync_firebase_profile()
-	sync_firebase_public_id()
-	if app_screen == APP_AUTH:
-		auth_email_mode = ""
-		app_screen = APP_HOME
-	maybe_start_tutorial()
-	if not pending_shared_room_code.is_empty():
-		open_pending_shared_room()
-	if OS.has_feature("web") and not pending_android_auth_handoff.is_empty() and firebase_provider == "google":
-		pending_auth_handoff_payload = {
-			"type":"complete_auth_handoff",
-			"handoffToken":pending_android_auth_handoff,
-			"localId":firebase_uid,
-			"idToken":firebase_id_token,
-			"refreshToken":firebase_refresh_token,
-			"expiresIn":str(maxi(60, firebase_token_expires_at - int(Time.get_unix_time_from_system()))),
-			"provider":"google",
-			"email":firebase_email,
-			"displayName":profile_name
-		}
-		connect_multiplayer()
-		if multiplayer_state == "connected":
-			send_multiplayer(pending_auth_handoff_payload)
-			pending_auth_handoff_payload = {}
-			pending_android_auth_handoff = ""
-			show_menu_notice("×”×—×©×‘×•×Ÿ × ×©×œ×— ×œ××¤×œ×™×§×¦×™×”" if ui_language == "he" else "ACCOUNT SENT TO THE APP")
-	queue_redraw()
-
-func update_firebase(delta: float) -> void:
-	if session_restore_pending:
-		session_restore_deadline -= delta
-		if session_restore_deadline <= 0.0:
-			session_restore_pending = false
-			if firebase_refresh_token.is_empty() and app_screen != APP_HOME:
-				app_screen = APP_AUTH
-				firebase_status = "×‘×—×¨×• ×“×¨×š ×›× ×™×¡×”" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
-	if OS.has_feature("web"):
-		firebase_web_poll_delay -= delta
-		if firebase_web_poll_delay <= 0.0:
-			firebase_web_poll_delay = 0.25
-			poll_firebase_web_state()
-	if app_screen != APP_AUTH and not firebase_refresh_token.is_empty() and not firebase_auth_busy:
-		if firebase_token_expires_at <= int(Time.get_unix_time_from_system()) + 120:
-			start_firebase_auth()
-	if firebase_profile_dirty:
-		firebase_sync_delay -= delta
-		if firebase_sync_delay <= 0.0:
-				sync_firebase_profile()
-
-func poll_firebase_web_state() -> void:
-	if firebase_auth_busy:
-		var auth_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpAuthState || {})", true))
-		var auth_data: Variant = JSON.parse_string(auth_text)
-		if auth_data is Dictionary:
-			var auth_state := auth_data as Dictionary
-			var auth_status := str(auth_state.get("status", ""))
-			if auth_status == "done":
-				apply_firebase_auth_response(auth_state)
-			elif auth_status == "error":
-				firebase_auth_busy = false
-				var auth_error := str(auth_state.get("message", "Unknown error"))
-				firebase_status = ("×©×’×™××ª ×—×™×‘×•×¨: " if ui_language == "he" else "SIGN-IN ERROR: ") + auth_error.left(34)
-				if firebase_auth_mode == "resume" and auth_token_is_unrecoverable(auth_error):
-					clear_saved_auth_session()
-					app_screen = APP_AUTH
-					firebase_status = "×‘×—×¨×• ×“×¨×š ×›× ×™×¡×”" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
-				queue_redraw()
-		if session_restore_pending:
-			var restore_checked := str(JavaScriptBridge.eval("window.zpSessionRestoreChecked ? '1' : '0'", true)) == "1"
-			if restore_checked and firebase_refresh_token.is_empty() and not firebase_auth_busy:
-				session_restore_pending = false
-				app_screen = APP_AUTH
-				firebase_status = "×‘×—×¨×• ×“×¨×š ×›× ×™×¡×”" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
-	var google_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpGoogleState || {})", true))
-	var google_data: Variant = JSON.parse_string(google_text)
-	if google_data is Dictionary:
-		var google_state := google_data as Dictionary
-		var google_status := str(google_state.get("status", ""))
-		if google_status == "done":
-			firebase_provider = "google"
-			firebase_email = str(google_state.get("email", ""))
-			var google_name: String = str(google_state.get("displayName", "")).strip_edges().left(20)
-			if not google_name.is_empty():
-				profile_name = google_name
-				if profile_name_input != null:
-					profile_name_input.text = profile_name
-			apply_firebase_auth_response(google_state)
-			JavaScriptBridge.eval("window.zpGoogleState = {status: 'connected'}", true)
-		elif google_status == "error":
-			firebase_status = ("×©×’×™××ª Google: " if ui_language == "he" else "GOOGLE ERROR: ") + str(google_state.get("message", "Unknown error")).left(34)
-			JavaScriptBridge.eval("window.zpGoogleState = {status: 'ready'}", true)
-			queue_redraw()
-	var profile_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpProfileState || {})", true))
-	var profile_data: Variant = JSON.parse_string(profile_text)
-	if profile_data is Dictionary:
-		var profile_state := profile_data as Dictionary
-		var profile_status := str(profile_state.get("status", ""))
-		if profile_status == "done":
-			firebase_status = "×ž×¡×•× ×›×¨×Ÿ" if ui_language == "he" else "SYNCED"
-			JavaScriptBridge.eval("window.zpProfileState = {}", true)
-			queue_redraw()
-		elif profile_status == "error":
-			firebase_status = ("×©×’×™××ª ×¡× ×›×¨×•×Ÿ: " if ui_language == "he" else "SYNC ERROR: ") + str(profile_state.get("message", "Unknown error")).left(28)
-			JavaScriptBridge.eval("window.zpProfileState = {}", true)
-			queue_redraw()
-
-func firestore_fields(include_public_id: bool = true) -> Dictionary:
-	var fields := {
-		"name": {"stringValue": profile_name},
-		"animal": {"integerValue": str(player_animal)},
-		"ringColor": {"integerValue": str(player_ring_color)},
-		"coins": {"integerValue": str(player_coins)},
-		"economyVersion": {"integerValue": str(ECONOMY_VERSION)},
-		"ownedAnimals": {"stringValue": JSON.stringify(owned_animals)},
-		"ownedRings": {"stringValue": JSON.stringify(owned_rings)},
-		"level": {"integerValue": str(player_level)},
-		"xp": {"integerValue": str(player_xp)},
-		"wins": {"integerValue": str(player_wins)},
-		"losses": {"integerValue": str(player_losses)},
-		"bestStreak": {"integerValue": str(player_best_streak)},
-		"currentStreak": {"integerValue": str(player_current_streak)},
-		"rating": {"integerValue": str(player_rating)},
-		"leagueTier": {"integerValue": str(player_league_tier)}
-	}
-	if include_public_id:
-		fields["publicId"] = {"stringValue": firebase_public_id}
-	return fields
-
-func sync_firebase_profile() -> void:
-	if firebase_uid.is_empty() or firebase_id_token.is_empty() or firebase_profile_request == null:
-		return
-	if OS.has_feature("web"):
-		firebase_profile_dirty = false
-		firebase_status = "×ž×¡× ×›×¨×Ÿ..." if ui_language == "he" else "SYNCING..."
-		var profile_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/users/%s" % [FIREBASE_PROJECT_ID, firebase_uid]
-		var public_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
-		var profile_payload := JSON.stringify({"fields": firestore_fields()})
-		var public_fields := {"uid": {"stringValue": firebase_uid}, "name": {"stringValue": profile_name}}
-		var public_payload := JSON.stringify({"fields": public_fields})
-		var web_script := """
-window.zpProfileState = {status: 'loading'};
-(async () => {
-  try {
-    const headers = {'Authorization': 'Bearer ' + __TOKEN__, 'Content-Type': 'application/json'};
-    const responses = await Promise.all([
-      fetch(__PROFILE_URL__, {method: 'PATCH', mode: 'cors', credentials: 'omit', headers, body: __PROFILE_BODY__}),
-      fetch(__PUBLIC_URL__, {method: 'PATCH', mode: 'cors', credentials: 'omit', headers, body: __PUBLIC_BODY__})
-    ]);
-    for (const response of responses) {
-      if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text()).slice(0, 80));
-    }
-    window.zpProfileState = {status: 'done'};
-  } catch (error) {
-    window.zpProfileState = {status: 'error', message: String(error && error.message || error)};
-  }
-})();
-"""
-		web_script = web_script.replace("__TOKEN__", JSON.stringify(firebase_id_token))
-		web_script = web_script.replace("__PROFILE_URL__", JSON.stringify(profile_url))
-		web_script = web_script.replace("__PUBLIC_URL__", JSON.stringify(public_url))
-		web_script = web_script.replace("__PROFILE_BODY__", JSON.stringify(profile_payload))
-		web_script = web_script.replace("__PUBLIC_BODY__", JSON.stringify(public_payload))
-		JavaScriptBridge.eval(web_script, true)
-		return
-	if firebase_profile_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
-		return
-	firebase_profile_dirty = false
-	firebase_status = "×ž×¡× ×›×¨×Ÿ..." if ui_language == "he" else "SYNCING..."
-	var url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/users/%s" % [FIREBASE_PROJECT_ID, firebase_uid]
-	var payload := JSON.stringify({"fields": firestore_fields()})
-	var error := firebase_profile_request.request(url, ["Authorization: Bearer " + firebase_id_token, "Content-Type: application/json"], HTTPClient.METHOD_PATCH, payload)
-	if error != OK:
-		firebase_profile_dirty = true
-		firebase_sync_delay = 5.0
-
-func sync_firebase_public_id() -> void:
-	if firebase_public_id.is_empty() or firebase_id_token.is_empty() or firebase_public_id_request == null:
-		return
-	if firebase_public_id_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
-		return
-	var url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
-	var fields := {"uid": {"stringValue": firebase_uid}, "name": {"stringValue": profile_name}}
-	firebase_public_id_request.request(url, ["Authorization: Bearer " + firebase_id_token, "Content-Type: application/json"], HTTPClient.METHOD_PATCH, JSON.stringify({"fields": fields}))
-
-func _on_firebase_profile_completed(_result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
-	if response_code >= 200 and response_code < 300:
-		firebase_status = "×ž×¡×•× ×›×¨×Ÿ" if ui_language == "he" else "SYNCED"
-	else:
-		firebase_status = "×ž×ž×ª×™×Ÿ ×œ×¡× ×›×¨×•×Ÿ" if ui_language == "he" else "SYNC PENDING"
-		firebase_profile_dirty = true
-		firebase_sync_delay = 8.0
-	queue_redraw()
-
-func _on_firebase_public_id_completed(_result: int, _response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
-	pass
-
-func _on_profile_name_changed(value: String) -> void:
-	var clean := value.strip_edges().left(20)
-	if clean.is_empty():
-		return
-	profile_name = clean
-	save_player_profile()
-	queue_redraw()
-
-func _on_profile_name_submitted(_value: String) -> void:
-	commit_profile_name()
-	profile_name_input.release_focus()
-
-func commit_profile_name() -> void:
-	if profile_name_input == null:
-		return
-	var clean := profile_name_input.text.strip_edges().left(20)
-	if clean.is_empty():
-		profile_name_input.text = profile_name
-		return
-	profile_name = clean
-	save_player_profile()
-	queue_redraw()
-
-func update_profile_name_input() -> void:
-	if profile_name_input == null:
-		return
-	var should_show := app_screen == APP_PLAYER_PROFILE
-	profile_name_input.visible = should_show
-	if should_show:
-		var viewport_size := get_viewport_rect().size
-		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-		profile_name_input.position = Vector2(602.0, 139.0) * unit
-		profile_name_input.size = Vector2(350.0, 50.0) * unit
-
-func update_auth_inputs() -> void:
-	if auth_email_input == null or auth_password_input == null:
-		return
-	var should_show := app_screen == APP_AUTH and not auth_email_mode.is_empty()
-	auth_email_input.visible = should_show
-	auth_password_input.visible = should_show
-	if should_show:
-		var viewport_size := get_viewport_rect().size
-		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-		auth_email_input.position = Vector2(730.0, 278.0) * unit
-		auth_email_input.size = Vector2(430.0, 58.0) * unit
-		auth_password_input.position = Vector2(730.0, 355.0) * unit
-		auth_password_input.size = Vector2(430.0, 58.0) * unit
-
-func auth_choice_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(730.0, 218.0 + float(index) * 82.0) * unit, Vector2(430.0, 66.0) * unit)
-
-func auth_submit_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(730.0, 455.0) * unit, Vector2(430.0, 66.0) * unit)
-
-func auth_cancel_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(805.0, 542.0) * unit, Vector2(280.0, 52.0) * unit)
-
-func chat_panel(viewport_size: Vector2) -> Rect2:
-	return Rect2((viewport_size - Vector2(650.0, 390.0)) * 0.5, Vector2(650.0, 390.0))
-
-func chat_close_rect(viewport_size: Vector2) -> Rect2:
-	var panel := chat_panel(viewport_size)
-	return Rect2(panel.end.x - 55.0, panel.position.y + 12.0, 42.0, 42.0)
-
-func chat_send_rect(viewport_size: Vector2) -> Rect2:
-	var panel := chat_panel(viewport_size)
-	return Rect2(panel.end.x - 135.0, panel.end.y - 72.0, 112.0, 50.0)
-
-func update_chat_input() -> void:
-	if chat_input == null:
-		return
-	var should_show := (app_screen == APP_GAME and game_mode == "online" and chat_open and not exit_confirm_open) or (app_screen == APP_FRIEND and friend_room_chat_open and not multiplayer_room_code.is_empty())
-	chat_input.visible = should_show
-	if should_show:
-		var panel := chat_panel(get_viewport_rect().size)
-		chat_input.position = panel.position + Vector2(24.0, panel.size.y - 72.0)
-		chat_input.size = Vector2(panel.size.x - 174.0, 50.0)
-
-func _on_chat_submitted(_value: String) -> void:
-	send_chat_message()
-
-func send_chat_message() -> void:
-	if chat_input == null:
-		return
-	var message := chat_input.text.strip_edges()
-	if message.is_empty():
-		return
-	send_multiplayer({"type":"chat", "message":message.left(80)})
-	chat_input.clear()
-	chat_input.grab_focus()
-	play_sound("ui")
-
-func draw_match_chat(viewport_size: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.06, 0.68))
-	var panel := chat_panel(viewport_size)
-	draw_style_box(make_box(Color("10283b"), 24.0), panel)
-	draw_string(ui_font, panel.position + Vector2(0.0, 48.0), "×¦×³××˜ ×¢× ×”×—×‘×¨" if ui_language == "he" else "FRIEND CHAT", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 25, Color("f6d365"))
-	var close := chat_close_rect(viewport_size)
-	draw_style_box(make_box(Color("ef5350"), 12.0), close)
-	draw_string(ui_font, close.position + Vector2(0.0, 29.0), "Ã—", HORIZONTAL_ALIGNMENT_CENTER, close.size.x, 24, Color.WHITE)
-	var first_index: int = maxi(0, match_chat_messages.size() - 6)
-	var row := 0
-	for i in range(first_index, match_chat_messages.size()):
-		var message: Dictionary = match_chat_messages[i]
-		var sender_slot := int(message.get("slot", -1))
-		var sender := str(message.get("name", ""))
-		var line := sender + ": " + str(message.get("message", ""))
-		var ring_index := player_ring_color
-		for player_data in multiplayer_players:
-			if int(player_data.get("slot", -1)) == sender_slot:
-				ring_index = int(player_data.get("ringColor", ring_index))
-				break
-		var color: Color = RING_COLORS[clampi(ring_index, 0, RING_COLORS.size() - 1)].lightened(0.35)
-		draw_string(ui_font, panel.position + Vector2(28.0, 92.0 + row * 38.0), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 56.0, 18, color)
-		row += 1
-	var send_rect := chat_send_rect(viewport_size)
-	draw_style_box(make_box(Color("12a96b"), 14.0), send_rect)
-	draw_string(ui_font, send_rect.position + Vector2(0.0, 32.0), "×©×œ×™×—×”" if ui_language == "he" else "SEND", HORIZONTAL_ALIGNMENT_CENTER, send_rect.size.x, 17, Color.WHITE)
-
-func connect_multiplayer() -> void:
-	if multiplayer_socket.get_ready_state() in [WebSocketPeer.STATE_OPEN, WebSocketPeer.STATE_CONNECTING]:
-		return
-	multiplayer_socket = WebSocketPeer.new()
-	var error := multiplayer_socket.connect_to_url(MATCH_SERVER_URL)
-	if error != OK:
-		multiplayer_state = "error"
-		multiplayer_error = "×œ× × ×™×ª×Ÿ ×œ×”×ª×—×‘×¨ ×œ×©×¨×ª" if ui_language == "he" else "Could not connect to server"
-	else:
-		multiplayer_state = "connecting"
-		multiplayer_error = ""
-
-func poll_multiplayer() -> void:
-	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_CLOSED:
-		if multiplayer_state not in ["disconnected", "error"]:
-			multiplayer_state = "disconnected"
-			multiplayer_error = "×”×—×™×‘×•×¨ ×œ×©×¨×ª × ×•×ª×§" if ui_language == "he" else "Server connection closed"
-			if matchmaking_searching:
-				matchmaking_searching = false
-				pending_find_match = false
-				arena_fx_phase = "idle"
-				arena_fx_elapsed = 0.0
-				pending_arena_match = {}
-				arena_matched_opponent = {}
-		return
-	multiplayer_socket.poll()
-	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN and multiplayer_state == "connecting":
-		multiplayer_state = "connected"
-	while multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN and multiplayer_socket.get_available_packet_count() > 0:
-		var payload = JSON.parse_string(multiplayer_socket.get_packet().get_string_from_utf8())
-		if typeof(payload) == TYPE_DICTIONARY:
-			handle_multiplayer_message(payload)
-
-func send_multiplayer(payload: Dictionary) -> void:
-	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		multiplayer_socket.send_text(JSON.stringify(payload))
-
-func send_find_match() -> void:
-	commit_profile_name()
-	pending_find_match = false
-	matchmaking_searching = true
-	multiplayer_local_animal = player_animal
-	multiplayer_local_ring_color = player_ring_color
-	send_multiplayer({
-		"type": "find_match",
-		"name": profile_name,
-		"animal": player_animal,
-		"ringColor": player_ring_color,
-		"level": player_level,
-		"wins": player_wins,
-		"losses": player_losses,
-		"arena": selected_arena,
-		"rating": player_rating,
-		"leagueTier": player_league_tier,
-		"publicId": firebase_public_id
-	})
-
-func start_arena_search() -> void:
-	var entry: int = int(ARENA_ENTRY_COSTS[clampi(selected_arena, 0, ARENA_ENTRY_COSTS.size() - 1)])
-	if player_coins < entry:
-		show_menu_notice(ui_text("not_enough_coins"))
-		return
-	pending_find_match = true
-	matchmaking_searching = true
-	match_source = "arena"
-	arena_fx_phase = "searching"
-	arena_fx_elapsed = 0.0
-	multiplayer_error = ""
-	if multiplayer_state != "connected":
-		connect_multiplayer()
-		multiplayer_error = "×”×©×¨×ª ×ž×ª×¢×•×¨×¨, × ×¡×• ×©×•×‘ ×‘×¢×•×“ ×›×ž×” ×©× ×™×•×ª" if ui_language == "he" else "Server is waking up, try again shortly"
-		return
-	send_find_match()
-
-func cancel_matchmaking() -> void:
-	pending_find_match = false
-	matchmaking_searching = false
-	arena_fx_phase = "idle"
-	arena_fx_elapsed = 0.0
-	pending_arena_match = {}
-	arena_matched_opponent = {}
-	send_multiplayer({"type": "cancel_match"})
-
-func create_multiplayer_room() -> void:
-	commit_profile_name()
-	if multiplayer_state != "connected":
-		connect_multiplayer()
-		multiplayer_error = "×”×©×¨×ª ×ž×ª×¢×•×¨×¨, × ×¡×• ×©×•×‘ ×‘×¢×•×“ ×›×ž×” ×©× ×™×•×ª" if ui_language == "he" else "Server is waking up, try again shortly"
-		return
-	multiplayer_local_animal = player_animal
-	multiplayer_local_ring_color = player_ring_color
-	send_multiplayer({
-		"type":"create_room",
-		"name":profile_name,
-		"animal":player_animal,
-		"ringColor":player_ring_color,
-		"boardTheme":selected_board_theme,
-		"level":player_level,
-		"wins":player_wins,
-		"losses":player_losses,
-		"rating":player_rating,
-		"leagueTier":player_league_tier,
-		"publicId":firebase_public_id
-	})
-
-func join_multiplayer_room() -> void:
-	commit_profile_name()
-	var code := room_code_input.text.strip_edges().to_upper()
-	if code.length() != 4:
-		multiplayer_error = "×”×›× ×™×¡×• ×§×•×“ ×—×“×¨ ×‘×Ÿ 4 ×ª×•×•×™×" if ui_language == "he" else "Enter a 4-character room code"
-		return
-	if multiplayer_state != "connected":
-		connect_multiplayer()
-		multiplayer_error = "×”×©×¨×ª ×ž×ª×¢×•×¨×¨, × ×¡×• ×©×•×‘ ×‘×¢×•×“ ×›×ž×” ×©× ×™×•×ª" if ui_language == "he" else "Server is waking up, try again shortly"
-		return
-	multiplayer_local_animal = player_animal
-	multiplayer_local_ring_color = player_ring_color
-	send_multiplayer({
-		"type":"join_room",
-		"roomCode":code,
-		"name":profile_name,
-		"animal":player_animal,
-		"ringColor":player_ring_color,
-		"level":player_level,
-		"wins":player_wins,
-		"losses":player_losses,
-		"rating":player_rating,
-		"leagueTier":player_league_tier,
-		"publicId":firebase_public_id
-	})
-
-func update_match_character(animal: int = -1, ring_color: int = -1) -> void:
-	if multiplayer_slot < 0:
-		return
-	var current_animal: int = player_animal if multiplayer_slot == 0 else ai_animal
-	var current_ring: int = player_ring_color if multiplayer_slot == 0 else ai_ring_color
-	if animal >= 0:
-		if not is_animal_unlocked(animal):
-			show_menu_notice(ui_text("unlock_in_shop"))
-			return
-		current_animal = animal
-	if ring_color >= 0:
-		if not is_ring_unlocked(ring_color):
-			show_menu_notice(ui_text("unlock_in_shop"))
-			return
-		current_ring = ring_color
-	if multiplayer_slot == 0:
-		player_animal = current_animal
-		player_ring_color = current_ring
-	else:
-		ai_animal = current_animal
-		ai_ring_color = current_ring
-	rebuild_team_piece_textures()
-	send_multiplayer({"type":"update_profile", "animal":current_animal, "ringColor":current_ring})
-
-func toggle_multiplayer_ready() -> void:
-	multiplayer_ready = not multiplayer_ready
-	send_multiplayer({"type":"ready", "ready":multiplayer_ready})
-
-func leave_multiplayer_room() -> void:
-	if multiplayer_room_code != "":
-		send_multiplayer({"type":"leave_room"})
-	multiplayer_room_code = ""
-	multiplayer_players.clear()
-	multiplayer_slot = -1
-	multiplayer_ready = false
-	friend_customizer_open = false
-	friend_opponent_profile_open = false
-	matchmaking_searching = false
-	pending_find_match = false
-	if multiplayer_local_animal >= 0:
-		player_animal = multiplayer_local_animal
-		player_ring_color = multiplayer_local_ring_color
-		rebuild_team_piece_textures()
-	multiplayer_local_animal = -1
-	multiplayer_local_ring_color = -1
-
-func handle_multiplayer_message(payload: Dictionary) -> void:
-	match str(payload.get("type", "")):
-		"connected":
-			multiplayer_state = "connected"
-			multiplayer_error = ""
-			var history = payload.get("lobbyChat", [])
-			if typeof(history) == TYPE_ARRAY and history.size() > 0:
-				lobby_chat_messages = history
-				while lobby_chat_messages.size() > 30:
-					lobby_chat_messages.pop_front()
-			if pending_google_handoff_request:
-				send_multiplayer({"type":"create_auth_handoff"})
-				pending_google_handoff_request = false
-			if not pending_auth_handoff_payload.is_empty():
-				send_multiplayer(pending_auth_handoff_payload)
-				pending_auth_handoff_payload = {}
-				pending_android_auth_handoff = ""
-			if not pending_shared_room_code.is_empty():
-				var shared_code: String = pending_shared_room_code
-				pending_shared_room_code = ""
-				room_code_input.text = shared_code
-				join_multiplayer_room()
-			elif pending_find_match:
-				send_find_match()
-			elif not pending_friend_invite_send.is_empty():
-				maybe_send_pending_friend_invite()
-			sync_player_presence()
-			register_fcm_token_with_server()
-		"fcm_registered":
-			pass
-		"leaderboard":
-			global_leaderboard = payload.get("entries", [])
-			refresh_friend_names_from_leaderboard()
-			for i in global_leaderboard.size():
-				var entry: Dictionary = global_leaderboard[i]
-				if str(entry.get("publicId", "")) == firebase_public_id:
-					player_world_rank = int(entry.get("rank", 0))
-					break
-		"friends_list", "social_state":
-			if str(payload.get("type", "")) == "social_state":
-				apply_social_state_from_server(payload)
-			else:
-				apply_friends_list_from_server(payload.get("friends", []))
-		"friend_request_result":
-			if bool(payload.get("ok", false)):
-				show_menu_notice(ui_text("friend_request_sent"))
-			else:
-				var code := str(payload.get("code", ""))
-				if code == "EXISTS":
-					show_menu_notice(ui_text("friend_exists"))
-				elif code == "PENDING":
-					show_menu_notice(ui_text("friend_request_exists"))
-				elif code == "INCOMING":
-					accept_friend_request_from(str(payload.get("targetPublicId", "")))
-				else:
-					show_menu_notice(ui_text("friend_not_found"))
-		"friend_accept_result":
-			if bool(payload.get("ok", false)):
-				show_menu_notice(ui_text("friend_accepted"))
-			else:
-				show_menu_notice(ui_text("friend_not_found"))
-		"friend_request_notify":
-			home_social_tab = 0
-			var request_name := str(payload.get("request", {}).get("name", ""))
-			show_menu_notice(ui_text("friend_request_incoming") % request_name)
-			play_sound("invite")
-		"friend_accepted_notify":
-			home_social_tab = 0
-			var accepted_name := str(payload.get("fromName", payload.get("friend", {}).get("name", "")))
-			show_menu_notice(ui_text("friend_added_you") % accepted_name)
-			play_sound("invite")
-		"friend_add_result":
-			pass
-		"friend_added_notify":
-			pass
-		"friend_invite":
-			pending_friend_invite = {
-				"fromName": str(payload.get("fromName", "")),
-				"fromPublicId": str(payload.get("fromPublicId", "")),
-				"roomCode": str(payload.get("roomCode", ""))
-			}
-			play_sound("invite")
-			show_menu_notice(ui_text("invite_received") + pending_friend_invite.fromName)
-			show_web_notification(
-				"Zoopaloola",
-				ui_text("invite_received") + str(pending_friend_invite.get("fromName", "")),
-				{"roomCode": str(pending_friend_invite.get("roomCode", "")), "type": "friend_invite"}
-			)
-		"invite_sent":
-			var online := bool(payload.get("online", false))
-			var target_name := pending_friend_invite_target_name
-			pending_friend_invite_target_name = ""
-			if not target_name.is_empty():
-				show_menu_notice(("×”×–×ž× ×” ×œ" if ui_language == "he" else "Invite sent to ") + target_name)
-			else:
-				show_menu_notice(ui_text("invite_sent_online") if online else ui_text("invite_sent_offline"))
-		"auth_handoff":
-			var auth_url: String = str(payload.get("url", ""))
-			if OS.has_feature("android") and auth_url.begins_with("https://moshe2060.github.io/zoopaloola-mobile/"):
-				firebase_status = "×”×©×œ×™×ž×• ××ª ×”×›× ×™×¡×” ×‘×“×¤×“×¤×Ÿ" if ui_language == "he" else "FINISH SIGN-IN IN YOUR BROWSER"
-				OS.shell_open(auth_url)
-		"auth_handoff_complete":
-			var google_name: String = str(payload.get("displayName", "")).strip_edges().left(20)
-			if not google_name.is_empty():
-				profile_name = google_name
-				if profile_name_input != null:
-					profile_name_input.text = profile_name
-			apply_firebase_auth_response(payload)
-			show_menu_notice("×”×ª×—×‘×¨×ª ×¢× Google" if ui_language == "he" else "SIGNED IN WITH GOOGLE")
-		"joined":
-			multiplayer_room_code = str(payload.get("roomCode", ""))
-			multiplayer_slot = int(payload.get("slot", -1))
-			multiplayer_ready = false
-			if str(payload.get("source", "")) == "arena":
-				match_source = "arena"
-			maybe_send_pending_friend_invite()
-		"searching":
-			matchmaking_searching = true
-			multiplayer_error = ""
-		"search_cancelled":
-			matchmaking_searching = false
-			pending_find_match = false
-			arena_fx_phase = "idle"
-			arena_fx_elapsed = 0.0
-			pending_arena_match = {}
-			arena_matched_opponent = {}
-			if str(payload.get("reason", "")) == "timeout":
-				show_menu_notice(ui_text("search_timeout"))
-		"room_state":
-			multiplayer_players = payload.get("players", [])
-			turn = int(payload.get("turn", 0))
-			sync_match_board_from_payload(payload)
-			if arena_fx_phase == "found":
-				arena_matched_opponent = arena_opponent_data()
-			if multiplayer_players.size() > 0:
-				var first_player: Dictionary = multiplayer_players[0]
-				player_animal = int(first_player.get("animal", player_animal))
-				player_ring_color = int(first_player.get("ringColor", player_ring_color))
-			if multiplayer_players.size() > 1:
-				var second_player: Dictionary = multiplayer_players[1]
-				ai_animal = int(second_player.get("animal", ai_animal))
-				ai_ring_color = int(second_player.get("ringColor", ai_ring_color))
-			rebuild_team_piece_textures()
-		"match_started":
-			if str(payload.get("source", "friend")) == "arena":
-				begin_arena_match_found(payload)
-			else:
-				apply_match_started(payload)
-		"shot":
-			var ball_index := int(payload.get("ballIndex", -1))
-			if ball_index >= 0 and ball_index < balls.size() and balls[ball_index].alive:
-				var pull := Vector2(float(payload.get("pullX", 0.0)), float(payload.get("pullY", 0.0)))
-				var strength := float(payload.get("strength", 0.0))
-				if pull.length_squared() > 0.0:
-					balls[ball_index].v = pull.normalized() * (strength * 0.078)
-					turn_shot_committed = true
-					turn_pending_resolve = true
-					turn_opponent_scored = false
-		"turn":
-			turn = int(payload.get("turn", 0))
-			turn_shot_committed = false
-			turn_pending_resolve = false
-			turn_opponent_scored = false
-			update_turn_status_from_server(bool(payload.get("continueTurn", false)))
-		"chat":
-			match_chat_messages.append({
-				"slot": int(payload.get("playerSlot", -1)),
-				"name": str(payload.get("name", "")),
-				"message": str(payload.get("message", ""))
-			})
-			while match_chat_messages.size() > 20:
-				match_chat_messages.pop_front()
-		"lobby_chat":
-			lobby_chat_messages.append({
-				"name": str(payload.get("name", "Player")),
-				"message": str(payload.get("message", ""))
-			})
-			while lobby_chat_messages.size() > 30:
-				lobby_chat_messages.pop_front()
-		"match_over":
-			var winner_slot := int(payload.get("winnerSlot", -1))
-			if winner_slot >= 0:
-				finish_match(winner_slot)
-		"opponent_left":
-			if match_finished:
-				pass
-			else:
-				if match_source == "arena":
-					app_screen = APP_ARENA
-					matchmaking_searching = false
-				else:
-					app_screen = APP_FRIEND
-				multiplayer_ready = false
-				multiplayer_error = "×”×™×¨×™×‘ ×™×¦× ×ž×”×—×“×¨" if ui_language == "he" else "Opponent left the room"
-		"error":
-			multiplayer_error = str(payload.get("message", "Server error"))
-	queue_redraw()
-
-func start_selected_mode(mode: String) -> void:
-	game_mode = mode
-	match_source = mode
-	customizer_open = false
-	effect_editor_enabled = false
-	exit_confirm_open = false
-	chat_open = false
-	match_chat_messages.clear()
-	matchmaking_searching = false
-	pending_find_match = false
-	app_screen = APP_GAME
-	new_game()
-	if game_mode == "friend":
-		status = "Red player's turn - local match"
-	else:
-		status = "Your turn - touch a red ball, pull back and release"
-
-func start_computer_setup() -> void:
-	# Prepare the board behind the modal, but do not allow a shot until the
-	# player confirms the animal and lifebuoy for this computer match.
-	start_selected_mode("computer")
-	customizer_open = true
-	status = ui_text("choose_setup")
-	queue_redraw()
-
-func show_menu_notice(text: String) -> void:
-	menu_notice = text
-	menu_notice_time = 2.4
-
-func player_level_label() -> String:
-	if ui_language == "he":
-		return "×¨×ž×” %d" % player_level
-	return "LEVEL %d" % player_level
-
-func daily_claim_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((viewport_size.x - 420.0 * unit) * 0.5, viewport_size.y * 0.62), Vector2(420.0, 78.0) * unit)
-
-func draw_rewards_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.48))
-	draw_frontend_header(viewport_size, ui_text("daily_title"), ui_text("daily_sub"))
-	var card := Rect2(Vector2((viewport_size.x - 640.0 * unit) * 0.5, 160.0 * unit), Vector2(640.0, 420.0) * unit)
-	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.92), 28.0 * unit), card.grow(6.0 * unit))
-	draw_style_box(make_box(Color("e94f78"), 24.0 * unit), card)
-	draw_circle(card.position + Vector2(card.size.x * 0.5, 140.0 * unit), 58.0 * unit, Color("ffc83d"))
-	draw_circle(card.position + Vector2(card.size.x * 0.5, 140.0 * unit), 36.0 * unit, Color("e9971b"), false, 8.0 * unit, true)
-	draw_string(ui_font, card.position + Vector2(30.0, 250.0) * unit, "+" + str(DAILY_REWARD_COINS) + ui_text("coins"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 60.0 * unit, int(28.0 * unit), Color.WHITE)
-	draw_string(ui_font, card.position + Vector2(40.0, 292.0) * unit, ("×™×ª×¨×”: %d" if ui_language == "he" else "Balance: %d") % player_coins, HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 80.0 * unit, int(16.0 * unit), Color("fff0c7"))
-	var claim := daily_claim_rect(viewport_size)
-	var ready := can_claim_daily()
-	draw_style_box(make_box(Color("12a96b") if ready else Color("31485d"), 18.0 * unit), claim)
-	draw_string(ui_font, claim.position + Vector2(0.0, 50.0) * unit, ui_text("claim") if ready else ui_text("claimed"), HORIZONTAL_ALIGNMENT_CENTER, claim.size.x, int(22.0 * unit), Color.WHITE)
-
-func ui_text(key: String) -> String:
-	if ui_language == "he":
-		return str(UI_TEXT_HE.get(key, UI_TEXT_EN.get(key, key)))
-	return str(UI_TEXT_EN.get(key, key))
-
-func ui_animal_name(index: int) -> String:
-	var keys := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe", "tiger"]
-	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
-
-func ui_ring_name(index: int) -> String:
-	var keys := ["red", "orange", "blue", "green", "purple", "turquoise", "pink"]
-	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
-
-func profile_initial() -> String:
-	var clean := profile_name.strip_edges()
-	return clean.left(1).to_upper() if not clean.is_empty() else "P"
-
-func handle_frontend_touch(screen_pos: Vector2) -> void:
-	var viewport_size := get_viewport_rect().size
-	if home_invite_join_rect(viewport_size).has_point(screen_pos):
-		accept_pending_friend_invite()
-		return
-	if app_screen == APP_SPLASH:
-		app_screen = APP_AUTH
-		return
-	if app_screen == APP_AUTH:
-		if session_restore_pending:
-			return
-		if auth_email_mode.is_empty():
-			if auth_choice_rect(0, viewport_size).has_point(screen_pos):
-				firebase_auth_mode = "google"
-				begin_google_sign_in()
-			elif auth_choice_rect(1, viewport_size).has_point(screen_pos):
-				auth_email_mode = "login"
-				firebase_status = "×”×–×™× ×• ×ž×™×™×œ ×•×¡×™×¡×ž×”" if ui_language == "he" else "ENTER EMAIL AND PASSWORD"
-			elif auth_choice_rect(2, viewport_size).has_point(screen_pos):
-				begin_guest_sign_in()
-			elif auth_choice_rect(3, viewport_size).has_point(screen_pos):
-				auth_email_mode = "register"
-				firebase_status = "×¦×¨×• ×—×©×‘×•×Ÿ ×—×“×©" if ui_language == "he" else "CREATE A NEW ACCOUNT"
-		else:
-			if auth_submit_rect(viewport_size).has_point(screen_pos):
-				start_email_auth(auth_email_mode == "register")
-			elif auth_cancel_rect(viewport_size).has_point(screen_pos):
-				auth_email_mode = ""
-				firebase_status = "×‘×—×¨×• ×“×¨×š ×›× ×™×¡×”" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
-		queue_redraw()
-		return
-	if app_screen == APP_HOME:
-		if tutorial_open:
-			handle_tutorial_touch(screen_pos, viewport_size)
-			return
-		if home_friend_profile_index >= 0:
-			if home_friend_profile_close_rect(viewport_size).has_point(screen_pos):
-				home_friend_profile_index = -1
-				queue_redraw()
-				return
-			if home_friend_profile_invite_rect(viewport_size).has_point(screen_pos):
-				var invite_index := home_friend_profile_index
-				var friend_entry: Dictionary = friends_list[invite_index] if invite_index >= 0 and invite_index < friends_list.size() else {}
-				if bool(friend_entry.get("online", false)):
-					home_friend_profile_index = -1
-					invite_friend_to_play(invite_index)
-				else:
-					show_menu_notice(ui_text("friend_invite_offline"))
-				return
-			if home_friend_profile_remove_rect(viewport_size).has_point(screen_pos):
-				remove_friend_at(home_friend_profile_index)
-				return
-			if not home_friend_profile_modal_rect(viewport_size).has_point(screen_pos):
-				home_friend_profile_index = -1
-				queue_redraw()
-			return
-		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-		if home_help_rect(viewport_size).has_point(screen_pos):
-			open_tutorial()
-			return
-		if home_social_tab_rect(0, viewport_size).has_point(screen_pos):
-			home_social_tab = 0
-			if lobby_chat_input != null:
-				lobby_chat_input.release_focus()
-			queue_redraw()
-			return
-		if home_social_tab_rect(1, viewport_size).has_point(screen_pos):
-			home_social_tab = 1
-			if friend_id_input != null:
-				friend_id_input.release_focus()
-			queue_redraw()
-			return
-		if home_social_tab_rect(2, viewport_size).has_point(screen_pos):
-			home_social_tab = 2
-			send_multiplayer({"type": "get_leaderboard"})
-			queue_redraw()
-			return
-		if home_invite_join_rect(viewport_size).has_point(screen_pos):
-			accept_pending_friend_invite()
-			return
-		if home_sound_toggle_rect(viewport_size).has_point(screen_pos):
-			sound_enabled = not sound_enabled
-			save_player_profile()
-			play_sound("ui")
-			queue_redraw()
-			return
-		if home_social_tab == 0:
-			for i in mini(2, incoming_friend_requests.size()):
-				if home_incoming_accept_rect(i, viewport_size).has_point(screen_pos):
-					accept_friend_request_from(str(incoming_friend_requests[i].get("id", "")))
-					return
-				if home_incoming_decline_rect(i, viewport_size).has_point(screen_pos):
-					decline_friend_request_at(i)
-					return
-			if home_add_friend_button_rect(viewport_size).has_point(screen_pos):
-				if friend_id_input != null:
-					send_friend_request_by_id(friend_id_input.text)
-				return
-			for i in mini(3, friends_list.size()):
-				var row := home_friend_row_rect(i, viewport_size)
-				var invite_rect := home_friend_invite_rect(i, viewport_size)
-				if invite_rect.has_point(screen_pos):
-					invite_friend_to_play(i)
-					return
-				if row.has_point(screen_pos):
-					home_friend_profile_index = i
-					play_sound("ui")
-					queue_redraw()
-					return
-		elif home_social_tab == 1:
-			if home_lobby_send_rect(viewport_size).has_point(screen_pos):
-				send_lobby_chat_message()
-				return
-		if home_character_rect(viewport_size).has_point(screen_pos):
-			app_screen = APP_PROFILE
-			return
-		if home_profile_rect(viewport_size).has_point(screen_pos):
-			app_screen = APP_PLAYER_PROFILE
-			return
-		if home_settings_rect(viewport_size).has_point(screen_pos):
-			ui_language = "en" if ui_language == "he" else "he"
-			save_player_profile()
-			show_menu_notice("English interface" if ui_language == "en" else "×”×ž×ž×©×§ ×”×•×—×œ×£ ×œ×¢×‘×¨×™×ª")
-			return
-		for i in 2:
-			if not home_nav_rect(i, viewport_size).has_point(screen_pos):
-				continue
-			if i == 0:
-				app_screen = APP_SHOP
-				shop_page = SHOP_PAGE_HUB
-			else:
-				app_screen = APP_REWARDS
-			return
-		if home_mode_rect(0, viewport_size).has_point(screen_pos):
-			app_screen = APP_ARENA
-			return
-		if home_mode_rect(1, viewport_size).has_point(screen_pos):
-			app_screen = APP_FRIEND
-			connect_multiplayer()
-			return
-		if home_mode_rect(2, viewport_size).has_point(screen_pos):
-			play_sound("ui")
-			start_computer_setup()
-			return
-	else:
-		if frontend_back_rect(viewport_size).has_point(screen_pos):
-			if app_screen == APP_SHOP and shop_page != SHOP_PAGE_HUB:
-				shop_page = SHOP_PAGE_HUB
-				play_sound("ui")
-				queue_redraw()
-				return
-			if app_screen == APP_PLAYER_PROFILE:
-				commit_profile_name()
-			if app_screen == APP_FRIEND:
-				leave_multiplayer_room()
-			if app_screen == APP_ARENA:
-				cancel_matchmaking()
-			app_screen = APP_HOME
-			return
-		if app_screen == APP_PROFILE:
-			for i in ANIMAL_NAMES.size():
-				if character_card_rect(i, viewport_size).has_point(screen_pos):
-					try_select_animal(i)
-					queue_redraw()
-					return
-			for i in RING_COLOR_NAMES.size():
-				if character_ring_rect(i, viewport_size).has_point(screen_pos):
-					try_select_ring(i)
-					queue_redraw()
-					return
-		elif app_screen == APP_SHOP:
-			if shop_page == SHOP_PAGE_HUB:
-				for i in 3:
-					if shop_category_rect(i, viewport_size).has_point(screen_pos):
-						shop_page = [SHOP_PAGE_ANIMALS, SHOP_PAGE_RINGS, SHOP_PAGE_EFFECTS][i]
-						play_sound("ui")
-						queue_redraw()
-						return
-			elif shop_page == SHOP_PAGE_ANIMALS:
-				for i in ANIMAL_NAMES.size():
-					if shop_detail_grid_rect(i, viewport_size, ANIMAL_NAMES.size()).has_point(screen_pos):
-						try_purchase_animal(i)
-						queue_redraw()
-						return
-			elif shop_page == SHOP_PAGE_RINGS:
-				for i in RING_COLOR_NAMES.size():
-					if shop_detail_grid_rect(i, viewport_size, RING_COLOR_NAMES.size()).has_point(screen_pos):
-						try_purchase_ring(i)
-						queue_redraw()
-						return
-		elif app_screen == APP_ARENA:
-			for i in 3:
-				if arena_card_rect(i, viewport_size).has_point(screen_pos):
-					selected_arena = i
-					return
-			if arena_play_rect(viewport_size).has_point(screen_pos):
-				if matchmaking_searching:
-					cancel_matchmaking()
-				else:
-					start_arena_search()
-				return
-		elif app_screen == APP_REWARDS:
-			if daily_claim_rect(viewport_size).has_point(screen_pos):
-				claim_daily_reward()
-				return
-		elif app_screen == APP_PLAYER_PROFILE:
-			if player_google_rect(viewport_size).has_point(screen_pos):
-				if firebase_provider != "google":
-					begin_google_sign_in()
-				return
-			if player_id_copy_rect(viewport_size).has_point(screen_pos):
-				if not firebase_public_id.is_empty():
-					DisplayServer.clipboard_set(firebase_public_id)
-					show_menu_notice("×”×ž×–×”×” ×”×•×¢×ª×§" if ui_language == "he" else "PLAYER ID COPIED")
-				return
-			for i in ANIMAL_NAMES.size():
-				if player_profile_animal_rect(i, viewport_size).has_point(screen_pos):
-					try_select_animal(i)
-					queue_redraw()
-					return
-			for i in RING_COLOR_NAMES.size():
-				if player_profile_color_rect(i, viewport_size).has_point(screen_pos):
-					try_select_ring(i)
-					queue_redraw()
-					return
-		elif app_screen == APP_FRIEND:
-			if friend_room_chat_open:
-				if chat_close_rect(viewport_size).has_point(screen_pos):
-					friend_room_chat_open = false
-					if chat_input != null:
-						chat_input.release_focus()
-					return
-				if chat_send_rect(viewport_size).has_point(screen_pos):
-					send_chat_message()
-					return
-			if friend_customizer_open or friend_opponent_profile_open:
-				if friend_modal_close_rect(viewport_size).has_point(screen_pos):
-					friend_customizer_open = false
-					friend_opponent_profile_open = false
-					return
-				if friend_customizer_open:
-					for i in ANIMAL_NAMES.size():
-						if friend_choice_rect(i, false, viewport_size).has_point(screen_pos):
-							if try_select_animal(i):
-								update_match_character(i, -1)
-							return
-						if friend_choice_rect(i, true, viewport_size).has_point(screen_pos):
-							if try_select_ring(i):
-								update_match_character(-1, i)
-							return
-					for i in BOARD_THEME_COUNT:
-						if friend_board_rect(i, viewport_size).has_point(screen_pos):
-							update_match_board(i)
-							return
-				return
-			if multiplayer_room_code.is_empty():
-				if friend_create_rect(viewport_size).has_point(screen_pos):
-					create_multiplayer_room()
-					return
-				if friend_join_rect(viewport_size).has_point(screen_pos):
-					join_multiplayer_room()
-					return
-			else:
-				if friend_share_rect(viewport_size).has_point(screen_pos):
-					share_friend_room()
-					return
-				if friend_room_chat_rect(viewport_size).has_point(screen_pos):
-					friend_room_chat_open = true
-					if chat_input != null:
-						chat_input.grab_focus()
-					play_sound("ui")
-					return
-				var local_slot := multiplayer_slot if multiplayer_slot >= 0 else 0
-				if friend_player_rect(local_slot, viewport_size).has_point(screen_pos):
-					friend_customizer_open = true
-					return
-				var opponent_slot := 1 - multiplayer_slot
-				if opponent_slot >= 0 and opponent_slot < multiplayer_players.size() and friend_player_rect(opponent_slot, viewport_size).has_point(screen_pos):
-					friend_opponent_profile_open = true
-					return
-				if friend_ready_rect(viewport_size).has_point(screen_pos):
-					toggle_multiplayer_ready()
-					return
-
-func draw_menu_background(viewport_size: Vector2) -> void:
-	var overlay := Color(0.015, 0.055, 0.11, 0.62)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), overlay)
-	for i in 18:
-		var phase := fmod(menu_elapsed * (10.0 + float(i % 4) * 3.0) + float(i * 67), viewport_size.y + 120.0)
-		var x := fmod(float(i * 149 + 71), viewport_size.x)
-		var y := viewport_size.y + 40.0 - phase
-		var radius := 3.0 + float(i % 5) * 1.6
-		draw_circle(Vector2(x, y), radius, Color(0.65, 0.94, 1.0, 0.16), false, 2.0, true)
-	var horizon := Rect2(0.0, viewport_size.y * 0.76, viewport_size.x, viewport_size.y * 0.24)
-	draw_rect(horizon, Color(0.0, 0.20, 0.31, 0.35))
-
-func draw_zoopaloola_logo(center: Vector2, scale: float, reveal: float = 1.0) -> void:
-	var bob := sin(menu_elapsed * 2.5) * 5.0 * scale
-	var c := center + Vector2(0.0, bob)
-	var ring_radius := 66.0 * scale
-	draw_circle(c, ring_radius * 1.18, Color(0.15, 0.90, 1.0, 0.16 * reveal))
-	draw_circle(c, ring_radius, Color("ff5a55"), false, 20.0 * scale, true)
-	draw_arc(c, ring_radius, -2.35, -0.78, 30, Color.WHITE, 20.0 * scale, true)
-	draw_arc(c, ring_radius, 0.78, 2.35, 30, Color.WHITE, 20.0 * scale, true)
-	var ear := 24.0 * scale
-	draw_circle(c + Vector2(-31.0, -34.0) * scale, ear, Color("607d8b"))
-	draw_circle(c + Vector2(31.0, -34.0) * scale, ear, Color("607d8b"))
-	draw_circle(c + Vector2.ZERO, 43.0 * scale, Color("93aeb8"))
-	draw_circle(c + Vector2(-14.0, -7.0) * scale, 6.0 * scale, Color("102338"))
-	draw_circle(c + Vector2(14.0, -7.0) * scale, 6.0 * scale, Color("102338"))
-	draw_line(c + Vector2(0.0, 3.0) * scale, c + Vector2(4.0, 29.0) * scale, Color("667f8b"), 12.0 * scale, true)
-	draw_string(ui_font, c + Vector2(-225.0, 118.0) * scale, "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 450.0 * scale, int(54.0 * scale), Color(1.0, 0.86, 0.25, reveal))
-
-func draw_splash_screen(viewport_size: Vector2) -> void:
-	if loading_team_texture != null:
-		draw_texture_rect(loading_team_texture, Rect2(Vector2.ZERO, viewport_size), false)
-	else:
-		draw_menu_background(viewport_size)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.08, 0.08))
-	var entrance := smooth_step(splash_elapsed / 0.75)
-	var exit_alpha := 1.0 - smooth_step((splash_elapsed - 2.65) / 0.55)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var logo_width := 510.0 * unit * (0.92 + entrance * 0.08)
-	var logo_height := logo_width * 174.0 / 540.0
-	var logo_rect := Rect2(Vector2((viewport_size.x - logo_width) * 0.5, 14.0 * unit), Vector2(logo_width, logo_height))
-	if zoopaloola_logo_texture != null:
-		draw_texture_rect(zoopaloola_logo_texture, logo_rect, false, Color(1.0, 1.0, 1.0, entrance * exit_alpha))
-	else:
-		draw_zoopaloola_logo(Vector2(viewport_size.x * 0.5, 102.0 * unit), (0.50 + entrance * 0.10) * unit, entrance * exit_alpha)
-	var loading_width := minf(620.0 * unit, viewport_size.x * 0.52)
-	var loading_rect := Rect2((viewport_size.x - loading_width) * 0.5, viewport_size.y - 58.0 * unit, loading_width, 23.0 * unit)
-	draw_style_box(make_box(Color(0.015, 0.035, 0.07, 0.92), 12.0), loading_rect.grow(5.0 * unit))
-	draw_style_box(make_box(Color("25385d"), 10.0), loading_rect)
-	var progress := clampf(splash_elapsed / 2.85, 0.0, 1.0)
-	var fill_rect := Rect2(loading_rect.position, Vector2(maxf(12.0 * unit, loading_rect.size.x * progress), loading_rect.size.y))
-	draw_style_box(make_box(Color("ffd83d"), 10.0), fill_rect)
-	draw_string(ui_font, Vector2(0.0, loading_rect.position.y - 12.0 * unit), "LOADING THE ISLAND...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(13.0 * unit), Color.WHITE)
-
-func draw_frontend(viewport_size: Vector2) -> void:
-	# One coherent visual shell across every menu replaces the collection of
-	# unrelated legacy backgrounds.
-	draw_menu_background(viewport_size)
-	draw_modern_home_backdrop(viewport_size, {"header_h":0.0})
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.004, 0.016, 0.045, 0.38))
-	if app_screen == APP_AUTH:
-		draw_auth_screen(viewport_size)
-	elif app_screen == APP_HOME:
-		draw_home_screen(viewport_size)
-	elif app_screen == APP_PROFILE:
-		draw_profile_screen(viewport_size)
-	elif app_screen == APP_SHOP:
-		draw_shop_screen(viewport_size)
-	elif app_screen == APP_ARENA:
-		draw_arena_screen(viewport_size)
-	elif app_screen == APP_PLAYER_PROFILE:
-		draw_player_profile_screen(viewport_size)
-	elif app_screen == APP_FRIEND:
-		draw_friend_screen(viewport_size)
-	elif app_screen == APP_REWARDS:
-		draw_rewards_screen(viewport_size)
-	draw_pending_invite_banner(viewport_size)
-	if menu_notice_time > 0.0:
-		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
-		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
-		draw_string(ui_font, toast.position + Vector2(0.0, 29.0), menu_notice, HORIZONTAL_ALIGNMENT_CENTER, toast.size.x, 14, Color("f6d365"))
-
-func draw_auth_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_modern_home_backdrop(viewport_size, {"header_h":0.0})
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.004, 0.015, 0.045, 0.56))
-	# The entrance is now a real split screen: game identity on the left,
-	# immediate account actions on the right.
-	var visual_panel := Rect2(Vector2(32.0, 32.0) * unit, Vector2(610.0, 656.0) * unit)
-	var action_panel := Rect2(Vector2(682.0, 50.0) * unit, Vector2(548.0, 620.0) * unit)
-	draw_style_box(make_box(Color(0.025, 0.11, 0.20, 0.54), 36.0 * unit), visual_panel)
-	draw_rect(visual_panel, Color(0.28, 0.84, 1.0, 0.22), false, 2.0 * unit, true)
-	var portal_center := visual_panel.position + Vector2(visual_panel.size.x * 0.50, visual_panel.size.y * 0.43)
-	for ring in range(6, 0, -1):
-		var radius := (72.0 + float(ring) * 25.0 + sin(menu_elapsed * 1.8 + float(ring)) * 5.0) * unit
-		var ring_color := Color(0.25, 0.82, 1.0, 0.025 * float(7 - ring))
-		draw_circle(portal_center, radius, ring_color, false, maxf(2.0, 5.0 * unit), true)
-	draw_circle(portal_center, 90.0 * unit, Color(0.10, 0.38, 0.72, 0.42))
-	draw_circle(portal_center, 66.0 * unit, Color(0.35, 0.90, 1.0, 0.16))
-	draw_string(ui_font, visual_panel.position + Vector2(0.0, 78.0) * unit, "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, visual_panel.size.x, int(44.0 * unit), Color("fff1a6"))
-	draw_string(ui_font, visual_panel.position + Vector2(0.0, 116.0) * unit, "MODERN EDITION", HORIZONTAL_ALIGNMENT_CENTER, visual_panel.size.x, int(16.0 * unit), Color("63e5ff"))
-	var hero_preview: Texture2D = null
-	if player_animal < lifebuoy_hero_textures.size() and player_ring_color < lifebuoy_hero_textures[player_animal].size():
-		hero_preview = lifebuoy_hero_textures[player_animal][player_ring_color] as Texture2D
-	if hero_preview != null:
-		var hero_size := Vector2(270.0, 350.0) * unit
-		draw_texture_rect(hero_preview, Rect2(portal_center + Vector2(0.0, 18.0 * unit) - hero_size * 0.5, hero_size), false)
-	var feature_labels := ["×§×¨×‘×•×ª ×ž×”×™×¨×™×", "×–×™×¨×•×ª ×ž×ª×—×œ×¤×•×ª", "×ž×©×—×§ ×¢× ×—×‘×¨×™×"] if ui_language == "he" else ["FAST BATTLES", "DYNAMIC ARENAS", "PLAY WITH FRIENDS"]
-	for i in 3:
-		var chip := Rect2(visual_panel.position + Vector2(38.0 + float(i) * 184.0, 580.0) * unit, Vector2(168.0, 44.0) * unit)
-		draw_style_box(make_box(Color(0.02, 0.08, 0.16, 0.86), 15.0 * unit), chip)
-		draw_circle(chip.position + Vector2(19.0, 22.0) * unit, 5.0 * unit, [Color("5cf0b5"), Color("a57cff"), Color("52d8ff")][i])
-		draw_string(ui_font, chip.position + Vector2(31.0, 28.0) * unit, feature_labels[i], HORIZONTAL_ALIGNMENT_CENTER, chip.size.x - 38.0 * unit, int(10.0 * unit), Color.WHITE)
-	draw_style_box(make_box(Color(0.008, 0.028, 0.068, 0.94), 34.0 * unit), action_panel)
-	draw_rect(action_panel, Color(0.38, 0.55, 1.0, 0.28), false, 2.0 * unit, true)
-	draw_string(ui_font, action_panel.position + Vector2(0.0, 72.0) * unit, "×”×™×›× ×¡×• ×œ×–×™×¨×”" if ui_language == "he" else "ENTER THE ARENA", HORIZONTAL_ALIGNMENT_CENTER, action_panel.size.x, int(30.0 * unit), Color.WHITE)
-	draw_string(ui_font, action_panel.position + Vector2(0.0, 108.0) * unit, ("×‘×—×¨×• ×“×¨×š ×›× ×™×¡×”" if auth_email_mode.is_empty() else ("×™×¦×™×¨×ª ×—×©×‘×•×Ÿ ×—×“×©" if auth_email_mode == "register" else "×›× ×™×¡×” ×œ×—×©×‘×•×Ÿ")) if ui_language == "he" else ("CHOOSE A SIGN-IN METHOD" if auth_email_mode.is_empty() else ("CREATE YOUR ACCOUNT" if auth_email_mode == "register" else "SIGN IN TO YOUR ACCOUNT")), HORIZONTAL_ALIGNMENT_CENTER, action_panel.size.x, int(16.0 * unit), Color("9fd9ef"))
-	if session_restore_pending and auth_email_mode.is_empty():
-		draw_string(ui_font, action_panel.position + Vector2(0.0, 310.0 * unit), ui_text("restoring_session"), HORIZONTAL_ALIGNMENT_CENTER, action_panel.size.x, int(22.0 * unit), Color("9fd9ef"))
-	elif auth_email_mode.is_empty():
-		var labels := ["×›× ×™×¡×” ×¢× Gmail", "×›× ×™×¡×” ×¢× ×ž×™×™×œ", "×›× ×™×¡×” ×›××•×¨×—", "×”×¨×©×ž×”"] if ui_language == "he" else ["CONTINUE WITH GOOGLE", "SIGN IN WITH EMAIL", "CONTINUE AS GUEST", "REGISTER"]
-		var colors := [Color("5a8cff"), Color("37b7e7"), Color("31cf91"), Color("b278ff")]
-		var icons := ["G", "@", "â˜º", "+"]
-		for i in 4:
-			var rect := auth_choice_rect(i, viewport_size)
-			draw_glass_card(rect, colors[i], unit, false)
-			draw_circle(rect.position + Vector2(38.0, 33.0) * unit, 22.0 * unit, Color(colors[i].r, colors[i].g, colors[i].b, 0.32))
-			draw_string(ui_font, rect.position + Vector2(17.0, 42.0) * unit, icons[i], HORIZONTAL_ALIGNMENT_CENTER, 42.0 * unit, int(22.0 * unit), Color.WHITE)
-			draw_string(ui_font, rect.position + Vector2(66.0, 42.0) * unit, labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 88.0 * unit, int(19.0 * unit), Color.WHITE)
-	else:
-		draw_string(ui_font, Vector2(730.0, 262.0) * unit, "×›×ª×•×‘×ª ×ž×™×™×œ" if ui_language == "he" else "EMAIL ADDRESS", HORIZONTAL_ALIGNMENT_CENTER, 430.0 * unit, int(14.0 * unit), Color("9fd9ef"))
-		draw_string(ui_font, Vector2(730.0, 339.0) * unit, "×¡×™×¡×ž×”" if ui_language == "he" else "PASSWORD", HORIZONTAL_ALIGNMENT_CENTER, 430.0 * unit, int(14.0 * unit), Color("9fd9ef"))
-		var submit := auth_submit_rect(viewport_size)
-		draw_style_box(make_box(Color("31cf91"), 18.0 * unit), submit)
-		draw_string(ui_font, submit.position + Vector2(0.0, 41.0) * unit, ("×™×¦×™×¨×ª ×—×©×‘×•×Ÿ" if auth_email_mode == "register" else "×›× ×™×¡×”") if ui_language == "he" else ("CREATE ACCOUNT" if auth_email_mode == "register" else "SIGN IN"), HORIZONTAL_ALIGNMENT_CENTER, submit.size.x, int(23.0 * unit), Color.WHITE)
-		var cancel := auth_cancel_rect(viewport_size)
-		draw_style_box(make_box(Color("203a59"), 14.0 * unit), cancel)
-		draw_string(ui_font, cancel.position + Vector2(0.0, 34.0) * unit, "×—×–×¨×” ×œ××¤×©×¨×•×™×•×ª" if ui_language == "he" else "BACK TO OPTIONS", HORIZONTAL_ALIGNMENT_CENTER, cancel.size.x, int(18.0 * unit), Color.WHITE)
-	var status_color := Color("7ee4ae") if not ("×©×’×™×" in firebase_status or "ERROR" in firebase_status) else Color("ff7777")
-	draw_string(ui_font, action_panel.position + Vector2(20.0, action_panel.size.y - 24.0) * unit, firebase_status, HORIZONTAL_ALIGNMENT_CENTER, action_panel.size.x - 40.0 * unit, int(14.0 * unit), status_color)
-
-func draw_friend_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.05, 0.10, 0.66))
-	draw_frontend_header(viewport_size, "×ž×©×—×§ ×ž×•×œ ×—×‘×¨" if ui_language == "he" else "PLAY A FRIEND", "×¦×¨×• ×—×“×¨ ××• ×”×¦×˜×¨×¤×• ×‘××ž×¦×¢×•×ª ×§×•×“" if ui_language == "he" else "Create a room or join with a code")
-	var panel := Rect2(Vector2(175.0, 125.0) * unit, Vector2(930.0, 535.0) * unit)
-	draw_style_box(make_box(Color(0.025, 0.09, 0.16, 0.95), 28.0 * unit), panel)
-	var connection_text := "×ž×—×•×‘×¨ ×œ×©×¨×ª" if multiplayer_state == "connected" else ("×ž×ª×—×‘×¨ ×œ×©×¨×ª..." if multiplayer_state == "connecting" else "×”×©×¨×ª ×œ× ×ž×—×•×‘×¨")
-	if ui_language != "he":
-		connection_text = "Connected" if multiplayer_state == "connected" else ("Connecting..." if multiplayer_state == "connecting" else "Disconnected")
-	var connection_color := Color("51d995") if multiplayer_state == "connected" else Color("ffd05a")
-	var status_pill := Rect2(panel.position + Vector2(330.0, 20.0) * unit, Vector2(270.0, 55.0) * unit)
-	draw_style_box(make_box(Color(0.04, 0.20, 0.24, 0.96), 20.0 * unit), status_pill)
-	draw_circle(status_pill.position + Vector2(35.0, 27.0) * unit, 10.0 * unit, connection_color)
-	draw_string(ui_font, status_pill.position + Vector2(0.0, 36.0) * unit, connection_text, HORIZONTAL_ALIGNMENT_CENTER, status_pill.size.x, int(23.0 * unit), Color.WHITE)
-	if multiplayer_room_code.is_empty():
-		var create_rect := friend_create_rect(viewport_size)
-		draw_style_box(make_box(Color("7655df"), 18.0 * unit), create_rect)
-		draw_string(ui_font, create_rect.position + Vector2(0.0, 50.0) * unit, "×™×¦×™×¨×ª ×—×“×¨ ×—×“×©" if ui_language == "he" else "CREATE ROOM", HORIZONTAL_ALIGNMENT_CENTER, create_rect.size.x, int(23.0 * unit), Color.WHITE)
-		draw_string(ui_font, Vector2(0.0, 222.0 * unit), "××•" if ui_language == "he" else "OR", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(19.0 * unit), Color("a9cde2"))
-		draw_string(ui_font, Vector2(700.0, 245.0) * unit, "×§×•×“ ×”×—×“×¨" if ui_language == "he" else "ROOM CODE", HORIZONTAL_ALIGNMENT_CENTER, 330.0 * unit, int(16.0 * unit), Color("d7f6ff"))
-		var join_rect := friend_join_rect(viewport_size)
-		draw_style_box(make_box(Color("ff7b43"), 18.0 * unit), join_rect)
-		draw_string(ui_font, join_rect.position + Vector2(0.0, 45.0) * unit, "×”×¦×˜×¨×¤×•×ª ×œ×—×“×¨" if ui_language == "he" else "JOIN ROOM", HORIZONTAL_ALIGNMENT_CENTER, join_rect.size.x, int(22.0 * unit), Color.WHITE)
-	else:
-		draw_string(ui_font, panel.position + Vector2(0.0, 125.0) * unit, "×§×•×“ ×”×—×“×¨" if ui_language == "he" else "ROOM CODE", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(18.0 * unit), Color("a9cde2"))
-		draw_string(ui_font, panel.position + Vector2(0.0, 190.0) * unit, multiplayer_room_code, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(48.0 * unit), Color("ffe25d"))
-		var share_rect := friend_share_rect(viewport_size)
-		draw_style_box(make_box(Color("1f9fd0"), 16.0 * unit), share_rect)
-		draw_string(ui_font, share_rect.position + Vector2(0.0, 40.0) * unit, "×©×™×ª×•×£ ×œ×—×‘×¨" if ui_language == "he" else "SHARE INVITE", HORIZONTAL_ALIGNMENT_CENTER, share_rect.size.x, int(18.0 * unit), Color.WHITE)
-		for i in 2:
-			var player_rect := friend_player_rect(i, viewport_size)
-			draw_style_box(make_box(Color("1d405b"), 17.0 * unit), player_rect)
-			var player_label := "×ž×ž×ª×™×Ÿ ×œ×©×—×§×Ÿ..." if ui_language == "he" else "Waiting for player..."
-			var ready_label := ""
-			var is_ready := false
-			if i < multiplayer_players.size():
-				var player_data: Dictionary = multiplayer_players[i]
-				player_label = str(player_data.get("name", "Player"))
-				is_ready = bool(player_data.get("ready", false))
-				ready_label = ("×ž×•×›×Ÿ" if ui_language == "he" else "READY") if is_ready else ("×œ× ×ž×•×›×Ÿ" if ui_language == "he" else "NOT READY")
-				var avatar_index := int(player_data.get("animal", 0))
-				if avatar_index >= 0 and avatar_index < full_body_animal_textures.size():
-					draw_texture_rect(full_body_animal_textures[avatar_index], Rect2(player_rect.position + Vector2(12.0, 12.0) * unit, Vector2(105.0, 130.0) * unit), false)
-				draw_string(ui_font, player_rect.position + Vector2(125.0, 39.0) * unit, player_label, HORIZONTAL_ALIGNMENT_LEFT, 125.0 * unit, int(21.0 * unit), Color.WHITE)
-				draw_string(ui_font, player_rect.position + Vector2(125.0, 70.0) * unit, ("×¨×ž×” %d" if ui_language == "he" else "LEVEL %d") % int(player_data.get("level", 1)), HORIZONTAL_ALIGNMENT_LEFT, 125.0 * unit, int(14.0 * unit), Color("a9cde2"))
-				draw_string(ui_font, player_rect.position + Vector2(125.0, 96.0) * unit, ui_animal_name(avatar_index), HORIZONTAL_ALIGNMENT_LEFT, 125.0 * unit, int(14.0 * unit), Color("ffe25d"))
-				draw_small_lifebuoy(player_rect.position + Vector2(302.0, 78.0) * unit, int(player_data.get("ringColor", 0)), 35.0 * unit)
-			else:
-				draw_string(ui_font, player_rect.position + Vector2(0.0, 72.0) * unit, player_label, HORIZONTAL_ALIGNMENT_CENTER, player_rect.size.x, int(21.0 * unit), Color.WHITE)
-			draw_string(ui_font, player_rect.position + Vector2(125.0, 127.0) * unit, ready_label, HORIZONTAL_ALIGNMENT_LEFT, 125.0 * unit, int(15.0 * unit), Color("51d995") if is_ready else Color("a9cde2"))
-			if i == multiplayer_slot:
-				draw_string(ui_font, player_rect.position + Vector2(250.0, 145.0) * unit, "×œ×—×¦×• ×œ×©×™× ×•×™" if ui_language == "he" else "TAP TO CHANGE", HORIZONTAL_ALIGNMENT_CENTER, 104.0 * unit, int(11.0 * unit), Color("70dfff"))
-			elif i < multiplayer_players.size():
-				draw_string(ui_font, player_rect.position + Vector2(125.0, 151.0) * unit, "×œ×—×¦×• ×œ×¤×¨×•×¤×™×œ" if ui_language == "he" else "TAP FOR PROFILE", HORIZONTAL_ALIGNMENT_LEFT, 210.0 * unit, int(12.0 * unit), Color("70dfff"))
-		var ready_rect := friend_ready_rect(viewport_size)
-		draw_style_box(make_box(Color("35b96f") if not multiplayer_ready else Color("d49b2f"), 18.0 * unit), ready_rect)
-		draw_string(ui_font, ready_rect.position + Vector2(0.0, 45.0) * unit, ("×‘×™×˜×•×œ ×ž×•×›× ×•×ª" if multiplayer_ready else "×× ×™ ×ž×•×›×Ÿ") if ui_language == "he" else ("NOT READY" if multiplayer_ready else "I'M READY"), HORIZONTAL_ALIGNMENT_CENTER, ready_rect.size.x, int(22.0 * unit), Color.WHITE)
-		var chat_rect := friend_room_chat_rect(viewport_size)
-		draw_style_box(make_box(Color("1b91a8"), 14.0 * unit), chat_rect)
-		draw_string(ui_font, chat_rect.position + Vector2(0.0, 31.0) * unit, ui_text("room_chat"), HORIZONTAL_ALIGNMENT_CENTER, chat_rect.size.x, int(15.0 * unit), Color.WHITE)
-	if multiplayer_error != "":
-		draw_string(ui_font, panel.position + Vector2(35.0, panel.size.y - 25.0) * unit, multiplayer_error, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 70.0 * unit, int(15.0 * unit), Color("ff8c7a"))
-	if friend_customizer_open:
-		draw_friend_customizer(viewport_size)
-	elif friend_opponent_profile_open:
-		draw_friend_opponent_profile(viewport_size)
-	elif friend_room_chat_open:
-		draw_match_chat(viewport_size)
-
-func draw_small_lifebuoy(center: Vector2, color_index: int, radius: float) -> void:
-	var ring_color: Color = RING_COLORS[clampi(color_index, 0, RING_COLORS.size() - 1)]
-	draw_circle(center, radius, Color(0.01, 0.04, 0.08, 0.35))
-	draw_circle(center, radius * 0.82, ring_color, false, radius * 0.34, true)
-	var band_angles: Array[float] = [0.0, PI * 0.5, PI, PI * 1.5]
-	for angle: float in band_angles:
-		draw_arc(center, radius * 0.82, angle - 0.20, angle + 0.20, 8, Color("fff4dc"), radius * 0.35, true)
-	draw_circle(center, radius * 0.43, Color("1d405b"))
-
-func draw_friend_modal_base(viewport_size: Vector2, title: String, modal_height: float = 510.0) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.0, 0.02, 0.05, 0.72))
-	var modal_y := maxf(70.0, (viewport_size.y / unit - modal_height) * 0.5)
-	var modal := Rect2(Vector2(270.0, modal_y) * unit, Vector2(740.0, modal_height) * unit)
-	draw_style_box(make_box(Color("09243a"), 28.0 * unit), modal)
-	draw_string(ui_font, modal.position + Vector2(0.0, 65.0) * unit, title, HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(30.0 * unit), Color("ffe25d"))
-	var close := friend_modal_close_rect(viewport_size)
-	draw_style_box(make_box(Color("d75159"), 13.0 * unit), close)
-	draw_string(ui_font, close.position + Vector2(0.0, 33.0) * unit, "×¡×’×•×¨" if ui_language == "he" else "CLOSE", HORIZONTAL_ALIGNMENT_CENTER, close.size.x, int(15.0 * unit), Color.WHITE)
-	return modal
-
-func draw_friend_customizer(viewport_size: Vector2) -> void:
-	var modal := draw_friend_modal_base(viewport_size, ui_text("choose_setup"), 560.0)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var selected_animal: int = player_animal if multiplayer_slot == 0 else ai_animal
-	var selected_ring: int = player_ring_color if multiplayer_slot == 0 else ai_ring_color
-	draw_string(ui_font, modal.position + Vector2(0.0, 112.0) * unit, "×‘×—×¨×• ×“×ž×•×ª" if ui_language == "he" else "CHOOSE AN ANIMAL", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
-	for i in ANIMAL_NAMES.size():
-		var choice := friend_choice_rect(i, false, viewport_size)
-		if i == selected_animal:
-			draw_style_box(make_box(Color("ffe25d"), 17.0 * unit), choice.grow(6.0 * unit))
-		draw_style_box(make_box(Color("1d405b"), 15.0 * unit), choice)
-		draw_texture_rect(full_body_animal_textures[i], choice.grow(-7.0 * unit), false)
-		draw_collection_lock_overlay(choice, i, false, unit)
-		if i == selected_animal:
-			draw_circle(choice.position + Vector2(78.0, 14.0) * unit, 12.0 * unit, Color("ffe25d"))
-			draw_string(ui_font, choice.position + Vector2(67.0, 19.0) * unit, "âœ“", HORIZONTAL_ALIGNMENT_CENTER, 22.0 * unit, int(14.0 * unit), Color("173249"))
-	draw_string(ui_font, modal.position + Vector2(0.0, 222.0) * unit, "×‘×—×¨×• ×¦×‘×¢ ×’×œ×’×œ" if ui_language == "he" else "CHOOSE A RING COLOR", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
-	for i in RING_COLORS.size():
-		var color_choice := friend_choice_rect(i, true, viewport_size)
-		if i == selected_ring:
-			draw_style_box(make_box(Color("ffe25d"), 17.0 * unit), color_choice.grow(6.0 * unit))
-		draw_style_box(make_box(Color("1d405b"), 15.0 * unit), color_choice)
-		draw_circle(color_choice.get_center(), 29.0 * unit, RING_COLORS[i])
-		draw_collection_lock_overlay(color_choice, i, true, unit)
-		if i == selected_ring:
-			draw_circle(color_choice.get_center(), 36.0 * unit, Color.WHITE, false, 4.0 * unit, true)
-	draw_string(ui_font, modal.position + Vector2(0.0, 332.0) * unit, ui_text("choose_board") if is_friend_room_host() else ui_text("guest_board_locked"), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(19.0 * unit), Color.WHITE)
-	var display_board := selected_board_theme if is_friend_room_host() else room_board_theme
-	for i in BOARD_THEME_COUNT:
-		var board_rect_item := friend_board_rect(i, viewport_size)
-		draw_board_theme_card(i, board_rect_item, i == display_board, unit)
-		if not is_friend_room_host():
-			draw_rect(board_rect_item, Color(0.01, 0.03, 0.08, 0.35))
-	if not is_friend_room_host():
-		draw_string(ui_font, modal.position + Vector2(0.0, 500.0) * unit, ui_text("host_board_only"), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(14.0 * unit), Color("a9cde2"))
-	draw_string(ui_font, modal.position + Vector2(0.0, 518.0) * unit, ("× ×‘×—×¨×•: %s â€¢ %s â€¢ %s" if ui_language == "he" else "Selected: %s â€¢ %s â€¢ %s") % [ui_animal_name(selected_animal), ui_ring_name(selected_ring), board_theme_name(display_board)], HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(18.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, modal.position + Vector2(0.0, 548.0) * unit, "×”×©×™× ×•×™ ×—×œ ×¨×§ ×‘×—×“×¨ ×•×‘×ž×©×—×§ ×”× ×•×›×—×™" if ui_language == "he" else "This choice applies only to this match", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(16.0 * unit), Color("a9cde2"))
-
-func draw_friend_opponent_profile(viewport_size: Vector2) -> void:
-	var modal := draw_friend_modal_base(viewport_size, "×¤×¨×•×¤×™×œ ×”×™×¨×™×‘" if ui_language == "he" else "OPPONENT PROFILE")
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var opponent_slot := 1 - multiplayer_slot
-	if opponent_slot < 0 or opponent_slot >= multiplayer_players.size():
-		return
-	var data: Dictionary = multiplayer_players[opponent_slot]
-	var animal := int(data.get("animal", 0))
-	draw_texture_rect(full_body_animal_textures[animal], Rect2(modal.position + Vector2(55.0, 105.0) * unit, Vector2(240.0, 300.0) * unit), false)
-	draw_string(ui_font, modal.position + Vector2(330.0, 155.0) * unit, str(data.get("name", "Player")), HORIZONTAL_ALIGNMENT_LEFT, 330.0 * unit, int(30.0 * unit), Color.WHITE)
-	draw_string(ui_font, modal.position + Vector2(330.0, 205.0) * unit, ("×¨×ž×”: %d" if ui_language == "he" else "Level: %d") % int(data.get("level", 1)), HORIZONTAL_ALIGNMENT_LEFT, 330.0 * unit, int(20.0 * unit), Color("a9cde2"))
-	draw_string(ui_font, modal.position + Vector2(330.0, 250.0) * unit, ("×“×ž×•×ª: " if ui_language == "he" else "Animal: ") + ui_animal_name(animal), HORIZONTAL_ALIGNMENT_LEFT, 330.0 * unit, int(20.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, modal.position + Vector2(330.0, 290.0) * unit, ("×’×œ×’×œ: " if ui_language == "he" else "Ring: ") + ui_ring_name(int(data.get("ringColor", 0))), HORIZONTAL_ALIGNMENT_LEFT, 330.0 * unit, int(20.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, modal.position + Vector2(330.0, 350.0) * unit, ("× ×™×¦×—×•× ×•×ª: %d  â€¢  ×”×¤×¡×“×™×: %d" if ui_language == "he" else "Wins: %d  â€¢  Losses: %d") % [int(data.get("wins", 0)), int(data.get("losses", 0))], HORIZONTAL_ALIGNMENT_LEFT, 350.0 * unit, int(19.0 * unit), Color.WHITE)
-	draw_string(ui_font, modal.position + Vector2(0.0, 465.0) * unit, "××¤×©×¨×•×™×•×ª ×—×‘×¨×ª×™×•×ª ×•× ×ª×•× ×™× × ×•×¡×¤×™× ×™×ª×•×•×¡×¤×• ×‘×”×ž×©×š" if ui_language == "he" else "More social options and stats are coming later", HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(16.0 * unit), Color("70dfff"))
-
-func draw_arena_preview(preview: Rect2, arena_index: int, unit: float) -> void:
-	if arena_index == 0:
-		draw_rect(preview, Color("f8b7c6"))
-		draw_circle(preview.position + Vector2(preview.size.x * 0.78, preview.size.y * 0.25), 34.0 * unit, Color("ffd884"))
-		draw_rect(Rect2(preview.position + Vector2(0.0, preview.size.y * 0.68), Vector2(preview.size.x, preview.size.y * 0.32)), Color("5eaf72"))
-		var gate_x := preview.position.x + preview.size.x * 0.22
-		var gate_y := preview.position.y + preview.size.y * 0.46
-		draw_line(Vector2(gate_x - 45.0 * unit, gate_y), Vector2(gate_x + 45.0 * unit, gate_y), Color("b92f2f"), 13.0 * unit, true)
-		draw_line(Vector2(gate_x - 31.0 * unit, gate_y), Vector2(gate_x - 31.0 * unit, gate_y + 72.0 * unit), Color("8f2525"), 10.0 * unit, true)
-		draw_line(Vector2(gate_x + 31.0 * unit, gate_y), Vector2(gate_x + 31.0 * unit, gate_y + 72.0 * unit), Color("8f2525"), 10.0 * unit, true)
-		var tree_center := preview.position + Vector2(preview.size.x * 0.73, preview.size.y * 0.49)
-		draw_line(tree_center, tree_center + Vector2(-16.0, 78.0) * unit, Color("70432f"), 15.0 * unit, true)
-		for offset in [Vector2(-42.0, -13.0), Vector2(-8.0, -35.0), Vector2(31.0, -18.0), Vector2(52.0, 9.0), Vector2(8.0, 4.0)]:
-			draw_circle(tree_center + offset * unit, 31.0 * unit, Color("f06f9c"))
-	elif arena_index == 1:
-		draw_rect(preview, Color("8ed17b"))
-		draw_rect(Rect2(preview.position + Vector2(0.0, preview.size.y * 0.72), Vector2(preview.size.x, preview.size.y * 0.28)), Color("b88a4e"))
-		for i in 9:
-			var x := preview.position.x + (22.0 + float(i) * 38.0) * unit
-			var lean := float((i % 3) - 1) * 8.0 * unit
-			draw_line(Vector2(x, preview.position.y - 4.0), Vector2(x + lean, preview.position.y + preview.size.y * 0.86), Color("236c3e"), 13.0 * unit, true)
-			for j in 4:
-				var y := preview.position.y + (34.0 + float(j) * 43.0) * unit
-				draw_line(Vector2(x - 6.0 * unit, y), Vector2(x + 7.0 * unit, y), Color("c1e15d"), 3.0 * unit, true)
-		var platform := preview.position + Vector2(preview.size.x * 0.58, preview.size.y * 0.75)
-		draw_circle(platform, 58.0 * unit, Color("d0a95c"))
-		draw_circle(platform, 45.0 * unit, Color("a47a3d"), false, 4.0 * unit, true)
-	else:
-		draw_rect(preview, Color("30284a"))
-		draw_circle(preview.position + Vector2(preview.size.x * 0.78, preview.size.y * 0.20), 30.0 * unit, Color("ff9954"))
-		var mountain := PackedVector2Array([
-			preview.position + Vector2(0.0, preview.size.y),
-			preview.position + Vector2(preview.size.x * 0.50, preview.size.y * 0.28),
-			preview.end,
-		])
-		draw_colored_polygon(mountain, Color("513841"))
-		var lava_top := preview.position + Vector2(preview.size.x * 0.50, preview.size.y * 0.29)
-		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.43, preview.size.y), Color("ff5b2d"), 20.0 * unit, true)
-		draw_line(lava_top, preview.position + Vector2(preview.size.x * 0.57, preview.size.y), Color("ffb12b"), 8.0 * unit, true)
-
-func draw_arena_tunnel_fx(viewport_size: Vector2, intensity: float) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var center := viewport_size * 0.5
-	for ring in 8:
-		var phase := arena_fx_elapsed * (1.4 + float(ring) * 0.18) + float(ring) * 0.7
-		var radius := fmod(phase, 1.0) * maxf(viewport_size.x, viewport_size.y) * 0.62
-		var alpha := (1.0 - fmod(phase, 1.0)) * 0.14 * intensity
-		draw_arc(center, radius, 0.0, TAU, 72, Color("8cecff", alpha), 3.0 * unit, true)
-	for ray in 12:
-		var angle := arena_fx_elapsed * 0.9 + float(ray) * TAU / 12.0
-		var length := maxf(viewport_size.x, viewport_size.y) * 0.55
-		var end := center + Vector2(cos(angle), sin(angle)) * length
-		draw_line(center, end, Color("ffe25d", 0.03 * intensity), 2.0 * unit, true)
-
-func draw_arena_match_found_flash(viewport_size: Vector2) -> void:
-	if arena_fx_phase != "found":
-		return
-	var progress := clampf(arena_fx_elapsed / ARENA_MATCH_FOUND_DURATION, 0.0, 1.0)
-	var flash := 0.0
-	if progress < 0.18:
-		flash = 1.0 - progress / 0.18
-	elif progress > 0.82:
-		flash = (progress - 0.82) / 0.18
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(1.0, 0.96, 0.72, flash * 0.42))
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var banner := Rect2(viewport_size.x * 0.22, 34.0 * unit, viewport_size.x * 0.56, 72.0 * unit)
-	var pulse := 0.92 + sin(arena_fx_elapsed * 8.0) * 0.08
-	draw_style_box(make_box(Color("ffe25d", 0.92 * pulse), 20.0 * unit), banner)
-	draw_string(ui_font, banner.position + Vector2(0.0, 48.0) * unit, ui_text("match_found"), HORIZONTAL_ALIGNMENT_CENTER, banner.size.x, int(34.0 * unit), Color("173249"))
-	if progress > 0.45:
-		draw_string(ui_font, Vector2(0.0, banner.end.y + 18.0 * unit), ui_text("entering_arena"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
-
-func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float, opponent: Dictionary = {}) -> void:
-	var accent: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)] if is_local_player else Color("3fb6df")
-	if not is_local_player and not opponent.is_empty():
-		accent = RING_COLORS[clampi(int(opponent.get("ringColor", 2)), 0, RING_COLORS.size() - 1)]
-	var card_glow := 7.0
-	if not is_local_player and arena_fx_phase == "found":
-		card_glow = 7.0 + sin(arena_fx_elapsed * 7.0) * 4.0
-	draw_style_box(make_box(Color(0.01, 0.04, 0.08, 0.94), 24.0 * unit), rect.grow(card_glow * unit))
-	draw_style_box(make_box(Color("f5f2df"), 20.0 * unit), rect)
-	var portrait := Rect2(rect.position + Vector2(15.0, 15.0) * unit, Vector2(rect.size.x - 30.0 * unit, rect.size.y - 96.0 * unit))
-	draw_style_box(make_box(accent.darkened(0.42), 16.0 * unit), portrait)
-	draw_circle(portrait.get_center(), 112.0 * unit, Color(accent, 0.23))
-	if is_local_player:
-		var hero: Texture2D = null
-		if player_animal >= 0 and player_animal < lifebuoy_hero_textures.size():
-			var colors: Array = lifebuoy_hero_textures[player_animal]
-			if player_ring_color >= 0 and player_ring_color < colors.size():
-				hero = colors[player_ring_color] as Texture2D
-		if hero != null:
-			var hero_size := Vector2(210.0, 270.0) * unit
-			draw_texture_rect(hero, Rect2(portrait.get_center() - hero_size * 0.5 + Vector2(0.0, 8.0) * unit, hero_size), false)
-		elif full_body_animal_textures[player_animal] != null:
-			draw_texture_rect(full_body_animal_textures[player_animal], portrait.grow(-22.0 * unit), false)
-	else:
-		var matched := not opponent.is_empty()
-		if matched:
-			var opponent_animal := clampi(int(opponent.get("animal", 0)), 0, ANIMAL_NAMES.size() - 1)
-			var opponent_ring := clampi(int(opponent.get("ringColor", 0)), 0, RING_COLORS.size() - 1)
-			var hero: Texture2D = null
-			if opponent_animal >= 0 and opponent_animal < lifebuoy_hero_textures.size():
-				var colors: Array = lifebuoy_hero_textures[opponent_animal]
-				if opponent_ring >= 0 and opponent_ring < colors.size():
-					hero = colors[opponent_ring] as Texture2D
-			if hero != null:
-				var hero_size := Vector2(210.0, 270.0) * unit
-				draw_texture_rect(hero, Rect2(portrait.get_center() - hero_size * 0.5 + Vector2(0.0, 8.0) * unit, hero_size), false)
-			elif opponent_animal < full_body_animal_textures.size() and full_body_animal_textures[opponent_animal] != null:
-				draw_texture_rect(full_body_animal_textures[opponent_animal], portrait.grow(-22.0 * unit), false)
-		else:
-			# Cycle silhouettes while searching to suggest many possible opponents,
-			# but never pretend that a specific player has already been found.
-			var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
-			var preview_texture: Texture2D = full_body_animal_textures[preview_animal]
-			if preview_texture != null:
-				var silhouette_size := Vector2(190.0, 250.0) * unit
-				draw_texture_rect(preview_texture, Rect2(portrait.get_center() - silhouette_size * 0.5 + Vector2(0.0, 12.0) * unit, silhouette_size), false, Color(0.04, 0.12, 0.18, 0.72))
-			draw_circle(portrait.get_center() + Vector2(0.0, 5.0) * unit, 40.0 * unit, Color(0.03, 0.08, 0.12, 0.78))
-			draw_string(ui_font, portrait.get_center() + Vector2(-31.0, 20.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, 62.0 * unit, int(54.0 * unit), Color.WHITE)
-	var name_bar := Rect2(rect.position + Vector2(0.0, rect.size.y - 70.0 * unit), Vector2(rect.size.x, 70.0 * unit))
-	draw_style_box(make_box(Color("ffffff"), 0.0), name_bar)
-	var card_name := profile_name if is_local_player else ("×ž×—×¤×©×™×..." if ui_language == "he" else "SEARCHING...")
-	if not is_local_player and not opponent.is_empty():
-		card_name = str(opponent.get("name", card_name))
-	draw_string(ui_font, name_bar.position + Vector2(10.0, 31.0) * unit, card_name, HORIZONTAL_ALIGNMENT_CENTER, name_bar.size.x - 20.0 * unit, int(21.0 * unit), Color("173249"))
-	var detail := player_level_label() if is_local_player else ("×™×¨×™×‘ ×ž×ª××™× ×™×¦×˜×¨×£ ×‘×§×¨×•×‘" if ui_language == "he" else "A MATCHED OPPONENT WILL APPEAR")
-	if not is_local_player and not opponent.is_empty():
-		detail = ("×“×™×¨×•×’: %d" if ui_language == "he" else "RATING: %d") % int(opponent.get("rating", 1000))
-	draw_string(ui_font, name_bar.position + Vector2(10.0, 54.0) * unit, detail, HORIZONTAL_ALIGNMENT_CENTER, name_bar.size.x - 20.0 * unit, int(11.0 * unit), Color("5f7180"))
-	var badge_center := rect.position + Vector2(24.0, 24.0) * unit
-	draw_circle(badge_center, 23.0 * unit, Color("ffe25d") if is_local_player else Color("59d7f0"))
-	var badge_value := str(player_level) if is_local_player else "?"
-	if not is_local_player and not opponent.is_empty():
-		badge_value = str(int(opponent.get("level", 1)))
-	draw_string(ui_font, badge_center + Vector2(-18.0, 7.0) * unit, badge_value, HORIZONTAL_ALIGNMENT_CENTER, 36.0 * unit, int(17.0 * unit), Color("173249"))
-
-func draw_arena_search_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_arena_tunnel_fx(viewport_size, 1.0 if arena_fx_phase == "searching" else 1.35)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.005, 0.035, 0.07, 0.70))
-	var header_title := "×ž×—×¤×©×™× ×™×¨×™×‘" if ui_language == "he" else "FINDING AN OPPONENT"
-	if arena_fx_phase == "found":
-		header_title = ui_text("match_found")
-	draw_frontend_header(viewport_size, header_title, "×–×™×¨×” ××•× ×œ×™×™×Ÿ" if ui_language == "he" else "ONLINE ARENA")
-	var card_size := Vector2(300.0, 390.0) * unit
-	var gap := 105.0 * unit
-	var total_width := card_size.x * 2.0 + gap
-	var start_x := (viewport_size.x - total_width) * 0.5
-	var card_y := 132.0 * unit
-	if arena_fx_phase == "found":
-		var snap := 1.0 - pow(1.0 - clampf(arena_fx_elapsed / 0.45, 0.0, 1.0), 3.0)
-		card_y = lerpf(180.0 * unit, 132.0 * unit, snap)
-	var local_card := Rect2(Vector2(start_x, card_y), card_size)
-	var opponent_card := Rect2(Vector2(start_x + card_size.x + gap, card_y), card_size)
-	var opponent_data := arena_matched_opponent if arena_fx_phase == "found" else {}
-	draw_matchmaking_card(local_card, true, unit)
-	draw_matchmaking_card(opponent_card, false, unit, opponent_data)
-	var vs_center := Vector2(viewport_size.x * 0.5, card_y + card_size.y * 0.48)
-	var vs_pulse := 62.0 + sin(menu_elapsed * 3.0) * 4.0
-	if arena_fx_phase == "found":
-		vs_pulse = 68.0 + sin(arena_fx_elapsed * 9.0) * 8.0
-	draw_circle(vs_center, vs_pulse * unit, Color(0.02, 0.08, 0.13, 0.92))
-	draw_circle(vs_center, 55.0 * unit, Color("7bdc1f") if arena_fx_phase != "found" else Color("ffe25d"), false, 7.0 * unit, true)
-	draw_string(ui_font, vs_center + Vector2(-58.0, 20.0) * unit, "VS", HORIZONTAL_ALIGNMENT_CENTER, 116.0 * unit, int(48.0 * unit), Color("b6f13f"))
-	var dots: String = [".", "..", "..."][int(menu_elapsed * 2.2) % 3]
-	var status_line := ("×ž×—×¤×©×™× ×™×¨×™×‘ ×ž×ª××™×" if ui_language == "he" else "SEARCHING FOR A MATCH") + dots
-	if arena_fx_phase == "found":
-		status_line = str(opponent_data.get("name", "")) + (" ×ž×•×›×Ÿ ×œ×§×¨×‘!" if ui_language == "he" else " is ready!")
-	draw_string(ui_font, Vector2(0.0, 566.0 * unit), status_line, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(22.0 * unit), Color("ffe25d"))
-	var arena_names := [ui_text("sakura"), ui_text("bamboo"), ui_text("volcano")]
-	draw_string(ui_font, Vector2(0.0, 598.0 * unit), ("×”×–×™×¨×” ×©× ×‘×—×¨×”: " if ui_language == "he" else "SELECTED ARENA: ") + arena_names[clampi(selected_arena, 0, 2)], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(14.0 * unit), Color("c9edf7"))
-	var cancel := arena_play_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.92), 18.0 * unit), cancel.grow(5.0 * unit))
-	draw_style_box(make_box(Color("d94b45"), 16.0 * unit), cancel)
-	draw_string(ui_font, cancel.position + Vector2(0.0, 38.0) * unit, ui_text("cancel_search"), HORIZONTAL_ALIGNMENT_CENTER, cancel.size.x, int(20.0 * unit), Color.WHITE)
-	draw_arena_match_found_flash(viewport_size)
-
-func draw_arena_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	if matchmaking_searching or arena_fx_phase == "found":
-		draw_arena_search_screen(viewport_size)
-		return
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.42))
-	draw_frontend_header(viewport_size, ui_text("arena_title"), ui_text("arena_title_sub"))
-	var names := [ui_text("sakura"), ui_text("bamboo"), ui_text("volcano")]
-	var entries := [0, 100, 500]
-	var prizes := [100, 250, 1200]
-	var card_colors := [Color("f08aac"), Color("62b55d"), Color("e65b36")]
-	for i in 3:
-		var card := arena_card_rect(i, viewport_size)
-		var selected := i == selected_arena
-		var pulse := sin(menu_elapsed * 4.2 + float(i) * 0.8) * 3.0 if selected else 0.0
-		var border: Color = Color("ffe25d") if selected else card_colors[i]
-		draw_style_box(make_box(Color(border.r, border.g, border.b, 0.16), 27.0 * unit), card.grow((8.0 + pulse if selected else 5.0) * unit))
-		draw_style_box(make_box(Color(0.018, 0.052, 0.11, 0.95), 22.0 * unit), card)
-		draw_rect(card, Color(border.r, border.g, border.b, 0.55), false, (3.0 if selected else 1.5) * unit, true)
-		if selected:
-			draw_style_box(make_box(Color("ffe25d", 0.18 + sin(menu_elapsed * 5.0) * 0.08), 24.0 * unit), card.grow(10.0 * unit))
-		var preview := Rect2(card.position + Vector2(15.0, 15.0) * unit, Vector2(card.size.x - 30.0 * unit, 205.0 * unit))
-		draw_style_box(make_box(card_colors[i], 17.0 * unit), preview.grow(3.0 * unit))
-		draw_arena_preview(preview, i, unit)
-		var title_rect := Rect2(card.position + Vector2(15.0, 232.0) * unit, Vector2(card.size.x - 30.0 * unit, 54.0 * unit))
-		draw_style_box(make_box(Color(card_colors[i].r, card_colors[i].g, card_colors[i].b, 0.32), 13.0 * unit), title_rect)
-		draw_string(ui_font, title_rect.position + Vector2(0.0, 36.0) * unit, names[i], HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, int(21.0 * unit), Color.WHITE)
-		var entry_text := ui_text("entry_free") if entries[i] == 0 else ui_text("entry") + str(entries[i]) + ui_text("coins")
-		draw_string(ui_font, card.position + Vector2(22.0, 325.0) * unit, entry_text, HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(15.0 * unit), Color("c8e8f5"))
-		draw_string(ui_font, card.position + Vector2(22.0, 363.0) * unit, ui_text("prize") + str(prizes[i]) + ui_text("coins"), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(17.0 * unit), Color("ffe25d"))
-		draw_string(ui_font, card.position + Vector2(22.0, 392.0) * unit, ui_text("arena_board_fixed") + ": " + board_theme_name(arena_board_theme_for_level(i)), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(13.0 * unit), Color("62dff5"))
-		if selected:
-			draw_string(ui_font, card.position + Vector2(0.0, 408.0) * unit, ui_text("selected"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(15.0 * unit), Color("16845b"))
-	var play := arena_play_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.90), 18.0 * unit), play.grow(5.0 * unit))
-	draw_style_box(make_box(Color("d49b2f") if matchmaking_searching else Color("6fda18"), 16.0 * unit), play)
-	draw_string(ui_font, play.position + Vector2(0.0, 38.0) * unit, ui_text("cancel_search") if matchmaking_searching else ui_text("find_match"), HORIZONTAL_ALIGNMENT_CENTER, play.size.x, int(20.0 * unit), Color.WHITE)
-	if matchmaking_searching:
-		draw_string(ui_font, Vector2(0.0, play.position.y - 28.0 * unit), ui_text("searching"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
-
-func draw_profile_stat_card(rect: Rect2, label: String, value: String, accent: Color, unit: float) -> void:
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.88), 17.0 * unit), rect.grow(3.0 * unit))
-	draw_style_box(make_box(Color("f4f1df"), 15.0 * unit), rect)
-	draw_circle(rect.position + Vector2(28.0 * unit, rect.size.y * 0.50), 14.0 * unit, accent)
-	draw_string(ui_font, rect.position + Vector2(53.0, 30.0) * unit, label, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 65.0 * unit, int(12.0 * unit), Color("607080"))
-	draw_string(ui_font, rect.position + Vector2(53.0, 62.0) * unit, value, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 65.0 * unit, int(24.0 * unit), Color("173249"))
-
-func draw_player_profile_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.48))
-	draw_frontend_header(viewport_size, ui_text("profile_title"), ui_text("profile_sub"))
-	var hero_panel := Rect2(Vector2(38.0, 102.0) * unit, Vector2(410.0, 570.0) * unit)
-	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.88), 27.0 * unit), hero_panel.grow(5.0 * unit))
-	draw_style_box(make_box(Color("48c4d1"), 24.0 * unit), hero_panel)
-	var glow_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 178.0 * unit)
-	draw_circle(glow_center, 145.0 * unit, Color(0.82, 0.98, 1.0, 0.28))
-	var podium_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 328.0 * unit)
-	draw_wood_podium(podium_center, unit * 0.66, false)
-	var hero_texture: Texture2D = null
-	if player_animal < lifebuoy_hero_textures.size():
-		var hero_colors: Array = lifebuoy_hero_textures[player_animal]
-		if player_ring_color < hero_colors.size():
-			hero_texture = hero_colors[player_ring_color] as Texture2D
-	if hero_texture != null:
-		var hero_size := Vector2(220.0, 286.0) * unit
-		var ground_offset: float = hero_size.y * float(HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)])
-		var hero_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 186.0 * unit + ground_offset)
-		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
-	draw_string(ui_font, hero_panel.position + Vector2(0.0, 382.0) * unit, ui_text("main_character"), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x, int(12.0 * unit), Color("d8f8ff"))
-	draw_string(ui_font, hero_panel.position + Vector2(0.0, 411.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x, int(22.0 * unit), Color.WHITE)
-	draw_string(ui_font, hero_panel.position + Vector2(22.0, 451.0) * unit, ui_text("choose_main"), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x - 44.0 * unit, int(12.0 * unit), Color("173249"))
-	for i in ANIMAL_NAMES.size():
-		var animal_rect := player_profile_animal_rect(i, viewport_size)
-		var animal_selected := i == player_animal
-		draw_style_box(make_box(Color("ffe25d") if animal_selected else Color("244d70"), 13.0 * unit), animal_rect.grow((4.0 if animal_selected else 2.0) * unit))
-		draw_style_box(make_box(Color("e9f9f4"), 11.0 * unit), animal_rect)
-		if i < full_body_animal_textures.size() and full_body_animal_textures[i] != null:
-			draw_texture_rect(full_body_animal_textures[i], animal_rect.grow(-5.0 * unit), false)
-		draw_collection_lock_overlay(animal_rect, i, false, unit)
-	draw_string(ui_font, hero_panel.position + Vector2(22.0, 506.0) * unit, ui_text("favorite_color"), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x - 44.0 * unit, int(12.0 * unit), Color("173249"))
-	for i in RING_COLORS.size():
-		var color_rect := player_profile_color_rect(i, viewport_size)
-		var color_center := color_rect.get_center()
-		if i == player_ring_color:
-			draw_circle(color_center, 25.0 * unit, Color.WHITE)
-			draw_circle(color_center, 21.0 * unit, Color("ffe25d"))
-		draw_circle(color_center, 17.0 * unit, RING_COLORS[i])
-		draw_collection_lock_overlay(color_rect, i, true, unit)
-
-	var info_panel := Rect2(Vector2(474.0, 102.0) * unit, Vector2(768.0, 570.0) * unit)
-	draw_style_box(make_box(Color(0.02, 0.08, 0.14, 0.92), 27.0 * unit), info_panel.grow(5.0 * unit))
-	draw_style_box(make_box(Color("eaf8f1"), 24.0 * unit), info_panel)
-	draw_circle(info_panel.position + Vector2(66.0, 69.0) * unit, 45.0 * unit, Color("6965d8"))
-	draw_string(ui_font, info_panel.position + Vector2(21.0, 84.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(42.0 * unit), Color.WHITE)
-	draw_string(ui_font, info_panel.position + Vector2(130.0, 32.0) * unit, "×©× ×”×©×—×§×Ÿ" if ui_language == "he" else "PLAYER NAME", HORIZONTAL_ALIGNMENT_LEFT, 350.0 * unit, int(13.0 * unit), Color("2982a6"))
-	var coin_box := Rect2(info_panel.position + Vector2(558.0, 27.0) * unit, Vector2(176.0, 74.0) * unit)
-	draw_style_box(make_box(Color("253e67"), 17.0 * unit), coin_box)
-	draw_circle(coin_box.position + Vector2(35.0, 37.0) * unit, 17.0 * unit, Color("ffc83d"))
-	draw_string(ui_font, coin_box.position + Vector2(65.0, 47.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 95.0 * unit, int(22.0 * unit), Color.WHITE)
-	var xp_rect := Rect2(info_panel.position + Vector2(130.0, 104.0) * unit, Vector2(400.0, 20.0) * unit)
-	draw_style_box(make_box(Color("cadbd5"), 9.0 * unit), xp_rect)
-	var xp_ratio := clampf(float(player_xp) / float(maxi(1, player_next_level_xp)), 0.0, 1.0)
-	draw_style_box(make_box(Color("49c984"), 9.0 * unit), Rect2(xp_rect.position, Vector2(xp_rect.size.x * xp_ratio, xp_rect.size.y)))
-	draw_string(ui_font, info_panel.position + Vector2(545.0, 121.0) * unit, str(player_xp) + " / " + str(player_next_level_xp) + " XP", HORIZONTAL_ALIGNMENT_LEFT, 170.0 * unit, int(11.0 * unit), Color("526b72"))
-	var account_type := ("Google: " + firebase_email) if firebase_provider == "google" else ("×—×©×‘×•×Ÿ ××•×¨×—" if ui_language == "he" else "GUEST ACCOUNT")
-	draw_string(ui_font, info_panel.position + Vector2(130.0, 148.0) * unit, account_type + " â€¢ " + firebase_status + " â€¢ " + CLIENT_VERSION, HORIZONTAL_ALIGNMENT_LEFT, 585.0 * unit, int(14.0 * unit), Color("2982a6"))
-	draw_string(ui_font, info_panel.position + Vector2(30.0, 165.0) * unit, ui_text("career"), HORIZONTAL_ALIGNMENT_CENTER, info_panel.size.x - 60.0 * unit, int(20.0 * unit), Color("173249"))
-	var total_matches := player_wins + player_losses
-	var win_rate := 0
-	if total_matches > 0:
-		win_rate = int(round(float(player_wins) * 100.0 / float(total_matches)))
-	var labels := [ui_text("matches"), ui_text("wins"), ui_text("losses"), ui_text("win_rate"), ui_text("best_streak"), ui_text("world_rank")]
-	var rank_value := ("â€”" if player_world_rank <= 0 else "#" + str(player_world_rank)) if player_wins + player_losses > 0 else str(player_rating)
-	var values := [str(total_matches), str(player_wins), str(player_losses), str(win_rate) + "%", str(player_best_streak), rank_value]
-	var accents := [Color("42b8e8"), Color("49c984"), Color("ef6b65"), Color("ffc83d"), Color("9d59e8"), Color("ff8b3d")]
-	for i in 6:
-		var column := i % 2
-		var row := i / 2
-		var stat_rect := Rect2(info_panel.position + Vector2(30.0 + float(column) * 354.0, 190.0 + float(row) * 112.0) * unit, Vector2(330.0, 88.0) * unit)
-		draw_profile_stat_card(stat_rect, labels[i], values[i], accents[i], unit)
-	var id_box := Rect2(info_panel.position + Vector2(30.0, 518.0) * unit, Vector2(350.0, 42.0) * unit)
-	draw_style_box(make_box(Color("d8eee8"), 12.0 * unit), id_box)
-	var pending_id := "×ž×ª×—×‘×¨..." if ui_language == "he" else "CONNECTING..."
-	var account_id_text := ("×ž×–×”×” ××™×©×™: " if ui_language == "he" else "PLAYER ID: ") + (firebase_public_id if not firebase_public_id.is_empty() else pending_id)
-	draw_string(ui_font, id_box.position + Vector2(16.0, 29.0) * unit, account_id_text, HORIZONTAL_ALIGNMENT_LEFT, id_box.size.x - 32.0 * unit, int(18.0 * unit), Color("173249"))
-	var google_rect := player_google_rect(viewport_size)
-	var google_connected := firebase_provider == "google"
-	draw_style_box(make_box(Color("4c9a68") if google_connected else Color("4285f4"), 12.0 * unit), google_rect)
-	var google_label := ("Google ×ž×—×•×‘×¨" if ui_language == "he" else "GOOGLE LINKED") if google_connected else ("×—×™×‘×•×¨ Google" if ui_language == "he" else "CONNECT GOOGLE")
-	draw_string(ui_font, google_rect.position + Vector2(0.0, 29.0) * unit, google_label, HORIZONTAL_ALIGNMENT_CENTER, google_rect.size.x, int(15.0 * unit), Color.WHITE)
-	var copy_rect := player_id_copy_rect(viewport_size)
-	draw_style_box(make_box(Color("2982a6") if not firebase_public_id.is_empty() else Color("70858d"), 12.0 * unit), copy_rect)
-	draw_string(ui_font, copy_rect.position + Vector2(0.0, 29.0) * unit, "×”×¢×ª×§×”" if ui_language == "he" else "COPY ID", HORIZONTAL_ALIGNMENT_CENTER, copy_rect.size.x, int(16.0 * unit), Color.WHITE)
-
-func draw_home_social_panel(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var panel := home_social_panel_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.13, 0.93), 22.0 * unit), panel.grow(5.0 * unit))
-	draw_style_box(make_box(Color(0.04, 0.12, 0.20, 0.97), 20.0 * unit), panel)
-	draw_string(ui_font, panel.position + Vector2(0.0, 34.0) * unit, ui_text("social_hub"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(18.0 * unit), Color("f6d365"))
-	for tab in 3:
-		var tab_rect := home_social_tab_rect(tab, viewport_size)
-		var selected := tab == home_social_tab
-		draw_style_box(make_box(Color("315fd0") if selected else Color("1d405b"), 14.0 * unit), tab_rect)
-		var tab_label := ui_text("friends_tab")
-		if tab == 1:
-			tab_label = ui_text("chat_tab")
-		elif tab == 2:
-			tab_label = ui_text("league_tab")
-		draw_string(ui_font, tab_rect.position + Vector2(0.0, 26.0) * unit, tab_label, HORIZONTAL_ALIGNMENT_CENTER, tab_rect.size.x, int(13.0 * unit), Color.WHITE)
-	if home_social_tab == 0:
-		var incoming_count := mini(2, incoming_friend_requests.size())
-		if incoming_count > 0:
-			draw_string(ui_font, panel.position + Vector2(0.0, 84.0) * unit, ui_text("friend_requests_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(12.0 * unit), Color("ffe25d"))
-		for i in incoming_count:
-			var request_row := home_incoming_request_rect(i, viewport_size)
-			var request_entry: Dictionary = incoming_friend_requests[i]
-			var request_name := friend_request_display_name(request_entry)
-			draw_style_box(make_box(Color("2a4560"), 12.0 * unit), request_row)
-			draw_circle(request_row.position + Vector2(22.0, 24.0) * unit, 14.0 * unit, Color("ffe25d"))
-			draw_string(ui_font, request_row.position + Vector2(14.0, 30.0) * unit, request_name.substr(0, 1), HORIZONTAL_ALIGNMENT_CENTER, 16.0 * unit, int(14.0 * unit), Color("173249"))
-			draw_string(ui_font, request_row.position + Vector2(42.0, 20.0) * unit, request_name, HORIZONTAL_ALIGNMENT_LEFT, request_row.size.x - 170.0 * unit, int(13.0 * unit), Color.WHITE)
-			draw_string(ui_font, request_row.position + Vector2(42.0, 36.0) * unit, str(request_entry.get("id", "")), HORIZONTAL_ALIGNMENT_LEFT, request_row.size.x - 170.0 * unit, int(9.0 * unit), Color("8cecff"))
-			var accept_rect := home_incoming_accept_rect(i, viewport_size)
-			var decline_rect := home_incoming_decline_rect(i, viewport_size)
-			draw_style_box(make_box(Color("35b96f"), 10.0 * unit), accept_rect)
-			draw_style_box(make_box(Color("e94f78"), 10.0 * unit), decline_rect)
-			draw_string(ui_font, accept_rect.position + Vector2(0.0, 22.0) * unit, ui_text("friend_request_accept"), HORIZONTAL_ALIGNMENT_CENTER, accept_rect.size.x, int(11.0 * unit), Color.WHITE)
-			draw_string(ui_font, decline_rect.position + Vector2(0.0, 22.0) * unit, ui_text("friend_request_decline"), HORIZONTAL_ALIGNMENT_CENTER, decline_rect.size.x, int(11.0 * unit), Color.WHITE)
-		var visible_count := mini(3, friends_list.size())
-		if visible_count == 0 and incoming_count == 0 and outgoing_friend_requests.is_empty():
-			draw_string(ui_font, panel.position + Vector2(0.0, 170.0) * unit, ui_text("no_friends"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 20.0 * unit, int(14.0 * unit), Color("8cecff"))
-		for i in visible_count:
-			var row := home_friend_row_rect(i, viewport_size)
-			var friend_entry: Dictionary = friends_list[i]
-			var display_name := friend_display_name(friend_entry)
-			var is_online := bool(friend_entry.get("online", false))
-			var selected := i == home_friend_profile_index
-			draw_style_box(make_box(Color("244d70") if selected else Color("173249"), 14.0 * unit), row)
-			draw_circle(row.position + Vector2(24.0, 26.0) * unit, 16.0 * unit, Color("35b96f") if is_online else Color("ef6b65"))
-			draw_circle(row.position + Vector2(24.0, 26.0) * unit, 6.0 * unit, Color.WHITE if is_online else Color("ffd0d0"))
-			var initial := display_name.substr(0, 1)
-			draw_string(ui_font, row.position + Vector2(16.0, 32.0) * unit, initial, HORIZONTAL_ALIGNMENT_CENTER, 16.0 * unit, int(16.0 * unit), Color.WHITE)
-			draw_string(ui_font, row.position + Vector2(48.0, 22.0) * unit, display_name, HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 150.0 * unit, int(15.0 * unit), Color.WHITE)
-			var status_text := ui_text("friend_online") if is_online else ui_text("friend_offline")
-			draw_string(ui_font, row.position + Vector2(48.0, 40.0) * unit, status_text, HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 150.0 * unit, int(10.0 * unit), Color("35b96f") if is_online else Color("ef6b65"))
-			var invite_rect := home_friend_invite_rect(i, viewport_size)
-			draw_style_box(make_box(Color("35b96f") if is_online else Color("5a6675"), 10.0 * unit), invite_rect)
-			draw_string(ui_font, invite_rect.position + Vector2(0.0, 22.0) * unit, ui_text("invite_friend"), HORIZONTAL_ALIGNMENT_CENTER, invite_rect.size.x, int(12.0 * unit), Color.WHITE)
-		if not outgoing_friend_requests.is_empty():
-			var pending_y := home_friends_content_top(viewport_size) + float(mini(3, friends_list.size())) * 58.0 * unit + 6.0 * unit
-			draw_string(ui_font, panel.position + Vector2(18.0 * unit, pending_y), ui_text("friend_request_pending") + " (" + str(outgoing_friend_requests.size()) + ")", HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 36.0 * unit, int(11.0 * unit), Color("ffe25d"))
-		draw_style_box(make_box(Color("10283b"), 12.0 * unit), home_add_friend_rect(viewport_size))
-		draw_style_box(make_box(Color("7655df"), 14.0 * unit), home_add_friend_button_rect(viewport_size))
-		draw_string(ui_font, home_add_friend_button_rect(viewport_size).position + Vector2(0.0, 24.0) * unit, ui_text("add_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_add_friend_button_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
-	elif home_social_tab == 1:
-		draw_string(ui_font, panel.position + Vector2(0.0, 72.0) * unit, ui_text("lobby_chat_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(14.0 * unit), Color("a9cde2"))
-		var first_index: int = maxi(0, lobby_chat_messages.size() - 7)
-		var row := 0
-		for i in range(first_index, lobby_chat_messages.size()):
-			var message: Dictionary = lobby_chat_messages[i]
-			var line := str(message.get("name", "")) + ": " + str(message.get("message", ""))
-			draw_string(ui_font, panel.position + Vector2(18.0 * unit, 104.0 * unit + row * 34.0 * unit), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 36.0 * unit, int(14.0 * unit), Color("d7f6ff"))
-			row += 1
-		var input_bg := Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 118.0 * unit, 36.0 * unit))
-		draw_style_box(make_box(Color("10283b"), 12.0 * unit), input_bg)
-		draw_style_box(make_box(Color("12a96b"), 12.0 * unit), home_lobby_send_rect(viewport_size))
-		draw_string(ui_font, home_lobby_send_rect(viewport_size).position + Vector2(0.0, 24.0) * unit, "×©×œ×™×—×”" if ui_language == "he" else "SEND", HORIZONTAL_ALIGNMENT_CENTER, home_lobby_send_rect(viewport_size).size.x, int(14.0 * unit), Color.WHITE)
-	else:
-		draw_string(ui_font, panel.position + Vector2(0.0, 72.0) * unit, ui_text("leaderboard_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(14.0 * unit), Color("a9cde2"))
-		var league_rect := Rect2(panel.position + Vector2(14.0 * unit, 88.0 * unit), Vector2(panel.size.x - 28.0 * unit, 52.0 * unit))
-		draw_style_box(make_box(league_color(player_league_tier), 14.0 * unit), league_rect)
-		draw_string(ui_font, league_rect.position + Vector2(14.0, 22.0) * unit, league_name(player_league_tier), HORIZONTAL_ALIGNMENT_LEFT, league_rect.size.x - 28.0 * unit, int(16.0 * unit), Color.WHITE)
-		draw_string(ui_font, league_rect.position + Vector2(14.0, 42.0) * unit, ui_text("rating_label") + ": " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, league_rect.size.x - 28.0 * unit, int(12.0 * unit), Color("173249"))
-		var board_count := mini(5, global_leaderboard.size())
-		if board_count == 0:
-			draw_string(ui_font, panel.position + Vector2(0.0, 210.0) * unit, "..." if ui_language == "he" else "Loading rankings...", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(13.0 * unit), Color("8cecff"))
-		for i in board_count:
-			var entry: Dictionary = global_leaderboard[i]
-			var row_y := 154.0 + float(i) * 46.0
-			var row := Rect2(panel.position + Vector2(14.0 * unit, row_y * unit), Vector2(panel.size.x - 28.0 * unit, 40.0 * unit))
-			var is_me := str(entry.get("publicId", "")) == firebase_public_id
-			draw_style_box(make_box(Color("ffe6a8") if is_me else Color("173249"), 12.0 * unit), row)
-			var row_color := Color("173249") if is_me else Color.WHITE
-			draw_string(ui_font, row.position + Vector2(10.0, 26.0) * unit, "#" + str(entry.get("rank", i + 1)) + " " + str(entry.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 90.0 * unit, int(13.0 * unit), row_color)
-			draw_string(ui_font, row.position + Vector2(row.size.x - 72.0 * unit, 26.0) * unit, str(entry.get("rating", 0)), HORIZONTAL_ALIGNMENT_CENTER, 62.0 * unit, int(13.0 * unit), row_color)
-
-func draw_home_friend_profile(viewport_size: Vector2) -> void:
-	if home_friend_profile_index < 0 or home_friend_profile_index >= friends_list.size():
-		return
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.72))
-	var modal := home_friend_profile_modal_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.13, 0.96), 24.0 * unit), modal.grow(6.0 * unit))
-	draw_style_box(make_box(Color("eaf8f1"), 22.0 * unit), modal)
-	draw_string(ui_font, modal.position + Vector2(0.0, 34.0) * unit, ui_text("friend_profile_title"), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(18.0 * unit), Color("173249"))
-	draw_string(ui_font, home_friend_profile_close_rect(viewport_size).position + Vector2(0.0, 24.0) * unit, "Ã—", HORIZONTAL_ALIGNMENT_CENTER, home_friend_profile_close_rect(viewport_size).size.x, int(22.0 * unit), Color("607080"))
-	var friend_entry: Dictionary = friends_list[home_friend_profile_index]
-	var display_name := friend_display_name(friend_entry)
-	var avatar_center := modal.position + Vector2(modal.size.x * 0.5, 92.0 * unit)
-	draw_circle(avatar_center, 34.0 * unit, Color("6965d8"))
-	draw_string(ui_font, avatar_center + Vector2(-18.0, 12.0) * unit, display_name.substr(0, 1), HORIZONTAL_ALIGNMENT_CENTER, 36.0 * unit, int(28.0 * unit), Color.WHITE)
-	draw_string(ui_font, modal.position + Vector2(0.0, 148.0) * unit, display_name, HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(22.0 * unit), Color("173249"))
-	draw_string(ui_font, modal.position + Vector2(0.0, 174.0) * unit, str(friend_entry.get("id", "")), HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(12.0 * unit), Color("527184"))
-	var online_text := ui_text("friend_online") if bool(friend_entry.get("online", false)) else ui_text("friend_offline")
-	var online_color := Color("35b96f") if bool(friend_entry.get("online", false)) else Color("ef6b65")
-	draw_string(ui_font, modal.position + Vector2(0.0, 198.0) * unit, online_text, HORIZONTAL_ALIGNMENT_CENTER, modal.size.x, int(13.0 * unit), online_color)
-	var stats := Rect2(modal.position + Vector2(24.0 * unit, 214.0 * unit), Vector2(modal.size.x - 48.0 * unit, 72.0 * unit))
-	draw_style_box(make_box(Color("d8f2fb"), 14.0 * unit), stats)
-	draw_string(ui_font, stats.position + Vector2(14.0, 24.0) * unit, league_name(int(friend_entry.get("leagueTier", 0))), HORIZONTAL_ALIGNMENT_LEFT, stats.size.x - 28.0 * unit, int(14.0 * unit), Color("173249"))
-	draw_string(ui_font, stats.position + Vector2(14.0, 44.0) * unit, ui_text("rating_label") + ": " + str(friend_entry.get("rating", 1000)), HORIZONTAL_ALIGNMENT_LEFT, stats.size.x - 28.0 * unit, int(12.0 * unit), Color("527184"))
-	draw_string(ui_font, stats.position + Vector2(14.0, 62.0) * unit, ui_text("wins") + ": " + str(friend_entry.get("wins", 0)) + "  " + ui_text("losses") + ": " + str(friend_entry.get("losses", 0)), HORIZONTAL_ALIGNMENT_LEFT, stats.size.x - 28.0 * unit, int(12.0 * unit), Color("527184"))
-	var invite_rect := home_friend_profile_invite_rect(viewport_size)
-	var can_invite := bool(friend_entry.get("online", false))
-	draw_style_box(make_box(Color("35b96f") if can_invite else Color("5a6675"), 12.0 * unit), invite_rect)
-	draw_string(ui_font, invite_rect.position + Vector2(0.0, 26.0) * unit, ui_text("invite_friend"), HORIZONTAL_ALIGNMENT_CENTER, invite_rect.size.x, int(14.0 * unit), Color.WHITE)
-	draw_style_box(make_box(Color("e94f78"), 12.0 * unit), home_friend_profile_remove_rect(viewport_size))
-	draw_string(ui_font, home_friend_profile_remove_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, ui_text("remove_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_friend_profile_remove_rect(viewport_size).size.x, int(14.0 * unit), Color.WHITE)
-
-func draw_portal_world_home(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_texture_rect(floating_portals_home_texture, Rect2(Vector2.ZERO, viewport_size), false)
-	# Depth and motion are rendered separately from the artwork so the world
-	# remains alive even though the environment itself is a single optimized image.
-	var sky_tint := 0.025 + sin(menu_elapsed * 0.65) * 0.012
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.08, 0.22, sky_tint))
-	for spark in 18:
-		var phase := menu_elapsed * (0.32 + float(spark % 4) * 0.07) + float(spark) * 1.71
-		var spark_pos := Vector2(fmod(phase * 83.0, viewport_size.x), 105.0 * unit + fmod(float(spark * 67), 420.0) * unit)
-		draw_circle(spark_pos, (1.5 + float(spark % 3)) * unit, Color(0.72, 0.94, 1.0, 0.28 + sin(phase * 2.0) * 0.12))
-
-	# Top-left identity and top-right economy remain readable without covering portals.
-	var profile := home_profile_rect(viewport_size)
-	draw_style_box(make_box(Color(0.015, 0.045, 0.12, 0.91), 20.0 * unit), profile)
-	draw_rect(profile, Color(0.38, 0.80, 1.0, 0.55), false, 2.0 * unit, true)
-	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, Color("496ce7"))
-	draw_string(ui_font, profile.position + Vector2(7.0, 38.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(24.0 * unit), Color.WHITE)
-	draw_string(ui_font, profile.position + Vector2(65.0, 27.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(18.0 * unit), Color.WHITE)
-	draw_string(ui_font, profile.position + Vector2(65.0, 47.0) * unit, player_level_label(), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("79e6ff"))
-
-	var coin := home_coin_rect(viewport_size)
-	var gems := home_gems_rect(viewport_size)
-	for resource_rect in [coin, gems]:
-		draw_style_box(make_box(Color(0.012, 0.04, 0.105, 0.92), 18.0 * unit), resource_rect)
-		draw_rect(resource_rect, Color(0.50, 0.72, 1.0, 0.34), false, 1.5 * unit, true)
-	draw_circle(coin.position + Vector2(28.0, 27.0) * unit, 15.0 * unit, Color("ffd34e"))
-	draw_string(ui_font, coin.position + Vector2(52.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, coin.size.x - 58.0 * unit, int(19.0 * unit), Color.WHITE)
-	var gem_center := gems.position + Vector2(27.0, 27.0) * unit
-	draw_colored_polygon(PackedVector2Array([gem_center + Vector2(0,-15)*unit, gem_center + Vector2(13,-3)*unit, gem_center + Vector2(8,14)*unit, gem_center + Vector2(-8,14)*unit, gem_center + Vector2(-13,-3)*unit]), Color("58e8ff"))
-	draw_string(ui_font, gems.position + Vector2(50.0, 35.0) * unit, "0", HORIZONTAL_ALIGNMENT_LEFT, gems.size.x - 54.0 * unit, int(19.0 * unit), Color.WHITE)
-	for control_data in [[home_settings_rect(viewport_size), "âš™"], [home_help_rect(viewport_size), "?"], [home_sound_toggle_rect(viewport_size), "â™ª"]]:
-		var control_rect: Rect2 = control_data[0]
-		draw_style_box(make_box(Color(0.015, 0.045, 0.12, 0.92), 17.0 * unit), control_rect)
-		draw_string(ui_font, control_rect.position + Vector2(0.0, 36.0) * unit, control_data[1], HORIZONTAL_ALIGNMENT_CENTER, control_rect.size.x, int(19.0 * unit), Color.WHITE)
-
-	# The selected animal physically inhabits the portal world.
-	var hero_rect := home_character_rect(viewport_size)
-	var hero_texture: Texture2D = null
-	if player_animal < lifebuoy_hero_textures.size() and player_ring_color < lifebuoy_hero_textures[player_animal].size():
-		hero_texture = lifebuoy_hero_textures[player_animal][player_ring_color] as Texture2D
-	if hero_texture != null:
-		var float_y := sin(menu_elapsed * 1.8) * 2.0 * unit
-		draw_circle(hero_rect.position + Vector2(hero_rect.size.x * 0.5, hero_rect.size.y * 0.89), 54.0 * unit, Color(0.15, 0.72, 1.0, 0.22))
-		draw_texture_rect(hero_texture, Rect2(hero_rect.position + Vector2(0.0, float_y), hero_rect.size), false)
-
-	var portal_titles := ["×–×™×¨×” ×ª×—×¨×•×ª×™×ª", "×§×¨×‘ ×¢× ×—×‘×¨", "×§×¨×‘ ×ž×”×™×¨"] if ui_language == "he" else ["RANKED ARENA", "FRIEND BATTLE", "QUICK BATTLE"]
-	var accents := [Color("ffbf42"), Color("a879ff"), Color("47dcff")]
-	for mode in 3:
-		var mode_rect := home_mode_rect(mode, viewport_size)
-		var pulse := (sin(menu_elapsed * 3.2 + float(mode)) + 1.0) * 0.5
-		draw_style_box(make_box(Color(accents[mode].r, accents[mode].g, accents[mode].b, 0.15 + pulse * 0.08), 23.0 * unit), mode_rect.grow((5.0 + pulse * 3.0) * unit))
-		draw_style_box(make_box(Color(0.018, 0.055, 0.14, 0.94), 19.0 * unit), mode_rect)
-		draw_rect(mode_rect, Color(accents[mode].r, accents[mode].g, accents[mode].b, 0.82), false, 3.0 * unit, true)
-		draw_string(ui_font, mode_rect.position + Vector2(0.0, mode_rect.size.y * 0.62), portal_titles[mode], HORIZONTAL_ALIGNMENT_CENTER, mode_rect.size.x, int((25.0 if mode == 2 else 20.0) * unit), Color.WHITE)
-
-	var dock := Rect2(Vector2(330.0, 625.0) * unit, Vector2(620.0, 86.0) * unit)
-	draw_style_box(make_box(Color(0.008, 0.028, 0.075, 0.94), 31.0 * unit), dock)
-	draw_rect(dock, Color(0.37, 0.66, 1.0, 0.35), false, 2.0 * unit, true)
-	var nav_labels := [ui_text("shop"), ui_text("rewards")]
-	for i in 2:
-		var nav := home_nav_rect(i, viewport_size)
-		draw_home_nav_icon(i, nav.position + Vector2(30.0, 31.0) * unit, unit)
-		draw_string(ui_font, nav.position + Vector2(52.0, 39.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_LEFT, nav.size.x - 58.0 * unit, int(16.0 * unit), Color.WHITE)
-	draw_pending_invite_banner(viewport_size)
-	draw_tutorial_overlay(viewport_size)
-
-func draw_home_screen(viewport_size: Vector2) -> void:
-	if floating_portals_home_texture != null:
-		draw_portal_world_home(viewport_size)
-		return
-	var layout := home_layout(viewport_size)
-	var unit: float = layout.unit
-	draw_home_ambient_effects(viewport_size)
-	draw_modern_home_backdrop(viewport_size, layout)
-	draw_rect(Rect2(0.0, 0.0, viewport_size.x, layout.header_h), Color(0.008, 0.025, 0.065, 0.88))
-	draw_rect(Rect2(0.0, layout.header_h - 2.0 * unit, viewport_size.x, 2.0 * unit), Color("46dcff", 0.72))
-	var left_bg_w: float = layout.left_x + layout.left_w + 10.0 * unit
-	draw_rect(Rect2(0.0, layout.header_h, left_bg_w, viewport_size.y - layout.header_h), Color(0.01, 0.05, 0.10, 0.20))
-	var stats_strip := home_stats_rect(viewport_size)
-	draw_glass_card(stats_strip, Color("45dcff"), unit, false)
-	draw_string(ui_font, stats_strip.position + Vector2(12.0, 22.0) * unit, ("× ×™×¦×—×•× ×•×ª: %d" if ui_language == "he" else "WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(13.0 * unit), Color.WHITE)
-	draw_string(ui_font, stats_strip.position + Vector2(12.0, 40.0) * unit, ("×¨×¦×£: %d" if ui_language == "he" else "STREAK: %d") % player_current_streak, HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(12.0 * unit), Color("8cecff"))
-	draw_string(ui_font, stats_strip.position + Vector2(12.0, 54.0) * unit, league_name(player_league_tier) + " â€¢ " + str(player_rating), HORIZONTAL_ALIGNMENT_LEFT, stats_strip.size.x - 16.0 * unit, int(11.0 * unit), Color("ffe25d"))
-
-	# Full-body hero with the selected lifebuoy wrapped around its waist.
-	var character_area := home_character_rect(viewport_size)
-	var idle_phase := menu_elapsed * 1.55
-	var hero_spot := character_area.position + Vector2(character_area.size.x * 0.5, character_area.size.y * 0.48)
-	for halo in range(5, 0, -1):
-		var halo_radius := (54.0 + float(halo) * 29.0) * unit
-		draw_circle(hero_spot, halo_radius, Color(0.22, 0.78, 1.0, 0.018 * float(6 - halo)))
-	draw_string(ui_font, character_area.position + Vector2(0.0, 27.0 * unit), "×ž×•×›×Ÿ ×œ×§×¨×‘" if ui_language == "he" else "READY FOR BATTLE", HORIZONTAL_ALIGNMENT_CENTER, character_area.size.x, int(17.0 * unit), Color("8cecff"))
-	# Keep the soles slightly inside the visible top plane so the idle motion
-	# never makes the animal appear to float above the wooden stage.
-	var hero_size := character_area.size
-	var ground_offset: float = hero_size.y * float(HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)])
-	var hero_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.425 + 12.0 * unit + ground_offset)
-	var breathe := 1.0 + sin(idle_phase) * 0.006
-	# Keep only a tiny idle movement so the feet stay planted on the stage.
-	var gentle_float := sin(idle_phase * 0.72) * 0.45 * unit
-	var animated_center := hero_center + Vector2(0.0, gentle_float)
-	var waist_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.58 + gentle_float)
-	var ring_radius := 96.0 * unit
-	var ring_width := 42.0 * unit
-	var ring_color: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)]
-	var hand_color: Color = HERO_HAND_COLORS[clampi(player_animal, 0, HERO_HAND_COLORS.size() - 1)]
-	var podium_center := character_area.position + Vector2(character_area.size.x * 0.50, character_area.size.y * 0.94)
-	draw_wood_podium(podium_center, unit, true)
-	var integrated_hero: Texture2D = null
-	if player_animal >= 0 and player_animal < lifebuoy_hero_textures.size():
-		var hero_colors: Array = lifebuoy_hero_textures[player_animal]
-		if player_ring_color >= 0 and player_ring_color < hero_colors.size():
-			integrated_hero = hero_colors[player_ring_color] as Texture2D
-	if integrated_hero != null:
-		# This sprite contains the real pose: both arms reach the tube and both
-		# hands curl over it. Every animal and ring color has a dedicated asset.
-		draw_set_transform(animated_center, 0.0, Vector2.ONE * breathe)
-		draw_texture_rect(integrated_hero, Rect2(-hero_size * 0.5, hero_size), false)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	else:
-		# Back half of the buoy sits behind the torso.
-		draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
-		draw_arc(Vector2.ZERO, ring_radius, PI, TAU, 32, ring_color, ring_width, true)
-		draw_arc(Vector2.ZERO, ring_radius, PI + 0.18, PI + 0.60, 10, Color("fff4dc"), ring_width, true)
-		draw_arc(Vector2.ZERO, ring_radius, TAU - 0.60, TAU - 0.18, 10, Color("fff4dc"), ring_width, true)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		if player_animal >= 0 and player_animal < full_body_animal_textures.size() and full_body_animal_textures[player_animal] != null:
-			draw_set_transform(animated_center, 0.0, Vector2.ONE * breathe)
-			draw_texture_rect(full_body_animal_textures[player_animal], Rect2(-hero_size * 0.5, hero_size), false)
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		# Front half passes in front of the waist, making it clear the hero is inside the buoy.
-		draw_set_transform(waist_center, 0.0, Vector2(1.0, 0.62))
-		draw_arc(Vector2.ZERO, ring_radius, 0.0, PI, 32, ring_color, ring_width, true)
-		draw_arc(Vector2.ZERO, ring_radius, 0.18, 0.60, 10, Color("fff4dc"), ring_width, true)
-		draw_arc(Vector2.ZERO, ring_radius, PI - 0.60, PI - 0.18, 10, Color("fff4dc"), ring_width, true)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		# Fallback grip marks for combinations that do not yet have a dedicated pose.
-		for grip_side in [-1.0, 1.0]:
-			var grip_center := waist_center + Vector2(grip_side * ring_radius * 0.72, -ring_radius * 0.18)
-			draw_set_transform(grip_center, grip_side * 0.10, Vector2(0.82, 1.16))
-			draw_circle(Vector2.ZERO, 20.0 * unit, Color("182431"))
-			draw_circle(Vector2.ZERO, 15.5 * unit, hand_color)
-			draw_arc(Vector2(0.0, 2.0 * unit), 8.0 * unit, 0.18, PI - 0.18, 12, hand_color.lightened(0.24), 2.4 * unit, true)
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# The character itself remains tappable; the left CHARACTERS button is the
-	# explicit entry point, so no label is allowed to cover the podium artwork.
-
-	# Top HUD: player identity on the left, currencies and settings on the right.
-	var settings := home_settings_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), settings.grow(4.0))
-	draw_style_box(make_box(Color("486889"), 16.0), settings)
-	draw_circle(settings.get_center(), 18.0 * unit, Color("d8f5ff"), false, 3.0 * unit, true)
-	draw_string(ui_font, settings.position + Vector2(0.0, 35.0) * unit, "HE" if ui_language == "he" else "EN", HORIZONTAL_ALIGNMENT_CENTER, settings.size.x, int(14.0 * unit), Color.WHITE)
-	var sound_toggle := home_sound_toggle_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), sound_toggle.grow(4.0))
-	draw_style_box(make_box(Color("35b96f") if sound_enabled else Color("5a6675"), 16.0), sound_toggle)
-	draw_string(ui_font, sound_toggle.position + Vector2(0.0, 35.0) * unit, "â™ª" if sound_enabled else "Ã—", HORIZONTAL_ALIGNMENT_CENTER, sound_toggle.size.x, int(18.0 * unit), Color.WHITE)
-	var coin_rect := home_coin_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), coin_rect.grow(4.0))
-	draw_style_box(make_box(Color("253e67"), 16.0), coin_rect)
-	draw_circle(coin_rect.position + Vector2(29.0, 27.0) * unit, 15.0 * unit, Color("ffc83d"))
-	draw_circle(coin_rect.position + Vector2(29.0, 27.0) * unit, 9.0 * unit, Color("e9971b"), false, 3.0 * unit, true)
-	draw_string(ui_font, coin_rect.position + Vector2(54.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 82.0 * unit, int(20.0 * unit), Color.WHITE)
-	var gems := home_gems_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 18.0), gems.grow(4.0))
-	draw_style_box(make_box(Color("253e67"), 16.0), gems)
-	var gem_center := gems.position + Vector2(28.0, 27.0) * unit
-	var gem_shape := PackedVector2Array([gem_center + Vector2(0.0, -15.0) * unit, gem_center + Vector2(14.0, -3.0) * unit, gem_center + Vector2(8.0, 14.0) * unit, gem_center + Vector2(-8.0, 14.0) * unit, gem_center + Vector2(-14.0, -3.0) * unit])
-	draw_colored_polygon(gem_shape, Color("42e4ff"))
-	draw_string(ui_font, gems.position + Vector2(52.0, 35.0) * unit, "0", HORIZONTAL_ALIGNMENT_LEFT, 52.0 * unit, int(20.0 * unit), Color.WHITE)
-	var profile := home_profile_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.09, 0.16, 0.92), 19.0), profile.grow(4.0))
-	draw_style_box(make_box(Color("244d70"), 17.0), profile)
-	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, Color("6965d8"))
-	draw_string(ui_font, profile.position + Vector2(7.0, 38.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(25.0 * unit), Color.WHITE)
-	draw_string(ui_font, profile.position + Vector2(65.0, 27.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(19.0 * unit), Color.WHITE)
-	draw_string(ui_font, profile.position + Vector2(65.0, 47.0) * unit, player_level_label(), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("8cecff"))
-	var progress_bg := Rect2(profile.position + Vector2(65.0, 49.0) * unit, Vector2(profile.size.x - 84.0 * unit, 6.0 * unit))
-	draw_style_box(make_box(Color("162c49"), 3.0 * unit), progress_bg)
-	draw_style_box(make_box(Color("5f78ff"), 3.0 * unit), Rect2(progress_bg.position, Vector2(progress_bg.size.x * 0.62, progress_bg.size.y)))
-
-	var bottom_bar := Rect2(layout.center_left - 8.0 * unit, layout.bottom_y - 8.0 * unit, layout.center_w + 16.0 * unit, layout.bottom_button_h + 16.0 * unit)
-	draw_style_box(make_box(Color(0.008, 0.025, 0.06, 0.72), 24.0 * unit), bottom_bar)
-	draw_rect(bottom_bar, Color(0.32, 0.83, 1.0, 0.22), false, 1.5 * unit, true)
-
-	# Bottom row: online arena, friend match, then vs computer.
-	var arena_button := home_mode_rect(0, viewport_size)
-	draw_glass_card(arena_button, Color("9a73ff"), unit, false)
-	draw_rect(Rect2(arena_button.position, Vector2(5.0 * unit, arena_button.size.y)), Color("9a73ff"))
-	var arena_icon := arena_button.position + Vector2(arena_button.size.x * 0.5, arena_button.size.y * 0.38)
-	draw_home_mode_icon(0, arena_icon, unit)
-	draw_string(ui_font, arena_button.position + Vector2(6.0, arena_button.size.y * 0.72), ui_text("arena"), HORIZONTAL_ALIGNMENT_CENTER, arena_button.size.x - 12.0 * unit, int(13.0 * unit), Color.WHITE)
-
-	var friend_button := home_mode_rect(1, viewport_size)
-	draw_glass_card(friend_button, Color("45a8ff"), unit, false)
-	draw_rect(Rect2(friend_button.position, Vector2(5.0 * unit, friend_button.size.y)), Color("45a8ff"))
-	var friend_icon := friend_button.position + Vector2(friend_button.size.x * 0.5, friend_button.size.y * 0.38)
-	draw_home_mode_icon(1, friend_icon, unit)
-	draw_string(ui_font, friend_button.position + Vector2(6.0, friend_button.size.y * 0.72), ui_text("friend"), HORIZONTAL_ALIGNMENT_CENTER, friend_button.size.x - 12.0 * unit, int(13.0 * unit), Color.WHITE)
-
-	var play_rect := home_mode_rect(2, viewport_size)
-	var pulse := (sin(menu_elapsed * 3.0) + 1.0) * 0.5
-	draw_style_box(make_box(Color(0.98, 0.68, 0.14, 0.12 + pulse * 0.08), 25.0), play_rect.grow((6.0 + pulse * 4.0) * unit))
-	draw_style_box(make_box(Color("f4a51f"), 20.0), play_rect)
-	draw_rect(Rect2(play_rect.position + Vector2(7.0, 6.0) * unit, Vector2(play_rect.size.x - 14.0 * unit, 3.0 * unit)), Color(1.0, 0.94, 0.66, 0.70), true)
-	var play_center := play_rect.position + Vector2(play_rect.size.x * 0.22, play_rect.size.y * 0.42)
-	draw_circle(play_center, 24.0 * unit, Color("df7b12"))
-	draw_home_mode_icon(2, play_center, unit)
-	var play_text_x := play_rect.position.x + play_rect.size.x * 0.40
-	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.44), "×©×—×§" if ui_language == "he" else "PLAY", HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x * 0.56, int(24.0 * unit), Color.WHITE)
-	draw_string(ui_font, Vector2(play_text_x, play_rect.position.y + play_rect.size.y * 0.72), ui_text("computer_sub"), HORIZONTAL_ALIGNMENT_LEFT, play_rect.size.x * 0.56, int(9.0 * unit), Color("fff4cf"))
-
-	# Collection shortcuts stay close to the hero character.
-	var nav_labels := [ui_text("shop"), ui_text("rewards")]
-	var nav_subtitles := [ui_text("shop_sub"), ui_text("rewards_sub")]
-	var nav_colors := [Color("ff9f24"), Color("e94f78")]
-	for i in 2:
-		var nav := home_nav_rect(i, viewport_size)
-		draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.86), 17.0), nav.grow(4.0 * unit))
-		draw_style_box(make_box(nav_colors[i], 15.0), nav)
-		var nav_icon_center := nav.position + Vector2(nav.size.x * 0.18, nav.size.y * 0.42)
-		draw_circle(nav_icon_center, 20.0 * unit, Color(1.0, 1.0, 1.0, 0.22))
-		draw_home_nav_icon(i, nav_icon_center, unit)
-		draw_string(ui_font, nav.position + Vector2(nav.size.x * 0.34, nav.size.y * 0.38), nav_labels[i], HORIZONTAL_ALIGNMENT_LEFT, nav.size.x * 0.58, int(17.0 * unit), Color.WHITE)
-		draw_string(ui_font, nav.position + Vector2(nav.size.x * 0.34, nav.size.y * 0.72), nav_subtitles[i], HORIZONTAL_ALIGNMENT_LEFT, nav.size.x * 0.58, int(9.0 * unit), Color("fff0c7"))
-	draw_home_social_panel(viewport_size)
-	var help_toggle := home_help_rect(viewport_size)
-	draw_style_box(make_box(Color("35b96f") if tutorial_open else Color("2982a6"), 16.0 * unit), help_toggle)
-	draw_string(ui_font, help_toggle.position + Vector2(0.0, 35.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, help_toggle.size.x, int(22.0 * unit), Color.WHITE)
-	draw_home_friend_profile(viewport_size)
-	draw_tutorial_overlay(viewport_size)
-
-func draw_modern_home_backdrop(viewport_size: Vector2, layout: Dictionary) -> void:
-	# Layered navy gradient, a subtle perspective grid and animated neon horizon.
-	for band in 10:
-		var y := viewport_size.y * float(band) / 10.0
-		var shade := Color(0.012 + band * 0.0015, 0.035 + band * 0.003, 0.085 + band * 0.006, 0.34)
-		draw_rect(Rect2(0.0, y, viewport_size.x, viewport_size.y / 10.0 + 1.0), shade)
-	var horizon_y := viewport_size.y * 0.69
-	for row in 7:
-		var t := float(row) / 6.0
-		var grid_y := lerpf(horizon_y, viewport_size.y, t * t)
-		draw_line(Vector2(0.0, grid_y), Vector2(viewport_size.x, grid_y), Color(0.22, 0.72, 1.0, 0.055), 1.0)
-	for column in 13:
-		var x := viewport_size.x * float(column) / 12.0
-		draw_line(Vector2(viewport_size.x * 0.5, horizon_y), Vector2(x, viewport_size.y), Color(0.35, 0.40, 1.0, 0.045), 1.0)
-	var sweep_x := fmod(menu_elapsed * 90.0, viewport_size.x + 240.0) - 120.0
-	draw_colored_polygon(PackedVector2Array([Vector2(sweep_x - 90.0, layout.header_h), Vector2(sweep_x, layout.header_h), Vector2(sweep_x + 220.0, viewport_size.y), Vector2(sweep_x + 80.0, viewport_size.y)]), Color(0.25, 0.84, 1.0, 0.025))
-
-func draw_glass_card(rect: Rect2, accent: Color, unit: float, selected_card: bool) -> void:
-	var glow_alpha := 0.13 if selected_card else 0.07
-	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, glow_alpha), 22.0 * unit), rect.grow(4.0 * unit))
-	draw_style_box(make_box(Color(0.018, 0.055, 0.12, 0.88), 18.0 * unit), rect)
-	draw_rect(rect, Color(accent.r, accent.g, accent.b, 0.34), false, 1.5 * unit, true)
-	draw_rect(Rect2(rect.position + Vector2(10.0, 8.0) * unit, Vector2(rect.size.x - 20.0 * unit, 2.0 * unit)), Color(1.0, 1.0, 1.0, 0.15), true)
-
-func draw_home_mode_icon(kind: int, center: Vector2, unit: float) -> void:
-	if kind == 0:
-		# Arena: a lifebuoy with a small winner star.
-		draw_circle(center, 15.0 * unit, Color.WHITE, false, 5.0 * unit, true)
-		draw_circle(center, 5.0 * unit, Color(1.0, 1.0, 1.0, 0.25))
-		draw_string(ui_font, center + Vector2(-10.0, -10.0) * unit, "â˜…", HORIZONTAL_ALIGNMENT_CENTER, 20.0 * unit, int(12.0 * unit), Color("ffe25d"))
-	elif kind == 1:
-		# Private friend match: two clearly different players.
-		draw_circle(center + Vector2(-8.0, -7.0) * unit, 7.0 * unit, Color.WHITE)
-		draw_circle(center + Vector2(9.0, -7.0) * unit, 7.0 * unit, Color("d8f5ff"))
-		draw_arc(center + Vector2(-8.0, 12.0) * unit, 11.0 * unit, PI, TAU, 14, Color.WHITE, 5.0 * unit, true)
-		draw_arc(center + Vector2(9.0, 12.0) * unit, 11.0 * unit, PI, TAU, 14, Color("d8f5ff"), 5.0 * unit, true)
-	else:
-		# Single player: a player faces a monitor/AI.
-		draw_circle(center + Vector2(-12.0, -4.0) * unit, 7.0 * unit, Color.WHITE)
-		draw_arc(center + Vector2(-12.0, 13.0) * unit, 11.0 * unit, PI, TAU, 14, Color.WHITE, 5.0 * unit, true)
-		var monitor := Rect2(center + Vector2(2.0, -12.0) * unit, Vector2(23.0, 19.0) * unit)
-		draw_rect(monitor, Color("173249"), true)
-		draw_rect(monitor, Color.WHITE, false, 3.0 * unit)
-		draw_line(center + Vector2(13.0, 7.0) * unit, center + Vector2(13.0, 15.0) * unit, Color.WHITE, 3.0 * unit)
-
-func draw_home_nav_icon(kind: int, center: Vector2, unit: float) -> void:
-	if kind == 0:
-		var bag := Rect2(center + Vector2(-12.0, -8.0) * unit, Vector2(24.0, 22.0) * unit)
-		draw_rect(bag, Color.WHITE, false, 4.0 * unit)
-		draw_arc(center + Vector2(0.0, -7.0) * unit, 7.0 * unit, PI, TAU, 12, Color.WHITE, 3.0 * unit, true)
-	else:
-		var gift := Rect2(center + Vector2(-13.0, -8.0) * unit, Vector2(26.0, 22.0) * unit)
-		draw_rect(gift, Color.WHITE, false, 4.0 * unit)
-		draw_line(center + Vector2(0.0, -8.0) * unit, center + Vector2(0.0, 14.0) * unit, Color.WHITE, 3.0 * unit)
-		draw_line(center + Vector2(-13.0, -1.0) * unit, center + Vector2(13.0, -1.0) * unit, Color.WHITE, 3.0 * unit)
-
-func draw_wood_podium(center: Vector2, scale: float, show_side_steps: bool) -> void:
-	if wood_podium_texture != null:
-		var podium_size := Vector2(440.0, 210.0) * scale if show_side_steps else Vector2(340.0, 165.0) * scale
-		# The usable standing surface is high in the source asset, so the image
-		# extends mostly below the supplied center point.
-		var podium_rect := Rect2(center - Vector2(podium_size.x * 0.5, podium_size.y * 0.37), podium_size)
-		draw_texture_rect(wood_podium_texture, podium_rect, false)
-		return
-	# Minimal fallback used only if the podium asset did not import.
-	var fallback := Rect2(center - Vector2(120.0, 30.0) * scale, Vector2(240.0, 70.0) * scale)
-	draw_style_box(make_box(Color("9b582c"), 12.0 * scale), fallback)
-	draw_circle(center, 21.0 * scale, Color("f7c943"))
-	draw_string(ui_font, center + Vector2(-17.0, 8.0) * scale, "1", HORIZONTAL_ALIGNMENT_CENTER, 34.0 * scale, int(22.0 * scale), Color("744018"))
-
-func draw_home_character(animal_index: int, center: Vector2, size: float, phase: float, outfit_color: Color) -> void:
-	if animal_index < 0 or animal_index >= animal_textures.size() or animal_textures[animal_index] == null:
-		return
-	var bob := sin(menu_elapsed * 2.0 + phase) * 8.0
-	var tilt := sin(menu_elapsed * 1.4 + phase) * 0.055
-	var position := center + Vector2(0.0, bob)
-	draw_circle(position + Vector2(0.0, size * 0.12), size * 0.46, Color(outfit_color, 0.30))
-	draw_set_transform(position, tilt, Vector2.ONE)
-	draw_texture_rect(animal_textures[animal_index], Rect2(Vector2.ONE * -size * 0.5, Vector2.ONE * size), false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func draw_home_leaderboard(panel: Rect2) -> void:
-	draw_style_box(make_box(Color(0.025, 0.075, 0.13, 0.92), 24.0), panel.grow(4.0))
-	draw_style_box(make_box(Color("eaf8f1"), 21.0), panel)
-	draw_string(ui_font, panel.position + Vector2(0.0, 28.0), ui_text("leaderboard_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 16, Color("173249"))
-	var entries := global_leaderboard.duplicate()
-	if entries.is_empty():
-		entries = [{"rank": 1, "name": profile_name, "rating": player_rating, "publicId": firebase_public_id}]
-	var count := mini(4, entries.size())
-	for i in count:
-		var entry: Dictionary = entries[i]
-		var row := Rect2(panel.position + Vector2(10.0, 38.0 + i * 48.0), Vector2(panel.size.x - 20.0, 42.0))
-		var is_me := str(entry.get("publicId", "")) == firebase_public_id
-		draw_style_box(make_box(Color("ffe6a8") if is_me else Color(0.95, 0.99, 0.97, 0.96), 13.0), row)
-		draw_string(ui_font, row.position + Vector2(8.0, 27.0), "#" + str(entry.get("rank", i + 1)), HORIZONTAL_ALIGNMENT_CENTER, 28.0, 13, Color("173249"))
-		draw_string(ui_font, row.position + Vector2(38.0, 20.0), str(entry.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 90.0, 12, Color("173249"))
-		draw_string(ui_font, row.position + Vector2(38.0, 35.0), str(entry.get("rating", 0)) + " " + ui_text("rating_label"), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 90.0, 9, Color("527184"))
-
-func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: String) -> void:
-	var back := frontend_back_rect(viewport_size)
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(0.0, 0.0, viewport_size.x, 94.0 * unit), Color(0.005, 0.022, 0.058, 0.90))
-	draw_rect(Rect2(0.0, 92.0 * unit, viewport_size.x, 2.0 * unit), Color("46dcff", 0.60))
-	draw_glass_card(back, Color("59dfff"), unit, false)
-	draw_string(ui_font, back.position + Vector2(0.0, 31.0), "â€¹  " + ui_text("back"), HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 15, Color.WHITE)
-	draw_string(ui_font, Vector2(170.0 * unit, 45.0 * unit), title, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 340.0 * unit, int(27.0 * unit), Color.WHITE)
-	draw_string(ui_font, Vector2(170.0 * unit, 72.0 * unit), subtitle, HORIZONTAL_ALIGNMENT_LEFT, viewport_size.x - 340.0 * unit, int(13.0 * unit), Color("79dff4"))
-
-func draw_profile_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_frontend_header(viewport_size, ui_text("choose_character"), ui_text("choose_character_sub"))
-	# Bright aqua showroom inspired by the sea surrounding the Zoopaloola table.
-	draw_rect(Rect2(0.0, 92.0 * unit, viewport_size.x, viewport_size.y - 92.0 * unit), Color(0.16, 0.72, 0.86, 0.20))
-	var display := Rect2(72.0 * unit, 106.0 * unit, 470.0 * unit, 414.0 * unit)
-	draw_style_box(make_box(Color(0.02, 0.10, 0.17, 0.78), 28.0 * unit), display.grow(5.0 * unit))
-	draw_style_box(make_box(Color("4fcbd5"), 25.0 * unit), display)
-	# A small wooden winner podium grounds the full-body hero.
-	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.83)
-	draw_wood_podium(podium_center, unit * 0.72, false)
-	var hero_size := Vector2(270.0, 350.0) * unit
-	var ground_offset: float = hero_size.y * float(HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)])
-	var hero_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.405 + 10.0 * unit + ground_offset + sin(menu_elapsed * 1.4) * 0.45 * unit)
-	var hero_texture: Texture2D = null
-	if player_animal < lifebuoy_hero_textures.size():
-		var colors: Array = lifebuoy_hero_textures[player_animal]
-		if player_ring_color < colors.size():
-			hero_texture = colors[player_ring_color] as Texture2D
-	if hero_texture != null:
-		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
-	draw_string(ui_font, display.position + Vector2(0.0, display.size.y - 18.0 * unit), ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, display.size.x, int(22.0 * unit), Color.WHITE)
-
-	var info := Rect2(570.0 * unit, 118.0 * unit, 638.0 * unit, 326.0 * unit)
-	draw_style_box(make_box(Color(0.025, 0.075, 0.14, 0.88), 24.0 * unit), info)
-	draw_string(ui_font, info.position + Vector2(0.0, 47.0) * unit, ui_text("choose_ring"), HORIZONTAL_ALIGNMENT_CENTER, info.size.x, int(24.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, info.position + Vector2(0.0, 76.0) * unit, ui_text("choose_ring_sub"), HORIZONTAL_ALIGNMENT_CENTER, info.size.x, int(12.0 * unit), Color("d7f6ff"))
-	for i in RING_COLOR_NAMES.size():
-		var ring_button := character_ring_rect(i, viewport_size)
-		var ring_selected := i == player_ring_color
-		draw_style_box(make_box(Color("ffe25d") if ring_selected else Color("173a56"), 17.0 * unit), ring_button.grow((4.0 if ring_selected else 2.0) * unit))
-		draw_style_box(make_box(Color("285b73") if ring_selected else Color("123047"), 14.0 * unit), ring_button)
-		var ring_center := ring_button.position + Vector2(34.0, 39.0) * unit
-		draw_circle(ring_center, 27.0 * unit, RING_COLORS[i])
-		draw_circle(ring_center, 12.0 * unit, Color("14324c"))
-		draw_arc(ring_center, 27.0 * unit, -0.70, 0.15, 10, Color("fff4dc"), 8.0 * unit, true)
-		draw_arc(ring_center, 27.0 * unit, 2.45, 3.30, 10, Color("fff4dc"), 8.0 * unit, true)
-		draw_collection_lock_overlay(ring_button, i, true, unit)
-		draw_string(ui_font, ring_button.position + Vector2(63.0, 47.0) * unit, ui_ring_name(i), HORIZONTAL_ALIGNMENT_CENTER, ring_button.size.x - 69.0 * unit, int(11.0 * unit), Color.WHITE)
-		if i == player_ring_color:
-			draw_circle(ring_button.position + Vector2(ring_button.size.x - 14.0 * unit, 14.0 * unit), 13.0 * unit, Color("ffe25d"))
-			draw_string(ui_font, ring_button.position + Vector2(ring_button.size.x - 27.0 * unit, 20.0 * unit), "âœ“", HORIZONTAL_ALIGNMENT_CENTER, 26.0 * unit, int(13.0 * unit), Color("173249"))
-
-	draw_string(ui_font, Vector2(0.0, viewport_size.y - 194.0 * unit), ui_text("choose_animal"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color.WHITE)
-	for i in ANIMAL_NAMES.size():
-		var card := character_card_rect(i, viewport_size)
-		var selected_card := i == player_animal
-		draw_style_box(make_box(Color("ffe25d") if selected_card else Color(0.02, 0.08, 0.14, 0.90), 19.0 * unit), card.grow((5.0 if selected_card else 3.0) * unit))
-		draw_style_box(make_box(Color("35bfc8") if selected_card else Color("244b67"), 16.0 * unit), card)
-		var portrait := full_body_animal_textures[i]
-		if portrait != null:
-			var portrait_rect := Rect2(card.position + Vector2(30.0, 2.0) * unit, Vector2(98.0, 116.0) * unit)
-			draw_texture_rect(portrait, portrait_rect, false)
-		draw_collection_lock_overlay(card, i, false, unit)
-		draw_rect(Rect2(card.position + Vector2(0.0, 114.0) * unit, Vector2(card.size.x, 36.0 * unit)), Color(0.01, 0.05, 0.10, 0.80))
-		draw_string(ui_font, card.position + Vector2(0.0, 139.0) * unit, ui_animal_name(i), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(12.0 * unit), Color.WHITE)
-		if selected_card:
-			draw_circle(card.position + Vector2(card.size.x - 15.0 * unit, 15.0 * unit), 14.0 * unit, Color("ffe25d"))
-			draw_string(ui_font, card.position + Vector2(card.size.x - 29.0 * unit, 21.0 * unit), "âœ“", HORIZONTAL_ALIGNMENT_CENTER, 28.0 * unit, int(14.0 * unit), Color("173249"))
-
-func board_theme_name(index: int) -> String:
-	var keys := ["board_classic", "board_ice", "board_jungle", "board_volcano", "board_candy"]
-	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
-
-func board_theme_texture(index: int) -> Texture2D:
-	if board_theme_textures.is_empty():
-		return board_texture
-	var texture := board_theme_textures[clampi(index, 0, board_theme_textures.size() - 1)]
-	return texture if texture != null else board_texture
-
-func board_theme_accent(index: int) -> Color:
-	var accents := [Color("58c9e8"), Color("8cecff"), Color("6fda18"), Color("ff7b43"), Color("ff78b7")]
-	return accents[clampi(index, 0, accents.size() - 1)]
-
-func board_theme_modulate(index: int) -> Color:
-	match clampi(index, 0, BOARD_THEME_COUNT - 1):
-		1:
-			return Color(0.86, 0.95, 1.0)
-		2:
-			return Color(0.92, 1.0, 0.88)
-		3:
-			return Color(1.0, 0.90, 0.82)
-		_:
-			return Color.WHITE
-
-func draw_board_theme_overlay(theme_index: int) -> void:
-	draw_board_theme_overlay_on_rect(theme_index, board_rect, board_scale)
-
-func draw_board_theme_card(theme_index: int, card: Rect2, selected: bool, unit: float) -> void:
-	draw_style_box(make_box(Color("ffe25d") if selected else Color(0.02, 0.06, 0.12, 0.90), 14.0 * unit), card.grow((4.0 if selected else 2.0) * unit))
-	var preview := Rect2(card.position + Vector2(6.0 * unit, 6.0 * unit), Vector2(card.size.x - 12.0 * unit, card.size.y - 24.0 * unit))
-	draw_shop_board_preview(theme_index, preview, unit)
-	draw_string(ui_font, card.position + Vector2(0.0, card.size.y - 12.0 * unit), board_theme_name(theme_index), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(10.0 * unit), Color.WHITE)
-	if selected:
-		draw_circle(card.position + Vector2(card.size.x - 12.0 * unit, 12.0 * unit), 9.0 * unit, Color("ffe25d"))
-		draw_string(ui_font, card.position + Vector2(card.size.x - 21.0 * unit, 16.0 * unit), "âœ“", HORIZONTAL_ALIGNMENT_CENTER, 18.0 * unit, int(11.0 * unit), Color("173249"))
-
-func shop_unlocked_count(is_ring: bool) -> int:
-	var total := 0
-	if is_ring:
-		for i in RING_COLORS.size():
-			if is_ring_unlocked(i):
-				total += 1
-	else:
-		for i in ANIMAL_NAMES.size():
-			if is_animal_unlocked(i):
-				total += 1
-	return total
-
-func shop_page_title() -> String:
-	match shop_page:
-		SHOP_PAGE_ANIMALS:
-			return ui_text("characters")
-		SHOP_PAGE_RINGS:
-			return ui_text("rings")
-		SHOP_PAGE_EFFECTS:
-			return ui_text("effects")
-		_:
-			return ui_text("shop_title")
-
-func shop_page_subtitle() -> String:
-	match shop_page:
-		SHOP_PAGE_ANIMALS:
-			return ui_text("characters_sub")
-		SHOP_PAGE_RINGS:
-			return ui_text("rings_sub")
-		SHOP_PAGE_EFFECTS:
-			return ui_text("collection_info")
-		_:
-			return ui_text("shop_unlocks_sub")
-
-func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var gap := 22.0 * unit
-	var card_w := minf(300.0 * unit, (viewport_size.x - 100.0 * unit - gap * 2.0) / 3.0)
-	var card_h := minf(380.0 * unit, viewport_size.y - 200.0 * unit)
-	var total_w := card_w * 3.0 + gap * 2.0
-	var start_x := (viewport_size.x - total_w) * 0.5
-	var start_y := maxf(150.0 * unit, (viewport_size.y - card_h) * 0.5)
-	return Rect2(Vector2(start_x + float(index) * (card_w + gap), start_y), Vector2(card_w, card_h))
-
-func shop_detail_columns(item_count: int) -> int:
-	return mini(4, maxi(2, item_count))
-
-func shop_detail_grid_rect(index: int, viewport_size: Vector2, item_count: int) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var columns := shop_detail_columns(item_count)
-	var rows := int(ceil(float(item_count) / float(columns)))
-	var gap := 16.0 * unit
-	var top := 126.0 * unit
-	var bottom_margin := 28.0 * unit
-	var available_h := viewport_size.y - top - bottom_margin
-	var available_w := viewport_size.x - 72.0 * unit
-	var card_w := (available_w - gap * float(columns - 1)) / float(columns)
-	var card_h := minf(360.0 * unit, (available_h - gap * float(rows - 1)) / float(rows))
-	var col := index % columns
-	var row := int(index / columns)
-	var items_in_row := mini(columns, item_count - row * columns)
-	var row_width := card_w * float(items_in_row) + gap * float(items_in_row - 1)
-	var start_x := (viewport_size.x - row_width) * 0.5
-	return Rect2(Vector2(start_x + float(col) * (card_w + gap), top + float(row) * (card_h + gap)), Vector2(card_w, card_h))
-
-func shop_detail_price_label(index: int, is_ring: bool) -> String:
-	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
-	var selected := (player_ring_color == index) if is_ring else (player_animal == index)
-	if selected and unlocked:
-		return ui_text("equipped_item")
-	if unlocked:
-		return ui_text("owned_item")
-	var price := ring_unlock_price(index) if is_ring else animal_unlock_price(index)
-	if price <= 0:
-		return ui_text("free_item")
-	return str(price) + ui_text("coins")
-
-func draw_shop_category_icon(kind: int, center: Vector2, size: float, unit: float) -> void:
-	draw_circle(center, size * 0.52, Color(1.0, 1.0, 1.0, 0.10))
-	if kind == 0:
-		if full_body_animal_textures.size() > 0 and full_body_animal_textures[0] != null:
-			var portrait_size := Vector2(size * 0.95, size * 1.15)
-			draw_texture_rect(full_body_animal_textures[0], Rect2(center - portrait_size * 0.5, portrait_size), false)
-		else:
-			draw_circle(center + Vector2(0.0, -size * 0.08), size * 0.22, Color("f2c9a0"))
-			draw_circle(center + Vector2(0.0, size * 0.18), size * 0.30, Color("f2c9a0"))
-	elif kind == 1:
-		draw_set_transform(center, 0.0, Vector2(1.0, 0.55))
-		draw_arc(Vector2.ZERO, size * 0.42, 0.0, TAU, 36, Color("ff7b43"), size * 0.16, true)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		draw_circle(center, size * 0.14, Color("173249"))
-	elif kind == 2:
-		for i in 6:
-			var angle := float(i) * TAU / 6.0 + menu_elapsed * 0.4
-			var spark := center + Vector2(cos(angle), sin(angle)) * size * 0.34
-			draw_circle(spark, size * 0.08, Color("ffe25d", 0.85))
-		draw_circle(center, size * 0.16, Color("9a58dc", 0.55))
-		draw_circle(center, size * 0.08, Color.WHITE)
-
-func draw_shop_board_preview(theme_index: int, preview: Rect2, unit: float) -> void:
-	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
-	var accent := board_theme_accent(theme)
-	draw_style_box(make_box(Color(0.02, 0.06, 0.11, 0.92), 14.0 * unit), preview.grow(3.0 * unit))
-	draw_style_box(make_box(accent.darkened(0.55), 12.0 * unit), preview)
-	var inner := preview.grow(-10.0 * unit)
-	draw_rect(inner, Color("1a3048"))
-	var preview_texture := board_theme_texture(theme)
-	if preview_texture != null:
-		draw_texture_rect(preview_texture, inner, false)
-	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.35), 10.0 * unit), Rect2(inner.position, Vector2(inner.size.x, 3.0 * unit)))
-
-func draw_shop_coin_box(viewport_size: Vector2, unit: float) -> void:
-	var coin_box := Rect2(viewport_size.x - 220.0 * unit, 24.0 * unit, 180.0 * unit, 54.0 * unit)
-	draw_style_box(make_box(Color("253e67"), 14.0 * unit), coin_box)
-	draw_circle(coin_box.position + Vector2(28.0, 27.0) * unit, 15.0 * unit, Color("ffc83d"))
-	draw_string(ui_font, coin_box.position + Vector2(52.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 110.0 * unit, int(20.0 * unit), Color.WHITE)
-
-func draw_texture_fit(texture: Texture2D, rect: Rect2) -> void:
-	if texture == null:
-		return
-	var tex_size := texture.get_size()
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
-		return
-	var scale := minf(rect.size.x / tex_size.x, rect.size.y / tex_size.y)
-	var draw_size := tex_size * scale
-	var pos := rect.position + (rect.size - draw_size) * 0.5
-	draw_texture_rect(texture, Rect2(pos, draw_size), false)
-
-func draw_shop_ring_preview(art_rect: Rect2, index: int) -> void:
-	var preview_animal := 0
-	if preview_animal < lifebuoy_hero_textures.size():
-		var colors: Array = lifebuoy_hero_textures[preview_animal]
-		if index < colors.size() and colors[index] != null:
-			draw_texture_fit(colors[index] as Texture2D, art_rect)
-			return
-	var center := art_rect.get_center()
-	var radius := minf(art_rect.size.x, art_rect.size.y) * 0.34
-	draw_set_transform(center, 0.0, Vector2(1.0, 0.52))
-	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, RING_COLORS[index], radius * 0.30, true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_circle(center, radius * 0.34, Color(0.02, 0.06, 0.12, 0.88))
-
-func draw_shop_detail_card(index: int, rect: Rect2, is_ring: bool, unit: float) -> void:
-	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
-	var selected := (player_ring_color == index) if is_ring else (player_animal == index)
-	var accent := Color("467ce8") if is_ring else Color("24b889")
-	draw_style_box(make_box(Color("ffe25d") if selected else Color(0.02, 0.06, 0.12, 0.90), 16.0 * unit), rect.grow((5.0 if selected else 2.0) * unit))
-	draw_style_box(make_box(accent.darkened(0.58), 14.0 * unit), rect)
-	var art_rect := Rect2(rect.position + Vector2(10.0 * unit, 10.0 * unit), Vector2(rect.size.x - 20.0 * unit, rect.size.y - 92.0 * unit))
-	draw_style_box(make_box(Color(0.01, 0.04, 0.09, 0.72), 12.0 * unit), art_rect)
-	if is_ring:
-		draw_shop_ring_preview(art_rect.grow(-8.0 * unit), index)
-	else:
-		if index < full_body_animal_textures.size() and full_body_animal_textures[index] != null:
-			draw_texture_fit(full_body_animal_textures[index], art_rect.grow(-6.0 * unit))
-	if not unlocked:
-		draw_rect(art_rect, Color(0.01, 0.03, 0.08, 0.62))
-		draw_string(ui_font, art_rect.position + Vector2(0.0, art_rect.size.y * 0.48), "ðŸ”’", HORIZONTAL_ALIGNMENT_CENTER, art_rect.size.x, int(24.0 * unit), Color.WHITE)
-	if selected and unlocked:
-		draw_style_box(make_box(Color("ffe25d"), 10.0 * unit), Rect2(rect.position + Vector2(8.0 * unit, 8.0 * unit), Vector2(rect.size.x - 16.0 * unit, 22.0 * unit)))
-		draw_string(ui_font, rect.position + Vector2(0.0, 24.0 * unit), ui_text("equipped_item"), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(10.0 * unit), Color("173249"))
-	var label := ui_ring_name(index) if is_ring else ui_animal_name(index)
-	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y - 58.0 * unit), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(14.0 * unit), Color.WHITE)
-	var price_text := shop_detail_price_label(index, is_ring)
-	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y - 30.0 * unit), price_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(13.0 * unit), Color("ffe25d"))
-
-func draw_shop_hub(viewport_size: Vector2, unit: float) -> void:
-	var categories := [ui_text("characters"), ui_text("rings"), ui_text("effects")]
-	var category_colors := [Color("24b889"), Color("467ce8"), Color("9a58dc")]
-	var category_counts := [ANIMAL_NAMES.size(), RING_COLOR_NAMES.size(), 0]
-	for i in 3:
-		var card := shop_category_rect(i, viewport_size)
-		var accent: Color = category_colors[i]
-		draw_style_box(make_box(Color(0.02, 0.06, 0.12, 0.94), 22.0 * unit), card.grow(4.0 * unit))
-		draw_style_box(make_box(accent.darkened(0.62), 18.0 * unit), card)
-		draw_rect(Rect2(card.position + Vector2(10.0 * unit, 10.0 * unit), Vector2(card.size.x - 20.0 * unit, 3.0 * unit)), Color(accent.lightened(0.25), 0.55))
-		var icon_center := card.position + Vector2(card.size.x * 0.5, card.size.y * 0.34)
-		draw_shop_category_icon(i, icon_center, 72.0 * unit, unit)
-		draw_string(ui_font, card.position + Vector2(0.0, card.size.y * 0.58), categories[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(26.0 * unit), Color.WHITE)
-		if i < 2:
-			var collected := shop_unlocked_count(i == 1)
-			draw_string(ui_font, card.position + Vector2(0.0, card.size.y * 0.70), ui_text("shop_collected") % [collected, category_counts[i]], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(13.0 * unit), Color("ffe25d"))
-		else:
-			draw_string(ui_font, card.position + Vector2(0.0, card.size.y * 0.70), ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(13.0 * unit), Color("d7f6ff"))
-		draw_string(ui_font, card.position + Vector2(0.0, card.size.y * 0.86), ui_text("shop_open_category"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(12.0 * unit), Color("ffe25d"))
-
-func draw_shop_detail_page(viewport_size: Vector2, item_count: int, is_ring: bool, unit: float) -> void:
-	var panel := Rect2(24.0 * unit, 108.0 * unit, viewport_size.x - 48.0 * unit, viewport_size.y - 132.0 * unit)
-	draw_style_box(make_box(Color(0.01, 0.04, 0.10, 0.82), 20.0 * unit), panel)
-	var collected := shop_unlocked_count(is_ring)
-	var total := RING_COLOR_NAMES.size() if is_ring else ANIMAL_NAMES.size()
-	draw_string(ui_font, panel.position + Vector2(0.0, 28.0 * unit), ui_text("shop_collected") % [collected, total], HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(15.0 * unit), Color("ffe25d"))
-	for i in item_count:
-		draw_shop_detail_card(i, shop_detail_grid_rect(i, viewport_size, item_count), is_ring, unit)
-
-func draw_shop_animals_page(viewport_size: Vector2, unit: float) -> void:
-	draw_shop_detail_page(viewport_size, ANIMAL_NAMES.size(), false, unit)
-
-func draw_shop_rings_page(viewport_size: Vector2, unit: float) -> void:
-	draw_shop_detail_page(viewport_size, RING_COLOR_NAMES.size(), true, unit)
-
-func draw_shop_effects_page(viewport_size: Vector2, unit: float) -> void:
-	var panel := Rect2((viewport_size.x - 760.0 * unit) * 0.5, 180.0 * unit, 760.0 * unit, 360.0 * unit)
-	draw_style_box(make_box(Color(0.02, 0.06, 0.12, 0.94), 24.0 * unit), panel)
-	draw_shop_category_icon(2, panel.position + Vector2(panel.size.x * 0.5, 120.0 * unit), 72.0 * unit, unit)
-	draw_string(ui_font, panel.position + Vector2(0.0, 210.0) * unit, ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(28.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, panel.position + Vector2(40.0 * unit, 260.0) * unit, ui_text("shop_effects_empty"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 80.0 * unit, int(15.0 * unit), Color("d7f6ff"))
-
-func draw_shop_screen(viewport_size: Vector2) -> void:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.72 if shop_page == SHOP_PAGE_HUB else 0.82))
-	draw_frontend_header(viewport_size, shop_page_title(), shop_page_subtitle())
-	draw_shop_coin_box(viewport_size, unit)
-	match shop_page:
-		SHOP_PAGE_ANIMALS:
-			draw_shop_animals_page(viewport_size, unit)
-		SHOP_PAGE_RINGS:
-			draw_shop_rings_page(viewport_size, unit)
-		SHOP_PAGE_EFFECTS:
-			draw_shop_effects_page(viewport_size, unit)
-		_:
-			draw_shop_hub(viewport_size, unit)
-
-func draw_board_theme_overlay_on_rect(theme_index: int, rect: Rect2, unit: float) -> void:
-	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
-	if theme == 0:
-		draw_rect(rect, Color("58c9e8", 0.08))
-		return
-	if theme == 1:
-		draw_rect(rect, Color("8cecff", 0.18))
-		for i in 8:
-			draw_circle(rect.position + Vector2(rect.size.x * (0.1 + float(i % 4) * 0.22), rect.size.y * (0.14 + float(i / 4) * 0.28)), (4.0 + float(i % 3) * 2.5) * unit, Color(1.0, 1.0, 1.0, 0.38))
-		for i in 5:
-			var crystal := rect.position + Vector2(rect.size.x * (0.12 + float(i) * 0.17), rect.size.y * (0.62 + float(i % 2) * 0.16))
-			draw_colored_polygon(PackedVector2Array([crystal + Vector2(0.0, -12.0) * unit, crystal + Vector2(10.0, 0.0) * unit, crystal + Vector2(0.0, 14.0) * unit, crystal + Vector2(-10.0, 0.0) * unit]), Color("d8f8ff", 0.82))
-		draw_rect(rect.grow(-3.0 * unit), Color("8cecff", 0.14), false, maxf(2.0, 3.0 * unit))
-	elif theme == 2:
-		draw_rect(rect, Color("6fda18", 0.16))
-		for i in 6:
-			var x := rect.position.x + rect.size.x * (0.08 + float(i) * 0.15)
-			draw_line(Vector2(x, rect.position.y - 4.0 * unit), Vector2(x + 10.0 * unit, rect.end.y + 4.0 * unit), Color("3f8f3a", 0.62), 4.5 * unit, true)
-		for i in 4:
-			draw_circle(rect.position + Vector2(rect.size.x * (0.18 + float(i) * 0.2), rect.size.y * 0.22), 5.0 * unit, Color("b8ff7a", 0.55))
-	else:
-		draw_rect(rect, Color("ff5b2d", 0.18))
-		var lava := PackedVector2Array([rect.position + Vector2(0.0, rect.size.y), rect.position + Vector2(rect.size.x * 0.42, rect.size.y * 0.28), rect.position + Vector2(rect.size.x * 0.72, rect.size.y * 0.55), rect.end])
-		draw_colored_polygon(lava, Color("ff5b2d", 0.34))
-		for i in 10:
-			var ember := rect.position + Vector2(rect.size.x * (0.08 + float(i) * 0.09), rect.size.y * (0.12 + float(i % 5) * 0.15))
-			draw_circle(ember, (3.0 + float(i % 3) * 2.0) * unit, Color("ffb12b", 0.35 + sin(menu_elapsed * 4.0 + float(i)) * 0.15))
-
-func make_box(color: Color, radius: float) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = color
-	box.corner_radius_top_left = int(radius)
-	box.corner_radius_top_right = int(radius)
-	box.corner_radius_bottom_left = int(radius)
-	box.corner_radius_bottom_right = int(radius)
-	return box
+š†â•ëôÚwóŸ¾ûï¾ûï¾ûï¾ûï¾ûï¾ûï¾ûï¾úÇ+Š›lýªi—((v‹Z²Ç­²Èvûgâ•ë…©àyÝ¼ö)ìz»b¢{>÷Ç^•ëb¢{^[™È›ÙL‘‚˜ÛÛœÝ“ÐT‘ÕÈHŒËŒ˜ÛÛœÝ“ÐT‘ÒHŒŒˆÈ\ÚXÜÈ\ÙYH›ÝXÙXX›HÛX[\ˆÚ\˜ÛH[ˆHš\ÚX›H[š[X[š[™ËÛÂˆÈ˜[È[™˜Z[È\X\™YÈÝ™\›\™Y›Ü™HH]Ø\È™YÚ\Ý\™Y‚˜ÛÛœÝQUTÈHËˆÈÙY\H\›Ý™Y\ÛÜšÈÚ^™H[˜Ú[™ÙYÚ[H[›\™Ú[™ÈÛ›H]ÈÛÛ\Ú[Û‚ˆÈ›ÙKˆ\È˜[YH\ÈH›Ü›Y\ˆ‹Œ
+ˆKŒÍˆš\ÝX[˜Y]\È[ˆ›Ø\™[š]Ë‚˜ÛÛœÝÐSQWÐSÕ’TÕPSÔQUTÈHŒM‚ˆÈ™[X\Ú[™È[œÚYH\ÈÚÜ[\Ý[˜ÙHØ[˜Ù[ÈZ[Z[™ËˆHÛYÚHÛ™Ù\‚ˆÈ[™XÛÛY\ÈHÚÝÚ]š[™ÈÝXÚ[™[Ý\ÙH^Y\œÈH˜]\˜[Ø^HÈÝÚ]Ú˜[Ë‚˜ÛÛœÝRS—ÔÒÕÔSH‹Œ˜ÛÛœÝÕP”ÕTÈHL˜ÛÛœÝÕTÕSQHHŒBˆÈÛÛ\Ú[Ûˆ˜Z[Èš]YÈHš\ÚX›H[›™\ˆÝÛ™HYÙHÙˆH[Ù[\ˆ›Ø\™‚ˆÈH™]š[Ý\È›Ø\™\ÙYÎÌMH[™ËÌNËX]š[™ÈHš\ÚX›HZ\ˆØ\™Y›Ü™BˆÈH˜[™XXÚYH™]ÈÝÛ™\Ë‚˜ÛÛœÝÐSÓRS—ÖHÌËŒ˜ÛÛœÝÐSÓPVÖHNŒ˜ÛÛœÝÐSÓRS—ÖHHŒ‹Œ˜ÛÛœÝÐSÓPVÖHHNŒˆÈÜ[š[™ÜÈ\™H[X™\˜][HÚY\ˆ[ˆÛˆHYØXÞH›Ø\™]ØÛÜš[™È\ÈBˆÈÙ\\˜]HY\\ˆ[™Kˆ\È™]™[ÈH™X\ˆZ\ÜÈœ›ÛHšYÙÙ\š[™ÈHÙX\Û‹‚˜ÛÛœÝÓÔ“‘T—ÓÔS—ÓÕÈHM‹Œ˜ÛÛœÝÓÔ“‘T—ÓÔS—ÒQÒHMLKŒ˜ÛÛœÝRQWÓÔS—ÓRSˆHÍ‹Œ˜ÛÛœÝRQWÓÔS—ÓPVHLÌËŒ˜ÛÛœÝÒQWÓÔS—ÓÕÈHËŒ˜ÛÛœÝÒQWÓÔS—ÒQÒHMKŒ˜ÛÛœÝÓWÐÐTT‘WÑTH‹Œ˜ÛÛœÝÐÓÔ’S‘×ÒÓWÐÑS•T”ÈHÂ‚U™XÝÜŒŠÌ‹MÍÊK™XÝÜŒŠÌ‹L
+K™XÝÜŒŠÌ‹Ì
+K‚U™XÝÜŒŠMÍÌ
+K™XÝÜŒŠMÍL
+K™XÝÜŒŠMÍMÍÊB—B˜ÛÛœÝQ‘‘PÕÑTUSÓˆHKŒÍB˜ÛÛœÝ•P‘T—ÕTÒÓHH˜ÛÛœÝ‘TÔ×ÕTÒÓHHB˜ÛÛœÝPÑWÕTÒÓHH˜ÛÛœÝ’T‘WÕTÒÓHHB˜ÛÛœÝSPÕ’P×ÕTÒÓHH‚˜ÛÛœÝSSQT—ÕTÒÓHHÂ˜ÛÛœÝTÐÐTT‘WÕSQHH‹ŒÍB˜ÛÛœÝTÑSÕSQHH‹ŽB˜ÛÛœÝ‘TÔ×ÑQ‘‘PÕÑTUSÓˆHTÐÐTT‘WÕSQH
+ÈTÑSÕSQB˜ÛÛœÝPÑWÑQ‘‘PÕÑTUSÓˆHTÐÐTT‘WÕSQH
+ÈTÑSÕSQB˜ÛÛœÝ’T‘WÑQ‘‘PÕÑTUSÓˆHTÐÐTT‘WÕSQH
+ÈTÑSÕSQB˜ÛÛœÝSPÕ’P×ÑQ‘‘PÕÑTUSÓˆHTÐÐTT‘WÕSQH
+ÈTÑSÕSQB˜ÛÛœÝSSQT—ÑQ‘‘PÕÑTUSÓˆHTÐÐTT‘WÕSQH
+ÈTÑSÕSQB˜ÛÛœÝ•P‘T—ÐÐTT‘WÕSQHHTÐÐTT‘WÕSQB˜ÛÛœÝ•P‘T—ÑSÕSQHHTÑSÕSQB˜ÛÛœÝ•P‘T—ÑQ‘‘PÕÑTUSÓˆH•P‘T—ÐÐTT‘WÕSQH
+È•P‘T—ÑSÕSQB˜ÛÛœÝÐUT—Ñ“ÐUÕSQHHKŽ˜ÛÛœÝÐUT—Ñ’Q•ÑSVHHKŽ˜ÛÛœÝS’SPSÓSQTÈHÈ‘STS•‹–‘P”H‹“SÓ’ÑVH‹’TÈ‹”’S“È‹‘ÒTQ‘‘H‹•QÑTˆ—B˜ÛÛœÝS’SPSÑ’STÈHÈ™[\[‹ž™Xœ˜H‹›[ÛšÙ^H‹š\È‹œš[›È‹™Ú\˜Y™™H‹YÙ\ˆ—BˆÈH[\[\ÛÜšÈ\ÈX›Ý]‰H˜[œÜ\™[Y[™È™[ÝÈ]ÈÛÛ\Ë‚ˆÈÛÛ\[œØ]HÚ[ˆÜ›Ý[™[™ÈH\™ÙH\›ÈÛÈ]™\žH[š[X[YY]ÈHÝYÙK‚˜ÛÛœÝT“×ÑÔ“ÕS‘ÓÑ‘”ÑUÈHÌŒ‹ŒŒŒŒŒŒB˜ÛÛœÝ’S‘×ÐÓÓÔ—ÓSQTÈHÈ”‘Q‹“ÔS‘ÑH‹“QH‹‘Ô‘QSˆ‹”T”H‹•T”USÒTÑH‹”S’È—B˜ÛÛœÝ’S‘×ÐÓÓÔ”ÈHÂ‚PÛÛÜŠ™YŒÌÍŠKÛÛÜŠ™™ŽLŠKÛÛÜŠŒMÍÙ™ˆŠK‚PÛÛÜŠŒL˜ÎMXˆŠKÛÛÜŠŽŒÍ™ÈŠKÛÛÜŠŒØ™HŠKÛÛÜŠ™ŒŒŽŠB—B˜ÛÛœÝT“×ÒS‘ÐÓÓÔ”ÈHÂ‚PÛÛÜŠŽÎNXLˆŠKÛÛÜŠŒÍÍÍŠKÛÛÜŠŽXMYˆŠK‚PÛÛÜŠ™MXXLˆŠKÛÛÜŠÍÍÌNÈŠKÛÛÜŠ˜ÎLÎŠKÛÛÜŠ™LŽMˆŠB—B˜ÛÛœÝRWÕVÒHHÂ‚Hœ^Y\ˆŽˆµêuåõéõçÈH‹›]™[Žˆµê5çµåH8 (ˆ5êuåõéõçÈ5çµêµåõæuç‹‚H˜ÚÛÜÙWÛ[ÙHŽˆµäuåõê5åH5çµéµäH5çµêuåõéÈ‹‚H˜Ú\˜XÝ\œÈŽˆµäõçµåuæuåuêˆ‹˜Ú\˜XÝ\œ×ÜÝXˆŽˆµäuåõæuê5êˆ5å5åõæuå5êuç5æõçH‹‚Hœš[™ÜÈŽˆµäµç5äµç5æuçH‹œš[™Ü×ÜÝXˆŽˆµäuåõæuê5êˆ5å5éµäuèˆ5êuç5æõçH‹‚HœÚÜŽˆµåõè5åuêˆ‹œÚÜÜÝXˆŽˆµé5ê5æuæ5æuçH5åuêuäõê5åuäµæuçH‹‚Hœ™]Ø\™ÈŽˆµé5ê5èuæuçH‹œ™]Ø\™×ÜÝXˆŽˆµçµêµè5åuêˆ5åué5ê5èuæuçH‹‚H˜\™[˜HŽˆµåµæuê5å5ä5åuè5ç5æuæuçÈ‹˜\™[˜WÜÝXˆŽˆµçµêuåõéÈ5çµåuç5æuê5æuäH5ä5éõê5ä5æH‹‚H™œšY[™ŽˆµçµêuåõéÈ5çµåuç5åõäuê‹™œšY[™ÜÝXˆŽˆµçµêuåõéÈ5é5ê5æ5æH8 (ˆ5êuè5æH5çµæõêuæuê5æuçH‹‚H˜ÛÛ\]\ˆŽˆµçµêuåõéÈ5çµåuç5å5çµåõêuäH‹˜ÛÛ\]\—ÜÝXˆŽˆµêuåõéõçÈ5æuåõæuäÈ8 (ˆ5è5äµäÈ5å5çµåõêuäH‹‚H˜˜XÚÈŽˆµåõåµê5å‹˜ÚÛÜÙWØÚ\˜XÝ\ˆŽˆµäuåõæuê5êˆ5äõçµåuêˆ‹˜ÚÛÜÙWØÚ\˜XÝ\—ÜÝXˆŽˆµäuåõê5åH5åõæuå5åuéµäuèˆ5äµç5äµç5å5éµç5å‹‚H˜ÚÛÜÙWÜš[™ÈŽˆµäuåõê5åH5äµç5äµç5å5éµç5å‹˜ÚÛÜÙWÜš[™×ÜÝXˆŽˆµå5éµäuèˆ5êuäuåõê5êµçH5æuåué5æuèˆ5äuæõç5çµêuåõéÈ‹‚H˜ÚÛÜÙWØ[š[X[Žˆµäuåõê5åH5åõæuå‹˜ÚÛÜÙWØ›Ø\™Žˆµäuåõê5åH5êuåuç5åõçÈ5çµêuåõéÈ‹˜ÚÛÜÙWÜÙ]\Žˆµäuåõê5åH5äõçµåuê‹5äµç5äµç5åuêuåuç5åõçÈ‹œ™\ÝÜš[™×ÜÙ\ÜÚ[ÛˆŽˆµçµåõåµæuê5æuçH5ä5êˆ5å5å5êµåõäuê5åuêˆ5êuç5æõçK‹‹ˆ‹œ™YŽˆµä5äõåuçH‹›Ü˜[™ÙHŽˆµæõêµåuçH‹˜›YHŽˆµæõåõåuç‹™Ü™Y[ˆŽˆµæuê5åuéÈ‹œ\œHŽˆµèuäµåuç‹\œ][Ú\ÙHŽˆµæ5åuê5éõæuåˆ‹œ[šÈŽˆµåuê5åuäÈ‹‚H™[\[Žˆµé5æuç‹ž™Xœ˜HŽˆµåµäuê5å‹›[ÛšÙ^HŽˆµéõåuèÈ‹š\ÈŽˆµå5æué5åué5åuæ5çH‹œš[›ÈŽˆµéõê5è5èÈ‹™Ú\˜Y™™HŽˆµäµìõæuê5é5å‹YÙ\ˆŽˆµæ5æuäµê5æuèH‹‚H˜\™[˜WÝ]HŽˆµäuåõæuê5êˆ5åµæuê5å‹˜\™[˜WÝ]WÜÝXˆŽˆµäuåõê5åH5ä5êˆ5çµäµê5êH5å5çµêuåõéÈ5ç5éõê5äH5å5ä5åuè5ç5æuæuçÈ‹‚HœØZÝ\˜HŽˆµäµçÈ5å5èuä5éõåuê5å‹˜˜[X›ÛÈŽˆµåõåuê5êuêˆ5å5äuçµäuåuéÈ‹›ÛØ[›ÈŽˆµçµéõäõêH5å5äµèµêH‹‚H™[žWÙœ™YHŽˆµæõè5æuèuåˆ5åõæuè5çH‹™[žHŽˆµäõçµæH5æõè5æuèuåˆ‹˜ÛÚ[œÈŽˆˆ5çµæ5äuèµåuêˆ‹œš^™HŽˆµé5ê5èH5è5æuéµåõåuçÎˆ‹œÙ[XÝYŽˆµè5äuåõê‹™š[™ÛX]ÚŽˆµåõæué5åuêH5æuê5æuäH5ä5åuè5ç5æuæuçÈ‹‚Hœ›Ùš[WÝ]HŽˆµé5ê5åué5æuç5êuåõéõçÈ‹œ›Ùš[WÜÝXˆŽˆµå5äõçµåuê‹5å5éµäuèˆ5å5ä5å5åuäH5åuèuæ5æ5æuèuæ5æuéõåuêˆ5å5éõê5æuæuê5å5êuç5æõçH‹‚H›XZ[—ØÚ\˜XÝ\ˆŽˆµå5äõçµåuêˆ5å5ê5ä5êuæuêˆ‹˜ÚÛÜÙWÛXZ[ˆŽˆµäuåõê5åH5äõçµåuêˆ5ê5ä5êuæuêˆ‹™˜]›Üš]WØÛÛÜˆŽˆµéµäuèˆ5äµç5äµç5ä5å5åuäH‹‚H˜Ø\™Y\ˆŽˆµèuæ5æ5æuèuæ5æuéõåuêˆ5éõê5æuæuê5å‹›X]Ú\ÈŽˆµçµêuåõéõæuçH‹Ú[œÈŽˆµè5æuéµåõåuè5åuêˆ‹›ÜÜÙ\ÈŽˆµå5é5èuäõæuçH‹Ú[—Ü˜]HŽˆµä5åõåuåˆ5å5éµç5åõå‹˜™\ÝÜÝ™XZÈŽˆµê5éµèÈ5êuæuä‹ÛÜ›Ü˜[šÈŽˆµäõæuê5åuäˆ5èµåuç5çµæH‹˜Ý\œ™[ÜÝ™XZÈŽˆµê5éµèÈ5è5æuéµåõåuè5åuêˆ5è5åuæõåõæNˆ‹‚HœÚÜÝ]HŽˆµå5åõè5åuêˆ5êuç5åµåué5ç5åuç5å‹œÚÜÝ]WÜÝXˆŽˆµäõçµåuæuåuê‹5äµç5äµç5æuçK5ä5é5éõæ5æuçH5åuêuåuç5åõè5åuêˆ5çµêuåõéÈ‹™Y™™XÝÈŽˆµä5é5éõæ5æuçH‹˜ÛÛXÝ[Û—Ú[™›ÈŽˆµä5åuèué5æuçH5è5äõæuê5æuçH8 (ˆ5èµæuéµåuäuæuçH5èµåuè5êµæuæuçH8 (ˆ5ä5è5æuçµéµæuåuêˆ5çµæuåuåõäõåuêˆ‹˜ÛÛZ[™×ÜÛÛÛˆŽˆµäuéõê5åuäH‹‚H˜›Ø\™ÈŽˆµêuåuç5åõè5åuêˆ‹˜›Ø\™×ÜÝXˆŽˆµèµæuéµåuäuæH5çµäµê5êH‹˜›Ø\™×ÜÙXÝ[ÛˆŽˆµêuåuç5åõè5åuêˆ5çµêuåõéÈ‹˜›Ø\™×ÜÙXÝ[Û—ÜÝXˆŽˆµäuåõê5åH5ä5êˆ5èµæuéµåuäH5å5çµäµê5êH5ç5éõê5äH5å5äuä‹˜›Ø\™Ù\]Z\YŽˆµçµåuäµäõê5ç5çµêuåõéÈ‹˜›Ø\™ÜÙ[XÝYÝØ\ÝŽˆµêuåuç5åõçÈ5åõäõêH5å5åuäµäõêH‹‚H˜›Ø\™ØÛ\ÜÚXÈŽˆµéõç5ä5èuæH‹˜›Ø\™ÚXÙHŽˆµéõê5åÈ‹˜›Ø\™Ú[™ÛHŽˆµä‰õåuè5äµç‹˜›Ø\™Ý›ÛØ[›ÈŽˆµç5äuå‹˜›Ø\™ØØ[™HŽˆµèµåuç5çH5å5çµçµêµéõæuçH‹‚H™œ™YWÚ][HŽˆµåõæuè5çH‹›ØÚÙYÚ][HŽˆµè5èµåuç‹˜^WÚ][HŽˆµéõè5å‹›ÝÛ™YÚ][HŽˆµêuç5æˆ‹™\]Z\YÚ][HŽˆµçµéµåuæuäÈ‹œÚÜØÛÛXÝYŽˆ‰YÉY5è5ä5èué5åH‹œÚÜÛÜ[—ØØ]YÛÜžHŽˆµç5åõéµåH5ç5é5êµæuåõå‹œÚÜÙY™™XÝ×Ù[\HŽˆµä5é5éõæ5æuçH5çµæuåuåõäõæuçH5æuäµæuèµåH5äuéõê5åuäH5ç5åõè5åuêˆ‹œ\˜Ú\ÙWÜÝXØÙ\ÜÈŽˆµè5ê5æõêH5äuå5éµç5åõåH‹[›ØÚ×Ú[—ÜÚÜŽˆµè5æuêµçÈ5ç5ê5æõåuêH5äuåõè5åuêˆ‹œÚÜÝ[›ØÚÜ×ÜÝXˆŽˆµê5æõêuåH5äõçµåuæuåuêˆ5åuäµç5äµç5æuçH5è5åuèué5æuçH5äuçµæ5äuèµåuêˆ‹šÜÝØ›Ø\™ÛÛ›HŽˆµê5éÈ5çµä5ê5åÈ5å5åõäõê5äuåuåõê5êuåuç5åõçÈ‹™ÝY\ÝØ›Ø\™ÛØÚÙYŽˆµêuåuç5åõçÈ5å5çµä5ê5åÈ‹˜\™[˜WØ›Ø\™Ùš^YŽˆµêuåuç5åõçÈ5å5åµæuê5å‹‚HœÙX\˜Ú[™ÈŽˆµçµåõé5êuæuçH5æuê5æuäH5äuåµæuê5å‹‹ˆ‹˜Ø[˜Ù[ÜÙX\˜ÚŽˆµäuæuæ5åuç5åõæué5åuêH‹‚H›X]ÚÝÚ[ˆŽˆµè5æuéµåõêµçHH‹›X]ÚÛÜÙHŽˆµå5é5èuäõêµçH‹™˜]ÈŽˆµêµæuéõåH‹‚Hœ^WØYØZ[ˆŽˆµçµêuåõéÈ5è5åuèuèÈ‹˜˜XÚ×ÚÛYHŽˆµåõåµê5å5ç5äuæuêˆ‹‚Hž[ÝWÝÛÛ—ØÛÚ[œÈŽˆµå5ê5åuåuåõêµçH‹››ÝÙ[›ÝYÚØÛÚ[œÈŽˆµä5æuçÈ5çµèué5æuéÈ5çµæ5äuèµåuêˆ‹‚H™Z[WÝ]HŽˆµé5ê5èH5æuåuçµæH‹™Z[WÜÝXˆŽˆµåõåµê5åH5æõç5æuåuçH5ç5éõäuç5çµæ5äuèµåuêˆ5ç5äµç5äµç5å5å5éµç5å‹‚H˜ÛZ[HŽˆµéõäuç5åH5çµæ5äuèµåuêˆ‹˜ÛZ[YYŽˆµå5é5ê5èH5êuç5å5æuåuçH5æõäuê5è5êµéõäuç‹‚H™Z[WØÛZ[YYÝØ\ÝŽˆµéõæuäuç5êµçH5çµæ5äuèµåuêˆH‹œÙX\˜ÚÝ[Y[Ý]Žˆµå5åõæué5åuêH5äuåuæ5çˆ5è5èuåH5êuåuäKˆ‹‚HœÛØÚX[ÚXˆŽˆµçµåuèµäõåuçÈ5å5êuåõéõè5æuçH‹™œšY[™×ÝXˆŽˆµåõäuê5æuçH‹˜Ú]ÝXˆŽˆµéµìõä5æ‹‚H˜YÙœšY[™Žˆµêuç5æuåõêˆ5äuéõêuå‹™œšY[™ÚYÚ[Žˆ–”V‹‚Hš[š]WÙœšY[™Žˆµå5åµçµè5å‹››×ÙœšY[™ÈŽˆµèµäõæuæuçÈ5ä5æuçÈ5åõäuê5æuçH5çµä5åuêuê5æuçH‹‚H™œšY[™Ü™\]Y\Ý×Ý]HŽˆµäuéõêuåuêˆ5åõäuê5åuêˆ‹™œšY[™Ü™\]Y\ÝØXØÙ\Žˆµä5æuêuåuê‹‚H™œšY[™Ü™\]Y\ÝÙXÛ[™HŽˆµäõåõæuæuå‹™œšY[™Ü™\]Y\ÝÜÙ[Žˆµäuéõêuêˆ5åõäuê5åuêˆ5è5êuç5åõåH‹‚H™œšY[™Ü™\]Y\ÝÜ[™[™ÈŽˆµçµçµêµæuçÈ5ç5ä5æuêuåuê‹™œšY[™Ü™\]Y\ÝÙ^\ÝÈŽˆµæõäuê5êuç5åõêµçH5äuéõêuå‹‚H™œšY[™Ü™\]Y\ÝÚ[˜ÛÛZ[™ÈŽˆµæuêH5ç5æõçH5äuéõêuå5ç‹I\È‹™œšY[™ØXØÙ\YŽˆµåõäuê5åõäõêH5ä5åuêuêH‹‚H™œšY[™Ú[š]WÛÙ™›[™HŽˆµå5åõäuê5ç5ä5çµåõåuäuê5æõê5äµèˆ‹‚H›Ø˜žWØÚ]Ý]HŽˆµéµìõä5æ5å5ç5åuäuæH‹›Ø˜žWØÚ]Ú[ŽˆµæõêµäuåH5å5åuäõèµå5ç5éõå5æuç5å‹‹ˆ‹‚H›Û›[™WÜ^Y\œÈŽˆµêuåõéõè5æuçH5çµåõåuäuê5æuçH‹H™œšY[™ØYYŽˆµåõäuê5è5åuèuèÈH‹™œšY[™Ù^\ÝÈŽˆµå5åõäuê5æõäuê5äuê5êuæuçµå‹‚H™œšY[™Û›ÝÙ›Ý[™Žˆµçµåµå5å5ç5ä5êµéõæuçÈ‹œ™[[Ý™WÙœšY[™Žˆµå5èuê5å‹ž[Ý\—Ý\›—Ø˜YÙHŽˆµå5êµåuê5êuç5æˆ‹™^˜WÝ\›ˆŽˆµêµåuê5è5åuèuèÈH5å5æõè5æuèuåH5èµåuäÈ5æõäõåuê5æuê5æuäH‹‚H™œšY[™Ü›Ùš[WÝ]HŽˆµé5ê5åué5æuç5åõäuê‹™œšY[™ÛÛ›[™HŽˆµçµåõåuäuê5èµæõêuæuåH‹™œšY[™ÛÙ™›[™HŽˆµç5ä5çµåõåuäuê‹‚H™œšY[™ØYYÞ[ÝHŽˆ‰\È5ä5æuêuêõå5ä5êˆ5äuéõêuêˆ5å5åõäuê5åuêˆH‹™œšY[™Û]\ÝÛÜ[ˆŽˆµäuéõêuåH5çµå5åõäuê5ç5é5êµåuåÈ5ä5êˆ5å5çµêuåõéÈ5é5èµçH5ä5åõêˆ‹‚H™œšY[™ÝšY]×Ü›Ùš[HŽˆµéµé5æuæuå5äué5ê5åué5æuç‹™œšY[™ÚYÜÚÜŽˆ–”V‹‚H›XYÝYWÝXˆŽˆµç5æuäµå‹›XY\˜›Ø\™Ý]HŽˆµæ5äuç5êˆ5çµåuäuæuç5æuçH‹›XYÝYWÜ›ÛÚÚYHŽˆµçµêµåõæuç‹‚H›XYÝYWØ[X]]\ˆŽˆµåõåuäuäuçÈ‹›XYÝYWÜ›ÈŽˆµçµéõéµåuèµçÈ‹›XYÝYWÙ[]HŽˆµèµæuç5æuêˆ‹›XYÝYWÛYÙ[™Žˆµä5äµäõå‹‚Hœ˜][™×ÛX™[Žˆµäõæuê5åuäˆ‹š[š]WÜ™XÙZ]™YŽˆµå5åµçµè5å5ç5çµêuåõéÈ5ç‹H‹š›Ú[—Ú[š]HŽˆµå5éµæ5ê5é5åuêˆ‹‚Hš[š]WÜÙ[ÛÛ›[™HŽˆµå5å5åµçµè5å5è5êuç5åõåH‹š[š]WÜÙ[ÛÙ™›[™HŽˆµå5å5åµçµè5å5çµçµêµæuè5å5ç5åõäuê‹‚Hœ›ÛÛWØÚ]Žˆµéµìõä5æ5åõäõê‹œÛÝ[™ÛÛˆŽˆµéµç5æuç5æuçH‹œ›Û[ÝYÛXYÝYHŽˆµèµç5æuêµçH5ç5ç5æuäµå5åõäõêuåH‹‚H›X]ÚÙ›Ý[™Žˆµè5çµéµä5æuê5æuäHH‹™[\š[™×Ø\™[˜HŽˆµè5æõè5èuæuçH5ç5åµæuê5å‹‹ˆ‹‚H]ÜšX[Ý]HŽˆµçµäõê5æuæˆ5ç5çµêµåõæuç5æuçH‹]ÜšX[Û™^Žˆµå5äuä‹]ÜšX[Ü™]ˆŽˆµå5éõåuäõçH‹‚H]ÜšX[ÜÚÚ\Žˆµäõç5äˆ‹]ÜšX[ÙÛ™HŽˆµäuåuä5åH5è5êuåõéÈH‹]ÜšX[Ú[Žˆµçµäõê5æuæˆ‹‚H™Y™šXÝ[HŽˆµê5çµêˆ5éõåuêuæH‹™Y™šXÝ[WÙX\ÞHŽˆµéõç‹™Y™šXÝ[WÛYY][HŽˆµäuæuè5åuè5æH‹™Y™šXÝ[WÚ\™Žˆµéõêuå‹‚H˜ZWÛ˜[YWÙX\ÞHŽˆµçµåõêuäH
+5éõç
+H‹˜ZWÛ˜[YWÛYY][HŽˆµçµåõêuäH
+5äuæuè5åuè5æJH‹˜ZWÛ˜[YWÚ\™ŽˆµçµåõêuäH
+5éõêuå
+H‹ŸB˜ÛÛœÝRWÕVÑSˆHÂ‚Hœ^Y\ˆŽˆ”VQTˆH‹›]™[Žˆ“U‘SH8 (ˆ“ÓÒÒQHVÔ‘Tˆ‹‚H˜ÚÛÜÙWÛ[ÙHŽˆÒÓÔÑHHÐSQHSÑH‹‚H˜Ú\˜XÝ\œÈŽˆÒTPÕT”È‹˜Ú\˜XÝ\œ×ÜÝXˆŽˆÚÛÜÙH[Ý\ˆ[š[X[‹‚Hœš[™ÜÈŽˆ“Q‘P•SÖTÈ‹œš[™Ü×ÜÝXˆŽˆÚÛÜÙH[Ý\ˆÛÛÜˆ‹‚HœÚÜŽˆ”ÒÔ‹œÚÜÜÝXˆŽˆ’][\È[™\Ü˜Y\È‹‚Hœ™]Ø\™ÈŽˆ”‘UÐT‘È‹œ™]Ø\™×ÜÝXˆŽˆ‘ÚYÈ[™š^™\È‹‚H˜\™[˜HŽˆ“Ó“S‘HT‘SH‹˜\™[˜WÜÝXˆŽˆ”^HH˜[™ÛHÜÛ™[‹‚H™œšY[™Žˆ”VHH”’QS‘‹™œšY[™ÜÝXˆŽˆ”š]˜]HX]Ú8 (ˆÛÈ]šXÙ\È‹‚H˜ÛÛ\]\ˆŽˆ”VH”ÈÓÓTUTˆ‹˜ÛÛ\]\—ÜÝXˆŽˆ”Ú[™ÛH^Y\ˆ8 (ˆœÈRH‹‚H˜˜XÚÈŽˆPÒÈ‹˜ÚÛÜÙWØÚ\˜XÝ\ˆŽˆÒÓÔÑHSÕTˆÒTPÕTˆ‹˜ÚÛÜÙWØÚ\˜XÝ\—ÜÝXˆŽˆ”XÚÈ[ˆ[š[X[[™HY™X[ÞHÛÛÜˆ‹‚H˜ÚÛÜÙWÜš[™ÈŽˆÒÓÔÑHHQ‘P•SÖH‹˜ÚÛÜÙWÜš[™×ÜÝXˆŽˆ–[Ý\ˆÛÛÜˆ›ÛÝÜÈ[ÝH[È]™\žHX]Ú‹‚H˜ÚÛÜÙWØ[š[X[ŽˆÒÓÔÑHSˆS’SPS‹˜ÚÛÜÙWØ›Ø\™ŽˆÒÓÔÑHHÐSQHP“H‹˜ÚÛÜÙWÜÙ]\ŽˆÚÛÜÙH[š[X[š[™È[™X›H‹œ™\ÝÜš[™×ÜÙ\ÜÚ[ÛˆŽˆ”™\ÝÜš[™È[Ý\ˆÚYÛ‹Z[‹‹‹ˆ‹œ™YŽˆ”‘Q‹›Ü˜[™ÙHŽˆ“ÔS‘ÑH‹˜›YHŽˆ“QH‹™Ü™Y[ˆŽˆ‘Ô‘QSˆ‹œ\œHŽˆ”T”H‹\œ][Ú\ÙHŽˆ•T”USÒTÑH‹œ[šÈŽˆ”S’È‹‚H™[\[Žˆ‘STS•‹ž™Xœ˜HŽˆ–‘P”H‹›[ÛšÙ^HŽˆ“SÓ’ÑVH‹š\ÈŽˆ’TÈ‹œš[›ÈŽˆ”’S“È‹™Ú\˜Y™™HŽˆ‘ÒTQ‘‘H‹YÙ\ˆŽˆ•QÑTˆ‹‚H˜\™[˜WÝ]HŽˆÒÓÔÑHSÕTˆT‘SH‹˜\™[˜WÝ]WÜÝXˆŽˆ”Ù[XÝH˜]YÜ›Ý[™›Üˆ[Ý\ˆÛ›[™HX]Ú‹‚HœØZÝ\˜HŽˆ”ÐRÕTHÐT‘Sˆ‹˜˜[X›ÛÈŽˆSP“ÓÈÔ“Õ‘H‹›ÛØ[›ÈŽˆ•“ÓÐS“ÈSTH‹‚H™[žWÙœ™YHŽˆ‘S•–Nˆ”‘QH‹™[žHŽˆ‘S•–Nˆ‹˜ÛÚ[œÈŽˆˆÓÒS”È‹œš^™HŽˆ•ÒSˆ’V‘Nˆ‹œÙ[XÝYŽˆ”ÑSPÕQ‹™š[™ÛX]ÚŽˆ‘’S‘Ó“S‘HPUÒ‹‚Hœ›Ùš[WÝ]HŽˆ”VQTˆ“Ñ’SH‹œ›Ùš[WÜÝXˆŽˆ–[Ý\ˆÚ\˜XÝ\‹˜]›Üš]HÛÛÜˆ[™Ø\™Y\ˆÝ]\ÝXÜÈ‹‚H›XZ[—ØÚ\˜XÝ\ˆŽˆ“PRSˆÒTPÕTˆ‹˜ÚÛÜÙWÛXZ[ˆŽˆÒÓÔÑHSÕTˆPRSˆS’SPS‹™˜]›Üš]WØÛÛÜˆŽˆ‘U“Ô’UHQ‘P•SÖHÓÓÔˆ‹‚H˜Ø\™Y\ˆŽˆÐT‘QTˆÕUTÕPÔÈ‹›X]Ú\ÈŽˆ“PUÒTÈ‹Ú[œÈŽˆ•ÒS”È‹›ÜÜÙ\ÈŽˆ“ÔÔÑTÈ‹Ú[—Ü˜]HŽˆ•ÒSˆUH‹˜™\ÝÜÝ™XZÈŽˆ‘TÕÕ‘PRÈ‹ÛÜ›Ü˜[šÈŽˆ•ÓÔ“S’È‹˜Ý\œ™[ÜÝ™XZÈŽˆÕT”‘S•ÒSˆÕ‘PRÎˆ‹‚HœÚÜÝ]HŽˆ–“ÓÔHÒÔ‹œÚÜÝ]WÜÝXˆŽˆÚ\˜XÝ\œËY™X[Þ\ËY™™XÝÈ[™Ø[YHX›\È‹™Y™™XÝÈŽˆ‘Q‘‘PÕÈ‹˜ÛÛXÝ[Û—Ú[™›ÈŽˆ”˜\™HÛÛXÝ[ÛœÈ8 (ˆÙX\ÛÛ˜[\ÚYÛœÈ8 (ˆÜXÚX[[š[X][ÛœÈ‹˜ÛÛZ[™×ÜÛÛÛˆŽˆÓÓRS‘ÈÓÓÓˆ‹‚H˜›Ø\™ÈŽˆ•P“TÈ‹˜›Ø\™×ÜÝXˆŽˆ›Ø\™ÚÚ[œÈ‹˜›Ø\™×ÜÙXÝ[ÛˆŽˆ‘ÐSQHP“TÈ‹˜›Ø\™×ÜÙXÝ[Û—ÜÝXˆŽˆÚÛÜÙHHÛÚÈÙˆ[Ý\ˆ™^X]Ú‹˜›Ø\™Ù\]Z\YŽˆ‘TURTQ‹˜›Ø\™ÜÙ[XÝYÝØ\ÝŽˆ“™]ÈX›H\]Z\YH‹‚H˜›Ø\™ØÛ\ÜÚXÈŽˆÓTÔÒPÈ‹˜›Ø\™ÚXÙHŽˆ’PÑH‹˜›Ø\™Ú[™ÛHŽˆ’•S‘ÓH‹˜›Ø\™Ý›ÛØ[›ÈŽˆ“UH‹˜›Ø\™ØØ[™HŽˆÐS‘HÓÔ“‹‚H™œ™YWÚ][HŽˆ‘”‘QH‹›ØÚÙYÚ][HŽˆ“ÐÒÑQ‹˜^WÚ][HŽˆ•VH‹›ÝÛ™YÚ][HŽˆ“ÕÓ‘Q‹™\]Z\YÚ][HŽˆ‘TURTQ‹œÚÜØÛÛXÝYŽˆ‰YÉYÓÓPÕQ‹œÚÜÛÜ[—ØØ]YÛÜžHŽˆ•TÈÔSˆ‹œÚÜÙY™™XÝ×Ù[\HŽˆ”ÜXÚX[Y™™XÝÈ\™HÛÛZ[™ÈÛÛÛˆÈHÚÜ‹œ\˜Ú\ÙWÜÝXØÙ\ÜÈŽˆ”\˜Ú\ÙYH‹[›ØÚ×Ú[—ÜÚÜŽˆ^H\È[ˆHÚÜ‹œÚÜÝ[›ØÚÜ×ÜÝXˆŽˆ•[›ØÚÈ[Ü™H[š[X[È[™Y™X[Þ\ÈÚ]ÛÚ[œÈ‹šÜÝØ›Ø\™ÛÛ›HŽˆ“Û›HH›ÛÛHÜÝXÚÜÈHX›H‹™ÝY\ÝØ›Ø\™ÛØÚÙYŽˆ’ÜÝ	ÜÈX›H‹˜\™[˜WØ›Ø\™Ùš^YŽˆ\™[˜HX›H‹‚HœÙX\˜Ú[™ÈŽˆ‘š[™[™È[ˆ\™[˜HÜÛ™[‹‹ˆ‹˜Ø[˜Ù[ÜÙX\˜ÚŽˆÐSÑSÑPTÒ‹‚H›X]ÚÝÚ[ˆŽˆ–SÕHÒSˆH‹›X]ÚÛÜÙHŽˆ–SÕHÔÕ‹™˜]ÈŽˆ‘UÈ‹‚Hœ^WØYØZ[ˆŽˆ”VHQÐRSˆ‹˜˜XÚ×ÚÛYHŽˆPÒÈÓQH‹‚Hž[ÝWÝÛÛ—ØÛÚ[œÈŽˆ–[ÝHX\›™Y‹››ÝÙ[›ÝYÚØÛÚ[œÈŽˆ“›Ý[›ÝYÚÛÚ[œÈ‹‚H™Z[WÝ]HŽˆ‘RSH‘UÐT‘‹™Z[WÜÝXˆŽˆÛÛYH˜XÚÈ]™\žH^H›ÜˆY™X[ÞHÛÚ[œÈ‹‚H˜ÛZ[HŽˆÓRSHÓÒS”È‹˜ÛZ[YYŽˆS‘PQHÓRSQQÑVH‹‚H™Z[WØÛZ[YYÝØ\ÝŽˆ–[ÝHÛZ[YYÛÚ[œÈH‹œÙX\˜ÚÝ[Y[Ý]Žˆ”ÙX\˜ÚØ[˜Ù[YˆžHYØZ[‹ˆ‹‚HœÛØÚX[ÚXˆŽˆ”VQTˆÓPˆ‹™œšY[™×ÝXˆŽˆ‘”’QS‘È‹˜Ú]ÝXˆŽˆÒU‹‚H˜YÙœšY[™Žˆ”ÑS‘‘TUQTÕ‹™œšY[™ÚYÚ[Žˆ–”V‹‚Hš[š]WÙœšY[™Žˆ’S•’UH‹››×ÙœšY[™ÈŽˆ“›È\›Ý™YœšY[™ÈY]‹‚H™œšY[™Ü™\]Y\Ý×Ý]HŽˆ‘”’QS‘‘TUQTÕÈ‹™œšY[™Ü™\]Y\ÝØXØÙ\ŽˆPÐÑT‹‚H™œšY[™Ü™\]Y\ÝÙXÛ[™HŽˆ‘PÓS‘H‹™œšY[™Ü™\]Y\ÝÜÙ[Žˆ‘œšY[™™\]Y\ÝÙ[H‹‚H™œšY[™Ü™\]Y\ÝÜ[™[™ÈŽˆ•ØZ][™È›Üˆ\›Ý˜[‹™œšY[™Ü™\]Y\ÝÙ^\ÝÈŽˆ”™\]Y\Ý[™XYHÙ[‹‚H™œšY[™Ü™\]Y\ÝÚ[˜ÛÛZ[™ÈŽˆ”™\]Y\Ýœ›ÛH	\È‹™œšY[™ØXØÙ\YŽˆ“™]ÈœšY[™\›Ý™YH‹‚H™œšY[™Ú[š]WÛÙ™›[™HŽˆ‘œšY[™\ÈÙ™›[™HšYÚ›ÝÈ‹‚H›Ø˜žWØÚ]Ý]HŽˆ“Ð–HÒU‹›Ø˜žWØÚ]Ú[Žˆ”Ø^H[ÈÈHÛÛ[][š]K‹‹ˆ‹‚H›Û›[™WÜ^Y\œÈŽˆœ^Y\œÈÛ›[™H‹™œšY[™ØYYŽˆ‘œšY[™YYH‹™œšY[™Ù^\ÝÈŽˆ‘œšY[™[™XYHYY‹‚H™œšY[™Û›ÝÙ›Ý[™Žˆ’[˜[Y^Y\ˆQ‹œ™[[Ý™WÙœšY[™Žˆ”‘SSÕ‘H‹ž[Ý\—Ý\›—Ø˜YÙHŽˆ–SÕTˆT“ˆ‹™^˜WÝ\›ˆŽˆ‘VHT“ˆHØÚÙ][›Ý\ˆ[™[^H˜[‹‚H™œšY[™Ü›Ùš[WÝ]HŽˆ‘”’QS‘“Ñ’SH‹™œšY[™ÛÛ›[™HŽˆ“Û›[™H›ÝÈ‹™œšY[™ÛÙ™›[™HŽˆ“Ù™›[™H‹‚H™œšY[™ØYYÞ[ÝHŽˆ‰\ÈXØÙ\Y[Ý\ˆœšY[™™\]Y\ÝH‹™œšY[™Û]\ÝÛÜ[ˆŽˆ\ÚÈ[Ý\ˆœšY[™ÈÜ[ˆHØ[YHÛ˜ÙH‹‚H™œšY[™ÝšY]×Ü›Ùš[HŽˆ•šY]È›Ùš[H‹™œšY[™ÚYÜÚÜŽˆ–”V‹‚H›XYÝYWÝXˆŽˆ“PQÕQH‹›XY\˜›Ø\™Ý]HŽˆ“PQT“ÐT‘‹›XYÝYWÜ›ÛÚÚYHŽˆ”“ÓÒÒQH‹‚H›XYÝYWØ[X]]\ˆŽˆSPUUTˆ‹›XYÝYWÜ›ÈŽˆ”“È‹›XYÝYWÙ[]HŽˆ‘SUH‹›XYÝYWÛYÙ[™Žˆ“QÑS‘‹‚Hœ˜][™×ÛX™[Žˆ”US‘È‹š[š]WÜ™XÙZ]™YŽˆ‘Ø[YH[š]Hœ›ÛH‹š›Ú[—Ú[š]HŽˆ’“ÒSˆ‹‚Hš[š]WÜÙ[ÛÛ›[™HŽˆ’[š]HÙ[H‹š[š]WÜÙ[ÛÙ™›[™HŽˆ’[š]H]Y]YY›ÜˆœšY[™‹‚Hœ›ÛÛWØÚ]Žˆ”“ÓÓHÒU‹œÛÝ[™ÛÛˆŽˆ”ÓÕS‘‹œ›Û[ÝYÛXYÝYHŽˆ–[ÝH™XXÚYH™]ÈXYÝYHH‹‚H›X]ÚÙ›Ý[™Žˆ“PUÒ“ÕS‘H‹™[\š[™×Ø\™[˜HŽˆ‘S•T’S‘ÈT‘SK‹‹ˆ‹‚H]ÜšX[Ý]HŽˆ’ÕÈÈVH‹]ÜšX[Û™^Žˆ“‘V‹]ÜšX[Ü™]ˆŽˆPÒÈ‹‚H]ÜšX[ÜÚÚ\Žˆ”ÒÒT‹]ÜšX[ÙÛ™HŽˆ“U	ÔÈVHH‹]ÜšX[Ú[Žˆ‘ÕRQH‹‚H™Y™šXÝ[HŽˆ‘Q‘’PÕSH‹™Y™šXÝ[WÙX\ÞHŽˆ‘PTÖH‹™Y™šXÝ[WÛYY][HŽˆ“QQUSH‹™Y™šXÝ[WÚ\™Žˆ’T‘‹‚H˜ZWÛ˜[YWÙX\ÞHŽˆÔH
+PTÖJH‹˜ZWÛ˜[YWÛYY][HŽˆÔH
+QQUSJH‹˜ZWÛ˜[YWÚ\™ŽˆÔH
+T‘
+H‹ŸB˜ÛÛœÝTÔÔTÒH˜ÛÛœÝTÒÓQHHB˜ÛÛœÝTÔ“Ñ’SHH‚˜ÛÛœÝTÔÒÔHÂ˜ÛÛœÝTÑÐSQHH˜ÛÛœÝTÐT‘SHHB˜ÛÛœÝTÔVQT—Ô“Ñ’SHH‚˜ÛÛœÝTÑ”’QS‘HÂ˜ÛÛœÝTÔ‘UÐT‘ÈH˜ÛÛœÝTÐUUHB˜ÛÛœÝT‘SWÐ“ÐT‘ÕSQTÈHÌ‹×B˜ÛÛœÝT‘SWÑS•–WÐÓÔÕÈHÌLLB˜ÛÛœÝT‘SWÕÒS—Ô’V‘TÈHÌLLLŒB˜ÛÛœÝRSWÔ‘UÐT‘ÐÓÒS”ÈH˜ÛÛœÝÓÓTUT—ÕÒS—ÐÓÒS”ÈH˜ÛÛœÝ”’QS‘ÕÒS—ÐÓÒS”ÈHB˜ÛÛœÝ”‘QWÕS“ÐÒ×ÐÓÕS•HÂ˜ÛÛœÝÒÔÔQÑWÒPˆHšXˆ‚˜ÛÛœÝÒÔÔQÑWÐS’SPSÈH˜[š[X[È‚˜ÛÛœÝÒÔÔQÑWÔ’S‘ÔÈHœš[™ÜÈ‚˜ÛÛœÝÒÔÔQÑWÑQ‘‘PÕÈH™Y™™XÝÈ‚˜ÛÛœÝPÓÓ“ÓVWÕ‘T”ÒSÓˆH‚˜ÛÛœÝS’SPSÕS“ÐÒ×Ô’PÑTÈHÌMLÍLMLB˜ÛÛœÝ’S‘×ÕS“ÐÒ×Ô’PÑTÈHÌÍLLMLB˜ÛÛœÝPQÕQWÔUS‘×Õ‘TÒÓÈHÌLLLLÌMLMÌB˜ÛÛœÝPQÕQWÓSQWÒÑVTÈHÈ›XYÝYWÜ›ÛÚÚYH‹›XYÝYWØ[X]]\ˆ‹›XYÝYWÜ›È‹›XYÝYWÙ[]H‹›XYÝYWÛYÙ[™‹›XYÝYWÛYÙ[™—B˜ÛÛœÝPUÒÔÑT•‘T—ÕT“HÜÜÎ‹ËÞ›ÛÜ[ÛÛK[[Øš[K›Ûœ™[™\‹˜ÛÛKÝÜÈ‚˜ÛÛœÝT‘SWÓPUÒÑ“ÕS‘ÑTUSÓˆH‹Œ‚˜ÛÛœÝ’T‘PTÑWÕÑP—ÕTQÒÑVHHˆ‚˜ÛÛœÝUÔ’PSÔÕTÐÓÕS•H˜ÛÛœÝUÔ’PSÔÕT×ÒHHÂ‚^È]HŽˆµäuê5åuæõæuçH5å5äuä5æuçH5ç5åµåué5ç5åuç5åH‹˜›ÙHŽˆµçµêuåõéÈ5äµåuç5åuêˆ5åõæuåuêˆ5èµç5ç5åuåÈ5çµæuåuåõäÈ5èµçH5åõåuê5æuçK5è5êuéõæuçH5åuæuê5æuäuæuçH5ä5çµæuêµæuæuçK—µèµäuê5åH5äuæuçÈ5å5êuç5äuæuçH5æõäõæH5ç5ç5çµåuäÈ5ä5æuæˆ5å5æõç5èµåuäuäËˆ‹˜\ŽˆÙ[ÛÛYHŸK‚^È]HŽˆµä5æuæˆ5æuåuê5æuçOÈ‹˜›ÙHŽˆµäuêµåuê5êuç5æõçH8 %5äµèµåH5äuæõäõåuê5êuç5æõçK5äµê5ê5åH5ä5åõåuê5å5åuêuåõê5ê5åK—µæõæõç5êuêµçµêuæõåH5ê5åõåuéÈ5æuåuêµê5å5æõäõåuê5æuèµåuèÈ5åõåµéÈ5æuåuêµê—µçµêuæuæõå5éõéµê5å5çµäuæ5ç5êˆ5ä5êˆ5å5æuê5æuæuåˆ‹˜\ŽˆœÚÛÝŸK‚^È]HŽˆµçµå5å5çµæ5ê5åÈ‹˜›ÙHŽˆµäõåõé5åH5ä5êˆ5æõäõåuê5æH5å5æuê5æuäH5ç5åõåuê5æuçH5äué5æuè5åuêˆ5å5ç5åuåË—µæõäõåuê5êuè5æõè5èH5ç5åõåuê5æuåuéµä5çµå5çµêuåõéÈ8 %5çµæH5êuçµåuê5æuäÈ5ä5êˆ5æõç5æõäõåuê5æH5å5æuê5æuäH5éõåuäõçK5çµè5éµåÈH‹˜\Žˆ™ÛØ[ŸK‚^È]HŽˆµåõåuê5æuçH5çµæuåuåõäõæuçH‹˜›ÙHŽˆµåõç5éÈ5çµå5åõåuê5æuçH5çµé5èµæuç5æuçH5è5êuéõæuçNˆ5äµåuçµæK5çµéõêK5åõêuçµç5ä5êK5éõê5åÈ5åuèµåuäË—µå5çH5æuåuéµê5æuçH5ê5äµèµæuçH5çµæ5åuê5é5æuçH8 %5è5èuåH5ç5êµæõè5çÈ5èuäuæuäuçHH‹˜\ŽˆÙX\ÛœÈŸK‚^È]HŽˆµêµåuê5åuêˆ‹˜›ÙHŽˆµæõç5êuåõéõçÈ5æuåuê5å5é5èµçH5ä5åõêˆ5äuêµåuê5åK—µä5çH5å5æõè5èuêµçH5æõäõåuê5êuç5å5æuê5æuäH5ç5åõåuê8 %5çµéõäuç5æuçH5êµåuê5è5åuèuèÈWµå5êµåuê5èµåuäuê5ê5éÈ5æõêuç5ä5å5éµç5åõêµçH5ç5å5æõè5æuèH5æõäõåuê5æuê5æuäKˆ‹˜\Žˆ\›œÈŸK‚^È]HŽˆµçµéµäuæH5çµêuåõéÈ‹˜›ÙHŽˆµêuåõéÈ8 %5çµêuåõéÈ5è5äµäÈ5å5çµåõêuäH
+5çµåuçµç5éH5ç5å5êµåõæuç5æõä5çÊK—µåõäuê8 %5åõäõê5é5ê5æ5æH5èµçH5éõåuäÈ5ç5êuè5æH5çµæõêuæuê5æuçK—µåµæuê5å8 %5çµêuåõéÈ5ä5åuè5ç5æuæuçÈ5çµåuç5æuê5æuäH5ä5éõê5ä5æH5èµçH5äõæuê5åuäˆ5åuçµæ5äuèµåuê‹ˆ‹˜\Žˆ›[Ù\ÈŸK‚^È]HŽˆµçµèuæˆ5å5äuæuêˆ‹˜›ÙHŽˆµé5ê5åué5æuç8 %5êuçK5äõçµåuêˆ5åuèuæ5æ5æuèuæ5æuéõåuê‹—µçµåuèµäõåuçÈ5êuåõéõè5æuçH8 %5åõäuê5æuçK5éµìõä5æ5ç5åuäuæH5åuç5æuäµå—µé5ê5èH5æuåuçµæH8 %5çµæ5äuèµåuêˆ5åõæuè5çH5æõç5æuåuçK—µå5èµêµæuéõåH5ä5êˆ5çµåµå5å”H5êuç5æõçH5æõäõæH5ç5å5åuèuæuèÈ5åõäuê5æuçKˆ‹˜\ŽˆšXˆŸK‚^È]HŽˆµçµåuæõè5æuçH5ç5êuåõéÈH‹˜›ÙHŽˆµå5êµåõæuç5åH5äuçµêuåõéÈ5è5äµäÈ5å5çµåõêuäH5æõäõæH5ç5å5êµê5äµç—µä5é5êuê5ç5é5êµåuåÈ5ä5êˆ5å5çµäõê5æuæˆ5êuåuäH5äuæõç5èµêˆ5çµæõé5êµåuêÈ5äué5æuè5å—µäuå5éµç5åõå5äuåµæuê5åH‹˜\Žˆœ™XYHŸK—B˜ÛÛœÝUÔ’PSÔÕT×ÑSˆHÂ‚^È]HŽˆ•ÑSÓÓQHÈ“ÓÔSÓÓHH‹˜›ÙHŽˆH]™[HX\˜›HØ[YHÛˆHÜXÚX[›Ø\™Ú]Û\ËÙX\ÛœË[™™X[ÜÛ™[Ë—”ÝÚ\H›ÝYÚ\ÙHÝ\ÈÈX\›ˆÝÈ]™\ž][™ÈÛÜšÜËˆ‹˜\ŽˆÙ[ÛÛYHŸK‚^È]HŽˆ’ÕÈÈÒÓÕ‹˜›ÙHŽˆ“Ûˆ[Ý\ˆ\›‹ÝXÚ[Ý\ˆ˜[[˜XÚË[™™[X\ÙK—•H˜\\ˆ[ÝH[H\™\ˆHÚÝ—H[žH[Ø[˜Ù[ÈHÚÝˆ‹˜\ŽˆœÚÛÝŸK‚^È]HŽˆ•HÓÐS‹˜›ÙHŽˆ’Û›ØÚÈ[Ý\ˆÜÛ™[	ÜÈ˜[È[ÈHÛÜ›™\ˆÛ\Ë—H˜[]˜[È[ˆ\ÈÝ]8 %ÛX\ˆ[[™[^H˜[Èš\œÝÈÚ[ˆH‹˜\Žˆ™ÛØ[ŸK‚^È]HŽˆ”ÔPÒPSÓTÈ‹˜›ÙHŽˆ”ÛÛYHÛ\ÈšYÙÙ\ˆÙX\ÛœÎˆX˜™\‹™\ÜË[XÝšXËš\™KXÙK[™[Ü™K—•^HÜ™X]HÚ[[ÛY[È8 %[ˆ\›Ý[™[HH‹˜\ŽˆÙX\ÛœÈŸK‚^È]HŽˆ•T“”È‹˜›ÙHŽˆ‘XXÚ^Y\ˆÚÛÝÈÛ˜ÙH\ˆ\›‹—”ØÚÙ][ˆ[™[^H˜[[™[ÝHÚÛÝYØZ[ˆW–[Ý\ˆ\›ˆ[™ÈÛ›HÚ[ˆ[ÝH˜Z[ÈØÚÙ][ˆ[™[^H˜[ˆ‹˜\Žˆ\›œÈŸK‚^È]HŽˆ‘ÐSQHSÑTÈ‹˜›ÙHŽˆ”VH8 %œÈÛÛ\]\ˆ
+™\ÝXÙHÈÝ\
+K—‘”’QS‘8 %š]˜]H›ÛÛHÚ]H[]\ˆÛÙK—T‘SH8 %Û›[™H˜[™ÛHX]ÚÚ]˜][™È[™ÛÚ[œËˆ‹˜\Žˆ›[Ù\ÈŸK‚^È]HŽˆ’ÓQHÐÔ‘QSˆ‹˜›ÙHŽˆ”›Ùš[H8 %˜[YKÚ\˜XÝ\‹[™Ý]Ë—”^Y\ˆÛXˆ8 %œšY[™ËØ˜žHÚ][™XYÝYK—‘Z[H™]Ø\™8 %œ™YHÛÚ[œÈ]™\žH^K—ÛÜH[Ý\ˆ”HQÈYœšY[™Ëˆ‹˜\ŽˆšXˆŸK‚^È]HŽˆ”‘PQHÈVHH‹˜›ÙHŽˆ”Ý\Ú]HÛÛ\]\ˆX]ÚÈ˜XÝXÙK—”™[Ü[ˆ\ÈÝZYH[ž][YHÚ]HÈ]Û‹—‘ÛÛÙXÚÈ[ˆH\™[˜HH‹˜\Žˆœ™XYHŸK—B˜\ˆ›Ø\™Ý^\™Nˆ^\™L‘˜\ˆ›Ø\™Ý[YWÝ^\™\Îˆ\œ˜^VÕ^\™L‘HH×B˜\ˆZWÙ›Ûˆ›Û˜\ˆØ˜žWØ˜XÚÙÜ›Ý[™Ý^\™Nˆ^\™L‘˜\ˆ›Ø][™×ÜÜ[×ÚÛYWÝ^\™Nˆ^\™L‘˜\ˆØY[™×ÝX[WÝ^\™Nˆ^\™L‘˜\ˆ›ÛÜ[ÛÛWÛÙÛ×Ý^\™Nˆ^\™L‘˜\ˆÛÛÙÜÙ][WÝ^\™Nˆ^\™L‘˜\ˆYXÙWÝ^\™\Îˆ\œ˜^VÕ^\™L‘HH×B˜\ˆ[š[X[Ý^\™\Îˆ\œ˜^VÕ^\™L‘HH×B˜\ˆ[Ø›ÙWØ[š[X[Ý^\™\Îˆ\œ˜^VÕ^\™L‘HH×B˜\ˆY™X[ÞWÚ\›×Ý^\™\Îˆ\œ˜^HH×B˜\ˆ[š[X[Üš[™×ÛX\ÚÜÎˆ\œ˜^VÕ^\™L‘HH×B˜\ˆX[WÜYXÙWÝ^\™\Îˆ\œ˜^VÕ^\™L‘HH×B˜\ˆY™™XÝÝ^\™\Îˆ\œ˜^VÕ^\™L‘HH×B˜\ˆX˜™\—Ø˜[Ý^\™Nˆ^\™L‘˜\ˆX˜™\—Ú[™Ý^\™\Îˆ\œ˜^VÕ^\™L‘HH×B˜\ˆX˜™\—Û][˜Ú\—Ý^\™Nˆ^\™L‘˜\ˆX˜™\—ÝÜ˜\Ý^\™Nˆ^\™L‘˜\ˆ™\Ü×ÛXXÚ[™WÝ^\™Nˆ^\™L‘˜\ˆš\™WÛ][˜Ú\—Ý^\™Nˆ^\™L‘˜\ˆ[[Y\—Ý^\™Nˆ^\™L‘˜\ˆ[[Y\—Ø˜\ÙWÝ^\™Nˆ^\™L‘˜\ˆ[[Y\—ÚYWÝ^\™Nˆ^\™L‘˜\ˆ[[Y\—ÜÝÚ[™×Ý^\™Nˆ^\™L‘˜\ˆ[[Y\—ÚXYÜÚYWÝ^\™Nˆ^\™L‘˜\ˆ[[Y\—Ú[\XÝÝ^\™Nˆ^\™L‘˜\ˆ˜[Îˆ\œ˜^HH×B˜\ˆXÝ]™WÙY™™XÝÎˆ\œ˜^HH×B˜\ˆØ]\—Ù›Ø]\œÎˆ\œ˜^HH×B˜\ˆ[\XÝØ\œÝÎˆ\œ˜^HH×B˜\ˆØÛÜ™WØ\œÝÎˆ\œ˜^HH×B˜\ˆ[Ý[Û—Ý˜Z[Îˆ\œ˜^HH×B˜\ˆÛÛXÝÈHßB‚ˆÈÝXÚYœšY[™HX˜™\ˆY™™XÝY]Ü‹ˆ˜[Y\È\™HÝÜ™Y[ˆ›Ø\™Z[XYÙH[š]Ë‚˜\ˆY™™XÝÙY]Ü—Ù[˜X›YH˜[ÙB˜\ˆY™™XÝÙY]Ü—Û[ÙHH™[XÝšXÈ‚˜\ˆY]Ü—ÜÙ[XÝYÚ[™H˜\ˆX˜™\—ÝÜÛÙ™œÙ]H™XÝÜŒŠMŒŒLLŒ
+B˜\ˆX˜™\—ÜÚYWÛÙ™œÙ]H™XÝÜŒŠŒŒŒŒ
+B˜\ˆX˜™\—ÝÜÝÚYHÌ‹Œ˜\ˆX˜™\—ÜÚYWÝÚYHÌ‹Œ˜\ˆX˜™\—ÝÜÜ›Ý][ÛˆHY×Ý×Ü˜Y
+LŒŒ
+B˜\ˆX˜™\—ÜÚYWÜ›Ý][ÛˆHY×Ý×Ü˜Y
+MKŒ
+B˜\ˆX˜™\—ÝÜÛZ\œ›ÜˆH˜[ÙB˜\ˆX˜™\—ÜÚYWÛZ\œ›ÜˆH˜[ÙB˜\ˆ[XÝšX×ÝÜÛÙ™œÙ]H™XÝÜŒŠMÍŒMÎŒ
+B˜\ˆ[XÝšX×ÜšYÚÛÙ™œÙ]H™XÝÜŒŠÌŒNŒ
+B˜\ˆ[XÝšX×ÝÜÜÚ^™HHÍŒ˜\ˆ[XÝšX×ÜšYÚÜÚ^™HHÍŒ˜\ˆY]Ü—ÚÛHHSPÕ’P×ÕTÒÓB˜\ˆY]Ü—Ý\™Ù]HÈ]ÙX\ÛˆKO]ÙX\Ûˆ‹X˜[ÏY˜[Y[žKO]X›HØ[ˆÈ\›Ý™Y˜\Y]ÜˆÛ˜\ÚÝ
+Œ‹LLŒJN‚ˆÈPÑNˆÙX\ÛŒOJ‹JHKŒÈÙX\ÛŒJLM‹ŠHKŒÈ˜[JKŒ
+HKŒÈ˜[J
+NÈ[žOJKNJH˜Y]\ÏLLNÈØ[X›ÝÛHÙ™œÙ]NÚ^™OLBˆÈ’T‘NˆÙX\ÛŒOJMKLL
+HKŒÈÙX\ÛŒJL
+HKŒÈ˜[JL
+HKŒÈ˜[JLÌMŒ
+NÈ[žOJLL‹M
+H˜Y]\ÏLLŽÈØ[[YÙ™œÙ]KLˆÚ^™OLBˆÈSSQTŽˆÙX\ÛŒOJŒJHKŒLÈÙX\ÛŒJJHKŒÈ˜[JLŒ
+HKŒÈ˜[J
+NÈ[žOJL‹M
+H˜Y]\ÏLLŽÈØ[\šYÚÙ™œÙ]MHÚ^™OLBˆÈSPÕ’PÎˆÙX\ÛŒOJL
+HKŒŒÈÙX\ÛŒJLËLÊHKŒŒÈ˜[JÍKMJHKŒÈ˜[JLMKJNÈ[žOJLKLŠH˜Y]\ÏLLŽÈØ[]ÜÙ™œÙ]KMÈÚ^™OLBˆÈ‘TÔÎˆÙX\ÛŒOJLË
+HKŒÈÙX\ÛŒJMLJHKŒÈ˜[JMJHKŒÈ˜[JÌ
+NÈ[žOJLKLLJH˜Y]\ÏLLŽÈØ[]ÜÙ™œÙ]KMÈÚ^™OLBˆÈ•P‘TŽˆÙX\ÛŒOJMJHKŒÈÙX\ÛŒJLMJHKŒÈ˜[JLLLMJHKŒÈ˜[JŒMJNÈ[žOJLLË
+H˜Y]\ÏLLÎÈØ[[YÙ™œÙ]KLˆÚ^™OLB˜\ˆ˜\ÝÙX\Û—ÛÙ™œÙ]Îˆ\œ˜^VÕ™XÝÜŒ—HHÂ‚U™XÝÜŒŠŒMKŒ
+K™XÝÜŒŠLŒMKŒ
+K‚U™XÝÜŒŠLËŒŒ
+K™XÝÜŒŠMŒLKŒ
+K‚U™XÝÜŒŠLŒŒ
+K™XÝÜŒŠLËŒLËŒ
+K‚U™XÝÜŒŠŒŒKŒ
+K™XÝÜŒŠŒKŒ
+K‚U™XÝÜŒŠ‹ŒKŒ
+K™XÝÜŒŠLM‹Œ‹Œ
+K‚U™XÝÜŒŠMKŒLLŒ
+K™XÝÜŒŠLŒŒ
+B—B˜\ˆ˜\ÝÙX\Û—ÜØØ[\Îˆ\œ˜^VÙ›Ø]HHÌKŒKŒKŒKŒKŒ‹KŒ‹KŒKKŒKŒKŒKŒKŒB˜\ˆ˜\Ø˜[ÛÙ™œÙ]Îˆ\œ˜^VÕ™XÝÜŒ—HHÕ™XÝÜŒŠLLŒLMKŒ
+K™XÝÜŒŠŒMKŒ
+K™XÝÜŒŠÍKŒMKŒ
+K™XÝÜŒŠLŒŒŒ
+K™XÝÜŒŠKŒŒŒ
+K™XÝÜŒŠŒLŒ
+WB˜\ˆ˜\Ø˜[ÜØØ[\Îˆ\œ˜^VÙ›Ø]HHÌKŒKŒKŒKŒKŒKŒB˜\ˆ˜\Ù˜[ÛÙ™œÙ]Îˆ\œ˜^VÕ™XÝÜŒ—HHÕ™XÝÜŒŠŒŒMKŒ
+K™XÝÜŒŠŒÌŒ
+K™XÝÜŒŠLMKŒKŒ
+K™XÝÜŒ‹–‘T“Ë™XÝÜŒ‹–‘T“Ë™XÝÜŒŠLÌŒMŒŒ
+WB˜\ˆ˜\Ù[žWÛÙ™œÙ]Îˆ\œ˜^VÕ™XÝÜŒ—HHÂ‚U™XÝÜŒŠLLËŒŒ
+K™XÝÜŒŠLKŒLLKŒ
+K™XÝÜŒŠLKŒL‹Œ
+K‚U™XÝÜŒŠL‹ŒMŒ
+K™XÝÜŒŠKŒNKŒ
+K™XÝÜŒŠLL‹ŒMŒ
+B—B˜\ˆ˜\Ù[žWÜ˜YZNˆ\œ˜^VÙ›Ø]HHÌLËŒL‹ŒL‹ŒL‹ŒLKŒL‹ŒB˜\ˆX›WÝØ[ÛÙ™œÙ]Îˆ\œ˜^VÙ›Ø]HHËL‹ŒMËŒKŒŒHÈYÜšYÚ›ÝÛB˜\ˆX›WÝØ[ÜÚ^™\Îˆ\œ˜^VÙ›Ø]HHÌKŒKŒKŒKŒBˆÈ[Øš[Hœ›ÝÜÙ\œÈX^H[Z]HÞ[]XÈ[Ý\ÙHÛXÚÈY\ˆ]™\žHÝXÚ‚ˆÈÛ˜ÙH™X[ÝXÚ[œ]\ÈÙY[‹YÛ›Ü™HÜÙH\XØ]H[Ý\ÙH]™[Ë‚˜\ˆÝXÚØÜ™Y[—Ú[œ]ÜÙY[ˆH˜[ÙB˜\ˆ\ÜØÜ™Y[ˆHTÐUU˜\ˆÜ\ÚÙ[\ÙYHŒ˜\ˆY[WÙ[\ÙYHŒ˜\ˆØ[YWÛ[ÙHH˜ÛÛ\]\ˆ‚˜\ˆ›Ùš[WÛ˜[YHH”VQTˆH‚˜\ˆ^Y\—ØÛÚ[œÈH˜\ˆÝÛ™YØ[š[X[Îˆ\œ˜^HH×B˜\ˆÝÛ™YÜš[™ÜÎˆ\œ˜^HH×B˜\ˆÚÜÜYÙHHÒÔÔQÑWÒP‚˜\ˆÙ[XÝYØ\™[˜HH˜ÛÛœÝ“ÐT‘ÕSQWÐÓÕS•HB˜\ˆÙ[XÝYØ›Ø\™Ý[YHH˜\ˆX]ÚØ›Ø\™Ý[YHH˜\ˆ›ÛÛWØ›Ø\™Ý[YHH˜\ˆZWÛ[™ÝXYÙHHšH‚˜\ˆ^Y\—Û]™[HB˜\ˆ^Y\—ÞH˜\ˆ^Y\—Û™^Û]™[ÞHL˜\ˆ^Y\—ÝÚ[œÈH˜\ˆ^Y\—ÛÜÜÙ\ÈH˜\ˆ^Y\—Ø™\ÝÜÝ™XZÈH˜\ˆ^Y\—ØÝ\œ™[ÜÝ™XZÈH˜\ˆ^Y\—ÝÛÜ›Ü˜[šÈH˜\ˆ^Y\—Ü˜][™ÈHL˜\ˆ^Y\—ÛXYÝYWÝY\ˆH˜\ˆÛØ˜[ÛXY\˜›Ø\™ˆ\œ˜^HH×B˜\ˆ[™[™×ÙœšY[™Ú[š]NˆXÝ[Û˜\žHHßB˜\ˆ[™[™×ÙœšY[™Ú[š]WÜÙ[™ˆXÝ[Û˜\žHHßB˜\ˆ[™[™×ÙœšY[™Ú[š]WÝ\™Ù]Û˜[YHHˆ‚˜\ˆœšY[™Ü›ÛÛWØÚ]ÛÜ[ˆH˜[ÙB˜\ˆÛYWØ[XšY[Ü\XÛ\Îˆ\œ˜^HH×B˜\ˆÛÝ[™Ù[˜X›YHYB˜\ˆÙžÜ^Y\Žˆ]Y[ÔÝ™X[T^Y\‚˜\ˆ\ÝÙZ[WØÛZ[HHˆ‚˜\ˆY[WÛ›ÝXÙHHˆ‚˜\ˆY[WÛ›ÝXÙWÝ[YHHŒ˜\ˆ][\^Y\—ÜÛØÚÙ]HÙX”ÛØÚÙ]Y\‹›™]Ê
+B˜\ˆ][\^Y\—ÜÝ]HH™\ØÛÛ›™XÝY‚˜\ˆ][\^Y\—Ü›ÛÛWØÛÙHHˆ‚˜\ˆ][\^Y\—ÜÛÝHLB˜\ˆ][\^Y\—Ü^Y\œÎˆ\œ˜^HH×B˜\ˆ][\^Y\—Ü™XYHH˜[ÙB˜\ˆ][\^Y\—Ù\œ›ÜˆHˆ‚˜\ˆ[™[™×ÜÚ\™YÜ›ÛÛWØÛÙHHˆ‚˜\ˆ[™[™×Ø[™›ÚYØ]]Ú[™Ù™ˆHˆ‚˜\ˆ[™[™×Ø]]Ú[™Ù™—Ü^[ØYˆXÝ[Û˜\žHHßB˜\ˆ[™[™×ÙÛÛÙÛWÚ[™Ù™—Ü™\]Y\ÝH˜[ÙB˜\ˆ][\^Y\—ÛØØ[Ø[š[X[HLB˜\ˆ][\^Y\—ÛØØ[Üš[™×ØÛÛÜˆHLB˜\ˆœšY[™ØÝ\ÝÛZ^™\—ÛÜ[ˆH˜[ÙB˜\ˆœšY[™ÛÜÛ™[Ü›Ùš[WÛÜ[ˆH˜[ÙB˜\ˆ›ÛÛWØÛÙWÚ[œ]ˆ[™QY]˜\ˆÚ]Ú[œ]ˆ[™QY]˜\ˆ›Ùš[WÛ˜[YWÚ[œ]ˆ[™QY]˜\ˆ]]Ù[XZ[Ú[œ]ˆ[™QY]˜\ˆ]]Ü\ÜÝÛÜ™Ú[œ]ˆ[™QY]˜\ˆ]]Ù[XZ[Û[ÙHHˆ‚˜\ˆš\™X˜\ÙWØ]]Û[ÙHHˆ‚˜\ˆ^]ØÛÛ™š\›WÛÜ[ˆH˜[ÙB˜\ˆÚ]ÛÜ[ˆH˜[ÙB˜\ˆX]ÚØÚ]ÛY\ÜØYÙ\Îˆ\œ˜^HH×B˜\ˆX]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB˜\ˆ[™[™×Ùš[™ÛX]ÚH˜[ÙB˜\ˆX]ÚÜÛÝ\˜ÙHH˜ÛÛ\]\ˆ‚˜\ˆ\™[˜WÙžÜ\ÙHHšYH‚˜\ˆ\™[˜WÙžÙ[\ÙYHŒ˜\ˆ[™[™×Ø\™[˜WÛX]ÚˆXÝ[Û˜\žHHßB˜\ˆ\™[˜WÛX]ÚYÛÜÛ™[ˆXÝ[Û˜\žHHßB˜\ˆ˜ÛWÝÚÙ[—Ü™YÚ\Ý\™YHˆ‚˜\ˆ\ÚÜÙ]\ÙÛ™HH˜[ÙB˜\ˆ]ÜšX[ØÛÛ\]YH˜[ÙB˜\ˆ]ÜšX[ÛÜ[ˆH˜[ÙB˜\ˆ]ÜšX[ÜÝ\H˜\ˆ]ÜšX[Ù\ÛZ\ÜÙYÜÙ\ÜÚ[ÛˆH˜[ÙB˜\ˆX]ÚÙš[š\ÚYH˜[ÙB˜\ˆX]ÚÜ™\Ý[ÛÜ[ˆH˜[ÙB˜\ˆX]ÚÜ™\Ý[ÝÚ[›™\ˆHLB˜\ˆX]ÚÜ™\Ý[ØÛÚ[œÈH˜\ˆX]ÚÜ™\Ý[Ü™XÛÜ™YH˜[ÙB˜\ˆ\›—ÜÚÝØÛÛ[Z]YH˜[ÙB˜\ˆ\›—Ü[™[™×Ü™\ÛÛ™HH˜[ÙB˜\ˆ\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB˜\ˆœšY[™×Û\Ýˆ\œ˜^HH×B˜\ˆ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÎˆ\œ˜^HH×B˜\ˆÝ]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝÎˆ\œ˜^HH×B˜\ˆÛYWÜÛØÚX[ÝXˆH˜\ˆÛYWÙœšY[™Ü›Ùš[WÚ[™^HLB˜\ˆØ˜žWØÚ]ÛY\ÜØYÙ\Îˆ\œ˜^HH×B˜\ˆœšY[™ÚYÚ[œ]ˆ[™QY]˜\ˆØ˜žWØÚ]Ú[œ]ˆ[™QY]˜\ˆœšY[™ÛÛÚÝ\Ü™\]Y\Ýˆ™\]Y\Ý˜\ˆ[™[™×ÙœšY[™ÛÛÚÝ\ÚYHˆ‚‚™[˜È[š]ÚÛYWØ[XšY[Ü\XÛ\Ê
+HOˆ›ÚY‚‚ZYˆ›ÝÛYWØ[XšY[Ü\XÛ\Ëš\×Ù[\J
+N‚‚B\™]\›‚‚Y›ÜˆH[ˆŽ‚‚BZÛYWØ[XšY[Ü\XÛ\Ë˜\[™
+Â‚BBHžŽˆ˜[™Š
+K‚BBHžHŽˆ˜[™Š
+K‚BBHœÜYYŽˆ˜[™—Ü˜[™ÙJŒŒM
+K‚BBHœÚ^™HŽˆ˜[™—Ü˜[™ÙJËŒLKŒ
+K‚BBHœ\ÙHŽˆ˜[™Š
+H
+ˆUK‚BBHšÚ[™ŽˆH	HÂ‚B_JB‚™[˜ÈXZÙWÝÛ™WÜÝ™X[Jœ™\Nˆ›Ø]\˜][ÛŽˆ›Ø]›Û[YNˆ›Ø]HŒŒŠHOˆ]Y[ÔÝ™X[UÐUŽ‚‚]˜\ˆØ[\WÜ˜]HHŒŒL‚]˜\ˆœ˜[Y\ÈHX^JK[
+Ø[\WÜ˜]H
+ˆ\˜][ÛŠJB‚]˜\ˆ]HHXÚÙYž]P\œ˜^J
+B‚Y]Kœ™\Ú^™Jœ˜[Y\È
+ˆŠB‚Y›ÜˆH[ˆœ˜[Y\Î‚‚B]˜\ˆH›Ø]
+JHÈ›Ø]
+Ø[\WÜ˜]JB‚B]˜\ˆ[™[ÜHHKŒH›Ø]
+JHÈ›Ø]
+œ˜[Y\ÊB‚B]˜\ˆØ[\HHÚ[ŠUH
+ˆœ™\H
+ˆ
+H
+ˆ›Û[YH
+ˆ[™[ÜB‚B]˜\ˆÌMˆH[
+Û[\ŠØ[\H
+ˆÌÍËŒLÌÍŽŒÌÍËŒ
+JB‚BY]VÚH
+ˆ—HHÌMˆ	ˆ‘‚‚BY]VÚH
+ˆˆ
+ÈWHH
+ÌMˆˆ
+H	ˆ‘‚‚]˜\ˆÝ™X[HH]Y[ÔÝ™X[UÐU‹›™]Ê
+B‚\Ý™X[K™›Ü›X]H]Y[ÔÝ™X[UÐU‹‘“Ô“PUÌM—Ð’UÂ‚\Ý™X[KœÝ\™[ÈH˜[ÙB‚\Ý™X[K›Z^Ü˜]HHØ[\WÜ˜]B‚\Ý™X[K™]HH]B‚\™]\›ˆÝ™X[B‚™[˜ÈÙ]\ÜÛÝ[™
+
+HOˆ›ÚY‚‚\ÙžÜ^Y\ˆH]Y[ÔÝ™X[T^Y\‹›™]Ê
+B‚\ÙžÜ^Y\‹˜\ÈH“X\Ý\ˆ‚‚XYØÚ[
+ÙžÜ^Y\ŠB‚™[˜È^WÜÛÝ[™
+Ú[™ˆÝš[™ÊHOˆ›ÚY‚‚ZYˆ›ÝÛÝ[™Ù[˜X›YÜˆÙžÜ^Y\ˆOH[‚‚B\™]\›‚‚]˜\ˆÝ™X[Nˆ]Y[ÔÝ™X[UÐUˆH[‚[X]ÚÚ[™‚‚BHZHŽ‚‚BB\Ý™X[HHXZÙWÝÛ™WÜÝ™X[JŒŒŒ‹ŒMŠB‚BHœÚÝŽ‚‚BB\Ý™X[HHXZÙWÝÛ™WÜÝ™X[JŒŒLŒŒ
+B‚BHœØÛÜ™HŽ‚‚BB\Ý™X[HHXZÙWÝÛ™WÜÝ™X[JŒŒMŒN
+B‚BHš[š]HŽ‚‚BB\Ý™X[HHXZÙWÝÛ™WÜÝ™X[JLŒŒŒNŒŒ
+B‚BHÚ[ˆŽ‚‚BB\Ý™X[HHXZÙWÝÛ™WÜÝ™X[JÍŒŒŒ‹ŒŒŠB‚BWÎ‚‚BB\Ý™X[HHXZÙWÝÛ™WÜÝ™X[JŒŒŒM
+B‚\ÙžÜ^Y\‹œÝ™X[HHÝ™X[B‚\ÙžÜ^Y\‹œ^J
+B‚™[˜ÈXYÝYWÝY\—Ù›Ü—Ü˜][™Ê˜][™Îˆ[
+HOˆ[‚‚]˜\ˆY\ˆH‚Y›ÜˆH[ˆPQÕQWÔUS‘×Õ‘TÒÓËœÚ^™J
+N‚‚BZYˆ˜][™ÈHPQÕQWÔUS‘×Õ‘TÒÓÖÚWN‚‚BB]Y\ˆHB‚\™]\›ˆÛ[\JY\‹PQÕQWÓSQWÒÑVTËœÚ^™J
+HHJB‚™[˜ÈXYÝYWÛ˜[YJY\Žˆ[
+HOˆÝš[™Î‚‚\™]\›ˆZWÝ^
+PQÕQWÓSQWÒÑVTÖØÛ[\JY\‹PQÕQWÓSQWÒÑVTËœÚ^™J
+HHJWJB‚™[˜ÈXYÝYWØÛÛÜŠY\Žˆ[
+HOˆÛÛÜŽ‚‚]˜\ˆÛÛÜœÈHÐÛÛÜŠŽÙXÙ™ˆŠKÛÛÜŠLYNMHŠKÛÛÜŠ™™™LYŠKÛÛÜŠ™™ŽYŒŠKÛÛÜŠ™NMÎŠKÛÛÜŠ˜ÍÍÙ™ˆŠWB‚\™]\›ˆÛÛÜœÖØÛ[\JY\‹ÛÛÜœËœÚ^™J
+HHJWB‚™[˜È\]WÜ^Y\—ÛXYÝYWÝY\Š
+HOˆ›ÚY‚‚\^Y\—ÛXYÝYWÝY\ˆHXYÝYWÝY\—Ù›Ü—Ü˜][™Ê^Y\—Ü˜][™ÊB‚™[˜È\WÜ˜][™×ØÚ[™ÙJYÝÚ[Žˆ›ÛÛÜÛ™[Ü˜][™Îˆ[HL
+HOˆ›ÚY‚‚]˜\ˆ^XÝYHKŒÈ
+KŒ
+ÈÝÊLŒ›Ø]
+ÜÛ™[Ü˜][™ÈH^Y\—Ü˜][™ÊHÈŒ
+JB‚]˜\ˆØÛÜ™HHKŒYˆYÝÚ[ˆ[ÙHŒ‚]˜\ˆÈHŽŒYˆ^Y\—Ü˜][™ÈLŒ[ÙHŒ‹Œ‚]˜\ˆÛÝY\ˆH^Y\—ÛXYÝYWÝY\‚‚\^Y\—Ü˜][™ÈHÛ[\J[
+›Ý[™
+›Ø]
+^Y\—Ü˜][™ÊH
+ÈÈ
+ˆ
+ØÛÜ™HH^XÝY
+JJKLNNNJB‚]\]WÜ^Y\—ÛXYÝYWÝY\Š
+B‚ZYˆ^Y\—ÛXYÝYWÝY\ˆˆÛÝY\Ž‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+œ›Û[ÝYÛXYÝYHŠH
+Èˆˆ
+ÈXYÝYWÛ˜[YJ^Y\—ÛXYÝYWÝY\ŠJB‚B\^WÜÛÝ[™
+Ú[ˆŠB‚™[˜ÈÞ[˜×Ü^Y\—Ü™\Ù[˜ÙJ
+HOˆ›ÚY‚‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆÜˆš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+N‚‚B\™]\›‚‚\Ù[™Û][\^Y\ŠÂ‚BH\HŽˆœ™YÚ\Ý\—Ü™\Ù[˜ÙH‹‚BHœX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚BH›˜[YHŽˆ›Ùš[WÛ˜[YK‚BHœ˜][™ÈŽˆ^Y\—Ü˜][™Ë‚BHÚ[œÈŽˆ^Y\—ÝÚ[œË‚BH›ÜÜÙ\ÈŽˆ^Y\—ÛÜÜÙ\Ë‚BH›XYÝYUY\ˆŽˆ^Y\—ÛXYÝYWÝY\‚‚_JB‚\Ù[™Û][\^Y\ŠÈ\HŽˆ™Ù]ÛXY\˜›Ø\™ŸJB‚\™YÚ\Ý\—Ù˜ÛWÝÚÙ[—ÝÚ]ÜÙ\™\Š
+B‚™[˜ÈÙ]\Ü\ÚÛ›ÝYšXØ][Ûœ×ÝÙXŠ
+HOˆ›ÚY‚‚ZYˆ›ÝÔËš\×Ù™X]\™JÙXˆŠHÜˆ\ÚÜÙ]\ÙÛ™N‚‚B\™]\›‚‚\\ÚÜÙ]\ÙÛ™HHYB‚]˜\ˆ˜\YH’T‘PTÑWÕÑP—ÕTQÒÑVB‚]˜\ˆØÜš\Hˆˆ‚Ú[™ÝËžœ\ÚÝ]HHÜÝ]\Îˆ	ÛØY[™ÉßNÂÚ[™ÝËžœÚÝÓ›ÝYšXØ][ÛˆH
+]K›ÙK]JHOˆÂˆYˆ
+J	Ó›ÝYšXØ][Û‰È[ˆÚ[™ÝÊH›ÝYšXØ][Û‹œ\›Z\ÜÚ[ÛˆOOH	ÙÜ˜[Y	ÊH™]\›ŽÂˆžHÂˆÛÛœÝ›ÝHH™]È›ÝYšXØ][ÛŠ]KÂˆ›ÙNˆ›ÙKˆXÛÛŽˆ	Ë‹Þ›ÛÜ[ÛÛKX›ÛÝ\Ü\Ú]Œ‹œ™ÉËˆ˜YÙNˆ	Ë‹Þ›ÛÜ[ÛÛKX›ÛÝ\Ü\Ú]Œ‹œ™ÉËˆ]Nˆ]HßBˆJNÂˆ›ÝK›Û˜ÛXÚÈH
+
+HOˆÂˆYˆ
+]H	‰ˆ]Kœ›ÛÛPÛÙJHÂˆÛÛœÝ\›H™]ÈT“
+Ú[™ÝË›ØØ][Û‹š™YŠNÂˆ\›œÙX\˜Ú\˜[\ËœÙ]
+	Ü›ÛÛIË]Kœ›ÛÛPÛÙJNÂˆÚ[™ÝË›ØØ][Û‹š™YˆH\›ÔÝš[™Ê
+NÂˆBˆÚ[™ÝË™›ØÝ\Ê
+NÂˆ›ÝK˜ÛÜÙJ
+NÂˆNÂˆHØ]Ú
+\œ›ÜŠHßBŸNÂŠ\Þ[˜È
+
+HOˆÂˆžHÂˆYˆ
+J	Ó›ÝYšXØ][Û‰È[ˆÚ[™ÝÊJHÂˆÚ[™ÝËžœ\ÚÝ]HHÜÝ]\Îˆ	Ý[œÝ\ÜY	ßNÂˆ™]\›ŽÂˆBˆÛÛœÝ\›Z\ÜÚ[ÛˆH]ØZ]›ÝYšXØ][Û‹œ™\]Y\Ý\›Z\ÜÚ[ÛŠ
+NÂˆÚ[™ÝËžœ\ÚÝ]HHÜÝ]\Îˆ\›Z\ÜÚ[ÛŸNÂˆÛÛœÝ˜\YÙ^HH	××ÕTQ×ÉÎÂˆYˆ
+]˜\YÙ^HJ	ÜÙ\šXÙUÛÜšÙ\‰È[ˆ˜]šYØ]ÜŠJH™]\›ŽÂˆÛÛœÝ™YÚ\Ý˜][ÛˆH]ØZ]˜]šYØ]Ü‹œÙ\šXÙUÛÜšÙ\‹œ™YÚ\Ý\Š	Ë‹Ùš\™X˜\ÙK[Y\ÜØYÚ[™Ë\ÝËšœÉÊNÂˆÛÛœÝ\ÙÈH]ØZ][\Ü
+	ÚÎ‹ËÝÝÝË™ÜÝ]XË˜ÛÛKÙš\™X˜\ÙZœËÌL‹ŒMËŒKÙš\™X˜\ÙKX\šœÉÊNÂˆÛÛœÝY\ÜØYÚ[™ÔÙÈH]ØZ][\Ü
+	ÚÎ‹ËÝÝÝË™ÜÝ]XË˜ÛÛKÙš\™X˜\ÙZœËÌL‹ŒMËŒKÙš\™X˜\ÙK[Y\ÜØYÚ[™ËšœÉÊNÂˆÛÛœÝÛÛ™šYÈHÂˆ\RÙ^Nˆ	××ÐTWÒÑVW×ÉË]]ÛXZ[Žˆ	Þ›ÛÜ[ÛÛK[Û›[™K™š\™X˜\ÙX\˜ÛÛIËˆ›Ú™XÝYˆ	Þ›ÛÜ[ÛÛK[Û›[™IËÝÜ˜YÙPXÚÙ]ˆ	Þ›ÛÜ[ÛÛK[Û›[™K™š\™X˜\Ù\ÝÜ˜YÙK˜\	ËˆY\ÜØYÚ[™ÔÙ[™\’Yˆ	ÌÎNMŒÌL‰Ë\Yˆ	ÌNŒÎNMŒÌLŽÙXŽŒMÎXØŒLØÎN™™ÌÍLMY	ÂˆNÂˆÛÛœÝ\H\ÙË™Ù]\Ê
+K›[™ÝÈ\ÙË™Ù]\Ê
+VÌHˆ\ÙËš[š]X[^™P\
+ÛÛ™šYÊNÂˆÛÛœÝY\ÜØYÚ[™ÈHY\ÜØYÚ[™ÔÙË™Ù]Y\ÜØYÚ[™Ê\
+NÂˆÛÛœÝÚÙ[ˆH]ØZ]Y\ÜØYÚ[™ÔÙË™Ù]ÚÙ[ŠY\ÜØYÚ[™ËÝ˜\YÙ^KÙ\šXÙUÛÜšÙ\”™YÚ\Ý˜][ÛŽˆ™YÚ\Ý˜][ÛŸJNÂˆYˆ
+ÚÙ[ŠHÂˆÚ[™ÝËžœ˜ÛUÚÙ[ˆHÚÙ[ŽÂˆÚ[™ÝËžœ\ÚÝ]K™˜ÛUÚÙ[ˆHÚÙ[ŽÂˆBˆHØ]Ú
+\œ›ÜŠHÂˆÚ[™ÝËžœ\ÚÝ]HHÜÝ]\Îˆ	Ù\œ›Ü‰ËY\ÜØYÙNˆÝš[™Ê\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙH\œ›ÜŠ_NÂˆBŸJJ
+NÂˆˆˆ‹œ™\XÙJ—×ÐTWÒÑVW×È‹’T‘PTÑWÐTWÒÑVJKœ™\XÙJ—×ÕTQ×È‹˜\Y
+B‚R˜]˜TØÜš\œšYÙK™]˜[
+ØÜš\YJB‚™[˜È™YÚ\Ý\—Ù˜ÛWÝÚÙ[—ÝÚ]ÜÙ\™\Š
+HOˆ›ÚY‚‚ZYˆ›ÝÔËš\×Ù™X]\™JÙXˆŠHÜˆš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+HÜˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚B\™]\›‚‚]˜\ˆÚÙ[ˆHÝŠ˜]˜TØÜš\œšYÙK™]˜[
+Ú[™ÝËžœ˜ÛUÚÙ[ˆ	ÉÈ‹YJJKœÝš\ÙYÙ\Ê
+B‚ZYˆÚÙ[‹š\×Ù[\J
+HÜˆÚÙ[ˆOH˜ÛWÝÚÙ[—Ü™YÚ\Ý\™Y‚‚B\™]\›‚‚\Ù[™Û][\^Y\ŠÂ‚BH\HŽˆœ™YÚ\Ý\—Ù˜ÛWÝÚÙ[ˆ‹‚BHœX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚BHÚÙ[ˆŽˆÚÙ[‹‚BHœ]›Ü›HŽˆÙXˆ‚‚_JB‚Y˜ÛWÝÚÙ[—Ü™YÚ\Ý\™YHÚÙ[‚‚™[˜ÈÚÝ×ÝÙX—Û›ÝYšXØ][ÛŠ]NˆÝš[™Ë›ÙNˆÝš[™Ë]NˆXÝ[Û˜\žHHßJHOˆ›ÚY‚‚ZYˆ›ÝÔËš\×Ù™X]\™JÙXˆŠN‚‚B\™]\›‚‚]˜\ˆ^[ØYH”ÓÓ‹œÝš[™ÚYžJ]JB‚R˜]˜TØÜš\œšYÙK™]˜[
+‚BHÚ[™ÝËžœÚÝÓ›ÝYšXØ][Ûˆ	‰ˆÚ[™ÝËžœÚÝÓ›ÝYšXØ][ÛŠ	\Ë	\Ë	\ÊHˆ	HÂ‚BBR”ÓÓ‹œÝš[™ÚYžJ]JK”ÓÓ‹œÝš[™ÚYžJ›ÙJK^[ØY‚BWK‚B]YB‚JB‚™[˜È\™[˜WÛÜÛ™[Ù]J
+HOˆXÝ[Û˜\žN‚‚]˜\ˆÜÛ™[ÜÛÝHHH][\^Y\—ÜÛÝYˆ][\^Y\—ÜÛÝH[ÙHB‚ZYˆÜÛ™[ÜÛÝH[™ÜÛ™[ÜÛÝ][\^Y\—Ü^Y\œËœÚ^™J
+N‚‚B\™]\›ˆ][\^Y\—Ü^Y\œÖÛÜÛ™[ÜÛÝB‚\™]\›ˆßB‚™[˜È™YÚ[—Ø\™[˜WÛX]ÚÙ›Ý[™
+^[ØYˆXÝ[Û˜\žJHOˆ›ÚY‚‚\[™[™×Ø\™[˜WÛX]ÚH^[ØY™\XØ]J
+B‚[][\^Y\—ÜÛÝH[
+^[ØY™Ù]
+œÛÝ‹][\^Y\—ÜÛÝ
+JB‚]\›ˆH[
+^[ØY™Ù]
+\›ˆ‹
+JB‚[X]ÚÜÛÝ\˜ÙHH˜\™[˜H‚‚[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB‚\[™[™×Ùš[™ÛX]ÚH˜[ÙB‚X\™[˜WÙžÜ\ÙHH™›Ý[™‚‚X\™[˜WÙžÙ[\ÙYHŒ‚X\™[˜WÛX]ÚYÛÜÛ™[H\™[˜WÛÜÛ™[Ù]J
+B‚\^WÜÛÝ[™
+š[š]HŠB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È\WÛX]ÚÜÝ\Y
+^[ØYˆXÝ[Û˜\žJHOˆ›ÚY‚‚[][\^Y\—ÜÛÝH[
+^[ØY™Ù]
+œÛÝ‹][\^Y\—ÜÛÝ
+JB‚]\›ˆH[
+^[ØY™Ù]
+\›ˆ‹
+JB‚YØ[YWÛ[ÙHH›Û›[™H‚‚[X]ÚÜÛÝ\˜ÙHHÝŠ^[ØY™Ù]
+œÛÝ\˜ÙH‹™œšY[™ŠJB‚ZYˆX]ÚÜÛÝ\˜ÙHOH˜\™[˜HŽ‚‚B]˜\ˆ[žNˆ[H[
+T‘SWÑS•–WÐÓÔÕÖØÛ[\J[
+^[ØY™Ù]
+˜\™[˜H‹Ù[XÝYØ\™[˜JJKT‘SWÑS•–WÐÓÔÕËœÚ^™J
+HHJWJB‚B\^Y\—ØÛÚ[œÈHX^J^Y\—ØÛÚ[œÈH[žJB‚B\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB‚\[™[™×Ùš[™ÛX]ÚH˜[ÙB‚X\™[˜WÙžÜ\ÙHHšYH‚‚X\™[˜WÙžÙ[\ÙYHŒ‚\[™[™×Ø\™[˜WÛX]ÚHßB‚X\™[˜WÛX]ÚYÛÜÛ™[HßB‚X\ÜØÜ™Y[ˆHTÑÐSQB‚Y^]ØÛÛ™š\›WÛÜ[ˆH˜[ÙB‚XÚ]ÛÜ[ˆH˜[ÙB‚[X]ÚØÚ]ÛY\ÜØYÙ\Ë˜ÛX\Š
+B‚ZYˆ^[ØYš\Ê˜›Ø\™[YHŠN‚‚B\Þ[˜×ÛX]ÚØ›Ø\™Ùœ›ÛWÜ^[ØY
+^[ØY
+B‚Y[YˆX]ÚÜÛÝ\˜ÙHOH˜\™[˜HŽ‚‚B\Þ[˜×ÛX]ÚØ›Ø\™Ùœ›ÛWÜ^[ØY
+È˜›Ø\™[YHŽˆ\™[˜WØ›Ø\™Ý[YWÙ›Ü—Û]™[
+[
+^[ØY™Ù]
+˜\™[˜H‹Ù[XÝYØ\™[˜JJJ_JB‚[™]×ÙØ[YJ
+B‚]\›ˆH[
+^[ØY™Ù]
+\›ˆ‹
+JB‚]\›—ÜÚÝØÛÛ[Z]YH˜[ÙB‚]\›—Ü[™[™×Ü™\ÛÛ™HH˜[ÙB‚]\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB‚™[˜È\]WØ\™[˜WÙž
+[Nˆ›Ø]
+HOˆ›ÚY‚‚ZYˆ\™[˜WÙžÜ\ÙHOHšYHŽ‚‚B\™]\›‚‚X\™[˜WÙžÙ[\ÙY
+ÏH[B‚ZYˆ\™[˜WÙžÜ\ÙHOH™›Ý[™ˆ[™\™[˜WÙžÙ[\ÙYHT‘SWÓPUÒÑ“ÕS‘ÑTUSÓˆ[™›Ý[™[™×Ø\™[˜WÛX]Úš\×Ù[\J
+N‚‚BX\WÛX]ÚÜÝ\Y
+[™[™×Ø\™[˜WÛX]Ú
+B‚™[˜È][\^Y\—Ü^[ØYÜÝ]Ê
+HOˆXÝ[Û˜\žN‚‚\™]\›ˆÂ‚BHœ˜][™ÈŽˆ^Y\—Ü˜][™Ë‚BH›XYÝYUY\ˆŽˆ^Y\—ÛXYÝYWÝY\‹‚BHœX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚_B‚˜\ˆšY]×ÛÜšYÚ[ˆH™XÝÜŒ‹–‘T“Â˜\ˆ›Ø\™ÜØØ[HHKŒ˜\ˆ›Ø\™Ü™XÝH™XÝŠ
+B˜\ˆ\›ˆH˜\ˆÙ[XÝYHLB˜\ˆ˜YÙÚ[™ÈH˜[ÙB˜\ˆ˜Y×ÜÚ[H™XÝÜŒ‹–‘T“Â˜\ˆXØÝ[][]ÜˆHŒ˜\ˆÝ]\ÈH–[Ý\ˆ\›ˆHÝXÚH™Y˜[[˜XÚÈ[™™[X\ÙH‚˜\ˆZWÜ[™[™ÈH˜[ÙB˜\ˆZWÝ[Y\ˆHŒ˜\ˆZWØÛÛ[Z]YÜÚÝH˜[ÙB˜\ˆÛÛ\]\—ÙY™šXÝ[HHB˜\ˆ[Ù\›—ÛX]ÚÚ[›ÈHŒ˜\ˆ\ÝØ[››Ý[˜ÙYÝ\›ˆHLB˜\ˆ\›—Ø˜[›™\—ØYÙHHŒ˜\ˆÝ\ÝÛZ^™\—ÛÜ[ˆH˜[ÙBˆÈÝ\Ú]HÛÛXš[˜][Ûˆ™\]Y\ÝY\š[™ÈHš\ÝX[™]šY]Îˆ™Xœ˜H
+ÈÜ™Y[‹‚˜\ˆ^Y\—Ø[š[X[HB˜\ˆ^Y\—Üš[™×ØÛÛÜˆHÂ˜\ˆZWØ[š[X[H˜\ˆZWÜš[™×ØÛÛÜˆH˜ÛÛœÝVQT—Ô“Ñ’SWÔUH\Ù\Ž‹ËÞ›ÛÜ[ÛÛK\›Ùš[K˜Ù™È‚˜ÛÛœÝ’T‘PTÑWÐTWÒÑVHHR^˜TÞPÒXÕSMRÚÙ[K[QÎŒÛÓ›œ“LÒËZ‘ÒH‚˜ÛÛœÝ’T‘PTÑWÔ“Ò‘PÕÒQHž›ÛÜ[ÛÛK[Û›[™H‚˜\ˆš\™X˜\ÙWÝZYHˆ‚˜\ˆš\™X˜\ÙWÜX›X×ÚYHˆ‚˜\ˆš\™X˜\ÙWÚYÝÚÙ[ˆHˆ‚˜\ˆš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ˆHˆ‚˜\ˆš\™X˜\ÙWÝÚÙ[—Ù^\™\×Ø]H˜\ˆš\™X˜\ÙWÜ›ÝšY\ˆH™ÝY\Ý‚˜\ˆš\™X˜\ÙWÙ[XZ[Hˆ‚˜\ˆš\™X˜\ÙWØ]]Ü™\]Y\Ýˆ™\]Y\Ý˜\ˆš\™X˜\ÙWÜ›Ùš[WÜ™\]Y\Ýˆ™\]Y\Ý˜\ˆš\™X˜\ÙWÜX›X×ÚYÜ™\]Y\Ýˆ™\]Y\Ý˜\ˆš\™X˜\ÙWØ]]Ø\ÞHH˜[ÙB˜\ˆš\™X˜\ÙWÜ›Ùš[WÙ\HH˜[ÙB˜\ˆš\™X˜\ÙWÜÞ[˜×Ù[^HHŒ˜\ˆš\™X˜\ÙWÝÙX—ÜÛÙ[^HHŒ˜\ˆš\™X˜\ÙWÜÝ]\ÈHµçµêµåõäuê‹‹ˆ‚˜\ˆÙ\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™ÈH˜[ÙB˜\ˆÙ\ÜÚ[Û—Ü™\ÝÜ™WÙXY[™HHŒ˜ÛÛœÝÑTÔÒSÓ—Ô‘TÕÔ‘WÕÐRUÔÑPÈHËB˜ÛÛœÝÓQS•Õ‘T”ÒSÓˆHPÐÓÕS•Mˆ‚‚™[˜ÈÙ[\—Ý™YJ
+HOˆ›ÚY‚‚HÈ[\ˆ˜]]™H[ØÜ™Y[ˆ™Y›Ü™HÜ™XYJ
+H[™™Y›Ü™HHš\œÝØ[YHœ˜[YK‚‚HÈ[™›ÚY	ÜÈ[[Y\œÚ]™H^Ü›YÈ›Ü›X[HY\ÈH˜]šYØ][Ûˆ˜\‹]‚HÈÙ]™\˜[Ø[\Ý[™È]šXÙ\È™]™X[]YØZ[ˆÚ[HHXÝ]š]H\ÈÝ\[™Ë‚‚ZYˆÔËš\×Ù™X]\™J˜[™›ÚYŠN‚‚BQ\Ü^TÙ\™\‹Ú[™Ý×ÜÙ]Û[ÙJ\Ü^TÙ\™\‹•ÒS‘Õ×ÓSÑWÑ•SÐÔ‘QSŠB‚™[˜ÈÛ›ÝYšXØ][ÛŠÚ]ˆ[
+HOˆ›ÚY‚‚ZYˆÚ]OH“ÕQ’PÐUSÓ—ÕÓWÑÓ×ÐPÒ×Ô‘TUQTÕ‚‚BZ[™WÜÞ\Ý[WØ˜XÚÊ
+B‚B\™]\›‚‚HÈ[™›ÚYX^H™\ÝÜ™H]ÈÞ\Ý[H˜\œÈY\ˆH\ÜÙ\È›ØÝ\È
+›Üˆ^[\B‚HÈY\ˆÜ[š[™ÈH™XÙ[X\ÈšY]ÊKˆ™KX\H[ØÜ™Y[ˆ\ÈÛÛÛˆ\ÈHØ[YB‚HÈ™XÛÛY\ÈXÝ]™H[œÝXYÙˆØZ][™È[[HX]ÚÝ\Ë‚‚ZYˆÚ]OH“ÕQ’PÐUSÓ—ÐTPÐUSÓ—Ñ“ÐÕT×ÒSˆ[™ÔËš\×Ù™X]\™J˜[™›ÚYŠN‚‚BQ\Ü^TÙ\™\‹Ú[™Ý×ÜÙ]Û[ÙJ\Ü^TÙ\™\‹•ÒS‘Õ×ÓSÑWÑ•SÐÔ‘QSŠB‚™[˜ÈÜ™XYJ
+HOˆ›ÚY‚‚HÈ[™›ÚY	ÜÈÞ\Ý[H˜XÚÈ]Ûˆ\È\XØ][Ûˆ˜]šYØ][Û‹ˆ\ØX›HØÙ[™U™YIÜÂ‚HÈY˜][[[YYX]H]Z]ÛÈXXÚØÜ™Y[ˆØ[ˆXÚYHÚ]˜˜XÚÈˆYX[œË‚‚YÙ]Ý™YJ
+Kœ]Z]ÛÛ—ÙÛ×Ø˜XÚÈH˜[ÙB‚HÈÛ[ÛÝHÜšYÚ[˜[Ú\˜XÝ\ˆ\Ú[ˆ]\È[›\™ÙY[œÚYH˜[Ë‚‚]^\™WÙš[\ˆHØ[˜\Ò][K•VT‘WÑ’ST—ÓS‘PT‚‚HÈ[™Y›Û[˜ÛY\ÈXœ™]È[™][ˆÛ\ËÛÈÙX‹Ð[™›ÚY™[™\ˆB‚HÈØ[YH™XYX›H[\™˜XÙHÚ]Ý]\[™[™ÈÛˆ›ÛÈ[œÝ[YÛˆH]šXÙK‚‚]ZWÙ›ÛHØY
+œ™\Î‹ËØ\ÜÙ]ËÝZKÙ›ÛËÑZ˜UTØ[œËP›ÛˆŠH\È›Û‚ZYˆZWÙ›ÛOH[‚‚B]ZWÙ›ÛH[YQ‹™˜[˜XÚ×Ù›Û‚[ØYÜ^Y\—Ü›Ùš[J
+B‚\Ù]\Ùš\™X˜\ÙJ
+B‚\Ù]\ÜÛÝ[™
+
+B‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚B\Ù]\Ü\ÚÛ›ÝYšXØ][Ûœ×ÝÙXŠ
+B‚Z[š]ÚÛYWØ[XšY[Ü\XÛ\Ê
+B‚]\]WÜ^Y\—ÛXYÝYWÝY\Š
+B‚\›ÛÛWØÛÙWÚ[œ]H[™QY]›™]Ê
+B‚\›ÛÛWØÛÙWÚ[œ]š\ÚX›HH˜[ÙB‚\›ÛÛWØÛÙWÚ[œ]›X^Û[™ÝH‚\›ÛÛWØÛÙWÚ[œ]œXÙZÛ\—Ý^HPÑ‚‚\›ÛÛWØÛÙWÚ[œ]˜[YÛ›Y[HÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‚‚\›ÛÛWØÛÙWÚ[œ]˜YÝ[YWÙ›ÛÛÝ™\œšYJ™›Û‹ZWÙ›Û
+B‚\›ÛÛWØÛÙWÚ[œ]˜YÝ[YWÙ›ÛÜÚ^™WÛÝ™\œšYJ™›ÛÜÚ^™H‹JB‚\›ÛÛWØÛÙWÚ[œ]^ØÚ[™ÙY˜ÛÛ›™XÝ
+ÛÛ—Ü›ÛÛWØÛÙWØÚ[™ÙY
+B‚XYØÚ[
+›ÛÛWØÛÙWÚ[œ]
+B‚XÚ]Ú[œ]H[™QY]›™]Ê
+B‚XÚ]Ú[œ]š\ÚX›HH˜[ÙB‚XÚ]Ú[œ]›X^Û[™ÝH‚XÚ]Ú[œ]œXÙZÛ\—Ý^HµæõêµäuåH5å5åuäõèµå‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•\HHY\ÜØYÙK‹‹ˆ‚‚XÚ]Ú[œ]˜YÝ[YWÙ›ÛÛÝ™\œšYJ™›Û‹ZWÙ›Û
+B‚XÚ]Ú[œ]˜YÝ[YWÙ›ÛÜÚ^™WÛÝ™\œšYJ™›ÛÜÚ^™H‹Œ
+B‚XÚ]Ú[œ]^ÜÝX›Z]Y˜ÛÛ›™XÝ
+ÛÛ—ØÚ]ÜÝX›Z]Y
+B‚XYØÚ[
+Ú]Ú[œ]
+B‚\›Ùš[WÛ˜[YWÚ[œ]H[™QY]›™]Ê
+B‚\›Ùš[WÛ˜[YWÚ[œ]š\ÚX›HH˜[ÙB‚\›Ùš[WÛ˜[YWÚ[œ]›X^Û[™ÝHŒ‚\›Ùš[WÛ˜[YWÚ[œ]^H›Ùš[WÛ˜[YB‚\›Ùš[WÛ˜[YWÚ[œ]œXÙZÛ\—Ý^Hµå5êuçH5êuç5æõçHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH–[Ý\ˆ˜[YH‚‚\›Ùš[WÛ˜[YWÚ[œ]˜[YÛ›Y[HÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‚‚\›Ùš[WÛ˜[YWÚ[œ]˜YÝ[YWÙ›ÛÛÝ™\œšYJ™›Û‹ZWÙ›Û
+B‚\›Ùš[WÛ˜[YWÚ[œ]˜YÝ[YWÙ›ÛÜÚ^™WÛÝ™\œšYJ™›ÛÜÚ^™H‹ŒJB‚\›Ùš[WÛ˜[YWÚ[œ]^ØÚ[™ÙY˜ÛÛ›™XÝ
+ÛÛ—Ü›Ùš[WÛ˜[YWØÚ[™ÙY
+B‚\›Ùš[WÛ˜[YWÚ[œ]^ÜÝX›Z]Y˜ÛÛ›™XÝ
+ÛÛ—Ü›Ùš[WÛ˜[YWÜÝX›Z]Y
+B‚\›Ùš[WÛ˜[YWÚ[œ]™›ØÝ\×Ù^]Y˜ÛÛ›™XÝ
+ÛÛ[Z]Ü›Ùš[WÛ˜[YJB‚XYØÚ[
+›Ùš[WÛ˜[YWÚ[œ]
+B‚X]]Ù[XZ[Ú[œ]H[™QY]›™]Ê
+B‚X]]Ù[XZ[Ú[œ]š\ÚX›HH˜[ÙB‚X]]Ù[XZ[Ú[œ]œXÙZÛ\—Ý^H™^[\PÛXZ[˜ÛÛH‚‚X]]Ù[XZ[Ú[œ]˜[YÛ›Y[HÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‚‚X]]Ù[XZ[Ú[œ]˜YÝ[YWÙ›ÛÛÝ™\œšYJ™›Û‹ZWÙ›Û
+B‚X]]Ù[XZ[Ú[œ]˜YÝ[YWÙ›ÛÜÚ^™WÛÝ™\œšYJ™›ÛÜÚ^™H‹ŒŠB‚XYØÚ[
+]]Ù[XZ[Ú[œ]
+B‚X]]Ü\ÜÝÛÜ™Ú[œ]H[™QY]›™]Ê
+B‚X]]Ü\ÜÝÛÜ™Ú[œ]š\ÚX›HH˜[ÙB‚X]]Ü\ÜÝÛÜ™Ú[œ]œXÙZÛ\—Ý^Hµèuæuèuçµå
+5ç5é5åõåuêˆˆ5êµåuåuæuçJHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”\ÜÝÛÜ™
+]X\ÝˆÚ\˜XÝ\œÊH‚‚X]]Ü\ÜÝÛÜ™Ú[œ]œÙXÜ™]HYB‚X]]Ü\ÜÝÛÜ™Ú[œ]˜[YÛ›Y[HÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‚‚X]]Ü\ÜÝÛÜ™Ú[œ]˜YÝ[YWÙ›ÛÛÝ™\œšYJ™›Û‹ZWÙ›Û
+B‚X]]Ü\ÜÝÛÜ™Ú[œ]˜YÝ[YWÙ›ÛÜÚ^™WÛÝ™\œšYJ™›ÛÜÚ^™H‹ŒŠB‚X]]Ü\ÜÝÛÜ™Ú[œ]^ÜÝX›Z]Y˜ÛÛ›™XÝ
+ÛÛ—Ø]]Ü\ÜÝÛÜ™ÜÝX›Z]Y
+B‚XYØÚ[
+]]Ü\ÜÝÛÜ™Ú[œ]
+B‚YœšY[™ÚYÚ[œ]H[™QY]›™]Ê
+B‚YœšY[™ÚYÚ[œ]š\ÚX›HH˜[ÙB‚YœšY[™ÚYÚ[œ]›X^Û[™ÝHL‚‚YœšY[™ÚYÚ[œ]œXÙZÛ\—Ý^H–”V‚‚YœšY[™ÚYÚ[œ]˜[YÛ›Y[HÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‚‚YœšY[™ÚYÚ[œ]˜YÝ[YWÙ›ÛÛÝ™\œšYJ™›Û‹ZWÙ›Û
+B‚YœšY[™ÚYÚ[œ]˜YÝ[YWÙ›ÛÜÚ^™WÛÝ™\œšYJ™›ÛÜÚ^™H‹N
+B‚XYØÚ[
+œšY[™ÚYÚ[œ]
+B‚[Ø˜žWØÚ]Ú[œ]H[™QY]›™]Ê
+B‚[Ø˜žWØÚ]Ú[œ]š\ÚX›HH˜[ÙB‚[Ø˜žWØÚ]Ú[œ]›X^Û[™ÝH‚[Ø˜žWØÚ]Ú[œ]œXÙZÛ\—Ý^HZWÝ^
+›Ø˜žWØÚ]Ú[ŠB‚[Ø˜žWØÚ]Ú[œ]˜YÝ[YWÙ›ÛÛÝ™\œšYJ™›Û‹ZWÙ›Û
+B‚[Ø˜žWØÚ]Ú[œ]˜YÝ[YWÙ›ÛÜÚ^™WÛÝ™\œšYJ™›ÛÜÚ^™H‹N
+B‚[Ø˜žWØÚ]Ú[œ]^ÜÝX›Z]Y˜ÛÛ›™XÝ
+ÛÛ—ÛØ˜žWØÚ]ÜÝX›Z]Y
+B‚XYØÚ[
+Ø˜žWØÚ]Ú[œ]
+B‚YœšY[™ÛÛÚÝ\Ü™\]Y\ÝH™\]Y\Ý›™]Ê
+B‚YœšY[™ÛÛÚÝ\Ü™\]Y\Ýœ™\]Y\ÝØÛÛ\]Y˜ÛÛ›™XÝ
+ÛÛ—ÙœšY[™ÛÛÚÝ\ØÛÛ\]Y
+B‚XYØÚ[
+œšY[™ÛÛÚÝ\Ü™\]Y\Ý
+B‚X›Ø\™Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËØ›Ø\™XÛX[‹[[Ù[\‹ÙXœŠH\È^\™L‘‚X›Ø\™Ý[YWÝ^\™\ÈHÂ‚BX›Ø\™Ý^\™K‚B[ØY
+œ™\Î‹ËØ\ÜÙ]ËØ›Ø\™ËØ›Ø\™ZXÙKÙXœŠH\È^\™L‘‚B[ØY
+œ™\Î‹ËØ\ÜÙ]ËØ›Ø\™ËØ›Ø\™Z[™ÛKÙXœŠH\È^\™L‘‚B[ØY
+œ™\Î‹ËØ\ÜÙ]ËØ›Ø\™ËØ›Ø\™[]˜KÙXœŠH\È^\™L‘‚B[ØY
+œ™\Î‹ËØ\ÜÙ]ËØ›Ø\™ËØ›Ø\™XØ[™KÙXœŠH\È^\™L‘‚WB‚[Ø˜žWØ˜XÚÙÜ›Ý[™Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÝZKÞ›ÛÜ[ÛÛKZÛYKX™Ë]ŒËÙXœŠH\È^\™L‘‚Y›Ø][™×ÜÜ[×ÚÛYWÝ^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÝZKÝÛÜ›Ù›Ø][™Ë\Ü[ËZÛYK]Œ‹ÙXœŠH\È^\™L‘‚[ØY[™×ÝX[WÝ^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÝZKÞ›ÛÜ[ÛÛK[ØY[™Ë]X[K]ŒKÙXœŠH\È^\™L‘‚^›ÛÜ[ÛÛWÛÙÛ×Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÝZKÞ›ÛÜ[ÛÛK[ÙÛË]ŒKÙXœŠH\È^\™L‘‚]ÛÛÙÜÙ][WÝ^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÝZKÙ[Ø›ÙKÛY™X[ÞKÝÛÛÙ\Ù][K]ŒKœ™ÈŠH\È^\™L‘‚ZYˆ›Ø\™Ý^\™HOH[‚‚B\\ÚÙ\œ›ÜŠÛX[ˆÜšYÚ[˜[›Ø\™ÛÝ[›Ý™HØYYˆŠB‚Y›Üˆ[YWÚ[™^[ˆ›Ø\™Ý[YWÝ^\™\ËœÚ^™J
+N‚‚BZYˆ›Ø\™Ý[YWÝ^\™\ÖÝ[YWÚ[™^HOH[‚‚BB\\ÚÙ\œ›ÜŠ›Ø\™[YH	YÛÝ[›Ý™HØYYˆˆ	H[YWÚ[™^
+B‚Y›Üˆš[WÛ˜[YH[ˆÈNWÚYÌœ™È‹ŒÚYÌKœ™È‹ŒWÚYÌ‹œ™È‹Œ—ÚYÌËœ™È‹Œ×ÚYÌœ™È—N‚‚B\YXÙWÝ^\™\Ë˜\[™
+ØY
+œ™\Î‹ËØ\ÜÙ]ËÜYXÙ\ËÈˆ
+Èš[WÛ˜[YJJB‚Y›Üˆ[š[X[Ùš[H[ˆS’SPSÑ’STÎ‚‚BX[š[X[Ý^\™\Ë˜\[™
+ØY
+œ™\Î‹ËØ\ÜÙ]ËØ[š[X[ÜYXÙ\ËÉ\Ëœ™Èˆ	H[š[X[Ùš[JJB‚BX[š[X[Üš[™×ÛX\ÚÜË˜\[™
+ØY
+œ™\Î‹ËØ\ÜÙ]ËØ[š[X[ÜYXÙ\ËÉ\Ë\š[™Ë[X\ÚËœ™Èˆ	H[š[X[Ùš[JJB‚BY[Ø›ÙWØ[š[X[Ý^\™\Ë˜\[™
+ØY
+œ™\Î‹ËØ\ÜÙ]ËÝZKÙ[Ø›ÙKÉ\ËÙXœˆ	H[š[X[Ùš[JJB‚B]˜\ˆ\›×ØÛÛÜœÎˆ\œ˜^VÕ^\™L‘HH×B‚BY›Üˆš[™×Û˜[YH[ˆ’S‘×ÐÓÓÔ—ÓSQTÎ‚‚BBZ\›×ØÛÛÜœË˜\[™
+ØY
+œ™\Î‹ËØ\ÜÙ]ËÝZKÙ[Ø›ÙKÛY™X[ÞKÉ\ËI\Ëœ™Èˆ	HØ[š[X[Ùš[Kš[™×Û˜[YK×ÛÝÙ\Š
+WJH\È^\™L‘
+B‚B[Y™X[ÞWÚ\›×Ý^\™\Ë˜\[™
+\›×ØÛÛÜœÊB‚\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚Y›ÜˆH[ˆŽ‚‚BYY™™XÝÝ^\™\Ë˜\[™
+ØY
+œ™\Î‹ËØ\ÜÙ]ËÜ™[X\Ý\™YÙY™™XÝËÙY™™XÝIYœ™Èˆ	HJJB‚\X˜™\—Ø˜[Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÜX˜™\—Ý˜\ÜX˜™\‹X˜[œ™ÈŠH\È^\™L‘‚Y›ÜˆH[ˆN‚‚B\X˜™\—Ú[™Ý^\™\Ë˜\[™
+ØY
+œ™\Î‹ËØ\ÜÙ]ËÜX˜™\—Ý˜\Ú[™ËÜÜÙKIYœ™Èˆ	HJJB‚\X˜™\—Û][˜Ú\—Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÜX˜™\—Û][˜Ú\‹Û][˜Ú\‹œÝ™ÈŠH\È^\™L‘‚\X˜™\—ÝÜ˜\Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÜX˜™\—Û][˜Ú\‹ÝÜ˜\\Ù\]Y[˜ÙKœÝ™ÈŠH\È^\™L‘‚\™\Ü×ÛXXÚ[™WÝ^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÜ™\Ü×Ý˜\Ú[™\ÝšX[\™\ÜËœÝ™ÈŠH\È^\™L‘‚Yš\™WÛ][˜Ú\—Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÙš\™WÝ˜\Ù›[Y]›ÝÙ\‹]Œ‹œÝ™ÈŠH\È^\™L‘‚Z[[Y\—Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÚ[[Y\—Ý˜\ÛYXÚ[šXØ[Z[[Y\‹]Œ‹œÝ™ÈŠH\È^\™L‘‚Z[[Y\—Ø˜\ÙWÝ^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÚ[[Y\—Ý˜\Ü™[X\Ý\™YÚ[[Y\‹X˜\ÙKœ™ÈŠH\È^\™L‘‚Z[[Y\—ÚYWÝ^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÚ[[Y\—Ý˜\Ü™[X\Ý\™YÚ[[Y\‹ZYKœ™ÈŠH\È^\™L‘‚Z[[Y\—ÜÝÚ[™×Ý^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÚ[[Y\—Ý˜\Ü™[X\Ý\™YÚ[[Y\‹\ÝÚ[™Ëœ™ÈŠH\È^\™L‘‚Z[[Y\—ÚXYÜÚYWÝ^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÚ[[Y\—Ý˜\Ü™[X\Ý\™YÚ[[Y\‹ZXY\ÚYKœ™ÈŠH\È^\™L‘‚Z[[Y\—Ú[\XÝÝ^\™HHØY
+œ™\Î‹ËØ\ÜÙ]ËÚ[[Y\—Ý˜\Ü™[X\Ý\™YÚ[[Y\‹Z[\XÝœ™ÈŠH\È^\™L‘‚[™]×ÙØ[YJ
+B‚YÙ]ÝšY]ÜÜ
+
+KœÚ^™WØÚ[™ÙY˜ÛÛ›™XÝ
+ÛÛ—Ü™\Ú^™JB‚WÛÛ—Ü™\Ú^™J
+B‚Z[š]X[^™WÜØ]™YÜÙ\ÜÚ[ÛŠ
+B‚™[˜ÈÛÛ—Ü™\Ú^™J
+HOˆ›ÚY‚‚]˜\ˆšY]ÜÜÜÚ^™Nˆ™XÝÜŒˆHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚HÈX]™HHÛX\›Hš\ÚX›HØÙX[ˆœ˜[YH\›Ý[™H›Ø][™È›Ø\™ˆHQ\Â‚HÈ˜]ÛˆÝ™\ˆHØÙX[‹ÛÈH›Ø\™™YÚ[œÈ™[ÝÈ][œÝXYÙˆY[™È[™\‚‚HÈH˜\‹ˆ[Ø[Y\^HÛÛÜ™[˜]\ÈÝ[\ÙH›Ø\™Ü™XÝ[™Ý^H[YÛ™Y‚‚HÈÛYÚH\™Ù\ˆ[ˆHš\œÝØÙX[ˆ^[Ý]Ú[H™]Z[š[™ÈHš\ÚX›HØ]\‚‚HÈœ˜[YHÛˆ]™\žHÚYHÙˆH›Ø][™ÈX›K‚‚]˜\ˆÚYWÛX\™Ú[ˆHX^ŠŒšY]ÜÜÜÚ^™Kž
+ˆŒ
+B‚HÈÜ›ÝÈH[\™HX›H[šY›Ü›[HžH\Ú[™È[Ü™H™\XØ[ÜXÙKˆÙY\[™ÈB‚HÈÛÝ\˜ÙH\ÜXÝ˜][È]›ÚYÈÝ™]Ú[™ÈHÝÛ™\ÈÜˆÙ[\ˆÚ\˜ÛK‚‚HÈ˜[[˜ÙYœ˜[Z[™Îˆ[›ÝYÚÛX\ˆØ]\ˆ›ÜˆHÙ[\™Y\›ˆ›ÝXÙHX›Ý™K‚HÈHÛ[Hš\ÚX›HØ]\ˆ[™H™[ÝË[™H\™ÙH›ÛZ[™[›Ø\™[ˆ™]ÙY[‹‚‚]˜\ˆÜÛX\™Ú[ˆHÎŒ‚]˜\ˆ›ÝÛWÛX\™Ú[ˆH‹Œ‚]˜\ˆ^WÜÜÚ][ÛˆH™XÝÜŒŠÚYWÛX\™Ú[‹ÜÛX\™Ú[ŠB‚]˜\ˆ]˜Z[X›HH™XÝÜŒŠ‚B[X^ŠÌŒšY]ÜÜÜÚ^™KžHÚYWÛX\™Ú[ˆ
+ˆ‹Œ
+K‚B[X^ŠŒŒŒšY]ÜÜÜÚ^™KžHHÜÛX\™Ú[ˆH›ÝÛWÛX\™Ú[ŠB‚JB‚HÈ™\Ù\™HHXÝX[[Ù[\ˆ›Ø\™›ÜÜ[ÛœÈ
+MLŒÊKˆH™]š[Ý\Â‚HÈ[™ØØ\H˜][ÈÝ™]ÚYHÝÛ™\È[™Ù[\ˆÚ\˜ÛHÜš^›Û[K‚‚]˜\ˆ\™Ù]Ø\ÜXÝHMŒÈLŒËŒ‚]˜\ˆ^WÜÚ^™HH]˜Z[X›B‚ZYˆ^WÜÚ^™KžÈ^WÜÚ^™KžHˆ\™Ù]Ø\ÜXÝ‚‚B\^WÜÚ^™KžH^WÜÚ^™KžH
+ˆ\™Ù]Ø\ÜXÝ‚Y[ÙN‚‚B\^WÜÚ^™KžHH^WÜÚ^™KžÈ\™Ù]Ø\ÜXÝ‚\^WÜÜÚ][Ûˆ
+ÏH
+]˜Z[X›HH^WÜÚ^™JH
+ˆB‚]šY]×ÛÜšYÚ[ˆH^WÜÜÚ][Û‚‚X›Ø\™Ü™XÝH™XÝŠ^WÜÜÚ][Û‹^WÜÚ^™JB‚X›Ø\™ÜØØ[HHZ[™Š›Ø\™Ü™XÝœÚ^™KžÈ“ÐT‘Ò›Ø\™Ü™XÝœÚ^™KžHÈ“ÐT‘ÕÊB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È™]×ÙØ[YJ
+HOˆ›ÚY‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B[X]ÚØ›Ø\™Ý[YHHÙ[XÝYØ›Ø\™Ý[YB‚X˜[Ë˜ÛX\Š
+B‚XXÝ]™WÙY™™XÝË˜ÛX\Š
+B‚]Ø]\—Ù›Ø]\œË˜ÛX\Š
+B‚Z[\XÝØ\œÝË˜ÛX\Š
+B‚\ØÛÜ™WØ\œÝË˜ÛX\Š
+B‚[[Ý[Û—Ý˜Z[Ë˜ÛX\Š
+B‚XÛÛXÝË˜ÛX\Š
+B‚]\›ˆH‚[[Ù\›—ÛX]ÚÚ[›ÈHŒ‚[\ÝØ[››Ý[˜ÙYÝ\›ˆHLB‚]\›—Ø˜[›™\—ØYÙHHŒ‚XZWÜ[™[™ÈH˜[ÙB‚XZWØÛÛ[Z]YÜÚÝH˜[ÙB‚\Ù[XÝYHLB‚Y˜YÙÚ[™ÈH˜[ÙB‚HÈX]ÚHÜšYÚ[˜[Ü[š[™È›Ü›X][ÛŽˆÚ^Y[ˆYXÙ\ÈÜ˜\\›Ý[™HÚ]B‚HÈÙ[\ˆÚ\˜ÛKÚ]ÛÈY][Û˜[YXÙ\ÈÛˆH˜\ˆY[™ÛÈÛˆB‚HÈ˜\ˆšYÚˆÙ[\œÈÙ\™HYX\Ý\™Yœ›ÛHHÝ\YYÜšYÚ[˜[ØÜ™Y[œÚÝ[™‚HÈ\™HÜ™\™YÛØÚÝÚ\ÙHÛÈHÛÈ^Y\œÈ[\›˜]H\›Ý[™H›Ü›X][Û‹‚‚]˜\ˆØÜ™Y[—Ù›Ü›X][ÛˆHÂ‚BU™XÝÜŒŠLËŒŒJK™XÝÜŒŠMÎKŒJK‚BU™XÝÜŒŠNKŒÌ
+K™XÝÜŒŠŽÎKŒÎMÊK™XÝÜŒŠŽNKŒÎMÊK‚BU™XÝÜŒŠÌNL
+K™XÝÜŒŠŽNKLÊK™XÝÜŒŠŽÎKLÊK‚BU™XÝÜŒŠNKÍ
+K™XÝÜŒŠMÎKÎMJK™XÝÜŒŠLËŽMÊK‚BU™XÝÜŒŠ‹ÎMJK™XÝÜŒŠŒÌŽÍ
+K‚BU™XÝÜŒŠŒMMKLÊK™XÝÜŒŠŒÎKLÊK™XÝÜŒŠŒL
+K‚BU™XÝÜŒŠŒÎKŒÎMÊK™XÝÜŒŠŒMMKŒÎMÊK‚BU™XÝÜŒŠŒÌŽŒÌ
+K™XÝÜŒŠ‹ŒJB‚WB‚HÈH›Ý\ˆ]XÚYÚYHYXÙ\È\™H[™XÙ\ÈËËLÈ[™MËˆÙY\XXÚ‚HÈ]XÚYZ\ˆÙÙ]\Žˆ›ÝYYXÙ\È™[Û™ÈÈH^Y\ˆ[™›Ý‚HÈšYÚYXÙ\È™[Û™ÈÈHÜÛ™[‚‚]˜\ˆÝ]ÚYWÝX[\ÈHÌÎˆKÎˆKLÎˆMÎˆB‚]˜\ˆ[›™\—Ú[™^H‚Y›ÜˆH[ˆØÜ™Y[—Ù›Ü›X][Û‹œÚ^™J
+N‚‚B]˜\ˆ›Ü›X[^™Yˆ™XÝÜŒˆHØÜ™Y[—Ù›Ü›X][Û–ÚWB‚BHÈ[™\›Ø\™Ý×ÜØÜ™Y[ˆÛÈ\ÙH™XYX›H[™ØØ\HÛÛÜ™[˜]\ÈÛÛ[YB‚BHÈÈ\ÙHHÜšYÚ[˜[›Ý]Y\ÚXÜÈÛÛÜ™[˜]HÞ\Ý[K‚‚B]˜\ˆH™XÝÜŒŠ›Ü›X[^™YžH
+ˆ“ÐT‘ÕË“ÐT‘ÒH›Ü›X[^™Yž
+ˆ“ÐT‘Ò
+B‚B]˜\ˆX[Nˆ[‚BZYˆÝ]ÚYWÝX[\Ëš\ÊJN‚‚BB]X[HHÝ]ÚYWÝX[\ÖÚWB‚BY[ÙN‚‚BB]X[HH[›™\—Ú[™^	H‚‚BBZ[›™\—Ú[™^
+ÏHB‚BX˜[Ë˜\[™
+ÈœŽœˆŽ•™XÝÜŒ‹–‘T“ËX[HŽX[K˜[]™HŽY_JB‚[X]ÚÙš[š\ÚYH˜[ÙB‚[X]ÚÜ™\Ý[ÛÜ[ˆH˜[ÙB‚[X]ÚÜ™\Ý[ÝÚ[›™\ˆHLB‚[X]ÚÜ™\Ý[ØÛÚ[œÈH‚[X]ÚÜ™\Ý[Ü™XÛÜ™YH˜[ÙB‚]\›—ÜÚÝØÛÛ[Z]YH˜[ÙB‚]\›—Ü[™[™×Ü™\ÛÛ™HH˜[ÙB‚]\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB‚\Ý]\ÈH–[Ý\ˆ\›ˆHÝXÚH™Y˜[[˜XÚÈ[™™[X\ÙH‚‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈÜ›ØÙ\ÜÊ[Nˆ›Ø]
+HOˆ›ÚY‚‚[Y[WÙ[\ÙY
+ÏH[B‚]\]WÙš\™X˜\ÙJ[JB‚\ÛÛ][\^Y\Š
+B‚]\]WÜ›ÛÛWØÛÙWÚ[œ]
+
+B‚]\]WØÚ]Ú[œ]
+
+B‚]\]WÜ›Ùš[WÛ˜[YWÚ[œ]
+
+B‚]\]WØ]]Ú[œ]Ê
+B‚]\]WÚÛYWÜÛØÚX[Ú[œ]Ê
+B‚ZYˆ\ÜØÜ™Y[ˆOHTÔÔTÒ‚‚B\Ü\ÚÙ[\ÙY
+ÏH[B‚BZYˆÜ\ÚÙ[\ÙYHËŒŽ‚‚BBX\ÜØÜ™Y[ˆHTÐUU‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚ZYˆ\ÜØÜ™Y[ˆOHTÑÐSQN‚‚BY[œÝ\™WÚÛYWØÛÛ›™XÝY
+
+B‚B]\]WØ\™[˜WÙž
+[JB‚BZYˆ\ÜØÜ™Y[ˆOHTÒÓQN‚‚BB[X^X™WÜÝ\Ý]ÜšX[
+
+B‚BZYˆY[WÛ›ÝXÙWÝ[YHˆŒ‚‚BB[Y[WÛ›ÝXÙWÝ[YHOH[B‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚XXØÝ[][]Üˆ
+ÏH[B‚]Ú[HXØÝ[][]ÜˆHÕTÕSQN‚‚B\\ÚXÜ×ÜÝ\
+
+B‚BXXØÝ[][]ÜˆOHÕTÕSQB‚]\]WÙY™™XÝÊ[JB‚]\]WÝØ]\—Ù›Ø]\œÊ[JB‚]\]WÛ[Ù\›—ÙØ[YWÙž
+[JB‚[[Ù\›—ÛX]ÚÚ[›ÈHZ[™Š‹[Ù\›—ÛX]ÚÚ[›È
+È[JB‚ZYˆ\ÝØ[››Ý[˜ÙYÝ\›ˆOH\›Ž‚‚B[\ÝØ[››Ý[˜ÙYÝ\›ˆH\›‚‚B]\›—Ø˜[›™\—ØYÙHHŒ‚Y[ÙN‚‚B]\›—Ø˜[›™\—ØYÙH
+ÏH[B‚ZYˆZWÜ[™[™È[™›ÝX]ÚÙš[š\ÚY[™Y™™XÝ×Ø[Ý×Û™^Ý\›Š
+H[™›Ý[žWØ˜[Û[Ýš[™Ê
+N‚‚BXZWÝ[Y\ˆOH[B‚BZYˆZWÝ[Y\ˆHŒ‚‚BBXZWÜ[™[™ÈH˜[ÙB‚BBXZWÜÚÝ
+
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈY™™XÝ×Ø[Ý×Û™^Ý\›Š
+HOˆ›ÛÛ‚‚HÈHØ\\™KØÜ\ÚÜ[Ûˆ]\Ýš[š\Ú]HÛ™Ù\ˆ˜[[™Ø]\‚‚HÈÛÛ[X][ÛˆX^HÙY\^Z[™ÈÚ[HH™^^Y\ˆÝ\ÈZ[Z[™Ë‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚B]˜\ˆ[›ØÚ×Ý[YHHTÐÐTT‘WÕSQB‚BZYˆY™™XÝšÛH›Ý[ˆÔ•P‘T—ÕTÒÓK‘TÔ×ÕTÒÓKSPÕ’P×ÕTÒÓKSSQT—ÕTÒÓKPÑWÕTÒÓK’T‘WÕTÒÓWN‚‚BB][›ØÚ×Ý[YHHQ‘‘PÕÑTUSÓˆ
+ˆN‚BZYˆY™™XÝ™[\ÙY[›ØÚ×Ý[YN‚‚BB\™]\›ˆ˜[ÙB‚\™]\›ˆYB‚™[˜È\ÚXÜ×ÜÝ\
+
+HOˆ›ÚY‚‚XÛÛXÝË˜ÛX\Š
+B‚Y›ÜˆH[ˆ˜[ËœÚ^™J
+N‚‚B]˜\ˆ˜[ˆXÝ[Û˜\žHH˜[ÖÚWB‚BZYˆ›Ý˜[˜[]™HÜˆ˜[ˆOH™XÝÜŒ‹–‘T“Î‚‚BBXÛÛ[YB‚BX˜[œ
+ÏH˜[‚‚BX˜[ˆ
+HMKŒÈMLŒ‚BZYˆ˜[‹›[™ÝÜÜ]X\™Y
+
+HŒMN‚‚BBX˜[ˆH™XÝÜŒ‹–‘T“Â‚B\™\ÛÛ™WÝØ[ÊJB‚Y›ÜˆH[ˆ˜[ËœÚ^™J
+N‚‚BZYˆ›Ý˜[ÖÚWK˜[]™N‚‚BBXÛÛ[YB‚BY›Üˆˆ[ˆ˜[™ÙJH
+ÈK˜[ËœÚ^™J
+JN‚‚BBZYˆ˜[ÖÚ—K˜[]™N‚‚BBB\™\ÛÛ™WØÛÛ\Ú[ÛŠKŠB‚ZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆˆ[™\›ˆOHH[™›ÝX]ÚÙš[š\ÚY[™›ÝZWÜ[™[™È[™ZWØÛÛ[Z]YÜÚÝ[™›Ý[žWØ˜[Û[Ýš[™Ê
+H[™Y™™XÝ×Ø[Ý×Û™^Ý\›Š
+N‚‚B\™\ÛÛ™WÜ[™[™×Ý\›Š
+B‚Y[Yˆ›ÝX]ÚÙš[š\ÚY[™\›—Ü[™[™×Ü™\ÛÛ™H[™›Ý[žWØ˜[Û[Ýš[™Ê
+H[™Y™™XÝ×Ø[Ý×Û™^Ý\›Š
+N‚‚B\™\ÛÛ™WÜ[™[™×Ý\›Š
+B‚™[˜È™\ÛÛ™WÝØ[Ê[™^ˆ[
+HOˆ›ÚY‚‚]˜\ˆ˜[ˆXÝ[Û˜\žHH˜[ÖÚ[™^B‚]˜\ˆˆ™XÝÜŒˆH˜[œ‚]˜\ˆŽˆ™XÝÜŒˆH˜[‚‚]˜\ˆ™\XØ[ÛÜ[ˆHžHÓÔ“‘T—ÓÔS—ÓÕÈÜˆ
+žHˆRQWÓÔS—ÓRSˆ[™žHRQWÓÔS—ÓPV
+HÜˆžHˆÓÔ“‘T—ÓÔS—ÒQÒ‚]˜\ˆÜš^›Û[ÛÜ[ˆHžÒQWÓÔS—ÓÕÈÜˆžˆÒQWÓÔS—ÒQÒ‚]˜\ˆØ[ÛZ[—ÞHY™™XÝ]™WÝØ[ÛZ[—Þ
+
+B‚]˜\ˆØ[ÛX^ÞHY™™XÝ]™WÝØ[ÛX^Þ
+
+B‚]˜\ˆØ[ÛZ[—ÞHHY™™XÝ]™WÝØ[ÛZ[—ÞJ
+B‚]˜\ˆØ[ÛX^ÞHHY™™XÝ]™WÝØ[ÛX^ÞJ
+B‚ZYˆžHQUTÈØ[ÛZ[—Þ‚‚BZYˆ™\XØ[ÛÜ[Ž‚‚BBHÈØ\\™HÛ›HY\ˆH˜[Ù[\ˆ\ÈÙ[Z[™[H™Z[™H˜Z[‚‚BB]˜\ˆÛHHÛWÙ›Ü—Ý™\XØ[
+žKYJB‚BBZYˆ[žWÝšYÙÙ\™Y
+ÛJNˆØÛÜ™WØ˜[
+[™^ÛJNÈ™]\›‚‚BHÈHš\ÝX[Ü[š[™È\ÈÚY\ˆ[ˆHY]X›HS•–HÚ\˜ÛKˆ]™\ž][™Â‚BHÈÝ]ÚYH]Ú\˜ÛH]\ÝÝ[™Z]™H\ÈH˜Z[[œÝXYÙˆXZÚ[™ÈÝ]‚‚B\žHØ[ÛZ[—Þ
+ÈQUTÎÈ‹žHXœÊ‹ž
+H
+ˆÍB‚Y[Yˆž
+ÈQUTÈˆØ[ÛX^Þ‚‚BZYˆ™\XØ[ÛÜ[Ž‚‚BB]˜\ˆÛHHÛWÙ›Ü—Ý™\XØ[
+žK˜[ÙJB‚BBZYˆ[žWÝšYÙÙ\™Y
+ÛJNˆØÛÜ™WØ˜[
+[™^ÛJNÈ™]\›‚‚B\žHØ[ÛX^ÞHQUTÎÈ‹žHXXœÊ‹ž
+H
+ˆÍB‚ZYˆžHHQUTÈØ[ÛZ[—ÞN‚‚BZYˆÜš^›Û[ÛÜ[Ž‚‚BB]˜\ˆÛHHˆYˆžLŒ[ÙHÂ‚BBZYˆ[žWÝšYÙÙ\™Y
+ÛJNˆØÛÜ™WØ˜[
+[™^ÛJNÈ™]\›‚‚B\žHHØ[ÛZ[—ÞH
+ÈQUTÎÈ‹žHHXœÊ‹žJH
+ˆÍB‚Y[YˆžH
+ÈQUTÈˆØ[ÛX^ÞN‚‚BZYˆÜš^›Û[ÛÜ[Ž‚‚BB]˜\ˆÛHHYˆžLŒ[ÙHB‚BBZYˆ[žWÝšYÙÙ\™Y
+ÛJNˆØÛÜ™WØ˜[
+[™^ÛJNÈ™]\›‚‚B\žHHØ[ÛX^ÞHHQUTÎÈ‹žHHXXœÊ‹žJH
+ˆÍB‚X˜[œHÈ˜[ˆH‚‚™[˜ÈÛWÙ›Ü—Ý™\XØ[
+Nˆ›Ø]Yˆ›ÛÛ
+HOˆ[‚‚]˜\ˆÈHYˆHÓÔ“‘T—ÓÔS—ÓÕÈ[ÙH
+HYˆHRQWÓÔS—ÓPV[ÙHŠB‚\™]\›ˆˆHÈYˆY[ÙHÈ
+ÈÂ‚™[˜ÈY]Ü—ÝØ[ÜÚYJÛNˆ[
+HOˆ[‚‚[X]ÚÛN‚‚BLNˆ™]\›ˆÈš\ÚX›HY‚BLKŽˆ™]\›ˆHÈš\ÚX›HÜ‚BLÎˆ™]\›ˆˆÈš\ÚX›HšYÚ‚BMˆ™]\›ˆÈÈš\ÚX›H›ÝÛB‚\™]\›ˆ‚™[˜ÈY™™XÝ]™WÝØ[ÛZ[—Þ
+
+HOˆ›Ø]‚‚\™]\›ˆÐSÓRS—Ö
+ÈX›WÝØ[ÛÙ™œÙ]ÖÌWH
+È
+X›WÝØ[ÜÚ^™\ÖÌWHHŒ
+H
+ˆB‚™[˜ÈY™™XÝ]™WÝØ[ÛX^Þ
+
+HOˆ›Ø]‚‚\™]\›ˆÐSÓPVÖ
+ÈX›WÝØ[ÛÙ™œÙ]ÖÌ×HH
+X›WÝØ[ÜÚ^™\ÖÌ×HHŒ
+H
+ˆB‚™[˜ÈY™™XÝ]™WÝØ[ÛZ[—ÞJ
+HOˆ›Ø]‚‚\™]\›ˆÐSÓRS—ÖHHX›WÝØ[ÛÙ™œÙ]ÖÌ—H
+È
+X›WÝØ[ÜÚ^™\ÖÌ—HHŒ
+H
+ˆB‚™[˜ÈY™™XÝ]™WÝØ[ÛX^ÞJ
+HOˆ›Ø]‚‚\™]\›ˆÐSÓPVÖHHX›WÝØ[ÛÙ™œÙ]ÖÌHH
+X›WÝØ[ÜÚ^™\ÖÌHHŒ
+H
+ˆB‚™[˜È[žWÝšYÙÙ\—ØÙ[\ŠÛNˆ[
+HOˆ™XÝÜŒŽ‚‚HÈS•–HÙ™œÙ]È\ÙHHš\ÚX›HØÜ™Y[ˆ^\ËˆÛÛ™\[H˜XÚÈ[ÈB‚HÈ›Ý]Y\ÚXÜÈÛÛÜ™[˜]\È\ÙYžHH›Ø\™‚‚]˜\ˆÙ™œÙ]H˜\Ù[žWÛÙ™œÙ]ÖÚÛWB‚\™]\›ˆÐÓÔ’S‘×ÒÓWÐÑS•T”ÖÚÛWH
+È™XÝÜŒŠÙ™œÙ]žK[Ù™œÙ]ž
+B‚™[˜È[žWÝšYÙÙ\™Y
+˜[ÜÜÚ][ÛŽˆ™XÝÜŒ‹ÛNˆ[
+HOˆ›ÛÛ‚‚\™]\›ˆ˜[ÜÜÚ][Û‹™\Ý[˜ÙWÝÊ[žWÝšYÙÙ\—ØÙ[\ŠÛJJHH˜\Ù[žWÜ˜YZVÚÛWB‚™[˜È™\ÛÛ™WØÛÛ\Ú[ÛŠWÚ[™^ˆ[—Ú[™^ˆ[
+HOˆ›ÚY‚‚]˜\ˆÙ^HH™XÝÜŒšJWÚ[™^—Ú[™^
+B‚ZYˆÛÛXÝËš\ÊÙ^JNˆ™]\›‚‚]˜\ˆNˆXÝ[Û˜\žHH˜[ÖØWÚ[™^B‚]˜\ˆŽˆXÝ[Û˜\žHH˜[ÖØ—Ú[™^B‚]˜\ˆ[Nˆ™XÝÜŒˆH‹œHKœ‚]˜\ˆ\Ý[˜ÙHH[K›[™Ý
+
+B‚ZYˆ\Ý[˜ÙHHŒHÜˆ\Ý[˜ÙHHQUTÈ
+ˆ‹Œˆ™]\›‚‚XÛÛXÝÖÚÙ^WHHYB‚]˜\ˆ›Ü›X[H[HÈ\Ý[˜ÙB‚]˜\ˆÝ™\›\HQUTÈ
+ˆ‹ŒH\Ý[˜ÙB‚XKœOH›Ü›X[
+ˆÝ™\›\
+ˆB‚X‹œ
+ÏH›Ü›X[
+ˆÝ™\›\
+ˆB‚]˜\ˆ™[]]™Nˆ™XÝÜŒˆH‹ˆHK‚‚]˜\ˆÜYYH™[]]™K™Ý
+›Ü›X[
+B‚ZYˆÜYYŒ‚‚B]˜\ˆ[\XÝÜÝ™[™ÝHZ[™ŠKŒXœÙŠÜYY
+HÈ‹
+B‚BZYˆ[\XÝÜÝ™[™ÝˆŒMŽ‚‚BBZ[\XÝØ\œÝË˜\[™
+ÈœŽŠKœ
+È‹œ
+H
+ˆK˜YÙHŽŒŒœÝÙ\ˆŽš[\XÝÜÝ™[™ÝJB‚BXKˆ
+ÏH›Ü›X[
+ˆÜYY‚BX‹ˆOH›Ü›X[
+ˆÜYY‚™[˜ÈØÛÜ™WØ˜[
+[™^ˆ[ÛNˆ[
+HOˆ›ÚY‚‚]˜\ˆØÛÜ™YÝX[Nˆ[H˜[ÖÚ[™^KX[B‚ZYˆØÛÜ™YÝX[HOH\›Ž‚‚B]\›—ÛÜÛ™[ÜØÛÜ™YHYB‚X˜[ÖÚ[™^K˜[]™HH˜[ÙB‚X˜[ÖÚ[™^KˆH™XÝÜŒ‹–‘T“Â‚XXÝ]™WÙY™™XÝË˜\[™
+ÈšÛHŽšÛK™[\ÙYŽŒŒX[HŽœØÛÜ™YÝX[KœYXÙHŽš[™^JB‚\ØÛÜ™WØ\œÝË˜\[™
+ÈœŽ”ÐÓÔ’S‘×ÒÓWÐÑS•T”ÖÚÛWK˜YÙHŽŒŒX[HŽœØÛÜ™YÝX[_JB‚\Ý]\ÈH˜[ØÛÜ™YH‚‚\^WÜÛÝ[™
+œØÛÜ™HŠB‚XÚXÚ×ÛX]ÚÙ[™
+
+B‚™[˜È\]WÙY™™XÝÊ[Nˆ›Ø]
+HOˆ›ÚY‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚BYY™™XÝ™[\ÙY
+ÏH[B‚Y›ÜˆH[ˆ˜[™ÙJXÝ]™WÙY™™XÝËœÚ^™J
+HHKLKLJN‚‚B]˜\ˆ\˜][ÛˆHQ‘‘PÕÑTUSÓ‚‚BZYˆXÝ]™WÙY™™XÝÖÚWKšÛHOH•P‘T—ÕTÒÓN‚‚BBY\˜][ÛˆH•P‘T—ÑQ‘‘PÕÑTUSÓ‚‚BY[YˆXÝ]™WÙY™™XÝÖÚWKšÛHOH‘TÔ×ÕTÒÓN‚‚BBY\˜][ÛˆH‘TÔ×ÑQ‘‘PÕÑTUSÓ‚‚BY[YˆXÝ]™WÙY™™XÝÖÚWKšÛHOHPÑWÕTÒÓN‚‚BBY\˜][ÛˆHPÑWÑQ‘‘PÕÑTUSÓ‚‚BY[YˆXÝ]™WÙY™™XÝÖÚWKšÛHOH’T‘WÕTÒÓN‚‚BBY\˜][ÛˆH’T‘WÑQ‘‘PÕÑTUSÓ‚‚BY[YˆXÝ]™WÙY™™XÝÖÚWKšÛHOHSPÕ’P×ÕTÒÓN‚‚BBY\˜][ÛˆHSPÕ’P×ÑQ‘‘PÕÑTUSÓ‚‚BY[YˆXÝ]™WÙY™™XÝÖÚWKšÛHOHSSQT—ÕTÒÓN‚‚BBY\˜][ÛˆHSSQT—ÑQ‘‘PÕÑTUSÓ‚‚BZYˆXÝ]™WÙY™™XÝÖÚWK™[\ÙYH\˜][ÛŽ‚‚BB\Ü]Û—ÝØ]\—Ù›Ø]\ŠXÝ]™WÙY™™XÝÖÚWJB‚BBXXÝ]™WÙY™™XÝËœ™[[Ý™WØ]
+JB‚™[˜È\]WÛ[Ù\›—ÙØ[YWÙž
+[Nˆ›Ø]
+HOˆ›ÚY‚‚Y›Üˆ\œÝ[ˆ[\XÝØ\œÝÎ‚‚BX\œÝ˜YÙH
+ÏH[B‚Y›ÜˆH[ˆ˜[™ÙJ[\XÝØ\œÝËœÚ^™J
+HHKLKLJN‚‚BZYˆ[\XÝØ\œÝÖÚWK˜YÙHHŽ‚‚BBZ[\XÝØ\œÝËœ™[[Ý™WØ]
+JB‚Y›Üˆ\œÝ[ˆØÛÜ™WØ\œÝÎ‚‚BX\œÝ˜YÙH
+ÏH[B‚Y›ÜˆH[ˆ˜[™ÙJØÛÜ™WØ\œÝËœÚ^™J
+HHKLKLJN‚‚BZYˆØÛÜ™WØ\œÝÖÚWK˜YÙHHKŒMN‚‚BB\ØÛÜ™WØ\œÝËœ™[[Ý™WØ]
+JB‚Y›ÜˆH[ˆ˜[ËœÚ^™J
+N‚‚BZYˆ˜[ÖÚWK˜[]™H[™˜[ÖÚWK‹›[™ÝÜÜ]X\™Y
+
+HˆŒN‚‚BB[[Ý[Û—Ý˜Z[Ë˜\[™
+ÈœŽ˜˜[ÖÚWKœ˜YÙHŽŒŒX[HŽ˜˜[ÖÚWKX[_JB‚Y›Üˆ˜Z[[ˆ[Ý[Û—Ý˜Z[Î‚‚B]˜Z[˜YÙH
+ÏH[B‚Y›ÜˆH[ˆ˜[™ÙJ[Ý[Û—Ý˜Z[ËœÚ^™J
+HHKLKLJN‚‚BZYˆ[Ý[Û—Ý˜Z[ÖÚWK˜YÙHHŒÌ‚‚BB[[Ý[Û—Ý˜Z[Ëœ™[[Ý™WØ]
+JB‚™[˜ÈÜ]Û—ÝØ]\—Ù›Ø]\ŠY™™XÝˆXÝ[Û˜\žJHOˆ›ÚY‚‚HÈÛÛ[YHœ›ÛHH^XÝš[˜[œ˜[YHÙˆXXÚÙX\Ûˆ˜[ˆÜ]Ûš[™ÈYØZ[ˆ]‚HÈHÛHXYHH[š[X[Ü›ÝÈ[™\X\ˆÈ˜[œ›ÛHHX›HÚXÙK‚‚]˜\ˆ[™[™ÈHY™™XÝÙ˜[Ù[™Ú[
+Y™™XÝšÛJB‚]˜\ˆÝ]Ø\™H
+[™[™ÈH›Ø\™Ü™XÝ™Ù]ØÙ[\Š
+JK››Ü›X[^™Y
+
+B‚ZYˆÝ]Ø\™›[™ÝÜÜ]X\™Y
+
+HŒN‚‚B[Ý]Ø\™H™XÝÜŒ‹‘ÕÓ‚‚HÈÙY\H\Ý[\œÜXÝ]™HÚ^™H™XXÚY]H[™ÙˆH˜[‚‚]˜\ˆ˜Y]\ÈHMKŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]Ø]\—Ù›Ø]\œË˜\[™
+Â‚BH™[\ÙYŽˆŒ‚BHX[HŽˆY™™XÝX[K‚BHœYXÙHŽˆY™™XÝœYXÙK‚BHœÝ\Žˆ[™[™Ë‚BH™\™XÝ[ÛˆŽˆÝ]Ø\™‚BHœ˜Y]\ÈŽˆ˜Y]\Â‚_JB‚™[˜ÈY™™XÝÙ˜[Ù[™Ú[
+ÛNˆ[
+HOˆ™XÝÜŒŽ‚‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆ[™Ú[H›Ø\™Ý×ÜØÜ™Y[ŠÐÓÔ’S‘×ÒÓWÐÑS•T”ÖÚÛWJB‚[X]ÚÛN‚‚BT•P‘T—ÕTÒÓN‚‚BBY[™Ú[HX˜™\—ÜÚ[
+‹ŒŒ‹Œ
+B‚BT‘TÔ×ÕTÒÓN‚‚BBHÈÝÜ[ˆH˜\œ›ÝÈØ]\ˆÝš\X›Ý™HHX›H[œÝXYÙˆÛÛ[Z[™Â‚BBHÈ™Z[™HQ[™Ý]ÚYHHš\ÚX›HØÜ™Y[‹‚‚BBY[™Ú[H™\Ü×ÜÚ[
+ŒŒKŒLL‹Œ
+B‚BQSPÕ’P×ÕTÒÓN‚‚BBY[™Ú[H[XÝšX×ÜÚ[
+LNNŒŒ‹Œ
+B‚BRSSQT—ÕTÒÓN‚‚BBY[™Ú[H[[Y\—ÜÚ[
+LNNŒNNŒ
+B‚BRPÑWÕTÒÓN‚‚BBHÈX]ÚHš\ÚX›HØ]\ˆÝš\[[YYX][H™[ÝÈHX›K‚‚BBY[™Ú[HXÙWÜÚ[
+ŒŒŒL‹Œ
+B‚BQ’T‘WÕTÒÓN‚‚BBY[™Ú[Hš\™WÜÚ[
+LL‹ŒLÍ‹Œ
+H
+È™XÝÜŒŠMMŒÍ‹Œ
+H
+ˆØØ[WÞB‚\™]\›ˆ[™Ú[
+È˜\Ù˜[ÛÙ™œÙ]ÖÚÛWH
+ˆØØ[WÞB‚™[˜È\]WÝØ]\—Ù›Ø]\œÊ[Nˆ›Ø]
+HOˆ›ÚY‚‚Y›Üˆ›Ø]\ˆ[ˆØ]\—Ù›Ø]\œÎ‚‚BY›Ø]\‹™[\ÙY
+ÏH[B‚Y›ÜˆH[ˆ˜[™ÙJØ]\—Ù›Ø]\œËœÚ^™J
+HHKLKLJN‚‚BZYˆØ]\—Ù›Ø]\œÖÚWK™[\ÙYHÐUT—Ñ“ÐUÕSQN‚‚BB]Ø]\—Ù›Ø]\œËœ™[[Ý™WØ]
+JB‚™[˜È[™WÜÞ\Ý[WØ˜XÚÊ
+HOˆ›ÚY‚‚HÈÛÜÙHH[›™\›[ÜÝØ[YHÝ™\›^H™Y›Ü™H˜]šYØ][™È]Ø^Hœ›ÛHHX]Ú‚‚ZYˆ\ÜØÜ™Y[ˆOHTÑÐSQN‚‚BZYˆX]ÚÜ™\Ý[ÛÜ[Ž‚‚BBY^]ØÝ\œ™[ÛX]Ú
+
+B‚BY[YˆÝ\ÝÛZ^™\—ÛÜ[Ž‚‚BBXÝ\ÝÛZ^™\—ÛÜ[ˆH˜[ÙB‚BY[YˆÚ]ÛÜ[Ž‚‚BBXÚ]ÛÜ[ˆH˜[ÙB‚BBZYˆÚ]Ú[œ]OH[‚‚BBBXÚ]Ú[œ]œ™[X\ÙWÙ›ØÝ\Ê
+B‚BY[Yˆ^]ØÛÛ™š\›WÛÜ[Ž‚‚BBY^]ØÛÛ™š\›WÛÜ[ˆH˜[ÙB‚BY[ÙN‚‚BBHÈX]Ú˜XÚÈ™]™\ˆ]Z]È[[YYX][NÈ]\Ù\ÈHØ[YHÛÛ™š\›X][Û‚‚BBHÈX[ÙÈ\ÈHÛ‹\ØÜ™Y[ˆ\œ›ÝË‚‚BBY^]ØÛÛ™š\›WÛÜ[ˆHYB‚BB\Ù[XÝYHLB‚BBY˜YÙÚ[™ÈH˜[ÙB‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚‚HÈH[XZ[Ü\ÜÝÛÜ™›Ü›H\ÈHÚ[Ý\ÙˆH]][XØ][ÛˆØÜ™Y[‹‚‚ZYˆ\ÜØÜ™Y[ˆOHTÐUU[™›Ý]]Ù[XZ[Û[ÙKš\×Ù[\J
+N‚‚BX]]Ù[XZ[Û[ÙHHˆ‚‚BYš\™X˜\ÙWÜÝ]\ÈHµäuåõê5åH5äõê5æˆ5æõè5æuèuåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHÕÈÈÒQÓˆSˆ‚‚BZYˆ]]Ù[XZ[Ú[œ]OH[‚‚BBX]]Ù[XZ[Ú[œ]œ™[X\ÙWÙ›ØÝ\Ê
+B‚BZYˆ]]Ü\ÜÝÛÜ™Ú[œ]OH[‚‚BBX]]Ü\ÜÝÛÜ™Ú[œ]œ™[X\ÙWÙ›ØÝ\Ê
+B‚B]\]WØ]]Ú[œ]Ê
+B‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚‚HÈ]™\žHÙXÛÛ™\žHY[H™]\›œÈÈHÛYHØÜ™Y[ˆ[™\™›Ü›\ÈHØ[YB‚HÈÛX[\\È]Èš\ÚX›H˜XÚÈ]Û‹‚‚ZYˆ\ÜØÜ™Y[ˆ›Ý[ˆÐTÒÓQKTÐUUTÔÔTÒN‚‚BZYˆ\ÜØÜ™Y[ˆOHTÔVQT—Ô“Ñ’SN‚‚BBXÛÛ[Z]Ü›Ùš[WÛ˜[YJ
+B‚BZYˆ\ÜØÜ™Y[ˆOHTÑ”’QS‘‚‚BB[X]™WÛ][\^Y\—Ü›ÛÛJ
+B‚BZYˆ\ÜØÜ™Y[ˆOHTÐT‘SN‚‚BBXØ[˜Ù[ÛX]ÚXZÚ[™Ê
+B‚BX\ÜØÜ™Y[ˆHTÒÓQB‚B]\]WÜ›ÛÛWØÛÙWÚ[œ]
+
+B‚B]\]WÜ›Ùš[WÛ˜[YWÚ[œ]
+
+B‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚‚ZYˆ\ÜØÜ™Y[ˆOHTÔÔTÒ‚‚BX\ÜØÜ™Y[ˆHTÐUU‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚‚HÈÛYH[™H›ÛÝ]][XØ][ÛˆÚÛÜÙ\ˆ\™HHÛ›HYH\›ÛÝË‚‚ZYˆ]ÜšX[ÛÜ[Ž‚‚BZYˆ]ÜšX[ÜÝ\ˆ‚‚BB\™]™X]Ý]ÜšX[ÜÝ\
+
+B‚BY[ÙN‚‚BB]]ÜšX[ÛÜ[ˆH˜[ÙB‚BB]]ÜšX[Ù\ÛZ\ÜÙYÜÙ\ÜÚ[ÛˆHYB‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚‚HÈ˜XÚÈœ›ÛHZ]\ˆ›ÛÝÙY\È[™›ÚY	ÜÈ^XÝY™Z]š[Üˆ[™^]Ë‚‚YÙ]Ý™YJ
+Kœ]Z]
+
+B‚™[˜ÈÚ[œ]
+]™[ˆ[œ]]™[
+HOˆ›ÚY‚‚HÈ[Øš[Hœ›ÝÜÙ\œÈÛ›H[ÝÈ[ØÜ™Y[ˆ[™ÜšY[][ÛˆØÚÚ[™ÈY\ˆH™X[‚HÈ\Ù\ˆÙ\Ý\™KˆHš\œÝ\™\]Y\ÝÈ›ÝÛÈ[™›ÚYØ[ˆ›Ý]HHØ[YB‚HÈ]]ÛX]XØ[HÚ]Ý]\ÚÚ[™ÈH^Y\ˆÈ›Ý]HHÛ™HX[X[K‚‚ZYˆ
+]™[\È[œ]]™[ØÜ™Y[•ÝXÚ[™]™[œ™\ÜÙY
+HÜˆ
+]™[\È[œ]]™[[Ý\ÙP]Ûˆ[™]™[œ™\ÜÙY[™]™[˜]Û—Ú[™^OHSÕTÑWÐ•UÓ—ÓQ•
+N‚‚B\™\]Y\ÝÛ[™ØØ\WÛ[ÙJ
+B‚HÈHØ[YH\È[™ØØ\K[Û›KˆYÛ›Ü™HÝXÚ\È[[H]šXÙH\È›Ý]Y‚‚ZYˆÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™KžHˆÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™Kž‚‚B\™]\›‚‚ZYˆ]™[\È[œ]]™[ØÜ™Y[•ÝXÚ‚‚B]ÝXÚØÜ™Y[—Ú[œ]ÜÙY[ˆHYB‚BZYˆ]™[œ™\ÜÙYˆÚ[\—ÙÝÛŠ]™[œÜÚ][ÛŠB‚BY[ÙNˆÚ[\—Ý\
+]™[œÜÚ][ÛŠB‚Y[Yˆ]™[\È[œ]]™[ØÜ™Y[‘˜YÎ‚‚B]ÝXÚØÜ™Y[—Ú[œ]ÜÙY[ˆHYB‚B\Ú[\—Û[Ý™J]™[œÜÚ][ÛŠB‚Y[Yˆ]™[\È[œ]]™[[Ý\ÙP]Ûˆ[™]™[˜]Û—Ú[™^OHSÕTÑWÐ•UÓ—ÓQ•[™›ÝÝXÚØÜ™Y[—Ú[œ]ÜÙY[Ž‚‚BZYˆ]™[œ™\ÜÙYˆÚ[\—ÙÝÛŠ]™[œÜÚ][ÛŠB‚BY[ÙNˆÚ[\—Ý\
+]™[œÜÚ][ÛŠB‚Y[Yˆ]™[\È[œ]]™[[Ý\ÙS[Ý[Ûˆ[™›ÝÝXÚØÜ™Y[—Ú[œ]ÜÙY[ˆ[™[œ]š\×Û[Ý\ÙWØ]Û—Ü™\ÜÙY
+SÕTÑWÐ•UÓ—ÓQ•
+N‚‚B\Ú[\—Û[Ý™J]™[œÜÚ][ÛŠB‚™[˜È™\]Y\ÝÛ[™ØØ\WÛ[ÙJ
+HOˆ›ÚY‚‚ZYˆ›ÝÔËš\×Ù™X]\™JÙXˆŠN‚‚B\™]\›‚‚R˜]˜TØÜš\œšYÙK™]˜[
+ˆˆ‚‚BJ\Þ[˜È
+
+HOˆÂ‚BB]žHÂ‚BBBXÛÛœÝ›ÛÝHØÝ[Y[™ØÝ[Y[[[Y[Â‚BBBZYˆ
+YØÝ[Y[™[ØÜ™Y[‘[[Y[	‰ˆ›ÛÝœ™\]Y\Ý[ØÜ™Y[ŠHÂ‚BBBB]žHÂ‚BBBBBX]ØZ]›ÛÝœ™\]Y\Ý[ØÜ™Y[ŠÈ˜]šYØ][Û•RNˆ	ÚYIÈJNÂ‚BBBB_HØ]Ú
+ÊHÂ‚BBBBBX]ØZ]›ÛÝœ™\]Y\Ý[ØÜ™Y[Š
+NÂ‚BBBB_B‚BBB_B‚BB_HØ]Ú
+ÊHßB‚BB]žHÂ‚BBBZYˆ
+ØÜ™Y[‹›ÜšY[][Ûˆ	‰ˆØÜ™Y[‹›ÜšY[][Û‹›ØÚÊH]ØZ]ØÜ™Y[‹›ÜšY[][Û‹›ØÚÊ	Û[™ØØ\IÊNÂ‚BB_HØ]Ú
+ÊHßB‚B_JJ
+NÂ‚Hˆˆ‹YJB‚™[˜ÈÚ[\—ÙÝÛŠØÜ™Y[—ÜÜÎˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ\ÜØÜ™Y[ˆOHTÑÐSQN‚‚BZ[™WÙœ›Û[™ÝÝXÚ
+ØÜ™Y[—ÜÜÊB‚B\™]\›‚‚]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚ZYˆX]ÚÜ™\Ý[ÛÜ[Ž‚‚BZYˆX]ÚÜ™\Ý[ÚÛYWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBY^]ØÝ\œ™[ÛX]Ú
+
+B‚BY[YˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆˆ[™X]ÚÜ™\Ý[ØYØZ[—Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB\Ý\ØÛÛ\]\—ÜÙ]\
+
+B‚B\™]\›‚‚ZYˆÝ\ÝÛZ^™\—ÛÜ[Ž‚‚BZ[™WØÝ\ÝÛZ^™\—ÝÝXÚ
+ØÜ™Y[—ÜÜÊB‚B\™]\›‚‚ZYˆ^]ØÛÛ™š\›WÛÜ[Ž‚‚BZYˆ^]ØÛÛ™š\›WÞY\×Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBY^]ØÝ\œ™[ÛX]Ú
+
+B‚BY[Yˆ^]ØÛÛ™š\›WÛ›×Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBY^]ØÛÛ™š\›WÛÜ[ˆH˜[ÙB‚BB\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚ZYˆÚ]ÛÜ[Ž‚‚BZYˆÚ]ØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBXÚ]ÛÜ[ˆH˜[ÙB‚BBXÚ]Ú[œ]œ™[X\ÙWÙ›ØÝ\Ê
+B‚BY[YˆÚ]ÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB\Ù[™ØÚ]ÛY\ÜØYÙJ
+B‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚ZYˆØ[YWØ˜XÚ×Ü™XÝ
+
+Kš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BY^]ØÛÛ™š\›WÛÜ[ˆHYB‚B\Ù[XÝYHLB‚BY˜YÙÚ[™ÈH˜[ÙB‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™Hˆ[™Ø[YWØÚ]Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BXÚ]ÛÜ[ˆHYB‚BXÚ]Ú[œ]™Ü˜X—Ù›ØÝ\Ê
+B‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚ZYˆX]ÚÙš[š\ÚYÜˆ
+Ø[YWÛ[ÙHOH˜ÛÛ\]\ˆˆ[™\›ˆOH
+HÜˆ
+Ø[YWÛ[ÙHOH›Û›[™Hˆ[™\›ˆOH][\^Y\—ÜÛÝ
+HÜˆ[žWØ˜[Û[Ýš[™Ê
+HÜˆ›ÝY™™XÝ×Ø[Ý×Û™^Ý\›Š
+Nˆ™]\›‚‚]˜\ˆ›Ø\™ÜÜÈHØÜ™Y[—Ý×Ø›Ø\™
+ØÜ™Y[—ÜÜÊB‚Y›ÜˆH[ˆ˜[ËœÚ^™J
+N‚‚BZYˆ˜[ÖÚWK˜[]™H[™˜[ÖÚWKX[HOH\›ˆ[™˜[ÖÚWKœ™\Ý[˜ÙWÝÊ›Ø\™ÜÜÊHHM‹Œ‚‚BB\Ù[XÝYHB‚BBY˜YÙÚ[™ÈHYB‚BBY˜Y×ÜÚ[H›Ø\™ÜÜÂ‚BB\Ý]\ÈH”[˜XÚÈ[™™[X\ÙH‚‚BB\™]\›‚‚™[˜ÈÚ[\—Û[Ý™JØÜ™Y[—ÜÜÎˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ˜YÙÚ[™È[™Ù[XÝYH‚‚BY˜Y×ÜÚ[HØÜ™Y[—Ý×Ø›Ø\™
+ØÜ™Y[—ÜÜÊB‚B]˜\ˆ[Ù\Ý[˜ÙNˆ›Ø]H˜[ÖÜÙ[XÝYKœ™\Ý[˜ÙWÝÊ˜Y×ÜÚ[
+B‚B\Ý]\ÈH”™[X\ÙHÈÚÛÝˆYˆ[Ù\Ý[˜ÙHHRS—ÔÒÕÔS[ÙH”™[X\ÙHÈØ[˜Ù[‚‚™[˜ÈÚ[\—Ý\
+ØÜ™Y[—ÜÜÎˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ›Ý˜YÙÚ[™ÈÜˆÙ[XÝYˆ™]\›‚‚Y˜Y×ÜÚ[HØÜ™Y[—Ý×Ø›Ø\™
+ØÜ™Y[—ÜÜÊB‚]˜\ˆ[ˆ™XÝÜŒˆH˜[ÖÜÙ[XÝYKœH˜Y×ÜÚ[‚]˜\ˆ[Ù\Ý[˜ÙNˆ›Ø]H[›[™Ý
+
+B‚]˜\ˆÝ™[™Ýˆ›Ø]HÛ[\Š[Ù\Ý[˜ÙKRS—ÔÒÕÔSÌŒ
+B‚ZYˆ[Ù\Ý[˜ÙHHRS—ÔÒÕÔS‚‚B]\›—ÜÚÝØÛÛ[Z]YHYB‚B]\›—Ü[™[™×Ü™\ÛÛ™HHYB‚B]\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB‚B\^WÜÛÝ[™
+œÚÝŠB‚BZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚BB\Ù[™Û][\^Y\ŠÈ\HŽˆœÚÝ‹˜˜[[™^ŽœÙ[XÝYœ[Žœ[žœ[HŽœ[žKœÝ™[™ÝŽœÝ™[™ÝJB‚BB\Ý]\ÈHµêuåuç5åÈ5ä5êˆ5å5åµê5æuéõå‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”Ù[™[™ÈÚÝ‹‹ˆ‚‚BY[YˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆŽ‚‚BBX˜[ÖÜÙ[XÝYKˆH[››Ü›X[^™Y
+
+H
+ˆ
+Ý™[™Ý
+ˆŒÎ
+B‚BBXZWØÛÛ[Z]YÜÚÝH˜[ÙB‚BB\Ý]\ÈHµçµåõæõæuçH5ç5êµåuéµä5êˆ5å5åµê5æuéõå‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•ØZ][™È›ÜˆHÚÝÈÙ]K‹‹ˆ‚‚BY[ÙN‚‚BBX˜[ÖÜÙ[XÝYKˆH[››Ü›X[^™Y
+
+H
+ˆ
+Ý™[™Ý
+ˆŒÎ
+B‚BBXZWÜ[™[™ÈH˜[ÙB‚BB\Ý]\ÈHµçµåõæõæuçH5ç5êµåuéµä5êˆ5å5åµê5æuéõå‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•ØZ][™È›ÜˆHÚÝÈÙ]K‹‹ˆ‚‚Y[ÙN‚‚B\Ý]\ÈHZ[HØ[˜Ù[YHÚÛÜÙH[›Ý\ˆ˜[‚‚Y˜YÙÚ[™ÈH˜[ÙB‚\Ù[XÝYHLB‚™[˜ÈZWÙY™šXÝ[WÜÙ][™ÜÊ
+HOˆXÝ[Û˜\žN‚‚[X]ÚÛ[\JÛÛ\]\—ÙY™šXÝ[KŠN‚‚BL‚‚BB\™]\›ˆÈ˜[™ÛWÙ\œ›ÜˆŽˆŒÌ‹œÝÙ\—Ù\œ›ÜˆŽˆŒœXÚ×ÝÜŽˆ‹[š×ÛZ[ˆŽˆMK[š×ÛX^ŽˆKŒKœ˜][™×Ø›Û\ÈŽˆLM›Z[—Ø[YÛˆŽˆŒ_B‚BLŽ‚‚BB\™]\›ˆÈ˜[™ÛWÙ\œ›ÜˆŽˆŒÍKœÝÙ\—Ù\œ›ÜˆŽˆŒKœXÚ×ÝÜŽˆŽM‹[š×ÛZ[ˆŽˆŒŒ‹[š×ÛX^ŽˆŒ‹œ˜][™×Ø›Û\ÈŽˆMŒ›Z[—Ø[YÛˆŽˆŒŒŸB‚\™]\›ˆÈ˜[™ÛWÙ\œ›ÜˆŽˆŒLKœÝÙ\—Ù\œ›ÜˆŽˆŒLKœXÚ×ÝÜŽˆÍ[š×ÛZ[ˆŽˆŒÍ[š×ÛX^ŽˆŽœ˜][™×Ø›Û\ÈŽˆ›Z[—Ø[YÛˆŽˆŒLŸB‚™[˜ÈZWÝ[š×Ù[^J
+HOˆ›Ø]‚‚]˜\ˆÙ][™ÜÈHZWÙY™šXÝ[WÜÙ][™ÜÊ
+B‚\™]\›ˆ˜[™—Ü˜[™ÙJ›Ø]
+Ù][™ÜË[š×ÛZ[ŠK›Ø]
+Ù][™ÜË[š×ÛX^
+JB‚™[˜ÈZWÛÜÛ™[Ü˜][™Ê
+HOˆ[‚‚\™]\›ˆÛ[\JM
+È^Y\—Û]™[
+ˆ
+È[
+ZWÙY™šXÝ[WÜÙ][™ÜÊ
+Kœ˜][™×Ø›Û\ÊKÌN
+B‚™[˜ÈZWÙ\Ü^WÛ˜[YJ
+HOˆÝš[™Î‚‚[X]ÚÛ[\JÛÛ\]\—ÙY™šXÝ[KŠN‚‚BLˆ™]\›ˆZWÝ^
+˜ZWÛ˜[YWÙX\ÞHŠB‚BLŽˆ™]\›ˆZWÝ^
+˜ZWÛ˜[YWÚ\™ŠB‚\™]\›ˆZWÝ^
+˜ZWÛ˜[YWÛYY][HŠB‚™[˜ÈZWØÛÛXÝÜÚÝØØ[™Y]\ÊÙ][™ÜÎˆXÝ[Û˜\žJHOˆ\œ˜^N‚‚]˜\ˆØ[™Y]\Îˆ\œ˜^HH×B‚]˜\ˆZ[—Ø[YÛŽˆ›Ø]H›Ø]
+Ù][™ÜË›Z[—Ø[YÛŠB‚Y›ÜˆÚÛÝ\—Ú[™^[ˆ˜[ËœÚ^™J
+N‚‚B]˜\ˆÚÛÝ\ŽˆXÝ[Û˜\žHH˜[ÖÜÚÛÝ\—Ú[™^B‚BZYˆ›ÝÚÛÝ\‹˜[]™HÜˆ[
+ÚÛÝ\‹X[JHOHN‚‚BBXÛÛ[YB‚B]˜\ˆÚÛÝ\—ÜÜÎˆ™XÝÜŒˆHÚÛÝ\‹œ‚BY›Üˆ[™[^WÚ[™^[ˆ˜[ËœÚ^™J
+N‚‚BB]˜\ˆ[™[^NˆXÝ[Û˜\žHH˜[ÖÙ[™[^WÚ[™^B‚BBZYˆ›Ý[™[^K˜[]™HÜˆ[
+[™[^KX[JHOH‚‚BBBXÛÛ[YB‚BB]˜\ˆ[™[^WÜÜÎˆ™XÝÜŒˆH[™[^Kœ‚BBY›ÜˆÛWÚ[™^[ˆŽ‚‚BBB]˜\ˆÛWÜÜÎˆ™XÝÜŒˆH[žWÝšYÙÙ\—ØÙ[\ŠÛWÚ[™^
+B‚BBB]˜\ˆ×ÚÛNˆ™XÝÜŒˆHÛWÜÜÈH[™[^WÜÜÂ‚BBB]˜\ˆÛWÙ\Ýˆ›Ø]H×ÚÛK›[™Ý
+
+B‚BBBZYˆÛWÙ\Ý‹Œ‚‚BBBBXÛÛ[YB‚BBB]˜\ˆÛWÙ\Žˆ™XÝÜŒˆH×ÚÛHÈÛWÙ\Ý‚BBB]˜\ˆÛÛXÝˆ™XÝÜŒˆH[™[^WÜÜÈHÛWÙ\ˆ
+ˆ
+QUTÈ
+ˆ‹ŒJB‚BBB]˜\ˆ×ØÛÛXÝˆ™XÝÜŒˆHÛÛXÝHÚÛÝ\—ÜÜÂ‚BBB]˜\ˆÚÝÙ\Ýˆ›Ø]H×ØÛÛXÝ›[™Ý
+
+B‚BBBZYˆÚÝÙ\ÝRS—ÔÒÕÔSÜˆÚÝÙ\ÝˆLNŒ‚‚BBBBXÛÛ[YB‚BBB]˜\ˆÚÝÙ\Žˆ™XÝÜŒˆH×ØÛÛXÝÈÚÝÙ\Ý‚BBB]˜\ˆ\ÚØ[YÛŽˆ›Ø]HÚÝÙ\‹™Ý
+ÛWÙ\ŠB‚BBBZYˆ\ÚØ[YÛˆZ[—Ø[YÛŽ‚‚BBBBXÛÛ[YB‚BBB]˜\ˆØÛÜ™Nˆ›Ø]H\ÚØ[YÛˆ
+ˆMKŒ‚BBB\ØÛÜ™H
+ÏH
+KŒHÛ[\ŠÛWÙ\ÝÈMMKŒŒKŒ
+JH
+ˆÎŒ‚BBB\ØÛÜ™H
+ÏH
+KŒHÛ[\ŠÚÝÙ\ÝÈLNŒŒKŒ
+JH
+ˆNŒ‚BBB\ØÛÜ™HOHZWÜÙ[—ÜÚ[š×Üš\ÚÊÚÛÝ\—ÜÜËÚÝÙ\‹ÚÝÙ\Ý
+H
+ˆŽŒ‚BBBXØ[™Y]\Ë˜\[™
+Â‚BBBBHœÚÛÝ\ˆŽˆÚÛÝ\—Ú[™^‚BBBBH™\™XÝ[ÛˆŽˆÚÝÙ\‹‚BBBBH™\Ý[˜ÙHŽˆÚÝÙ\Ý‚BBBBHœØÛÜ™HŽˆØÛÜ™K‚BBBBHšÚ[™ŽˆœØÚÙ]‚‚BBB_JB‚BY›Üˆ[™[^WÚ[™^[ˆ˜[ËœÚ^™J
+N‚‚BB]˜\ˆ[™[^NˆXÝ[Û˜\žHH˜[ÖÙ[™[^WÚ[™^B‚BBZYˆ›Ý[™[^K˜[]™HÜˆ[
+[™[^KX[JHOH‚‚BBBXÛÛ[YB‚BB]˜\ˆ×Ù[™[^Nˆ™XÝÜŒˆH[™[^KœHÚÛÝ\—ÜÜÂ‚BB]˜\ˆ\Ýˆ›Ø]H×Ù[™[^K›[™Ý
+
+B‚BBZYˆ\ÝRS—ÔÒÕÔSÜˆ\ÝˆLKŒ‚‚BBBXÛÛ[YB‚BB]˜\ˆ\Žˆ™XÝÜŒˆH×Ù[™[^HÈ\Ý‚BB]˜\ˆÛWÜÜÎˆ™XÝÜŒˆHZWÛ™X\™\ÝÚÛJ[™[^Kœ
+B‚BB]˜\ˆÛWÙ\Žˆ™XÝÜŒˆH
+ÛWÜÜÈH[™[^Kœ
+K››Ü›X[^™Y
+
+B‚BB]˜\ˆØÛÜ™Nˆ›Ø]H\‹™Ý
+ÛWÙ\ŠH
+ˆŒ‹Œ
+È
+KŒH\ÝÈLKŒ
+H
+ˆLŒ‚BBXØ[™Y]\Ë˜\[™
+Â‚BBBHœÚÛÝ\ˆŽˆÚÛÝ\—Ú[™^‚BBBH™\™XÝ[ÛˆŽˆ\‹‚BBBH™\Ý[˜ÙHŽˆ\Ý‚BBBHœØÛÜ™HŽˆØÛÜ™K‚BBBHšÚ[™Žˆš]‚‚BB_JB‚\™]\›ˆØ[™Y]\Â‚™[˜ÈZWÛ™X\™\ÝÚÛJÜÎˆ™XÝÜŒŠHOˆ™XÝÜŒŽ‚‚]˜\ˆ™\ÝH[žWÝšYÙÙ\—ØÙ[\Š
+B‚]˜\ˆ™\ÝÙ\ÝHÜË™\Ý[˜ÙWÜÜ]X\™YÝÊ™\Ý
+B‚Y›ÜˆÛWÚ[™^[ˆ˜[™ÙJKŠN‚‚B]˜\ˆÙ[\ˆH[žWÝšYÙÙ\—ØÙ[\ŠÛWÚ[™^
+B‚B]˜\ˆ\ÝHÜË™\Ý[˜ÙWÜÜ]X\™YÝÊÙ[\ŠB‚BZYˆ\Ý™\ÝÙ\Ý‚‚BBX™\ÝÙ\ÝH\Ý‚BBX™\ÝHÙ[\‚‚\™]\›ˆ™\Ý‚™[˜ÈZWÜÙ[—ÜÚ[š×Üš\ÚÊÚÛÝ\—ÜÜÎˆ™XÝÜŒ‹ÚÝÙ\Žˆ™XÝÜŒ‹ÚÝÙ\Ýˆ›Ø]
+HOˆ›Ø]‚‚]˜\ˆš\ÚÈHŒ‚]˜\ˆ[™ÜÜÈHÚÛÝ\—ÜÜÈ
+ÈÚÝÙ\ˆ
+ˆZ[™ŠÚÝÙ\Ý
+ˆKŒMKLŒ
+B‚Y›ÜˆÛWÚ[™^[ˆŽ‚‚B]˜\ˆÛWÜÜÎˆ™XÝÜŒˆH[žWÝšYÙÙ\—ØÙ[\ŠÛWÚ[™^
+B‚BZYˆ[™ÜÜË™\Ý[˜ÙWÝÊÛWÜÜÊH˜\Ù[žWÜ˜YZVÚÛWÚ[™^H
+ÈQUTÈ
+ˆ‹N‚‚BB\š\ÚÈ
+ÏHKŒ‚Y›Üˆ˜[[ˆ˜[Î‚‚BZYˆ›Ý˜[˜[]™HÜˆ[
+˜[X[JHOHN‚‚BBXÛÛ[YB‚BZYˆ˜[œ™\Ý[˜ÙWÜÜ]X\™YÝÊÚÛÝ\—ÜÜÊHŒN‚‚BBXÛÛ[YB‚BZYˆ[™ÜÜË™\Ý[˜ÙWÝÊ˜[œ
+HQUTÈ
+ˆËŒ‚‚BB\š\ÚÈ
+ÏHŒÍB‚\™]\›ˆš\ÚÂ‚™[˜ÈZWÜXÚ×ÜÚÝ
+Ø[™Y]\Îˆ\œ˜^KÙ][™ÜÎˆXÝ[Û˜\žJHOˆXÝ[Û˜\žN‚‚ZYˆØ[™Y]\Ëš\×Ù[\J
+N‚‚B\™]\›ˆßB‚XØ[™Y]\ËœÛÜØÝ\ÝÛJ[˜ÊNˆXÝ[Û˜\žKŽˆXÝ[Û˜\žJHOˆ›ÛÛ‚‚B\™]\›ˆ›Ø]
+KœØÛÜ™JHˆ›Ø]
+‹œØÛÜ™JB‚JB‚]˜\ˆXÚ×ÝÜˆ›Ø]H›Ø]
+Ù][™ÜËœXÚ×ÝÜ
+B‚]˜\ˆÛÛÜÚ^™Nˆ[HX^JK[
+ÙZ[
+›Ø]
+Ø[™Y]\ËœÚ^™J
+JH
+ˆXÚ×ÝÜ
+JJB‚]˜\ˆÚÚXÙNˆXÝ[Û˜\žHHØ[™Y]\ÖÜ˜[™J
+H	HÛÛÜÚ^™WB‚\™]\›ˆÚÚXÙB‚™[˜ÈZWÙ˜[˜XÚ×ÜÚÝ
+
+HOˆXÝ[Û˜\žN‚‚]˜\ˆÚÛÝ\œÎˆ\œ˜^VÚ[HH×B‚Y›ÜˆH[ˆ˜[ËœÚ^™J
+N‚‚BZYˆ˜[ÖÚWK˜[]™H[™[
+˜[ÖÚWKX[JHOHN‚‚BB\ÚÛÝ\œË˜\[™
+JB‚ZYˆÚÛÝ\œËš\×Ù[\J
+N‚‚B\™]\›ˆßB‚]˜\ˆÚÛÝ\—Ú[™^ˆ[HÚÛÝ\œÖÜ˜[™J
+H	HÚÛÝ\œËœÚ^™J
+WB‚]˜\ˆÚÛÝ\—ÜÜÎˆ™XÝÜŒˆH˜[ÖÜÚÛÝ\—Ú[™^Kœ‚]˜\ˆ\™Ù]ÜÜÎˆ™XÝÜŒˆH™XÝÜŒŠ“ÐT‘ÕÈ
+ˆK“ÐT‘Ò
+ˆJB‚]˜\ˆ[™[^WØÛÝ[H‚Y›Üˆ˜[[ˆ˜[Î‚‚BZYˆ˜[˜[]™H[™[
+˜[X[JHOH‚‚BB]\™Ù]ÜÜÈ
+ÏH˜[œ‚BBY[™[^WØÛÝ[
+ÏHB‚ZYˆ[™[^WØÛÝ[ˆ‚‚B]\™Ù]ÜÜÈÏH›Ø]
+[™[^WØÛÝ[
+ÈJB‚Y[ÙN‚‚B]\™Ù]ÜÜÈH™XÝÜŒŠ“ÐT‘ÕÈ
+ˆÌ‹“ÐT‘Ò
+ˆJB‚]˜\ˆ×Ý\™Ù]ˆ™XÝÜŒˆH\™Ù]ÜÜÈHÚÛÝ\—ÜÜÂ‚]˜\ˆ\Ýˆ›Ø]H×Ý\™Ù]›[™Ý
+
+B‚ZYˆ\ÝRS—ÔÒÕÔS‚‚B]×Ý\™Ù]H™XÝÜŒŠ˜[™—Ü˜[™ÙJLKŒKŒ
+K˜[™—Ü˜[™ÙJLKŒKŒ
+JK››Ü›X[^™Y
+
+H
+ˆRS—ÔÒÕÔS‚BY\ÝHRS—ÔÒÕÔS‚\™]\›ˆÂ‚BHœÚÛÝ\ˆŽˆÚÛÝ\—Ú[™^‚BH™\™XÝ[ÛˆŽˆ×Ý\™Ù]È\Ý‚BH™\Ý[˜ÙHŽˆ\Ý‚BHœØÛÜ™HŽˆŒ‚BHšÚ[™Žˆ˜œ™XZÈ‚‚_B‚™[˜ÈZWØ\WÜÚÝ
+ÚÝˆXÝ[Û˜\žKÙ][™ÜÎˆXÝ[Û˜\žJHOˆ›ÚY‚‚]˜\ˆÚÛÝ\—Ú[™^ˆ[H[
+ÚÝœÚÛÝ\ŠB‚ZYˆÚÛÝ\—Ú[™^ÜˆÚÛÝ\—Ú[™^H˜[ËœÚ^™J
+HÜˆ›Ý˜[ÖÜÚÛÝ\—Ú[™^K˜[]™N‚‚B\™]\›‚‚]˜\ˆ\™XÝ[ÛŽˆ™XÝÜŒˆHÚÝ™\™XÝ[Û‚‚]˜\ˆ[™ÛWÙ\œ›ÜŽˆ›Ø]H›Ø]
+Ù][™ÜË˜[™ÛWÙ\œ›ÜŠB‚Y\™XÝ[ÛˆH\™XÝ[Û‹œ›Ý]Y
+˜[™—Ü˜[™ÙJX[™ÛWÙ\œ›Ü‹[™ÛWÙ\œ›ÜŠJB‚ZYˆ\™XÝ[Û‹›[™ÝÜÜ]X\™Y
+
+HŒN‚‚BY\™XÝ[ÛˆH™XÝÜŒ‹”’QÒ‚Y[ÙN‚‚BY\™XÝ[ÛˆH\™XÝ[Û‹››Ü›X[^™Y
+
+B‚]˜\ˆ˜\ÙWÜÝ™[™Ýˆ›Ø]HÛ[\Š›Ø]
+ÚÝ™\Ý[˜ÙJH
+ˆŒÍRS—ÔÒÕÔSŽJB‚]˜\ˆÝÙ\—Ù\œ›ÜŽˆ›Ø]H›Ø]
+Ù][™ÜËœÝÙ\—Ù\œ›ÜŠB‚]˜\ˆÝ™[™Ýˆ›Ø]HÛ[\Š˜\ÙWÜÝ™[™Ý
+È˜[™—Ü˜[™ÙJ\ÝÙ\—Ù\œ›Ü‹ÝÙ\—Ù\œ›ÜŠH
+ˆL‹ŒRS—ÔÒÕÔSÌŒ
+B‚X˜[ÖÜÚÛÝ\—Ú[™^KˆH\™XÝ[Ûˆ
+ˆ
+Ý™[™Ý
+ˆŒÎ
+B‚]\›—ÜÚÝØÛÛ[Z]YHYB‚]\›—Ü[™[™×Ü™\ÛÛ™HHYB‚]\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB‚XZWØÛÛ[Z]YÜÚÝHYB‚\^WÜÛÝ[™
+œÚÝŠB‚\Ý]\ÈH›YH^Y\ˆÚÝ‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHµå5çµåõêuäH5æuåuê5å‹‹ˆ‚‚™[˜ÈZWÜÚÝ
+
+HOˆ›ÚY‚‚]˜\ˆÙ][™ÜÈHZWÙY™šXÝ[WÜÙ][™ÜÊ
+B‚]˜\ˆØ[™Y]\ÈHZWØÛÛXÝÜÚÝØØ[™Y]\ÊÙ][™ÜÊB‚]˜\ˆÚÝˆXÝ[Û˜\žHHZWÜXÚ×ÜÚÝ
+Ø[™Y]\ËÙ][™ÜÊB‚ZYˆÚÝš\×Ù[\J
+N‚‚B\ÚÝHZWÙ˜[˜XÚ×ÜÚÝ
+
+B‚ZYˆÚÝš\×Ù[\J
+N‚‚BYš[š\ÚØZWÝ\›Š
+B‚B\™]\›‚‚XZWØ\WÜÚÝ
+ÚÝÙ][™ÜÊB‚™[˜Èš[š\ÚØZWÝ\›Š
+HOˆ›ÚY‚‚]\›ˆH‚]\›—ÜÚÝØÛÛ[Z]YH˜[ÙB‚]\›—Ü[™[™×Ü™\ÛÛ™HH˜[ÙB‚]\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB‚\Ý]\ÈH–[Ý\ˆ\›ˆHÝXÚH™Y˜[[˜XÚÈ[™™[X\ÙH‚‚™[˜È™\ÛÛ™WÜ[™[™×Ý\›Š
+HOˆ›ÚY‚‚ZYˆX]ÚÙš[š\ÚYÜˆ›Ý\›—Ü[™[™×Ü™\ÛÛ™HÜˆ[žWØ˜[Û[Ýš[™Ê
+HÜˆ›ÝY™™XÝ×Ø[Ý×Û™^Ý\›Š
+N‚‚B\™]\›‚‚]˜\ˆÛÛ[YWÝ\›ˆH\›—ÛÜÛ™[ÜØÛÜ™Y‚]\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚BZYˆ\›ˆOH][\^Y\—ÜÛÝ‚‚BB\Ù[™Û][\^Y\ŠÈ\HŽˆœ™\ÛÛ™WÝ\›ˆ‹˜ÛÛ[YU\›ˆŽˆÛÛ[YWÝ\›ŸJB‚B\™]\›‚‚X\WÝ\›—ØY\—ÜÚÝ
+ÛÛ[YWÝ\›ŠB‚™[˜È\WÝ\›—ØY\—ÜÚÝ
+ÛÛ[YWÝ\›Žˆ›ÛÛ
+HOˆ›ÚY‚‚]\›—Ü[™[™×Ü™\ÛÛ™HH˜[ÙB‚]\›—ÜÚÝØÛÛ[Z]YH˜[ÙB‚ZYˆÛÛ[YWÝ\›Ž‚‚BZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆˆ[™\›ˆOHN‚‚BBXZWØÛÛ[Z]YÜÚÝH˜[ÙB‚BBXZWÜ[™[™ÈHYB‚BBXZWÝ[Y\ˆHZWÝ[š×Ù[^J
+B‚BB\Ý]\ÈHZWÝ^
+™^˜WÝ\›ˆŠB‚BY[ÙN‚‚BB\Ý]\ÈHZWÝ^
+™^˜WÝ\›ˆŠB‚B\™]\›‚‚ZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆŽ‚‚BZYˆ\›ˆOH‚‚BB]\›ˆHB‚BBXZWØÛÛ[Z]YÜÚÝH˜[ÙB‚BBXZWÜ[™[™ÈHYB‚BBXZWÝ[Y\ˆHZWÝ[š×Ù[^J
+B‚BB\Ý]\ÈH
+µêµåuê5å5çµåõêuäHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÛÛ\]\‰ÜÈ\›ˆŠB‚BY[ÙN‚‚BBYš[š\ÚØZWÝ\›Š
+B‚Y[YˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B\\ÜÂ‚Y[ÙN‚‚B]\›ˆHHH\›‚‚B\Ý]\ÈH
+µêµåuê5êuåõéõçÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”^Y\ˆŠH
+ÈÝŠ\›ˆ
+ÈJB‚™[˜È\]WÝ\›—ÜÝ]\×Ùœ›ÛWÜÙ\™\ŠÛÛ[YYˆ›ÛÛ
+HOˆ›ÚY‚‚ZYˆÛÛ[YY‚‚B\Ý]\ÈHZWÝ^
+™^˜WÝ\›ˆŠB‚B\™]\›‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚BZYˆ\›ˆOH][\^Y\—ÜÛÝ‚‚BB\Ý]\ÈHµå5êµåuê5êuç5æõçHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH–[Ý\ˆ\›ˆ‚‚BY[ÙN‚‚BB\Ý]\ÈHµêµåuê5å5æuê5æuäHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“ÜÛ™[	ÜÈ\›ˆ‚‚™[˜È[žWØ˜[Û[Ýš[™Ê
+HOˆ›ÛÛ‚‚Y›Üˆ˜[[ˆ˜[Î‚‚BZYˆ˜[˜[]™H[™˜[‹›[™ÝÜÜ]X\™Y
+
+HˆŒNˆ™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜ÈÚÝ×Ý\›—Ø˜[Ú[
+
+HOˆ›ÛÛ‚‚ZYˆY™™XÝÙY]Ü—Ù[˜X›YÜˆÝ\ÝÛZ^™\—ÛÜ[ˆÜˆX]ÚÙš[š\ÚYÜˆ\›—ÜÚÝØÛÛ[Z]Y‚‚B\™]\›ˆ˜[ÙB‚ZYˆ[žWØ˜[Û[Ýš[™Ê
+HÜˆ›ÝY™™XÝ×Ø[Ý×Û™^Ý\›Š
+N‚‚B\™]\›ˆ˜[ÙB‚\™]\›ˆYB‚™[˜ÈÚÝ×Ý\›—Ø˜[Ú[Ù›Ü—ÝX[JX[Nˆ[
+HOˆ›ÛÛ‚‚ZYˆ›ÝÚÝ×Ý\›—Ø˜[Ú[
+
+HÜˆX[HOH\›Ž‚‚B\™]\›ˆ˜[ÙB‚ZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆˆ[™X[HOH‚‚B\™]\›ˆ˜[ÙB‚ZYˆØ[YWÛ[ÙHOH›Û›[™Hˆ[™X[HOH][\^Y\—ÜÛÝ‚‚B\™]\›ˆ˜[ÙB‚\™]\›ˆYB‚™[˜È›Ø\™Ý×ÜØÜ™Y[Šˆ™XÝÜŒŠHOˆ™XÝÜŒŽ‚‚HÈ›Ý]HHÜšYÚ[˜[Ü˜Z]ÛÛÜ™[˜]\ÈÛØÚÝÚ\ÙH[ÈH[™ØØ\H›Ø\™‚‚\™]\›ˆ›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ‚BJ“ÐT‘ÒHžJHÈ“ÐT‘Ò
+ˆ›Ø\™Ü™XÝœÚ^™Kž‚B\žÈ“ÐT‘ÕÈ
+ˆ›Ø\™Ü™XÝœÚ^™KžB‚JB‚™[˜ÈØÜ™Y[—Ý×Ø›Ø\™
+ˆ™XÝÜŒŠHOˆ™XÝÜŒŽ‚‚]˜\ˆØØ[ˆ™XÝÜŒˆHH›Ø\™Ü™XÝœÜÚ][Û‚‚\™]\›ˆ™XÝÜŒŠ‚B[ØØ[žHÈ›Ø\™Ü™XÝœÚ^™KžH
+ˆ“ÐT‘ÕË‚BP“ÐT‘ÒH
+ØØ[žÈ›Ø\™Ü™XÝœÚ^™Kž
+ˆ“ÐT‘Ò
+B‚JB‚™[˜ÈÙ˜]Ê
+HOˆ›ÚY‚‚]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚Y˜]×ÛØÙX[ŠšY]ÜÜÜÚ^™JB‚ZYˆšY]ÜÜÜÚ^™KžHˆšY]ÜÜÜÚ^™Kž‚‚B]˜\ˆ][˜ÚÝÚYˆ›Ø]HZ[™ŠšY]ÜÜÜÚ^™Kž
+ˆŽ‹ŒŒŒ
+B‚B]˜\ˆ][˜ÚÜ™XÝH™XÝŠ‚BBJšY]ÜÜÜÚ^™KžH][˜ÚÝÚY
+H
+ˆK‚BB]šY]ÜÜÜÚ^™KžH
+ˆŒÎ‚BB[][˜ÚÝÚY‚BBLLL‹Œ‚BJB‚B]˜\ˆ][˜ÚÜÚYÝÈH™XÝŠ][˜ÚÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+K][˜ÚÜ™XÝœÚ^™JK™Ü›ÝÊŒ
+B‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒŒŠKÌŒ
+K][˜ÚÜÚYÝÊB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠÌŒLˆŠK‹Œ
+K][˜ÚÜ™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠ][˜ÚÜ™XÝœÜÚ][Û‹ž][˜ÚÜ™XÝœÜÚ][Û‹žH
+ÈËŒ
+Kµç5åõéµåH5æõä5çÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•TT‘H‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹][˜ÚÜ™XÝœÚ^™Kž‹ÛÛÜ‹•ÒUJB‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠ][˜ÚÜ™XÝ™[™žH
+ÈL‹Œ
+Kµå5çµêuåõéÈ5æuæué5êµåÈ5ç5ê5åuåõäH5åuäuçµèuæˆ5çµç5äˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•HØ[YHÚ[Ü[ˆ[ØÜ™Y[ˆ[ˆ[™ØØ\H‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹šY]ÜÜÜÚ^™KžŒ‹ÛÛÜ‹•ÒUJB‚B\™]\›‚‚ZYˆ\ÜØÜ™Y[ˆOHTÔÔTÒ‚‚BY˜]×ÜÜ\ÚÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚B\™]\›‚‚ZYˆ\ÜØÜ™Y[ˆOHTÑÐSQN‚‚BY˜]×Ùœ›Û[™
+šY]ÜÜÜÚ^™JB‚B\™]\›‚‚HÈ›Ø][™È[š[X[ÈÝ^H™Z[™H[]˜]YX›H[™Û›H™[XZ[ˆš\ÚX›HÛ‚‚HÈHÝ\œ›Ý[™[™ÈØ]\‹‚‚Y˜]×ÝØ]\—Ù›Ø]\œÊšY]ÜÜÜÚ^™JB‚HÈXXÚX›H[YHÙY\ÈH^XÝ\›Ý™YØ[Y\^HÙ[ÛY]žHÚ[H\Ú[™Â‚HÈ]ÈÝÛˆ›ÙXÝ[Ûˆ^\™K‚‚]˜\ˆXÝ]™WØ›Ø\™Ý^\™HH›Ø\™Ý[YWÝ^\™JXÝ]™WØ›Ø\™Ý[YJ
+JB‚ZYˆXÝ]™WØ›Ø\™Ý^\™HOH[‚‚BY˜]×Ý^\™WÜ™XÝ
+XÝ]™WØ›Ø\™Ý^\™K›Ø\™Ü™XÝ˜[ÙJB‚Y˜]×ÜØÛÜ™X›Ø\™Ê
+B‚Y˜]×ÜX˜™\—Û][˜Ú\œ×ÚYJ
+B‚Y˜]×Ü™\Ü×ÝÙX\Ûœ×ÚYJ
+B‚Y˜]×Ù[XÝšX×ÝÙX\Ûœ×ÚYJ
+B‚Y˜]×ÚXÙWÝÙX\Ûœ×ÚYJ
+B‚Y˜]×Ùš\™WÝÙX\Ûœ×ÚYJ
+B‚Y˜]×Ú[[Y\—ÝÙX\Ûœ×ÚYJ
+B‚Y˜]×Û[Ù\›—ÙØ[YWÙž
+˜[ÙJB‚‚Y›ÜˆH[ˆ˜[ËœÚ^™J
+N‚‚B]˜\ˆ˜[ˆXÝ[Û˜\žHH˜[ÖÚWB‚BZYˆ›Ý˜[˜[]™NˆÛÛ[YB‚B]˜\ˆÜH›Ø\™Ý×ÜØÜ™Y[Š˜[œ
+B‚B]˜\ˆš\ÝX[Ü˜Y]\ÈHÐSQWÐSÕ’TÕPSÔQUTÈ
+ˆ›Ø\™ÜØØ[B‚BZYˆÚÝ×Ý\›—Ø˜[Ú[Ù›Ü—ÝX[J˜[X[JN‚‚BB]˜\ˆ[ÙHH
+Ú[Š›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒŠH
+ÈKŒ
+H
+ˆB‚BB]˜\ˆ[×Ü˜Y]\ÈHš\ÝX[Ü˜Y]\È
+ˆ
+KŒÍ
+È[ÙH
+ˆŒL
+B‚BBY˜]×ØÚ\˜ÛJÜ[×Ü˜Y]\ËÛÛÜŠMKŒŒ‹ŒMˆ
+È[ÙH
+ˆŒ
+JB‚BBY˜]×ØÚ\˜ÛJÜ[×Ü˜Y]\ËÛÛÜŠÍ‹KŒŽŽ
+K˜[ÙKX^Š‹Œš\ÝX[Ü˜Y]\È
+ˆŒLŠKYJB‚BY˜]×ÜX˜™\—ÙØ[YWØ˜[
+Üš\ÝX[Ü˜Y]\Ë˜[X[KKKŒ
+B‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚BZYˆY™™XÝšÛHOH•P‘T—ÕTÒÓN‚‚BBY˜]×ÜX˜™\—Ý˜\
+Y™™XÝ
+B‚BY[YˆY™™XÝšÛHOH‘TÔ×ÕTÒÓN‚‚BBY˜]×Ü™\Ü×Ý˜\
+Y™™XÝ
+B‚BY[YˆY™™XÝšÛHOHPÑWÕTÒÓN‚‚BBY˜]×ÚXÙWÝ˜\
+Y™™XÝ
+B‚BY[YˆY™™XÝšÛHOH’T‘WÕTÒÓN‚‚BBY˜]×Ùš\™WÝ˜\
+Y™™XÝ
+B‚BY[YˆY™™XÝšÛHOHSPÕ’P×ÕTÒÓN‚‚BBY˜]×Ù[XÝšX×Ý˜\
+Y™™XÝ
+B‚BY[YˆY™™XÝšÛHOHSSQT—ÕTÒÓN‚‚BBY˜]×Ú[[Y\—Ý˜\
+Y™™XÝ
+B‚BY[ÙN‚‚BBY˜]×ÚÛWÙY™™XÝ
+Y™™XÝšÛKY™™XÝ™[\ÙYÈQ‘‘PÕÑTUSÓŠB‚Y˜]×Û[Ù\›—ÙØ[YWÙž
+YJB‚‚ZYˆ˜YÙÚ[™È[™Ù[XÝYH‚‚B]˜\ˆÝ\H›Ø\™Ý×ÜØÜ™Y[Š˜[ÖÜÙ[XÝYKœ
+B‚B]˜\ˆ[™H›Ø\™Ý×ÜØÜ™Y[Š˜Y×ÜÚ[
+B‚BY˜]×ÛÜšYÚ[˜[ÜÝ[WØZ[JÝ\[™
+B‚‚Y˜]×Ø˜[Ú]›ÞÙY]Ü—ÛÝ™\›^J
+B‚Y˜]×Ù[žWÙY]Ü—ÛX\šÙ\Š
+B‚Y˜]×ÝX›WÝØ[ÙY]Ü—ÛÝ™\›^J
+B‚‚Y˜]×ÚY
+šY]ÜÜÜÚ^™JB‚Y˜]×Û[Ù\›—ÛX]ÚÛÝ™\›^JšY]ÜÜÜÚ^™JB‚Y˜]×ÙY™™XÝÙY]ÜŠšY]ÜÜÜÚ^™JB‚Y˜]×ØÝ\ÝÛZ^™\ŠšY]ÜÜÜÚ^™JB‚™[˜È˜]×Û[Ù\›—ÙØ[YWÙž
+›Ü™YÜ›Ý[™ˆ›ÛÛ
+HOˆ›ÚY‚‚ZYˆ›Ý›Ü™YÜ›Ý[™‚‚BY›Üˆ˜Z[[ˆ[Ý[Û—Ý˜Z[Î‚‚BB]˜\ˆY™Nˆ›Ø]HKŒH›Ø]
+˜Z[˜YÙJHÈŒÌ‚BB]˜\ˆÙ[\ˆH›Ø\™Ý×ÜØÜ™Y[Š˜Z[œ
+B‚BB]˜\ˆÛÛÜˆHX[WÛX\šÙ\—ØÛÛÜŠ[
+˜Z[X[JJB‚BBXÛÛÜ‹˜HHŒŒ
+ˆY™B‚BBY˜]×ØÚ\˜ÛJÙ[\‹ÐSQWÐSÕ’TÕPSÔQUTÈ
+ˆ›Ø\™ÜØØ[H
+ˆ
+N
+ÈY™H
+ˆŒŒ
+KÛÛÜŠB‚B\™]\›‚‚Y›Üˆ\œÝ[ˆ[\XÝØ\œÝÎ‚‚B]˜\ˆˆ›Ø]HÛ[\Š›Ø]
+\œÝ˜YÙJHÈ‹ŒKŒ
+B‚B]˜\ˆÙ[\ˆH›Ø\™Ý×ÜØÜ™Y[Š\œÝœ
+B‚B]˜\ˆÝÙ\Žˆ›Ø]H›Ø]
+\œÝœÝÙ\ŠB‚B]˜\ˆ˜Y]\Îˆ›Ø]H
+Œ
+ÈŽŒ
+ˆ
+H
+ˆ›Ø\™ÜØØ[H
+ˆÝÙ\‚‚BY˜]×ØÚ\˜ÛJÙ[\‹˜Y]\ËÛÛÜŠÍKŽM‹KŒ
+KŒH
+H
+ˆŒŒ
+K˜[ÙKX^Š‹ŒŒ
+ˆ›Ø\™ÜØØ[JKYJB‚BY›Üˆ˜^H[ˆ‚‚BB]˜\ˆ\™XÝ[ÛˆH™XÝÜŒ‹”’QÒœ›Ý]Y
+›Ø]
+˜^JH
+ˆUHÈŒ
+È
+ˆŒÍJB‚BBY˜]×Û[™JÙ[\ˆ
+È\™XÝ[Ûˆ
+ˆ˜Y]\È
+ˆ‹Ù[\ˆ
+È\™XÝ[Ûˆ
+ˆ˜Y]\ËÛÛÜŠŽŽNKŒ
+KŒH
+H
+ˆŽJKX^ŠKŒ‹
+ˆ›Ø\™ÜØØ[JKYJB‚Y›Üˆ\œÝ[ˆØÛÜ™WØ\œÝÎ‚‚B]˜\ˆˆ›Ø]HÛ[\Š›Ø]
+\œÝ˜YÙJHÈKŒMKŒKŒ
+B‚B]˜\ˆÙ[\ˆH›Ø\™Ý×ÜØÜ™Y[Š\œÝœ
+B‚B]˜\ˆX[WØÛÛÜˆHX[WÛX\šÙ\—ØÛÛÜŠ[
+\œÝX[JJB‚B]˜\ˆØ]™HHÚ[Š
+ˆJB‚B]X[WØÛÛÜ‹˜HH
+KŒH
+H
+ˆÍB‚BY˜]×ØÚ\˜ÛJÙ[\‹
+MŒ
+È‹Œ
+ˆ
+H
+ˆ›Ø\™ÜØØ[KX[WØÛÛÜ‹˜[ÙKX^Š‹ŒKŒ
+ˆ›Ø\™ÜØØ[JKYJB‚BY˜]×ØÚ\˜ÛJÙ[\‹
+LŒ
+ÈNŒ
+ˆØ]™JH
+ˆ›Ø\™ÜØØ[KÛÛÜŠKŒŽŒÍ
+KŒH
+H
+ˆŠJB‚BY›ÜˆÜ\šÈ[ˆLŽ‚‚BB]˜\ˆ\™XÝ[ÛˆH™XÝÜŒ‹•Tœ›Ý]Y
+›Ø]
+Ü\šÊH
+ˆUHÈL‹Œ
+B‚BB]˜\ˆÜ\š×ÜÜÈHÙ[\ˆ
+È\™XÝ[Ûˆ
+ˆ
+NŒ
+ÈÎŒ
+ˆ
+H
+ˆ›Ø\™ÜØØ[B‚BBY˜]×ØÚ\˜ÛJÜ\š×ÜÜËX^ŠKKË
+ˆ›Ø\™ÜØØ[H
+ˆ
+KŒH
+JKÛÛÜŠKŒŽLKKŒH
+JB‚™[˜È˜]×Û[Ù\›—ÛX]ÚÛÝ™\›^JšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚HÈÛÛ\XÝ[š[X]Y\›ˆ[™XØ]Üˆ]Ý^\ÈÛX\ˆÙˆH›Ø\™[™^Y\ˆØ\™Ë‚‚]˜\ˆ˜[›™\—ÝÚYHZ[™ŠLŒšY]ÜÜÜÚ^™Kž
+ˆŒ
+B‚]˜\ˆ˜[›™\ˆH™XÝŠ
+šY]ÜÜÜÚ^™KžH˜[›™\—ÝÚY
+H
+ˆKŒ˜[›™\—ÝÚYŒ
+B‚]˜\ˆ[ÙHH
+Ú[ŠY[WÙ[\ÙY
+ˆ
+H
+ÈKŒ
+H
+ˆB‚]˜\ˆXØÙ[HX[WÛX\šÙ\—ØÛÛÜŠ\›ŠB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒMKŒKŒKŽLÊKNŒ
+K˜[›™\ŠB‚Y˜]×Ü™XÝ
+˜[›™\‹™Ü›ÝÊ‹Œ
+È[ÙJKÛÛÜŠXØÙ[œ‹XØÙ[™ËXØÙ[˜‹ÌŠK˜[ÙK‹Œ
+È[ÙKYJB‚Y˜]×ØÚ\˜ÛJ˜[›™\‹œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+K‹Œ
+È[ÙH
+ˆKKXØÙ[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û˜[›™\‹œÜÚ][Ûˆ
+È™XÝÜŒŠŒÌKŒ
+KX]ÚÝ\›—Ý^
+
+KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹˜[›™\‹œÚ^™KžHMŒMËÛÛÜ‹•ÒUJB‚ZYˆ[Ù\›—ÛX]ÚÚ[›È‹‚‚B]˜\ˆ[›×ÝH[Ù\›—ÛX]ÚÚ[›ÈÈ‹‚B]˜\ˆÜXÚ]HHÛ[\ŠÚ[Š[›×Ý
+ˆJH
+ˆKŒÍKŒKŒ
+B‚B]˜\ˆ]WÝÚYHZ[™ŠLŒŒšY]ÜÜÜÚ^™Kž
+ˆMŠB‚B]˜\ˆ]WÜ™XÝH™XÝŠ
+šY]ÜÜÜÚ^™KžH]WÝÚY
+H
+ˆKšY]ÜÜÜÚ^™KžH
+ˆË]WÝÚYL‹Œ
+B‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒËŒËÎ
+ˆÜXÚ]JKŽŒ
+K]WÜ™XÝ
+B‚BY˜]×Ü™XÝ
+]WÜ™XÝ™Ü›ÝÊ‹Œ
+KÛÛÜŠŒÍKŽKŒMH
+ˆÜXÚ]JK˜[ÙKËŒYJB‚B]˜\ˆ]HHµå5éõê5äH5çµêµåõæuçˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHUHÕT•‚‚BY˜]×ÜÝš[™ÊZWÙ›Û]WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒMËŒ
+K]KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹]WÜ™XÝœÚ^™KžÍÛÛÜŠKŒŽLËNÜXÚ]JJB‚ZYˆ\›—Ø˜[›™\—ØYÙHÌˆ[™[Ù\›—ÛX]ÚÚ[›ÈH‹ŒŽ‚‚B]˜\ˆÜHÚ[ŠÛ[\Š\›—Ø˜[›™\—ØYÙHÈÌ‹ŒKŒ
+H
+ˆJB‚B]˜\ˆÛÝÈH˜[›™\‹™Ü›ÝÊŒ
+ÈÜ
+ˆLŒ
+B‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠXØÙ[œ‹XØÙ[™ËXØÙ[˜‹ŒLˆ
+ˆÜ
+KŒ
+KÛÝÊB‚™[˜È˜]×ØZ[WØ\œ›ÝÊÜšYÚ[Žˆ™XÝÜŒ‹\™XÝ[ÛŽˆ™XÝÜŒ‹[™Ýˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ\HÜšYÚ[ˆ
+È\™XÝ[Ûˆ
+ˆ[™Ý‚]˜\ˆXYØ˜\ÙHH\H\™XÝ[Ûˆ
+ˆŒ‹Œ‚]˜\ˆ›Ü›X[H™XÝÜŒŠY\™XÝ[Û‹žK\™XÝ[Û‹ž
+B‚]˜\ˆ\œ›Ý×ØÛÛÜˆHÛÛÜŠŽ‹KŒŽŽ
+B‚HÈÛÙÚYHÛÝÈ\ÈHÛÛY[›™\ˆÚY™\›ÙXÙ\ÈHÚ[šÞHÜšYÚ[˜[‚HÈ\™XÝ[Ûˆ\œ›ÝÈ[™ÙY\È]™XYX›HÝ™\ˆHÜ™Y[ˆšY[‚‚Y˜]×Û[™JÜšYÚ[‹XYØ˜\ÙKÛÛÜŠÎKŒŽ‹Œ
+KNŒYJB‚Y˜]×Û[™JÜšYÚ[‹XYØ˜\ÙK\œ›Ý×ØÛÛÜ‹ŒYJB‚]˜\ˆXYHXÚÙY™XÝÜŒ\œ˜^JÂ‚B]\‚BZXYØ˜\ÙH
+È›Ü›X[
+ˆMKŒ‚BZXYØ˜\ÙHH›Ü›X[
+ˆMKŒ‚WJB‚Y˜]×ØÛÛÜ™YÜÛYÛÛŠXY\œ›Ý×ØÛÛÜŠB‚™[˜È™YXÝYØZ[WØÛÛ\Ú[ÛŠÜšYÚ[Žˆ™XÝÜŒ‹\™XÝ[ÛŽˆ™XÝÜŒ‹ÛÛXš[™YÜ˜Y]\Îˆ›Ø]
+HOˆXÝ[Û˜\žN‚‚]˜\ˆ™\ÝÙ\Ý[˜ÙHHS‘‚‚]˜\ˆ™\ÝØÙ[\ˆH™XÝÜŒ‹–‘T“Â‚Y›ÜˆH[ˆ˜[ËœÚ^™J
+N‚‚BZYˆHOHÙ[XÝYÜˆ›Ý˜[ÖÚWK˜[]™N‚‚BBXÛÛ[YB‚BHÈ\™›Ü›H™YXÝ[Ûˆ[ˆHØ[YHÜ˜Z]\ÚXÜÈÛÛÜ™[˜]\È\ÙYžB‚BHÈ™\ÛÛ™WØÛÛ\Ú[ÛŠ
+KˆØÜ™Y[ˆÛÛÜ™[˜]\È\™H›Ý]Y[™Ý™]ÚY‚‚B]˜\ˆÙ[\Žˆ™XÝÜŒˆH˜[ÖÚWKœ‚B]˜\ˆ[HHÙ[\ˆHÜšYÚ[‚‚B]˜\ˆ[Û™ÈH[K™Ý
+\™XÝ[ÛŠB‚BZYˆ[Û™ÈHŒ‚‚BBXÛÛ[YB‚B]˜\ˆ\œ[™XÝ[\—ÜÜ]X\™YH[K›[™ÝÜÜ]X\™Y
+
+HH[Û™È
+ˆ[Û™Â‚B]˜\ˆ˜Y]\×ÜÜ]X\™YHÛÛXš[™YÜ˜Y]\È
+ˆÛÛXš[™YÜ˜Y]\Â‚BZYˆ\œ[™XÝ[\—ÜÜ]X\™Yˆ˜Y]\×ÜÜ]X\™Y‚‚BBXÛÛ[YB‚B]˜\ˆÛÛXÝÙ\Ý[˜ÙHH[Û™ÈHÜ\
+X^ŠŒ˜Y]\×ÜÜ]X\™YH\œ[™XÝ[\—ÜÜ]X\™Y
+JB‚BZYˆÛÛXÝÙ\Ý[˜ÙH™\ÝÙ\Ý[˜ÙN‚‚BBX™\ÝÙ\Ý[˜ÙHHÛÛXÝÙ\Ý[˜ÙB‚BBX™\ÝØÙ[\ˆHÙ[\‚‚ZYˆ™\ÝÙ\Ý[˜ÙHOHS‘Ž‚‚B\™]\›ˆßB‚]˜\ˆ[Ýš[™×ØÙ[\—Ø]ØÛÛXÝHÜšYÚ[ˆ
+È\™XÝ[Ûˆ
+ˆ™\ÝÙ\Ý[˜ÙB‚]˜\ˆ\™Ù]Ù\™XÝ[ÛˆH
+™\ÝØÙ[\ˆH[Ýš[™×ØÙ[\—Ø]ØÛÛXÝ
+K››Ü›X[^™Y
+
+B‚\™]\›ˆÂ‚BH™\Ý[˜ÙHŽˆ™\ÝÙ\Ý[˜ÙK‚BH˜Ù[\ˆŽˆ™\ÝØÙ[\‹‚BH™\™XÝ[ÛˆŽˆ\™Ù]Ù\™XÝ[Û‚‚_B‚™[˜È˜]×ÛÜšYÚ[˜[ÜÝ[WØZ[J˜[ØÙ[\Žˆ™XÝÜŒ‹[ÜÚ[ˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆØÜ™Y[—Ü[H[ÜÚ[H˜[ØÙ[\‚‚]˜\ˆ\ÚXÜ×ÛÜšYÚ[Žˆ™XÝÜŒˆH˜[ÖÜÙ[XÝYKœ‚]˜\ˆ\ÚXÜ×ÜÚÝH\ÚXÜ×ÛÜšYÚ[ˆH˜Y×ÜÚ[‚ZYˆØÜ™Y[—Ü[›[™ÝÜÜ]X\™Y
+
+HŒÜˆ\ÚXÜ×ÜÚÝ›[™ÝÜÜ]X\™Y
+
+HŒN‚‚B\™]\›‚‚]˜\ˆ\ÚXÜ×Ù\™XÝ[ÛˆH\ÚXÜ×ÜÚÝ››Ü›X[^™Y
+
+B‚]˜\ˆÚÝÙ\™XÝ[ÛˆH
+›Ø\™Ý×ÜØÜ™Y[Š\ÚXÜ×ÛÜšYÚ[ˆ
+È\ÚXÜ×Ù\™XÝ[ÛŠHH˜[ØÙ[\ŠK››Ü›X[^™Y
+
+B‚]˜\ˆ[Ù\™XÝ[ÛˆH\ÚÝÙ\™XÝ[Û‚‚]˜\ˆš\ÝX[Ø˜[Ü˜Y]\ÈHÐSQWÐSÕ’TÕPSÔQUTÈ
+ˆ›Ø\™ÜØØ[B‚]˜\ˆ[Û[™ÝHØÜ™Y[—Ü[›[™Ý
+
+B‚‚HÈYXÚ[šXØ[ÝYH™Z[™H˜[ˆ\šÈÝ][™KÚ[™\ˆ›ÙKYÚYÚ[™‚HÈH[H›Ý[™Ø\š\ÚX›H[ˆHÝ\YYÜšYÚ[˜[YØ[YHØÜ™Y[œÚÝ‚‚]˜\ˆÝYWÛ™X\ˆH˜[ØÙ[\ˆ
+È[Ù\™XÝ[Ûˆ
+ˆ
+š\ÝX[Ø˜[Ü˜Y]\È
+ˆŽLŠB‚]˜\ˆÝYWÛ[™ÝHÛ[\Š[Û[™ÝÌ‹ŒM‹Œ
+B‚]˜\ˆÝYWÙ˜\ˆHÝYWÛ™X\ˆ
+È[Ù\™XÝ[Ûˆ
+ˆÝYWÛ[™Ý‚]˜\ˆÝYWÛ›Ü›X[H™XÝÜŒŠ\[Ù\™XÝ[Û‹žK[Ù\™XÝ[Û‹ž
+B‚Y˜]×Û[™JÝYWÛ™X\‹ÝYWÙ˜\‹ÛÛÜŠŒMÌŒL˜ˆŠKNŒYJB‚Y˜]×Û[™JÝYWÛ™X\‹ÝYWÙ˜\‹ÛÛÜŠŽMÎNHŠKL‹ŒYJB‚Y˜]×Û[™JÝYWÛ™X\ˆ
+ÈÝYWÛ›Ü›X[
+ˆ‹ŒÝYWÙ˜\ˆ
+ÈÝYWÛ›Ü›X[
+ˆ‹ŒÛÛÜŠ™YL™MˆŠKŒYJB‚Y˜]×ØÚ\˜ÛJÝYWÙ˜\‹LKŒÛÛÜŠŒŒÍHŠJB‚Y˜]×ØÚ\˜ÛJÝYWÙ˜\‹ËKÛÛÜŠ˜ÍÙYYˆŠJB‚Y˜]×ØÚ\˜ÛJÝYWÛ™X\‹‹ŒÛÛÜŠ™™LMHŠJB‚‚]˜\ˆ\œ›Ý×ÜÝ\H˜[ØÙ[\ˆ
+ÈÚÝÙ\™XÝ[Ûˆ
+ˆ
+š\ÝX[Ø˜[Ü˜Y]\È
+ˆKŒL
+B‚]˜\ˆ\œ›Ý×Û[™ÝHÛ[\Š[Û[™Ý
+ˆKŒNŒMÍKŒ
+B‚]˜\ˆÛÛ\Ú[ÛˆH™YXÝYØZ[WØÛÛ\Ú[ÛŠ\ÚXÜ×ÛÜšYÚ[‹\ÚXÜ×Ù\™XÝ[Û‹QUTÈ
+ˆ‹Œ
+B‚ZYˆÛÛ\Ú[Û‹š\×Ù[\J
+N‚‚BY˜]×ØZ[WØ\œ›ÝÊ\œ›Ý×ÜÝ\ÚÝÙ\™XÝ[Û‹\œ›Ý×Û[™Ý
+B‚Y[ÙN‚‚BHÈÝÜHÚÛÝ\‰ÜÈÝZYH]H™YXÝYÛÛXÝÚ[[™ÚÝÈB‚BHÈÙXÛÛ™\œ›ÝÈÛˆH˜[]Ú[™XÙZ]™HH[\XÝ‚‚B]˜\ˆÛÛXÝØÙ[\ˆH›Ø\™Ý×ÜØÜ™Y[Š\ÚXÜ×ÛÜšYÚ[ˆ
+È\ÚXÜ×Ù\™XÝ[Ûˆ
+ˆ›Ø]
+ÛÛ\Ú[Û‹™\Ý[˜ÙJJB‚B]˜\ˆÛÛXÝÛ[™Ýˆ›Ø]HX^ŠÍŒ
+ÛÛXÝØÙ[\ˆH\œ›Ý×ÜÝ\
+K™Ý
+ÚÝÙ\™XÝ[ÛŠJB‚BY˜]×ØZ[WØ\œ›ÝÊ\œ›Ý×ÜÝ\ÚÝÙ\™XÝ[Û‹ÛÛXÝÛ[™Ý
+B‚B]˜\ˆ\™Ù]Ü\ÚXÜ×ØÙ[\Žˆ™XÝÜŒˆHÛÛ\Ú[Û‹˜Ù[\‚‚B]˜\ˆ\™Ù]Ü\ÚXÜ×Ù\™XÝ[ÛŽˆ™XÝÜŒˆHÛÛ\Ú[Û‹™\™XÝ[Û‚‚B]˜\ˆ\™Ù]ØÙ[\ˆH›Ø\™Ý×ÜØÜ™Y[Š\™Ù]Ü\ÚXÜ×ØÙ[\ŠB‚B]˜\ˆ\™Ù]Ù\™XÝ[ÛˆH
+›Ø\™Ý×ÜØÜ™Y[Š\™Ù]Ü\ÚXÜ×ØÙ[\ˆ
+È\™Ù]Ü\ÚXÜ×Ù\™XÝ[ÛŠHH\™Ù]ØÙ[\ŠK››Ü›X[^™Y
+
+B‚B]˜\ˆ\™Ù]ÜÝ\H\™Ù]ØÙ[\ˆ
+È\™Ù]Ù\™XÝ[Ûˆ
+ˆ
+š\ÝX[Ø˜[Ü˜Y]\È
+ˆKŒL
+B‚B]˜\ˆ\™Ù]Û[™ÝHÛ[\Š[Û[™Ý
+ˆŽ‹Œ‹ŒLŽŒ
+B‚BY˜]×ØZ[WØ\œ›ÝÊ\™Ù]ÜÝ\\™Ù]Ù\™XÝ[Û‹\™Ù]Û[™Ý
+B‚™[˜È˜]×Ù[žWÙY]Ü—ÛX\šÙ\Š
+HOˆ›ÚY‚‚ZYˆ›ÝY™™XÝÙY]Ü—Ù[˜X›YÜˆY]Ü—Ý\™Ù]OH‚‚B\™]\›‚‚]˜\ˆšYÙÙ\—ØÙ[\ˆH[žWÝšYÙÙ\—ØÙ[\ŠY]Ü—ÚÛJB‚]˜\ˆX\šÙ\ˆH›Ø\™Ý×ÜØÜ™Y[ŠšYÙÙ\—ØÙ[\ŠB‚]˜\ˆ˜Y]\ÈH˜\Ù[žWÜ˜YZVÙY]Ü—ÚÛWB‚]˜\ˆÛÛÜˆHÛÛÜŠ™™™ŒÙŠB‚]˜\ˆÛÝÈHÛÛÜŠKŒŒŒNŒÌ
+B‚]˜\ˆš[™ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚Y›ÜˆH[ˆN‚‚B]˜\ˆ[™ÛHHUH
+ˆ›Ø]
+JHÈŒ‚B\š[™Ë˜\[™
+›Ø\™Ý×ÜØÜ™Y[ŠšYÙÙ\—ØÙ[\ˆ
+È™XÝÜŒŠÛÜÊ[™ÛJKÚ[Š[™ÛJJH
+ˆ˜Y]\ÊJB‚Y˜]×ØÛÛÜ™YÜÛYÛÛŠš[™ËÛÛÜŠKŒŒŒNŒM
+JB‚Y˜]×ÜÛ[[™Jš[™ËÛÛÜ‹ŒYJB‚Y˜]×ØÚ\˜ÛJX\šÙ\‹NKŒÛÝÊB‚Y˜]×ØÚ\˜ÛJX\šÙ\‹L‹ŒÛÛÜ‹˜[ÙKŒYJB‚Y˜]×Û[™JX\šÙ\ˆ
+È™XÝÜŒŠLŒ‹ŒŒ
+KX\šÙ\ˆ
+È™XÝÜŒŠŒ‹ŒŒ
+KÛÛÜ‹ËŒYJB‚Y˜]×Û[™JX\šÙ\ˆ
+È™XÝÜŒŠŒLŒ‹Œ
+KX\šÙ\ˆ
+È™XÝÜŒŠŒŒ‹Œ
+KÛÛÜ‹ËŒYJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛX\šÙ\ˆ
+È™XÝÜŒŠLÍŒLËŒ
+K‘S•–H‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ŽŒLËÛÛÜ‹•ÒUJB‚™[˜È˜]×Ü\ÚXÜ×Ü˜Y]\×Üš[™ÊÙ[\Žˆ™XÝÜŒ‹˜Y]\Îˆ›Ø]ÛÛÜŽˆÛÛÜ‹ÚYˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆš[™ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚Y›ÜˆH[ˆÌÎ‚‚B]˜\ˆ[™ÛHHUH
+ˆ›Ø]
+JHÈÌ‹Œ‚B\š[™Ë˜\[™
+›Ø\™Ý×ÜØÜ™Y[ŠÙ[\ˆ
+È™XÝÜŒŠÛÜÊ[™ÛJKÚ[Š[™ÛJJH
+ˆ˜Y]\ÊJB‚Y˜]×ÜÛ[[™Jš[™ËÛÛÜ‹ÚYYJB‚™[˜È˜]×Ø˜[Ú]›ÞÙY]Ü—ÛÝ™\›^J
+HOˆ›ÚY‚‚ZYˆ›ÝY™™XÝÙY]Ü—Ù[˜X›YÜˆY]Ü—Ý\™Ù]›Ý[ˆÌ‹WN‚‚B\™]\›‚‚]˜\ˆÛÛÜˆHÛÛÜŠŒŒŽL‹KŒŽL
+B‚HÈÝ][™HH™X[ÛÛ\Ú[Ûˆ˜Y]\È\›Ý[™]™\žH]™HØ[Y\^H˜[‚‚Y›Üˆ˜[[ˆ˜[Î‚‚BZYˆ˜[˜[]™N‚‚BBY˜]×Ü\ÚXÜ×Ü˜Y]\×Üš[™Ê˜[œQUTËÛÛÜ‹ËŒ
+B‚HÈ[ÛÈXÙHHØ[YK\Ú^™H™Y™\™[˜ÙHš[™È]HÙ[XÝYÛHÛÈS•–H[™‚HÈÐSØ[ˆ™HÛÛ\\™Y\™XÝHÚ]H[˜ÛÛZ[™È˜[	ÜÈÛÛY\‹‚‚ZYˆY]Ü—Ý\™Ù]OHÜˆY]Ü—Ý\™Ù]OHN‚‚B]˜\ˆÙ[\ˆH[žWÝšYÙÙ\—ØÙ[\ŠY]Ü—ÚÛJB‚BY˜]×Ü\ÚXÜ×Ü˜Y]\×Üš[™ÊÙ[\‹QUTËÛÛÜŠŒŒŽL‹KŒÌŠKËŒ
+B‚B]˜\ˆX™[ÜÜÚ][ÛˆH›Ø\™Ý×ÜØÜ™Y[ŠÙ[\ŠH
+È™XÝÜŒŠMŒÎŒ
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛX™[ÜÜÚ][Û‹SU“Ö‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹M‹ŒL‹ÛÛÜ‹•ÒUJB‚™[˜È˜]×ÝX›WÝØ[ÙY]Ü—ÛÝ™\›^J
+HOˆ›ÚY‚‚ZYˆ›ÝY™™XÝÙY]Ü—Ù[˜X›YÜˆY]Ü—Ý\™Ù]OHN‚‚B\™]\›‚‚]˜\ˆÙ[XÝYÜÚYHHY]Ü—ÝØ[ÜÚYJY]Ü—ÚÛJB‚]˜\ˆÜÞHH›Ø\™Ý×ÜØÜ™Y[Š™XÝÜŒŠY™™XÝ]™WÝØ[ÛZ[—Þ
+
+KŒ
+JKžB‚]˜\ˆ›ÝÛWÞHH›Ø\™Ý×ÜØÜ™Y[Š™XÝÜŒŠY™™XÝ]™WÝØ[ÛX^Þ
+
+KŒ
+JKžB‚]˜\ˆYÞH›Ø\™Ý×ÜØÜ™Y[Š™XÝÜŒŠŒY™™XÝ]™WÝØ[ÛX^ÞJ
+JJKž‚]˜\ˆšYÚÞH›Ø\™Ý×ÜØÜ™Y[Š™XÝÜŒŠŒY™™XÝ]™WÝØ[ÛZ[—ÞJ
+JJKž‚]˜\ˆÜÚ][ÛœÈHÛYÞÜÞKšYÚÞ›ÝÛWÞWB‚Y›ÜˆÚYH[ˆ‚‚B]˜\ˆÙ[XÝYÝØ[HÚYHOHÙ[XÝYÜÚYB‚B]˜\ˆÛÛÜˆHÛÛÜŠKŒŒŒŒL‹ÌˆYˆÙ[XÝYÝØ[[ÙHŒÌ
+B‚B]˜\ˆXÚÛ™\ÜÈHX^ŠŒX›WÝØ[ÜÚ^™\ÖÜÚYWH
+ˆËŒ
+B‚BZYˆÚYHOHÜˆÚYHOHŽ‚‚BBY˜]×Û[™J™XÝÜŒŠÜÚ][ÛœÖÜÚYWK›Ø\™Ü™XÝœÜÚ][Û‹žJK™XÝÜŒŠÜÚ][ÛœÖÜÚYWK›Ø\™Ü™XÝ™[™žJKÛÛÜ‹XÚÛ™\ÜËYJB‚BY[ÙN‚‚BBY˜]×Û[™J™XÝÜŒŠ›Ø\™Ü™XÝœÜÚ][Û‹žÜÚ][ÛœÖÜÚYWJK™XÝÜŒŠ›Ø\™Ü™XÝ™[™žÜÚ][ÛœÖÜÚYWJKÛÛÜ‹XÚÛ™\ÜËYJB‚HÈÛHÜ[š[™ÜÈ™[XZ[ˆY]X›H›ÝYÚS•–K]ÚÝÈ[Ùˆ[H\™HÛÂ‚HÈH™[][ÛœÚ\™]ÙY[ˆH˜Z[È[™XXÚÜ[š[™È\Èš\ÚX›H]Û˜ÙK‚‚Y›ÜˆÛH[ˆŽ‚‚B]˜\ˆšYÙÙ\—ØÙ[\ˆH[žWÝšYÙÙ\—ØÙ[\ŠÛJB‚B]˜\ˆš[™ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚BY›ÜˆH[ˆÌÎ‚‚BB]˜\ˆ[™ÛHHUH
+ˆ›Ø]
+JHÈÌ‹Œ‚BB\š[™Ë˜\[™
+›Ø\™Ý×ÜØÜ™Y[ŠšYÙÙ\—ØÙ[\ˆ
+È™XÝÜŒŠÛÜÊ[™ÛJKÚ[Š[™ÛJJH
+ˆ˜\Ù[žWÜ˜YZVÚÛWJJB‚BY˜]×ÜÛ[[™Jš[™ËÛÛÜŠKŒŽŒÌŠKËŒYJB‚]˜\ˆÚYWÛ˜[Y\ÈHÈ“Q•ÐS‹•ÔÐS‹”’QÒÐS‹“ÕÓHÐS—B‚Y˜]×ÜÝš[™ÊZWÙ›Û›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠL‹ŒŒ
+KÚYWÛ˜[Y\ÖÜÙ[XÝYÜÚYWKÔ’V“Ó•SÐSQÓ“QS•ÓQ•NŒM‹ÛÛÜ‹•ÒUJB‚™[˜È˜]×ÛØÙX[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚HÈœšYÚ^Y\™YØ]\ˆXZÙ\ÈHÜXÙH\›Ý[™HX›H™XY\ÈÙXH]™[ˆÛ‚‚HÈÛX[Û™HØÜ™Y[œËˆHÝ\™\È\™H[[[Û˜[HÝXHÛÈ^HÈ›Ý‚HÈÛÛ\]HÚ]H˜[ÈÜˆHÙX\ÛˆY™™XÝË‚‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒÙ˜NŠJB‚]˜\ˆ˜[™ÚZYÚHX^ŠÍŒšY]ÜÜÜÚ^™KžHÈLŒ
+B‚Y›Üˆ˜[™[ˆL‚‚B]˜\ˆHH›Ø]
+˜[™
+H
+ˆ˜[™ÚZYÚ‚B]˜\ˆ˜[™ØÛÛÜˆHÛÛÜŠŒÎMØ™ŠHYˆ˜[™	HˆOH[ÙHÛÛÜŠŒÎHŠB‚BY˜]×Ü™XÝ
+™XÝŠŒKšY]ÜÜÜÚ^™Kž˜[™ÚZYÚ
+ÈKŒ
+K˜[™ØÛÛÜŠB‚]˜\ˆØ]™WØÛÛÜˆHÛÛÜŠŽŽMKŒŒÍ
+B‚]˜\ˆØ]™WÜÚYÝÈHÛÛÜŠŒKŒÎKŒŒŽ
+B‚]˜\ˆÜXÚ[™ÈHX^Š‹ŒšY]ÜÜÜÚ^™KžHÈKŒ
+B‚]˜\ˆ[\]YHHÛ[\ŠšY]ÜÜÜÚ^™KžH
+ˆŒLKKŒLŒ
+B‚Y›Üˆ›ÝÈ[ˆLN‚‚B]˜\ˆÚ[ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚B]˜\ˆÚYÝ×ÜÚ[ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚B]˜\ˆ˜\ÙWÞHH›Ø]
+›ÝÊH
+ˆÜXÚ[™È
+ÈL‹Œ‚B]˜\ˆ\ÙHH›Ø]
+›ÝÈ	HŠH
+ˆB‚BY›ÜˆÜÝ\[ˆÌÎ‚‚BB]˜\ˆH›Ø]
+ÜÝ\
+HÈÌ‹Œ
+ˆšY]ÜÜÜÚ^™Kž‚BB]˜\ˆHH˜\ÙWÞH
+ÈÚ[Š›Ø]
+ÜÝ\
+H
+ˆÌˆ
+È\ÙJH
+ˆ[\]YB‚BB\Ú[Ë˜\[™
+™XÝÜŒŠJJB‚BB\ÚYÝ×ÜÚ[Ë˜\[™
+™XÝÜŒŠH
+ÈËŒ
+JB‚BY˜]×ÜÛ[[™JÚYÝ×ÜÚ[ËØ]™WÜÚYÝËËŒYJB‚BY˜]×ÜÛ[[™JÚ[ËØ]™WØÛÛÜ‹‹ŒYJB‚™[˜È˜]×ÝØ]\—Ù›Ø]\œÊšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚Y›Üˆ›Ø]\ˆ[ˆØ]\—Ù›Ø]\œÎ‚‚B]˜\ˆÙXÛÛ™Îˆ›Ø]H›Ø]\‹™[\ÙY‚B]˜\ˆ\™XÝ[ÛŽˆ™XÝÜŒˆH›Ø]\‹™\™XÝ[Û‚‚B]˜\ˆÝ\ˆ™XÝÜŒˆH›Ø]\‹œÝ\‚B]˜\ˆšYHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHÐUT—Ñ’Q•ÑSVJHÈ
+ÐUT—Ñ“ÐUÕSQHHÐUT—Ñ’Q•ÑSVJJB‚B]˜\ˆšYÙ\Ý[˜ÙHHX^ŠšY]ÜÜÜÚ^™KžšY]ÜÜÜÚ^™KžJH
+ˆÌ‚‚B]˜\ˆÙ]HHÛ[ÛÝÜÝ\
+ÙXÛÛ™ÈÈÍJB‚B]˜\ˆÚY]Ø^\ÈH\™XÝ[Û‹›ÜÙÛÛ˜[
+
+H
+ˆÚ[ŠÙXÛÛ™È
+ˆKŒH
+È›Ø]
+›Ø]\‹œYXÙJJH
+ˆL‹Œ
+ˆÙ]B‚B]˜\ˆ›ØˆH™XÝÜŒŠŒÚ[ŠÙXÛÛ™È
+ˆËŒH
+È›Ø]
+›Ø]\‹œYXÙJJH
+ˆKŒ
+ˆÙ]JB‚B]˜\ˆÜÚ][ÛˆHÝ\
+È\™XÝ[Ûˆ
+ˆšYÙ\Ý[˜ÙH
+ˆšY
+ˆšY
+ÈÚY]Ø^\È
+È›Ø‚‚B]˜\ˆ˜Y]\Îˆ›Ø]H›Ø]\‹œ˜Y]\Â‚B]˜\ˆÜ\ÚHKŒHÛ[ÛÝÜÝ\
+ÙXÛÛ™ÈÈJB‚BZYˆÜ\ÚˆŒN‚‚BBY˜]×ØÚ\˜ÛJÜÚ][Û‹˜Y]\È
+ˆ
+KŒH
+È
+KŒHÜ\Ú
+H
+ˆKŒJKÛÛÜŠÎŽM‹KŒÜ\Ú
+ˆN
+K˜[ÙKX^Š‹Œ˜Y]\È
+ˆŒM
+KYJB‚BBY›ÜˆH[ˆÎ‚‚BBB]˜\ˆ[™ÛHHUH
+ˆ›Ø]
+JHÈËŒ‚BBB]˜\ˆ›ÜÜÝ\HÜÚ][Ûˆ
+È™XÝÜŒŠÛÜÊ[™ÛJKÚ[Š[™ÛJJH
+ˆ˜Y]\È
+ˆKŒB‚BBB]˜\ˆ›ÜÙ[™HÜÚ][Ûˆ
+È™XÝÜŒŠÛÜÊ[™ÛJKÚ[Š[™ÛJJH
+ˆ˜Y]\È
+ˆ
+KŒŒˆ
+È
+KŒHÜ\Ú
+H
+ˆJB‚BBBY˜]×Û[™J›ÜÜÝ\›ÜÙ[™ÛÛÜŠŽŽNKŒÜ\Ú
+ˆÍJKX^ŠKŒ˜Y]\È
+ˆŒL
+KYJB‚B]˜\ˆš\WØ[HHŒÍ
+ˆ
+KŒHšY
+ˆJB‚BY˜]×Ø\˜ÊÜÚ][Ûˆ
+È™XÝÜŒŠŒ˜Y]\È
+ˆMJK˜Y]\È
+ˆKŒŒ‹ŒHHŒŽÛÛÜŠÌ‹ŽMKKŒš\WØ[JKX^ŠKK˜Y]\È
+ˆŒL
+KYJB‚BY˜]×ÜX˜™\—ÙØ[YWØ˜[
+ÜÚ][Û‹˜Y]\Ë›Ø]\‹X[K›Ø]\‹œYXÙKKŒ
+B‚™[˜È˜[[—ØÛÝ[
+X[Nˆ[
+HOˆ[‚‚]˜\ˆÛÝ[H‚Y›Üˆ˜[[ˆ˜[Î‚‚BZYˆ˜[X[HOHX[H[™›Ý˜[˜[]™N‚‚BBXÛÝ[
+ÏHB‚\™]\›ˆÛÝ[‚™[˜ÈX[WØ[]™WØÛÝ[
+X[Nˆ[
+HOˆ[‚‚]˜\ˆÛÝ[H‚Y›Üˆ˜[[ˆ˜[Î‚‚BZYˆ˜[X[HOHX[H[™˜[˜[]™N‚‚BBXÛÝ[
+ÏHB‚\™]\›ˆÛÝ[‚™[˜ÈÚXÚ×ÛX]ÚÙ[™
+
+HOˆ›ÚY‚‚ZYˆX]ÚÙš[š\ÚY‚‚B\™]\›‚‚]˜\ˆ[]™WØHHX[WØ[]™WØÛÝ[
+
+B‚]˜\ˆ[]™WØˆHX[WØ[]™WØÛÝ[
+JB‚ZYˆ[]™WØHˆ[™[]™WØˆˆ‚‚B\™]\›‚‚]˜\ˆÚ[›™\ˆHYˆ[]™WØˆOH[ÙHB‚ZYˆ[]™WØHOH[™[]™WØˆOH‚‚B]Ú[›™\ˆHYˆ\›ˆOHH[ÙHB‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B[X]ÚÙš[š\ÚYHYB‚BY˜YÙÚ[™ÈH˜[ÙB‚B\Ù[XÝYHLB‚B\Ù[™Û][\^Y\ŠÈ\HŽˆ›X]ÚÜ™\Ý[‹Ú[›™\”ÛÝŽˆÚ[›™\ŸJB‚B\™]\›‚‚Yš[š\ÚÛX]Ú
+Ú[›™\ŠB‚™[˜Èš[š\ÚÛX]Ú
+Ú[›™\—ÝX[Nˆ[
+HOˆ›ÚY‚‚[X]ÚÙš[š\ÚYHYB‚ZYˆX]ÚÜ™\Ý[ÛÜ[Ž‚‚B\™]\›‚‚[X]ÚÜ™\Ý[ÛÜ[ˆHYB‚[X]ÚÜ™\Ý[ÝÚ[›™\ˆHÚ[›™\—ÝX[B‚Y˜YÙÚ[™ÈH˜[ÙB‚\Ù[XÝYHLB‚XZWÜ[™[™ÈH˜[ÙB‚XZWØÛÛ[Z]YÜÚÝH˜[ÙB‚XÚ]ÛÜ[ˆH˜[ÙB‚\™XÛÜ™ÛX]ÚÜ™\Ý[
+ØØ[Ü^Y\—ÝÛÛŠÚ[›™\—ÝX[JJB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈØØ[Ü^Y\—ÝÛÛŠÚ[›™\—ÝX[Nˆ[
+HOˆ›ÛÛ‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B\™]\›ˆÚ[›™\—ÝX[HOH][\^Y\—ÜÛÝ‚\™]\›ˆÚ[›™\—ÝX[HOH‚™[˜ÈX]ÚÜš^™WÙ›Ü—ÝÚ[Š
+HOˆ[‚‚ZYˆX]ÚÜÛÝ\˜ÙHOH˜\™[˜HŽ‚‚B\™]\›ˆT‘SWÕÒS—Ô’V‘TÖØÛ[\JÙ[XÝYØ\™[˜KT‘SWÕÒS—Ô’V‘TËœÚ^™J
+HHJWB‚ZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆŽ‚‚B\™]\›ˆÓÓTUT—ÕÒS—ÐÓÒS”Â‚\™]\›ˆ”’QS‘ÕÒS—ÐÓÒS”Â‚™[˜È™XÛÜ™ÛX]ÚÜ™\Ý[
+YÝÚ[Žˆ›ÛÛ
+HOˆ›ÚY‚‚ZYˆX]ÚÜ™\Ý[Ü™XÛÜ™Y‚‚B\™]\›‚‚[X]ÚÜ™\Ý[Ü™XÛÜ™YHYB‚ZYˆYÝÚ[Ž‚‚B\^Y\—ÝÚ[œÈ
+ÏHB‚B\^Y\—ØÝ\œ™[ÜÝ™XZÈ
+ÏHB‚B\^Y\—Ø™\ÝÜÝ™XZÈHX^J^Y\—Ø™\ÝÜÝ™XZË^Y\—ØÝ\œ™[ÜÝ™XZÊB‚B\^Y\—Þ
+ÏH‚B[X]ÚÜ™\Ý[ØÛÚ[œÈHX]ÚÜš^™WÙ›Ü—ÝÚ[Š
+B‚B\^Y\—ØÛÚ[œÈ
+ÏHX]ÚÜ™\Ý[ØÛÚ[œÂ‚Y[ÙN‚‚B\^Y\—ÛÜÜÙ\È
+ÏHB‚B\^Y\—ØÝ\œ™[ÜÝ™XZÈH‚B\^Y\—Þ
+ÏHŒ‚B[X]ÚÜ™\Ý[ØÛÚ[œÈH‚]Ú[H^Y\—ÞH^Y\—Û™^Û]™[Þ‚‚B\^Y\—ÞOH^Y\—Û™^Û]™[Þ‚B\^Y\—Û]™[
+ÏHB‚B\^Y\—Û™^Û]™[ÞHL
+È
+^Y\—Û]™[HJH
+ˆÍB‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B]˜\ˆÜÛ™[Ü˜][™ÈHL‚BZYˆ][\^Y\—Ü^Y\œËœÚ^™J
+HˆN‚‚BB]˜\ˆÜÛ™[ÜÛÝHHH][\^Y\—ÜÛÝYˆ][\^Y\—ÜÛÝH[ÙHB‚BBY›Üˆ^Y\—Ù]H[ˆ][\^Y\—Ü^Y\œÎ‚‚BBBZYˆ[
+^Y\—Ù]K™Ù]
+œÛÝ‹LJJHOHÜÛ™[ÜÛÝ‚‚BBBB[ÜÛ™[Ü˜][™ÈH[
+^Y\—Ù]K™Ù]
+œ˜][™È‹L
+JB‚BBBBXœ™XZÂ‚BX\WÜ˜][™×ØÚ[™ÙJYÝÚ[‹ÜÛ™[Ü˜][™ÊB‚Y[YˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆŽ‚‚BX\WÜ˜][™×ØÚ[™ÙJYÝÚ[‹ZWÛÜÛ™[Ü˜][™Ê
+JB‚ZYˆYÝÚ[Ž‚‚B\^WÜÛÝ[™
+Ú[ˆŠB‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚™[˜ÈX]ÚÜ™\Ý[Ü[™[
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆ™XÝŠ
+šY]ÜÜÜÚ^™HH™XÝÜŒŠMŒŒÌLŒ
+JH
+ˆK™XÝÜŒŠMŒŒÌLŒ
+JB‚™[˜ÈX]ÚÜ™\Ý[ÚÛYWÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HX]ÚÜ™\Ý[Ü[™[
+šY]ÜÜÜÚ^™JB‚ZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆŽ‚‚B\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒMKŒ
+K™XÝÜŒŠŒŒŒNŒ
+JB‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMLŒŒMKŒ
+K™XÝÜŒŠŒŒNŒ
+JB‚™[˜ÈX]ÚÜ™\Ý[ØYØZ[—Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HX]ÚÜ™\Ý[Ü[™[
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÌŒŒMKŒ
+K™XÝÜŒŠŒŒŒNŒ
+JB‚™[˜È˜]×ÛX]ÚÜ™\Ý[
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒËŒ‹Í
+JB‚]˜\ˆ[™[HX]ÚÜ™\Ý[Ü[™[
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLŽØˆŠK‹Œ
+K[™[
+B‚]˜\ˆÛÛˆHØØ[Ü^Y\—ÝÛÛŠX]ÚÜ™\Ý[ÝÚ[›™\ŠB‚]˜\ˆ]HHZWÝ^
+›X]ÚÝÚ[ˆŠHYˆÛÛˆ[ÙHZWÝ^
+›X]ÚÛÜÙHŠB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÎŒ
+K]KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžÍ‹ÛÛÜŠ™™ÍHŠHYˆÛÛˆ[ÙHÛÛÜŠ™™ŽÍØHŠJB‚]˜\ˆÝX]HHX]ÚÜ^Y\—Û˜[YJX]ÚÜ™\Ý[ÝÚ[›™\ŠH
+Èˆ8 (ˆˆ
+ÈÝŠ˜[[—ØÛÝ[
+
+JH
+ÈˆHˆ
+ÈÝŠ˜[[—ØÛÝ[
+JJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÌŒLŽŒ
+KÝX]KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžHŒŒŒÛÛÜ‹•ÒUJB‚ZYˆÛÛˆ[™X]ÚÜ™\Ý[ØÛÚ[œÈˆ‚‚BY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÌŒMŽŒ
+KZWÝ^
+ž[ÝWÝÛÛ—ØÛÚ[œÈŠH
+ÈÝŠX]ÚÜ™\Ý[ØÛÚ[œÊH
+ÈZWÝ^
+˜ÛÚ[œÈŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžHŒŒNÛÛÜŠ™™™LYŠJB‚]˜\ˆÛYHHX]ÚÜ™\Ý[ÚÛYWÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒXŽLXNŠKM‹Œ
+KÛYJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛYKœÜÚ][Ûˆ
+È™XÝÜŒŠŒÎŒ
+KZWÝ^
+˜˜XÚ×ÚÛYHŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛYKœÚ^™KžNÛÛÜ‹•ÒUJB‚ZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆŽ‚‚B]˜\ˆYØZ[ˆHX]ÚÜ™\Ý[ØYØZ[—Ü™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒL˜NM˜ˆŠKM‹Œ
+KYØZ[ŠB‚BY˜]×ÜÝš[™ÊZWÙ›ÛYØZ[‹œÜÚ][Ûˆ
+È™XÝÜŒŠŒÎŒ
+KZWÝ^
+œ^WØYØZ[ˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹YØZ[‹œÚ^™KžNÛÛÜ‹•ÒUJB‚™[˜ÈZ[WØÛZ[WÚÙ^J
+HOˆÝš[™Î‚‚\™]\›ˆ[YK™Ù]Ù]WÜÝš[™×Ùœ›ÛWÜÞ\Ý[J
+B‚™[˜ÈØ[—ØÛZ[WÙZ[J
+HOˆ›ÛÛ‚‚\™]\›ˆ\ÝÙZ[WØÛZ[HOHZ[WØÛZ[WÚÙ^J
+B‚™[˜ÈÛZ[WÙZ[WÜ™]Ø\™
+
+HOˆ›ÚY‚‚ZYˆ›ÝØ[—ØÛZ[WÙZ[J
+N‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+˜ÛZ[YYŠJB‚B\™]\›‚‚\^Y\—ØÛÚ[œÈ
+ÏHRSWÔ‘UÐT‘ÐÓÒS”Â‚[\ÝÙZ[WØÛZ[HHZ[WØÛZ[WÚÙ^J
+B‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™Z[WØÛZ[YYÝØ\ÝŠJB‚™[˜È˜]×ÜØÛÜ™X›Ø\™Ê
+HOˆ›ÚY‚‚HÈH›YH[™\œH\Ü^\È˜ZÙY[ÈH›Ø\™\\™HÛÝ™\™YžH\ÙB‚HÈ]™H[™[ËˆZ\ˆÛÛÜœÈ›ÛÝÈXXÚ^Y\‰ÜÈÙ[XÝYY™X[ÞK‚‚]˜\ˆÙ[\œÈHÂ‚BX›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ›Ø\™Ü™XÝœÚ^™Kž
+ˆŒŽK›Ø\™Ü™XÝœÚ^™KžH
+ˆŒLŠK‚BX›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ›Ø\™Ü™XÝœÚ^™Kž
+ˆŽË›Ø\™Ü™XÝœÚ^™KžH
+ˆŒLŠB‚WB‚]˜\ˆÛÛÜœÈHÔ’S‘×ÐÓÓÔ”ÖÝX[WÜš[™×ØÛÛÜ—Ú[™^
+
+WK’S‘×ÐÓÓÔ”ÖÝX[WÜš[™×ØÛÛÜ—Ú[™^
+JWWB‚]˜\ˆ[™[ÜÚ^™HH™XÝÜŒŠ›Ø\™Ü™XÝœÚ^™Kž
+ˆŒÍK›Ø\™Ü™XÝœÚ^™KžH
+ˆŒŒ
+B‚]˜\ˆÛÜ›™\ˆHX^ŠKŒ›Ø\™Ü™XÝœÚ^™KžH
+ˆŒLŠB‚]˜\ˆÚ\™YÜš[™ÜÈHX[\×ÜÚ\™WÜš[™×ØÛÛÜŠ
+B‚Y›ÜˆX[H[ˆŽ‚‚B]˜\ˆÝ]\—Ü™XÝH™XÝŠÙ[\œÖÝX[WHH[™[ÜÚ^™H
+ˆK[™[ÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒLËŒMŽMŠKÛÜ›™\ˆ
+ÈËŒ
+KÝ]\—Ü™XÝ™Ü›ÝÊŒ
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜœÖÝX[WK™\šÙ[™Y
+ŒMŠKÛÜ›™\ŠKÝ]\—Ü™XÝ
+B‚BZYˆÚ\™YÜš[™ÜÎ‚‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+X[WÛX\šÙ\—ØÛÛÜŠX[JKÛÜ›™\ŠK™XÝŠÝ]\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ‹Œ‹Œ
+K™XÝÜŒŠÝ]\—Ü™XÝœÚ^™KžHŒŒ
+JJB‚B]˜\ˆÚ[™WÜ™XÝH™XÝŠÝ]\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠËŒËŒ
+K™XÝÜŒŠÝ]\—Ü™XÝœÚ^™KžH‹ŒÝ]\—Ü™XÝœÚ^™KžH
+ˆŒŽ
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠKŒKŒKŒŒŒ
+KÛÜ›™\ˆ
+ˆMJKÚ[™WÜ™XÝ
+B‚B]˜\ˆØÛÜ™HHÝŠ˜[[—ØÛÝ[
+X[JJB‚B]˜\ˆ›ÛÜÚ^™HHX^JN[
+[™[ÜÚ^™KžH
+ˆŽŠJB‚B]˜\ˆ˜\Ù[[™Nˆ›Ø]H›Ø]
+Ù[\œÖÝX[WKžJH
+È›Ø]
+›ÛÜÚ^™JH
+ˆŒÍ‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠÝ]\—Ü™XÝœÜÚ][Û‹ž˜\Ù[[™JKØÛÜ™KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ý]\—Ü™XÝœÚ^™Kž›ÛÜÚ^™KÛÛÜ‹•ÒUJB‚™[˜È˜]×ÚY
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ˜XÚÈHØ[YWØ˜XÚ×Ü™XÝ
+
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒKŒM‹ŽM
+KNŒ
+K˜XÚÊB‚Y˜]×ÜÝš[™ÊZWÙ›Û˜XÚËœÜÚ][Ûˆ
+È™XÝÜŒŠŒÌŒ
+K¸ .H‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹˜XÚËœÚ^™KžËÛÛÜ‹•ÒUJB‚]˜\ˆØ\™ÝÚYˆ›Ø]HZ[™ŠÌŒšY]ÜÜÜÚ^™Kž
+ˆŒŒŠB‚HÈÙY\HÚÛHQÛˆHØ]\ˆÝš\Ú]^Y\ˆY[]H]HYÙ\Ë‚‚Y˜]×ÛX]ÚÜ^Y\—ØØ\™
+™XÝŠŒ‹ŒØ\™ÝÚYNŒ
+K
+B‚Y˜]×ÛX]ÚÜ^Y\—ØØ\™
+™XÝŠšY]ÜÜÜÚ^™KžHØ\™ÝÚYHŒ‹ŒØ\™ÝÚYNŒ
+KJB‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B]˜\ˆÚ]Ü™XÝHØ[YWØÚ]Ü™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒXŽLXNŠKMŒ
+KÚ]Ü™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛÚ]Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒÌKŒ
+Kµéµìõä5æˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒU‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ú]Ü™XÝœÚ^™KžMËÛÛÜ‹•ÒUJB‚ZYˆ^]ØÛÛ™š\›WÛÜ[Ž‚‚BY˜]×Ù^]ØÛÛ™š\›X][ÛŠšY]ÜÜÜÚ^™JB‚Y[YˆÚ]ÛÜ[Ž‚‚BY˜]×ÛX]ÚØÚ]
+šY]ÜÜÜÚ^™JB‚ZYˆX]ÚÜ™\Ý[ÛÜ[Ž‚‚BY˜]×ÛX]ÚÜ™\Ý[
+šY]ÜÜÜÚ^™JB‚™[˜ÈØ[YWØ˜XÚ×Ü™XÝ
+
+HOˆ™XÝŽ‚‚\™]\›ˆ™XÝŠŽ‹ŒL‹Œ‹ŒŒ
+B‚™[˜ÈØ[YWØÚ]Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆ™XÝŠšY]ÜÜÜÚ^™KžHÎ‹ŒLŒL‹ŒŒ
+B‚™[˜ÈX]ÚÝ\›—Ý^
+
+HOˆÝš[™Î‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B\™]\›ˆ
+µå5êµåuê5êuç5æõçHˆYˆ\›ˆOH][\^Y\—ÜÛÝ[ÙHµêµåuê5å5æuê5æuäHŠHYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH
+–SÕTˆT“ˆˆYˆ\›ˆOH][\^Y\—ÜÛÝ[ÙH“ÔÓ‘S•T“ˆŠB‚ZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆŽ‚‚B\™]\›ˆ
+µå5êµåuê5êuç5æõçHˆYˆ\›ˆOH[ÙHµêµåuê5å5çµåõêuäHŠHYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH
+–SÕTˆT“ˆˆYˆ\›ˆOH[ÙHÓÓTUTˆT“ˆŠB‚\™]\›ˆ
+µêµåuê5êuåõéõçÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”VQTˆŠH
+ÈÝŠ\›ˆ
+ÈJB‚™[˜ÈX]ÚÜ^Y\—Û˜[YJX[Nˆ[
+HOˆÝš[™Î‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™Hˆ[™X[H][\^Y\—Ü^Y\œËœÚ^™J
+N‚‚B\™]\›ˆÝŠ][\^Y\—Ü^Y\œÖÝX[WK™Ù]
+›˜[YH‹µêuåõéõçÈˆ
+ÈÝŠX[H
+ÈJJJB‚ZYˆX[HOH‚‚B\™]\›ˆ›Ùš[WÛ˜[YB‚\™]\›ˆZWÙ\Ü^WÛ˜[YJ
+HYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆˆ[ÙH
+µêuåõéõçÈˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”VQTˆˆŠB‚™[˜È˜]×ÛX]ÚÜ^Y\—ØØ\™
+™XÝˆ™XÝ‹X[Nˆ[
+HOˆ›ÚY‚‚]˜\ˆXÝ]™HH\›ˆOHX[B‚]˜\ˆ[ÙHH
+Ú[Š›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒJH
+ÈKŒ
+H
+ˆHYˆXÝ]™H[ÙHŒ‚ZYˆXÝ]™N‚‚B]˜\ˆÛÝ×Ü™XÝH™XÝ™Ü›ÝÊŒ
+È[ÙH
+ˆËŒ
+B‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŽMŽ‹ŒÎKŒŒ
+È[ÙH
+ˆŒL
+KM‹Œ
+KÛÝ×Ü™XÝ
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒËŒŒMŽM
+KMŒ
+K™XÝ
+B‚ZYˆX[\×ÜÚ\™WÜš[™×ØÛÛÜŠ
+N‚‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+X[WÛX\šÙ\—ØÛÛÜŠX[JKLŒ
+K™XÝŠ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+K™XÝÜŒŠKŒ™XÝœÚ^™KžHHL‹Œ
+JJB‚ZYˆXÝ]™N‚‚BY˜]×Ü™XÝ
+™XÝ™Ü›ÝÊ‹Œ
+È[ÙH
+ˆ‹Œ
+KÛÛÜŠ™™ÍHŠK˜[ÙKËŒ
+È[ÙJB‚B]˜\ˆ˜YÙHHZWÝ^
+ž[Ý\—Ý\›—Ø˜YÙHŠHYˆ\×ÛØØ[Ü^Y\—ÝX[JX[JH[ÙH
+µêµåuê5å5æuê5æuäHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•RTˆT“ˆŠB‚B]˜\ˆ˜YÙWÜ™XÝH™XÝŠ™XÝœÜÚ][Û‹ž
+È™XÝœÚ^™KžHL‹Œ™XÝœÜÚ][Û‹žHHLŒŒŒ‹Œ
+B‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒL˜NM˜ˆŠHYˆ\×ÛØØ[Ü^Y\—ÝX[JX[JH[ÙHÛÛÜŠÌM™ŠKLŒ
+K˜YÙWÜ™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û˜YÙWÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒM‹Œ
+K˜YÙKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹˜YÙWÜ™XÝœÚ^™KžLKÛÛÜ‹•ÒUJB‚ZYˆX[WÜYXÙWÝ^\™\ËœÚ^™J
+HˆX[H[™X[WÜYXÙWÝ^\™\ÖÝX[WHOH[‚‚BY˜]×Ý^\™WÜ™XÝ
+X[WÜYXÙWÝ^\™\ÖÝX[WK™XÝŠ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠËŒKŒ
+K™XÝÜŒŠŒŒ
+JK˜[ÙJB‚]˜\ˆ[š[X[Ú[™^H^Y\—Ø[š[X[YˆX[HOH[ÙHZWØ[š[X[‚]˜\ˆX[WÜ˜][™ÈH^Y\—Ü˜][™ÈYˆX[HOH[ÙHZWÛÜÛ™[Ü˜][™Ê
+B‚]˜\ˆX[WÛXYÝYHH^Y\—ÛXYÝYWÝY\ˆYˆX[HOH[ÙHXYÝYWÝY\—Ù›Ü—Ü˜][™ÊZWÛÜÛ™[Ü˜][™Ê
+JB‚ZYˆØ[YWÛ[ÙHOH›Û›[™Hˆ[™X[H][\^Y\—Ü^Y\œËœÚ^™J
+N‚‚B]˜\ˆ]NˆXÝ[Û˜\žHH][\^Y\—Ü^Y\œÖÝX[WB‚B]X[WÜ˜][™ÈH[
+]K™Ù]
+œ˜][™È‹X[WÜ˜][™ÊJB‚B]X[WÛXYÝYHH[
+]K™Ù]
+›XYÝYUY\ˆ‹X[WÛXYÝYJJB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒKŒ
+KX]ÚÜ^Y\—Û˜[YJX[JKÔ’V“Ó•SÐSQÓ“QS•ÓQ•™XÝœÚ^™KžHŽŒM‹ÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ‹Œ
+KXYÝYWÛ˜[YJX[WÛXYÝYJH
+Èˆ8 (ˆˆ
+ÈÝŠX[WÜ˜][™ÊKÔ’V“Ó•SÐSQÓ“QS•ÓQ•™XÝœÚ^™KžHŽŒLK’S‘×ÐÓÓÔ”ÖÝX[WÜš[™×ØÛÛÜ—Ú[™^
+X[JWK›YÚ[™Y
+ŒŽ
+JB‚™[˜È\×ÛØØ[Ü^Y\—ÝX[JX[Nˆ[
+HOˆ›ÛÛ‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B\™]\›ˆX[HOH][\^Y\—ÜÛÝ‚ZYˆØ[YWÛ[ÙHOH˜ÛÛ\]\ˆŽ‚‚B\™]\›ˆX[HOH‚\™]\›ˆYB‚™[˜È^]ØÛÛ™š\›WÜ[™[
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆ™XÝŠ
+šY]ÜÜÜÚ^™HH™XÝÜŒŠLŒŒKŒ
+JH
+ˆK™XÝÜŒŠLŒŒKŒ
+JB‚™[˜È^]ØÛÛ™š\›WÞY\×Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[H^]ØÛÛ™š\›WÜ[™[
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠKŒMMËŒ
+K™XÝÜŒŠNMKŒNŒ
+JB‚™[˜È^]ØÛÛ™š\›WÛ›×Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[H^]ØÛÛ™š\›WÜ[™[
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŽŒMMËŒ
+K™XÝÜŒŠNMKŒNŒ
+JB‚™[˜È˜]×Ù^]ØÛÛ™š\›X][ÛŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒËŒ‹ÌŠJB‚]˜\ˆ[™[H^]ØÛÛ™š\›WÜ[™[
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLŽØˆŠKŒ
+K[™[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+Kµç5éµä5êˆ5çµå5çµêuåõéÏÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“PU‘HHPUÒÈ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžÌÛÛÜŠ™™ÍHŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒLL‹Œ
+Kµå5çµêuåõéÈ5èµäõæuæuçÈ5çµêµè5å5çˆ5å5ä5çH5ä5êµçH5äuæ5åuåõæuçOÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•HX]Ú\ÈÝ[[ˆ›ÙÜ™\ÜËˆ\™H[ÝHÝ\™OÈ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžNÛÛÜ‹•ÒUJB‚]˜\ˆY\ÈH^]ØÛÛ™š\›WÞY\×Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ›ÈH^]ØÛÛ™š\›WÛ›×Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™YLÍLŠKM‹Œ
+KY\ÊB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒL˜NM˜ˆŠKM‹Œ
+K›ÊB‚Y˜]×ÜÝš[™ÊZWÙ›ÛY\ËœÜÚ][Ûˆ
+È™XÝÜŒŠŒÍËŒ
+KµæõçË5ç5éµä5êˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“PU‘H‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Y\ËœÚ^™KžNKÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û›ËœÜÚ][Ûˆ
+È™XÝÜŒŠŒÍËŒ
+Kµç5å5çµêuæuæˆ5ç5êuåõéÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH’ÑQTVRS‘È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹›ËœÚ^™KžNKÛÛÜ‹•ÒUJB‚™[˜È^]ØÝ\œ™[ÛX]Ú
+
+HOˆ›ÚY‚‚Y^]ØÛÛ™š\›WÛÜ[ˆH˜[ÙB‚XÚ]ÛÜ[ˆH˜[ÙB‚[X]™WÛ][\^Y\—Ü›ÛÛJ
+B‚X\ÜØÜ™Y[ˆHTÒÓQB‚\Ù[XÝYHLB‚Y˜YÙÚ[™ÈH˜[ÙB‚XXÝ]™WÙY™™XÝË˜ÛX\Š
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È˜]×ÚÛWÙY™™XÝ
+ÛNˆ[›ÙÜ™\ÜÎˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆÙ[\ˆH›Ø\™Ý×ÜØÜ™Y[ŠÐÓÔ’S‘×ÒÓWÐÑS•T”ÖÚÛWJB‚]˜\ˆ^\™Nˆ^\™L‘HY™™XÝÝ^\™\ÖÚÛWB‚ZYˆ^\™HOH[‚‚B\™]\›‚‚]˜\ˆ\X\ˆHÛ[\Š›ÙÜ™\ÜÈÈŒM‹ŒKŒ
+B‚]˜\ˆ\Ø\X\ˆHÛ[\Š
+KŒH›ÙÜ™\ÜÊHÈŒŒ‹ŒKŒ
+B‚]˜\ˆ[HHZ[™Š\X\‹\Ø\X\ŠB‚]˜\ˆ[ÙHHŽˆ
+ÈÚ[Š›ÙÜ™\ÜÈ
+ˆJH
+ˆŒŽ‚]˜\ˆX^ÜÚ^™HH›Ø\™Ü™XÝœÚ^™KžH
+ˆ
+ŒÌHYˆÛH[ˆÌËH[ÙHŒ
+B‚]˜\ˆÛÝ\˜ÙWÜÚ^™HH^\™K™Ù]ÜÚ^™J
+B‚]˜\ˆØØ[WÙ˜XÝÜˆHX^ÜÚ^™HÈX^ŠÛÝ\˜ÙWÜÚ^™KžÛÝ\˜ÙWÜÚ^™KžJH
+ˆ[ÙB‚]˜\ˆÚ^™HHÛÝ\˜ÙWÜÚ^™H
+ˆØØ[WÙ˜XÝÜ‚‚]˜\ˆ›Ý][ÛˆHÚ[Š›ÙÜ™\ÜÈ
+ˆUH
+ˆK
+H
+ˆŒÍB‚HÈÛHˆ™XÙZ]™YH˜\œ›ÛHHÜÜÚ]HÚYKÛÈZ\œ›Üˆ]È\ÛÜšË‚‚]˜\ˆY™™XÝÜØØ[HH™XÝÜŒŠLKŒKŒ
+HYˆÛHOHˆ[ÙH™XÝÜŒ‹“Ó‘B‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\‹›Ý][Û‹Y™™XÝÜØØ[JB‚Y˜]×Ý^\™WÜ™XÝ
+^\™K™XÝŠ\Ú^™H
+ˆKÚ^™JK˜[ÙKÛÛÜŠKKK[JJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚™[˜È˜\ÝÙX\Û—ÛÙ™œÙ]
+ÛNˆ[ÙX\ÛŽˆ[
+HOˆ™XÝÜŒŽ‚‚\™]\›ˆ˜\ÝÙX\Û—ÛÙ™œÙ]ÖÚÛH
+ˆˆ
+ÈÙX\Û—H
+ˆ
+›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+B‚™[˜È˜\ÝÙX\Û—ÜØØ[JÛNˆ[ÙX\ÛŽˆ[
+HOˆ›Ø]‚‚\™]\›ˆ˜\ÝÙX\Û—ÜØØ[\ÖÚÛH
+ˆˆ
+ÈÙX\Û—B‚™[˜È˜\Ø˜[ÜÜÚ][ÛŠÛNˆ[˜\ÙNˆ™XÝÜŒŠHOˆ™XÝÜŒŽ‚‚\™]\›ˆ˜\ÙH
+È˜\Ø˜[ÛÙ™œÙ]ÖÚÛWH
+ˆ
+›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+B‚™[˜È˜\Ø˜[Ü˜Y]\ÊÛNˆ[˜\ÙNˆ›Ø]
+HOˆ›Ø]‚‚\™]\›ˆ˜\ÙH
+ˆ˜\Ø˜[ÜØØ[\ÖÚÛWB‚™[˜È™\Ü×ÜÚ[
+ˆ›Ø]Nˆ›Ø]
+HOˆ™XÝÜŒŽ‚‚\™]\›ˆ›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÈLÍ‹Œ
+ˆ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžJB‚™[˜È˜]×Ü™\Ü×Ü›Ù
+[˜ÚÜ—Þˆ›Ø]Nˆ›Ø]\Þˆ›Ø]YÜÚYNˆ›ÛÛÛÛ\™\ÜÚ[ÛŽˆ›Ø]XXÚ[™WØXÝ]š]Nˆ›Ø]HŒ
+HOˆ›ÚY‚‚]˜\ˆ[˜ÚÜŽˆ™XÝÜŒˆH™\Ü×ÜÚ[
+[˜ÚÜ—ÞJB‚]˜\ˆ\ˆ™XÝÜŒˆH™\Ü×ÜÚ[
+\ÞJB‚]˜\ˆÙX\Û—Ú[™^HYˆYÜÚYH[ÙHB‚]˜\ˆY]ÛÙ™œÙ]H˜\ÝÙX\Û—ÛÙ™œÙ]
+‘TÔ×ÕTÒÓKÙX\Û—Ú[™^
+B‚]˜\ˆY]ÜØØ[HH˜\ÝÙX\Û—ÜØØ[J‘TÔ×ÕTÒÓKÙX\Û—Ú[™^
+B‚X[˜ÚÜˆ
+ÏHY]ÛÙ™œÙ]‚]\
+ÏHY]ÛÙ™œÙ]‚]˜\ˆ\™XÝ[ÛˆHKŒYˆYÜÚYH[ÙHLKŒ‚]˜\ˆ[š]ÞH›Ø\™Ü™XÝœÚ^™KžÈLÍ‹Œ‚]˜\ˆ[š]ÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚HÈYÚY]Z[ØØ[X›H[™\ÝšX[™\ÜÈÜš]KˆH[š[X][ÛˆÙY\ÈH›Ù[™‚HÈ]H›ØÙY\˜[]Hš^YXXÚ[™H\È›ÝÈHÙ\š[Ý\ÈY˜][XÈ\ÜÙ[X›K‚‚]˜\ˆ˜\ÙWÜ˜Y]\ÈHŒ‹Œ
+ˆ[š]ÞH
+ˆY]ÜØØ[B‚]˜\ˆXXÚ[™WÚZYÚHŽŒ
+ˆ[š]ÞH
+ˆY]ÜØØ[B‚ZYˆ™\Ü×ÛXXÚ[™WÝ^\™HOH[‚‚B]˜\ˆÛÝ\˜ÙHH™\Ü×ÛXXÚ[™WÝ^\™K™Ù]ÜÚ^™J
+B‚B]˜\ˆ˜XÝÜˆHXXÚ[™WÚZYÚÈX^ŠKŒÛÝ\˜ÙKžJB‚B]˜\ˆXXÚ[™WÜÚ^™HHÛÝ\˜ÙH
+ˆ˜XÝÜ‚‚B]˜\ˆ]›ÝH™XÝÜŒŠÛÝ\˜ÙKž
+ˆ‹ÛÝ\˜ÙKžH
+ˆL
+H
+ˆ˜XÝÜ‚‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›J[˜ÚÜ‹ŒYˆYÜÚYH[ÙHK™XÝÜŒ‹“Ó‘JB‚BY˜]×Ý^\™WÜ™XÝ
+™\Ü×ÛXXÚ[™WÝ^\™K™XÝŠ\]›ÝXXÚ[™WÜÚ^™JK˜[ÙJB‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚BHÈ[š[X]YÙX\˜›ÞÝ™\›^HÙ[\™Y^XÝHÝ™\ˆH\™ÙHÙX\ˆ[ˆB‚BHÈ™XÝÜˆXXÚ[™Kˆ]Ü[œÈÛ›HÚ[HHY˜][XÈ\ÝÛˆ\È[Ýš[™Ë‚‚B]˜\ˆÙX\—ÛØØ[H™XÝÜŒŠMNŒHÛÝ\˜ÙKž
+ˆ‹NKŒHÛÝ\˜ÙKžH
+ˆL
+H
+ˆ˜XÝÜ‚‚B]˜\ˆÙX\—ØÙ[\Žˆ™XÝÜŒˆH[˜ÚÜˆ
+ÈÙX\—ÛØØ[
+ˆ\™XÝ[Û‚‚B]˜\ˆÙX\—Ü˜Y]\ÈHMËŒ
+ˆ˜XÝÜ‚‚B]˜\ˆÜ[—Ù\™XÝ[ÛˆHKŒYˆYÜÚYH[ÙHLKŒ‚B]˜\ˆÙX\—Ü›Ý][ÛˆH›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒL
+ˆÜ[—Ù\™XÝ[Û‚‚B]˜\ˆÙX\—ÜÚ[ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚BY›ÜˆÛÝ[ˆ‚‚BB]˜\ˆÛÝØ[™ÛHHÙX\—Ü›Ý][Ûˆ
+ÈUH
+ˆ›Ø]
+ÛÝ
+HÈŒ‚BB]˜\ˆÛÝÜ˜Y]\ÈHÙX\—Ü˜Y]\È
+ˆ
+KŒYˆÛÝ	HˆOH[ÙHŽ
+B‚BBYÙX\—ÜÚ[Ë˜\[™
+ÙX\—ØÙ[\ˆ
+È™XÝÜŒŠÛÜÊÛÝØ[™ÛJKÚ[ŠÛÝØ[™ÛJJH
+ˆÛÝÜ˜Y]\ÊB‚BZYˆXXÚ[™WØXÝ]š]HˆŒN‚‚BBY˜]×ØÛÛÜ™YÜÛYÛÛŠÙX\—ÜÚ[ËÛÛÜŠŒÌˆŠJB‚BB]˜\ˆÙX\—ÛÝ][™HHÙX\—ÜÚ[Ë™\XØ]J
+B‚BBYÙX\—ÛÝ][™K˜\[™
+ÙX\—ÜÚ[ÖÌJB‚BBY˜]×ÜÛ[[™JÙX\—ÛÝ][™KÛÛÜŠÍ‹ŽŽÌ
+ÈXXÚ[™WØXÝ]š]H
+ˆŒJKX^ŠKŒÙX\—Ü˜Y]\È
+ˆŒL
+KYJB‚BBY˜]×ØÚ\˜ÛJÙX\—ØÙ[\‹ÙX\—Ü˜Y]\È
+ˆËÛÛÜŠŒMŒ˜LÌˆŠJB‚BBY˜]×ØÚ\˜ÛJÙX\—ØÙ[\‹ÙX\—Ü˜Y]\È
+ˆŒŒÛÛÜŠ™LŒÌÙHŠJB‚BBY˜]×ØÚ\˜ÛJÙX\—ØÙ[\ˆH™XÝÜŒŠÙX\—Ü˜Y]\È
+ˆŒLËÙX\—Ü˜Y]\È
+ˆŒMÊKÙX\—Ü˜Y]\È
+ˆŒLÛÛÜŠŽM‹KŒKŒˆ
+ˆXXÚ[™WØXÝ]š]JJB‚Y[ÙN‚‚BY˜]×ØÚ\˜ÛJ[˜ÚÜ‹˜\ÙWÜ˜Y]\ËÛÛÜŠŒÌMˆŠJB‚BY˜]×ØÚ\˜ÛJ[˜ÚÜ‹˜\ÙWÜ˜Y]\È
+ˆŒ‹ÛÛÜŠ˜NXŽX˜HŠJB‚]˜\ˆÛÛ\—ØÙ[\ˆH[˜ÚÜˆ
+È™XÝÜŒŠ\™XÝ[Ûˆ
+ˆKŒ
+ˆ[š]Þ
+ˆY]ÜØØ[KŒ
+B‚]˜\ˆÛÛ\—ÜÚ^™HH™XÝÜŒŠLËŒ
+ˆ[š]ÞÎŒ
+ˆ[š]ÞJH
+ˆY]ÜØØ[B‚]˜\ˆ›ÙÜÝ\HÛÛ\—ØÙ[\ˆ
+È™XÝÜŒŠ\™XÝ[Ûˆ
+ˆÛÛ\—ÜÚ^™Kž
+ˆŒÎŒ
+B‚]˜\ˆ›ÙÙ[™H\H™XÝÜŒŠ\™XÝ[Ûˆ
+ˆŒ
+ˆ[š]ÞŒ
+B‚Y˜]×Û[™J›ÙÜÝ\›ÙÙ[™ÛÛÜŠŒŒÎMŠKMKŒ
+ˆ[š]ÞH
+ˆY]ÜØØ[KYJB‚Y˜]×Û[™J›ÙÜÝ\H™XÝÜŒŠKH
+ˆ[š]ÞJK›ÙÙ[™H™XÝÜŒŠKH
+ˆ[š]ÞJKÛÛÜŠ˜ŽXØ™ŠKËŒ
+ˆ[š]ÞH
+ˆY]ÜØØ[KYJB‚]˜\ˆ]WÜÚ^™HH™XÝÜŒŠNŒ
+ˆ[š]ÞŒ
+ˆ[š]ÞJH
+ˆY]ÜØØ[B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÌÎMÈŠKŒ
+ˆ[š]ÞJK™XÝŠ\H]WÜÚ^™H
+ˆK]WÜÚ^™JJB‚Y˜]×Ü™XÝ
+™XÝŠ\H]WÜÚ^™H
+ˆŒÍ]WÜÚ^™H
+ˆŽ
+KÛÛÜŠŽLXMXXHŠJB‚]˜\ˆÛÝ×ÝÚYH‹Œ
+ˆ[š]Þ‚]˜\ˆÛÝ×Ü™XÝH™XÝŠ\žHÛÝ×ÝÚY
+ˆK\žHHNKŒ
+ˆ[š]ÞKÛÝ×ÝÚYÎŒ
+ˆ[š]ÞJB‚Y˜]×Ü™XÝ
+ÛÝ×Ü™XÝÛÛÜŠÌ‹ŒÍKŒ
+ˆÛÛ\™\ÜÚ[ÛŠJB‚™[˜È™\Ü×Ý˜\Ú\×ØXÝ]™J
+HOˆ›ÛÛ‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚BZYˆY™™XÝšÛHOH‘TÔ×ÕTÒÓN‚‚BB\™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜È˜]×Ü™\Ü×ÝÙX\Ûœ×ÚYJ
+HOˆ›ÚY‚‚ZYˆÝ\ÝÛZ^™\—ÛÜ[ˆÜˆ™\Ü×Ý˜\Ú\×ØXÝ]™J
+N‚‚B\™]\›‚‚HÈH]\È™\ÝÛÜÙHÈZ\ˆÝÛ™K[[Ý[Y[ÝÜœË^XÝH\È[ˆB‚HÈÛÝ\˜ÙH[š[X][Û‹[œÝXYÙˆ\Ø\X\š[™È[[H˜[™XXÚ\ÈHØÚÙ]‚‚Y˜]×Ü™\Ü×Ü›Ù
+M‹ŒMKŒMÌŒYKŒ
+B‚Y˜]×Ü™\Ü×Ü›Ù
+ŽMKŒMKŒÌKŒ˜[ÙKŒ
+B‚™[˜È˜]×Ü™\Ü×Ø˜[
+Ù[\Žˆ™XÝÜŒ‹˜Y]\Îˆ›Ø]žÜØØ[Nˆ›Ø]žWÜØØ[Nˆ›Ø]›Ý][ÛŽˆ›Ø]X[Nˆ[YXÙNˆ[[Nˆ›Ø]
+HOˆ›ÚY‚‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\‹›Ý][Û‹™XÝÜŒŠžÜØØ[KžWÜØØ[JJB‚Y˜]×ÜX˜™\—ÙØ[YWØ˜[
+™XÝÜŒ‹–‘T“Ë˜Y]\ËX[KYXÙK[JB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚™[˜È˜]×Ü™\Ü×Ý˜\
+Y™™XÝˆXÝ[Û˜\žJHOˆ›ÚY‚‚]˜\ˆÙXÛÛ™Îˆ›Ø]HY™™XÝ™[\ÙY‚]˜\ˆÞHŒŒKŒ‚]˜\ˆÞHHMKŒ‚]˜\ˆ˜Y]\ÈH‹Œ‚HÈH\ÚXÜÈ˜[\È[™XYHÜ›ÜÜÙYHØÛÜš[™È›Ý[™\žKˆÝ\B‚HÈ[š[X]Y™\ÜÈ˜[\™XÝH[ˆHÜ[š[™ÎÈ™]™\ˆ™\^HH[œ›ÛHHÜ˜\ÜË‚‚]˜\ˆ˜[ÞHHÞB‚]˜\ˆžÜØØ[HHKŒ‚]˜\ˆžWÜØØ[HHKŒ‚]˜\ˆ›Ý][ÛˆHŒ‚HÈH\ÚXÜÈ˜[\ÈY[ˆ\ÈÛÛÛˆ\È]ØÛÜ™\ËÛÈ]ÈY™™XÝ™\XÙ[Y[‚HÈ]\Ý™Hš\ÚX›H[[YYX][HÚ[HH\ÝÛœÈ\›ØXÚ‚‚]˜\ˆ[HHKŒ‚]˜\ˆ^[™HŒ‚]˜\ˆ™]˜XÝHŒ‚]˜\ˆ™[X\ÙHHŒ‚HÈÛÜÙHÝXY[H[œÝXYÙˆ[]™\š[™ÈHÝY[ˆš[˜[]ˆÛÛ\™\ÜÚ[Ûˆ™YÚ[œÂ‚HÈÚ[HH]\È\™H\›ØXÚ[™È[™[˜Ü™X\Ù\ÈÛÛ[[Ý\ÛH[[ÛÛXÝ‚‚Y^[™HÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHŒL
+HÈKŒŠB‚ZYˆÙXÛÛ™ÈHKŒÌŽ‚‚B\™]˜XÝHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHKŒÌŠHÈN
+B‚]˜\ˆÜ]YY^™HHÛ[ÛÝÜÝ\
+Û[\Š
+^[™HŒN
+HÈŽ‹ŒKŒ
+JB‚]˜\ˆ\›WØ[[Ý[H^[™
+ˆ
+KŒH™]˜XÝ
+B‚HÈÙY\HÙX\˜›Þ[›š[™È›ÝYÚÝ]^[œÚ[Ûˆ[™™]˜XÝ[Û‹[ˆX\ÙH]‚HÈÈHÝÜ\ÈH]\ÈÙ]H]Z\ˆœ›ÛÛÛ\œË‚‚]˜\ˆXXÚ[™WØXÝ]š]HHÛ[ÛÝÜÝ\
+^[™
+H
+ˆ
+KŒHÛ[ÛÝÜÝ\
+
+™]˜XÝHÎ
+HÈŒŒŠJB‚]˜\ˆÛÛ\™\ÜÙYÜžH\œŠ˜Y]\Ë˜Y]\È
+ˆŒÌ‹Ü]YY^™JB‚HÈ™\Ý]Hœ›ÛÛÛ\œË™]™\ˆ]HÙ[\ˆÙˆHÙX\ÛˆÝ\Ú[™Ë‚‚]˜\ˆYÜ™\ÝÝ\HMÌŒ‚]˜\ˆšYÚÜ™\ÝÝ\HÌKŒ‚]˜\ˆYÝ\H\œŠYÜ™\ÝÝ\ÞHÛÛ\™\ÜÙYÜžHKŒ\›WØ[[Ý[
+B‚]˜\ˆšYÚÝ\H\œŠšYÚÜ™\ÝÝ\Þ
+ÈÛÛ\™\ÜÙYÜž
+ÈKŒ\›WØ[[Ý[
+B‚\žÜØØ[HH\œŠKŒŒÌ‹Ü]YY^™JB‚\žWÜØØ[HH\œŠKŒKŒLÜ]YY^™JB‚ZYˆÙXÛÛ™ÈHKÎN‚‚B\žÜØØ[HHŒÌ‚‚B\žWÜØØ[HHKŒL‚B]˜\ˆØZ]HÛ[\Š
+ÙXÛÛ™ÈHKÎJHÈ
+TÐÐTT‘WÕSQHHKÎJKŒKŒ
+B‚B\™[X\ÙHHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHTÐÐTT‘WÕSQJHÈTÑSÕSQJB‚B]˜\ˆ[Ý[ÛˆH™[X\ÙH
+ˆ™[X\ÙB‚B\›Ý][ÛˆHÚ[ŠØZ]
+ˆJH
+ˆŒHH[Ý[Ûˆ
+ˆŒÍ‚BHÈ[™\ÝX›Ý™HHX›H[ˆš\ÚX›HØ]\ŽÈH™]š[Ý\ÈLLŒH\™Ù]‚BHÈÛÛ[YY™Z[™HQ™Y›Ü™HH›Ø][™È\ÙH™YØ[‹‚‚BX˜[ÞHHÞHH\œŠŒËŒ[Ý[ÛŠB‚BX[HHKŒH™[X\ÙH
+ˆŒ‚B]˜\ˆÚš[šÈHKŒH™[X\ÙH
+ˆŒÌ‚B\žÜØØ[H
+HÚš[šÂ‚B\žWÜØØ[H
+HÚš[šÂ‚]˜\ˆ˜Y]\×ÜØÜ™Y[ˆH˜\Ø˜[Ü˜Y]\Ê‘TÔ×ÕTÒÓK˜Y]\È
+ˆ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+B‚]˜\ˆ™\Ü×ØÙ[\ˆH˜\Ø˜[ÜÜÚ][ÛŠ‘TÔ×ÕTÒÓK™\Ü×ÜÚ[
+Þ˜[ÞJJB‚ZYˆ™[X\ÙHˆŒ‚‚B]˜\ˆ™\Ü×ÜÝ\H˜\Ø˜[ÜÜÚ][ÛŠ‘TÔ×ÕTÒÓK™\Ü×ÜÚ[
+ÞÞJJB‚B\™\Ü×ØÙ[\ˆH™\Ü×ÜÝ\›\œ
+Y™™XÝÙ˜[Ù[™Ú[
+‘TÔ×ÕTÒÓJK™[X\ÙH
+ˆ™[X\ÙJB‚HÈ˜]ÈH[š[X[š\œÝÛÈ›Ý]\Èš\ÚX›HÛÜÙHÝ™\ˆ]ˆHÛÜ™\‚‚HÈXÙYH˜[ÛˆÜÙˆH\ÝÛœÈ[™XYHHÜ]YY^™HÛÚÈ˜ZÙK‚‚Y˜]×Ü™\Ü×Ø˜[
+™\Ü×ØÙ[\‹˜Y]\×ÜØÜ™Y[‹žÜØØ[KžWÜØØ[K›Ý][Û‹Y™™XÝX[KY™™XÝœYXÙK[JB‚HÈ[Ø^\È˜]ÈHÛÛ\]HXXÚ[™\Ëˆ\š[™È™]˜XÝ[Ûˆ^H™]\›ˆÈZ\‚‚HÈYHÜÚ][ÛœÈÚ[HHÜ\ÚY\ØÈ™[XZ[œÈ[ˆHÙ[\‹‚‚Y˜]×Ü™\Ü×Ü›Ù
+M‹ŒÞKYÝ\YKÜ]YY^™KXXÚ[™WØXÝ]š]JB‚Y˜]×Ü™\Ü×Ü›Ù
+ŽMKŒÞKšYÚÝ\˜[ÙKÜ]YY^™KXXÚ[™WØXÝ]š]JB‚™[˜È[[Y\—ÜÚ[
+ˆ›Ø]Nˆ›Ø]
+HOˆ™XÝÜŒŽ‚‚\™]\›ˆ›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÈLŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžJB‚™[˜È[[Y\—Ý˜\Ú\×ØXÝ]™J
+HOˆ›ÛÛ‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚BZYˆY™™XÝšÛHOHSSQT—ÕTÒÓN‚‚BB\™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜È[[Y\—ÝÙX\Û—ÜÚ[Ê
+HOˆXÝ[Û˜\žN‚‚]˜\ˆ]H˜\Ø˜[ÜÜÚ][ÛŠSSQT—ÕTÒÓK[[Y\—ÜÚ[
+LÌ‹ŒLŒ‹Œ
+JB‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚\™]\›ˆÂ‚BHÈ[Ý[ÈÚ]Y\ÛˆHÛÈÝÛ™\Ë˜\ˆ]Ø^Hœ›ÛHHØ\\™HÚ[\Ý‚BHÈZÙHHÝ\YYÜšYÚ[˜[ØÜ™Y[œÚÝËˆHXYÈÚ[]Ø^Hœ›ÛHB‚BHÈÛHÚ[HYH[™ÝÚ[™È[Ø\™Û›H\š[™ÈHÝšZÙK‚‚BHœšYÚŽˆ]
+È™XÝÜŒŠL‹ŒML‹Œ
+H
+ˆØØ[WÞH
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+SSQT—ÕTÒÓK
+K‚BH˜›ÝÛHŽˆ]
+È™XÝÜŒŠMŒŒ‹Œ
+H
+ˆØØ[WÞH
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+SSQT—ÕTÒÓKJK‚BHš]Žˆ]‚_B‚™[˜È[[Y\—ÜÝšZÙWØ[[Ý[
+ÙXÛÛ™Îˆ›Ø]š\œÝÜÝ\ˆ›Ø]
+HOˆ›Ø]‚‚HÈXXÚ[[Y\ˆÙ]È]ÈÝÛˆ™\X]YÝ›ÚÙKˆZ\ˆÝ\È\™HÙ\\˜]YžB‚HÈ[ˆHÞXÛK›ÙXÚ[™ÈšYÚ[Y\šYÚ[Y[\XÝÈÚ]Ý]Ý™\›\‚‚ZYˆÙXÛÛ™Èš\œÝÜÝ\ÜˆÙXÛÛ™ÈH‹ŒŒ‚‚B\™]\›ˆŒ‚]˜\ˆØØ[H›[Ù
+ÙXÛÛ™ÈHš\œÝÜÝ\Ž
+B‚ZYˆØØ[ŒLŽ‚‚B\™]\›ˆÛ[ÛÝÜÝ\
+ØØ[ÈŒLŠB‚ZYˆØØ[ŒMÎ‚‚B\™]\›ˆKŒ‚ZYˆØØ[ŒÌŽ‚‚B\™]\›ˆKŒHÛ[ÛÝÜÝ\
+
+ØØ[HŒMÊHÈŒMJB‚\™]\›ˆŒ‚™[˜È˜]×Ú[[Y\—ÜÜš]WÙœ˜[YJ^\™Nˆ^\™L‘[˜ÚÜŽˆ™XÝÜŒ‹[™ÛNˆ›Ø]\™Ù]Û[™Ýˆ›Ø]]›ÝÜ˜][Îˆ™XÝÜŒ‹XYÜ˜][Îˆ™XÝÜŒ‹[Nˆ›Ø]
+HOˆ›ÚY‚‚ZYˆ^\™HOH[Üˆ[HHŒN‚‚B\™]\›‚‚]˜\ˆÛÝ\˜ÙHH^\™K™Ù]ÜÚ^™J
+B‚]˜\ˆ]›ÝHÛÝ\˜ÙH
+ˆ]›ÝÜ˜][Â‚]˜\ˆXYHÛÝ\˜ÙH
+ˆXYÜ˜][Â‚]˜\ˆ[\›˜[Ø[™ÛHH
+XYH]›Ý
+K˜[™ÛJ
+B‚]˜\ˆ[\›˜[Û[™ÝHX^ŠKŒ]›Ý™\Ý[˜ÙWÝÊXY
+JB‚]˜\ˆ˜XÝÜˆH\™Ù]Û[™ÝÈ[\›˜[Û[™Ý‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J[˜ÚÜ‹[™ÛHH[\›˜[Ø[™ÛK™XÝÜŒ‹“Ó‘JB‚Y˜]×Ý^\™WÜ™XÝ
+^\™K™XÝŠ\]›Ý
+ˆ˜XÝÜ‹ÛÝ\˜ÙH
+ˆ˜XÝÜŠK˜[ÙKÛÛÜŠKŒKŒKŒ[JJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚™[˜È˜]×Ú[[Y\—ØÝ]Ý]
+^\™Nˆ^\™L‘Ù[\Žˆ™XÝÜŒ‹\™Ù]ÚZYÚˆ›Ø]›Ý][ÛŽˆ›Ø][Nˆ›Ø]HKŒ
+HOˆ›ÚY‚‚ZYˆ^\™HOH[Üˆ[HHŒN‚‚B\™]\›‚‚]˜\ˆÛÝ\˜ÙHH^\™K™Ù]ÜÚ^™J
+B‚]˜\ˆ˜XÝÜˆH\™Ù]ÚZYÚÈX^ŠKŒÛÝ\˜ÙKžJB‚]˜\ˆÚ^™HHÛÝ\˜ÙH
+ˆ˜XÝÜ‚‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\‹›Ý][Û‹™XÝÜŒ‹“Ó‘JB‚Y˜]×Ý^\™WÜ™XÝ
+^\™K™XÝŠ\Ú^™H
+ˆKÚ^™JK˜[ÙKÛÛÜŠKŒKŒKŒ[JJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚™[˜È˜]×Ý˜\Ú[[Y\Š[˜ÚÜŽˆ™XÝÜŒ‹]ÜÚ[ˆ™XÝÜŒ‹™\ÝØ[™ÛNˆ›Ø][[Ý[ˆ›Ø]ÙX\Û—ÜØØ[Nˆ›Ø]Z\œ›Ü™Yˆ›ÛÛ
+HOˆ›ÚY‚‚]˜\ˆÝšZÙWØ[™ÛHH
+]ÜÚ[H[˜ÚÜŠK˜[™ÛJ
+B‚]˜\ˆ[™ÛHH\œØ[™ÛJ™\ÝØ[™ÛKÝšZÙWØ[™ÛK[[Ý[
+B‚]˜\ˆ\™Ù]Û[™ÝH[˜ÚÜ‹™\Ý[˜ÙWÝÊ]ÜÚ[
+H
+ˆÙX\Û—ÜØØ[B‚HÈ›Ý]HHÛÛ\]H™\ÝÜ™Y[[Y\ˆ\›Ý[™HÙ[\ˆÙˆ]ÈÝÛ™K[[Ý[Y‚HÈ˜\ÙKˆ›Ý[™È\È˜[œÛ]Y[ÈHØÚÙ]ÈÛ›HH\›HÝÚ[™ÜÈ[Ø\™‚‚]˜\ˆÝÚ[™×ÛZ^HÛ[ÛÝÜÝ\
+
+[[Ý[HLŠHÈŒŽ
+B‚Y˜]×Ú[[Y\—ÜÜš]WÙœ˜[YJ[[Y\—ÚYWÝ^\™K[˜ÚÜ‹[™ÛK\™Ù]Û[™Ý™XÝÜŒŠLŽLJK™XÝÜŒŠLŒMJKKŒHÝÚ[™×ÛZ^
+B‚Y˜]×Ú[[Y\—ÜÜš]WÙœ˜[YJ[[Y\—ÜÝÚ[™×Ý^\™K[˜ÚÜ‹[™ÛK\™Ù]Û[™Ý™XÝÜŒŠÍKŒMÊK™XÝÜŒŠŒÎÎ
+KÝÚ[™×ÛZ^
+B‚™[˜È˜]×Ú[[Y\—ÝÙX\Ûœ×ÚYJ
+HOˆ›ÚY‚‚ZYˆ[[Y\—Ý˜\Ú\×ØXÝ]™J
+N‚‚B\™]\›‚‚]˜\ˆÚ[ÈH[[Y\—ÝÙX\Û—ÜÚ[Ê
+B‚Y˜]×Ý˜\Ú[[Y\ŠÚ[ËœšYÚÚ[Ëš]Y×Ý×Ü˜Y
+NLŒ
+KŒ˜\ÝÙX\Û—ÜØØ[JSSQT—ÕTÒÓK
+K˜[ÙJB‚Y˜]×Ý˜\Ú[[Y\ŠÚ[Ë˜›ÝÛKÚ[Ëš]Y×Ý×Ü˜Y
+NŒ
+KŒ˜\ÝÙX\Û—ÜØØ[JSSQT—ÕTÒÓKJKYJB‚™[˜È˜]×Ú[[Y\—Ý˜\
+Y™™XÝˆXÝ[Û˜\žJHOˆ›ÚY‚‚]˜\ˆÙXÛÛ™Îˆ›Ø]HY™™XÝ™[\ÙY‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆÚ[ÈH[[Y\—ÝÙX\Û—ÜÚ[Ê
+B‚]˜\ˆšYÚÝÙX\ÛŽˆ™XÝÜŒˆHÚ[ËœšYÚ‚]˜\ˆ›ÝÛWÝÙX\ÛŽˆ™XÝÜŒˆHÚ[Ë˜›ÝÛB‚]˜\ˆ]ÜÚ[ˆ™XÝÜŒˆHÚ[Ëš]‚]˜\ˆ˜Y]\ÈH˜\Ø˜[Ü˜Y]\ÊSSQT—ÕTÒÓKËŒ
+ˆØØ[WÞJB‚]˜\ˆšYÚØ[[Ý[H[[Y\—ÜÝšZÙWØ[[Ý[
+ÙXÛÛ™ËŒŒ
+B‚]˜\ˆ›ÝÛWØ[[Ý[H[[Y\—ÜÝšZÙWØ[[Ý[
+ÙXÛÛ™ËM
+B‚]˜\ˆ[\XÝHX^Š‚B\Û[ÛÝÜÝ\
+
+šYÚØ[[Ý[HLŠHÈ
+K‚B\Û[ÛÝÜÝ\
+
+›ÝÛWØ[[Ý[HLŠHÈ
+B‚JB‚]˜\ˆ™[X\ÙHHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHTÐÐTT‘WÕSQJHÈTÑSÕSQJB‚]˜\ˆÙ[\ˆH]ÜÚ[‚]˜\ˆ˜[Ü˜Y]\ÈH˜Y]\Â‚]˜\ˆ[HHKŒ‚ZYˆ™[X\ÙHˆŒ‚‚B]˜\ˆ˜[H™[X\ÙH
+ˆ™[X\ÙB‚BXÙ[\ˆH]ÜÚ[›\œ
+Y™™XÝÙ˜[Ù[™Ú[
+SSQT—ÕTÒÓJK˜[
+B‚BXÙ[\‹žHOHÚ[Š™[X\ÙH
+ˆJH
+ˆKŒ
+ˆØØ[WÞB‚BX˜[Ü˜Y]\È
+HKŒH™[X\ÙH
+ˆŒÌ‚‚BX[HHKŒH™[X\ÙH
+ˆŒL‚‚]˜\ˆÜ]X\ÚÞHKŒ‚]˜\ˆÜ]X\ÚÞHHKŒ‚]˜\ˆ˜[Ü›Ý][ÛˆHŒ‚HÈH˜[Ý^\È›ÙÜ™\ÜÚ]™[HÜ\ÚYY\ˆ]™\žH[\›˜][™È›ÝÈ[œÝXY‚HÈÙˆ™]\›š[™ÈÛÛ\][HÈ]ÈÜšYÚ[˜[Ú^™H™]ÙY[ˆ]Ë‚‚]˜\ˆÛÛ\]YÚ]ÈHÛ[\J[
+›ÛÜŠ
+ÙXÛÛ™ÈHŒŒ
+HÈŒÍ
+JH
+ÈKŠB‚]˜\ˆ\›X[™[ØÜ\ÚH›Ø]
+ÛÛ\]YÚ]ÊHÈ‹Œ‚HÈÙY\HXØÝ[][]YÜ\ÚYÚ\H\š[™ÈH˜[\ÈÙ[ˆ™]š[Ý\ÛB‚HÈ\ÈØ\È\YYÛ›H™Y›Ü™H™[X\ÙKÛÈH˜[œšYY›HÜ™]È˜XÚË‚‚X˜[Ü˜Y]\È
+H\œŠKŒÌ‹\›X[™[ØÜ\Ú
+B‚\Ü]X\ÚÞH\œŠKŒKŒL\›X[™[ØÜ\Ú
+B‚\Ü]X\ÚÞHH\œŠKŒÌ\›X[™[ØÜ\Ú
+B‚ZYˆ™[X\ÙHHŒ[™[\XÝˆŒN‚‚BX˜[Ü˜Y]\È
+H\œŠKŒŽ[\XÝ
+B‚BZYˆšYÚØ[[Ý[H›ÝÛWØ[[Ý[‚‚BB\Ü]X\ÚÞ
+H\œŠKŒ[\XÝ
+B‚BB\Ü]X\ÚÞH
+H\œŠKŒK‹[\XÝ
+B‚BBX˜[Ü›Ý][ÛˆHLŒLÈ
+ˆ[\XÝ‚BY[ÙN‚‚BB\Ü]X\ÚÞ
+H\œŠKŒK‹[\XÝ
+B‚BB\Ü]X\ÚÞH
+H\œŠKŒ[\XÝ
+B‚BBX˜[Ü›Ý][ÛˆHŒLÈ
+ˆ[\XÝ‚‚HÈ˜]ÈH˜[š\œÝ[ˆH[[Y\œËÛÈZ\ˆXYÈš\ÚX›H[™ÛˆÜ‚‚Y˜]×Ü™\Ü×Ø˜[
+Ù[\‹˜[Ü˜Y]\ËÜ]X\ÚÞÜ]X\ÚÞK˜[Ü›Ý][Û‹Y™™XÝX[KY™™XÝœYXÙK[JB‚ZYˆ™[X\ÙHHŒ‚‚BY˜]×Ý˜\Ú[[Y\ŠšYÚÝÙX\Û‹]ÜÚ[
+È™XÝÜŒŠ˜Y]\È
+ˆŒL‹\˜Y]\È
+ˆŒ
+KY×Ý×Ü˜Y
+NLŒ
+KšYÚØ[[Ý[˜\ÝÙX\Û—ÜØØ[JSSQT—ÕTÒÓK
+K˜[ÙJB‚BY˜]×Ý˜\Ú[[Y\Š›ÝÛWÝÙX\Û‹]ÜÚ[
+È™XÝÜŒŠ\˜Y]\È
+ˆŒ˜Y]\È
+ˆŒLŠKY×Ý×Ü˜Y
+NŒ
+K›ÝÛWØ[[Ý[˜\ÝÙX\Û—ÜØØ[JSSQT—ÕTÒÓKJKYJB‚Y[ÙN‚‚BHÈ™]\›ˆ›Ý[[Y\œÈÈZ\ˆÝÛ™K[[Ý[YYHÜÙ\È\ÈÛÛÛˆ\ÈB‚BHÈÜ\Ú[™È[™ËˆHXÝ]™H˜[ÛÛ[Y\Ë]HÙX\ÛœÈ™]™\ˆ˜[š\Ú‚‚BY˜]×Ý˜\Ú[[Y\ŠšYÚÝÙX\Û‹]ÜÚ[Y×Ý×Ü˜Y
+NLŒ
+KŒ˜\ÝÙX\Û—ÜØØ[JSSQT—ÕTÒÓK
+K˜[ÙJB‚BY˜]×Ý˜\Ú[[Y\Š›ÝÛWÝÙX\Û‹]ÜÚ[Y×Ý×Ü˜Y
+NŒ
+KŒ˜\ÝÙX\Û—ÜØØ[JSSQT—ÕTÒÓKJKYJB‚‚ZYˆ[\XÝˆŒH[™™[X\ÙHHŒ‚‚BY˜]×ØÚ\˜ÛJÙ[\‹˜[Ü˜Y]\È
+ˆÎÛÛÜŠKŒŽNŽ‹Ìˆ
+ˆ[\XÝ
+JB‚BY˜]×ØÚ\˜ÛJÙ[\‹˜[Ü˜Y]\È
+ˆ
+KŒÌˆ
+È[\XÝ
+ˆŒN
+KÛÛÜŠKŒÍËŒKŒŽ
+ˆ[\XÝ
+K˜[ÙKX^Š‹ŒŒ
+ˆØØ[WÞJJB‚BY›ÜˆH[ˆŽ‚‚BB]˜\ˆHHUH
+ˆ›Ø]
+JHÈ‹Œ‚BB]˜\ˆHHÙ[\ˆ
+È™XÝÜŒŠÛÜÊJKÚ[ŠJJH
+ˆ˜[Ü˜Y]\È
+ˆKŒL‚BB]˜\ˆˆHÙ[\ˆ
+È™XÝÜŒŠÛÜÊJKÚ[ŠJJH
+ˆ˜[Ü˜Y]\È
+ˆ
+KŒÍH
+È[\XÝ
+ˆŒŽ
+B‚BBY˜]×Û[™JK‹ÛÛÜŠKŒŽLLŽˆ
+ˆ[\XÝ
+KX^ŠKŒ‹Œ
+ˆØØ[WÞJKYJB‚™[˜È[XÝšX×ÜÚ[
+ˆ›Ø]Nˆ›Ø]
+HOˆ™XÝÜŒŽ‚‚\™]\›ˆ›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÈLŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžJB‚™[˜È˜]×Ù[XÝšX×Ø\˜ÊÝ\ˆ™XÝÜŒ‹š[š\Úˆ™XÝÜŒ‹\ÙNˆ›Ø][Nˆ›Ø]ÚYˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆÚ[ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚]˜\ˆ[HHš[š\ÚHÝ\‚]˜\ˆ›Ü›X[H[K››Ü›X[^™Y
+
+K›ÜÙÛÛ˜[
+
+HYˆ[K›[™ÝÜÜ]X\™Y
+
+HˆŒH[ÙH™XÝÜŒ‹•T‚Y›ÜˆH[ˆLN‚‚B]˜\ˆH›Ø]
+JHÈLŒ‚B]˜\ˆš]\ˆHŒ‚BZYˆHˆ[™HL‚‚BBZš]\ˆHÚ[Š›Ø]
+JH
+ˆL‹ÌÈ
+È\ÙH
+ˆNKŒ
+H
+ˆÚY
+ˆ‹Œ‚‚BBZš]\ˆ
+ÏHÛÜÊ›Ø]
+JH
+ˆËŒÌH
+È\ÙH
+ˆLKŒ
+H
+ˆÚY‚B\Ú[Ë˜\[™
+Ý\›\œ
+š[š\Ú
+H
+È›Ü›X[
+ˆš]\ŠB‚Y˜]×ÜÛ[[™JÚ[ËÛÛÜŠÌ‹ŽLËKŒ[H
+ˆLŠKÚY
+ˆ‹YJB‚Y˜]×ÜÛ[[™JÚ[ËÛÛÜŠŽM‹KŒKŒ[JKÚYYJB‚™[˜È[XÝšX×Ý˜\Ú\×ØXÝ]™J
+HOˆ›ÛÛ‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚BZYˆY™™XÝšÛHOHSPÕ’P×ÕTÒÓN‚‚BB\™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜È[XÝšX×ÝÙX\Û—ÜÚ[Ê
+HOˆXÝ[Û˜\žN‚‚]˜\ˆØ\\™HH˜\Ø˜[ÜÜÚ][ÛŠSPÕ’P×ÕTÒÓK›Ø\™Ý×ÜØÜ™Y[ŠÐÓÔ’S‘×ÒÓWÐÑS•T”ÖÑSPÕ’P×ÕTÒÓWJJB‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚\™]\›ˆÂ‚BH˜Ø\\™HŽˆØ\\™K‚BHÜŽˆØ\\™H
+È[XÝšX×ÝÜÛÙ™œÙ]
+ˆØØ[WÞH
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+SPÕ’P×ÕTÒÓK
+K‚BHœšYÚŽˆØ\\™H
+È[XÝšX×ÜšYÚÛÙ™œÙ]
+ˆØØ[WÞH
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+SPÕ’P×ÕTÒÓKJB‚_B‚™[˜È˜]×Ù[XÝšX×Ù[Z]\ŠÙ[\Žˆ™XÝÜŒ‹\™Ù]ˆ™XÝÜŒ‹Ú^™Nˆ›Ø]ÝÙ\Žˆ›Ø]HŒ
+HOˆ™XÝÜŒŽ‚‚]˜\ˆ\™XÝ[ÛˆH
+\™Ù]HÙ[\ŠK››Ü›X[^™Y
+
+B‚ZYˆ\™XÝ[Û‹›[™ÝÜÜ]X\™Y
+
+HŒN‚‚BY\™XÝ[ÛˆH™XÝÜŒ‹”’QÒ‚]˜\ˆ[™ÛHH\™XÝ[Û‹˜[™ÛJ
+B‚HÈX]žHÝÛ™K[[Ý[YYÚ]›ÛYÙHÙ[™\˜]ÜŽˆÝY[Ý\Ú[™ËÛÜ\ˆÛÚ[‚HÈÙ\˜[ZXÈ[œÝ[]ÜœÈ[™H›ÜšÙY\ØÚ\™ÙHXYˆ]™\ž][™È\È˜]Ûˆ[ˆB‚HÈÙX\Û‰ÜÈØØ[^\ÈÛÈ›Ý[Z]\œÈ™]Z[ˆHY]Ü‹X\›Ý™YÜÚ][ÛœË‚‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\ˆ
+È™XÝÜŒŠŒÚ^™H
+ˆŒL
+K[™ÛK™XÝÜŒ‹“Ó‘JB‚]˜\ˆÚYÝ×Ü™XÝH™XÝŠ™XÝÜŒŠ\Ú^™H
+ˆL‹\Ú^™H
+ˆŒÎJH
+È™XÝÜŒŠŒÚ^™H
+ˆŒL
+K™XÝÜŒŠÚ^™H
+ˆŽ‹Ú^™H
+ˆÎ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒŒ‹ŒÌŠKÚ^™H
+ˆŒM
+KÚYÝ×Ü™XÝ
+B‚]˜\ˆ›ÙWÜ™XÝH™XÝŠ™XÝÜŒŠ\Ú^™H
+ˆL‹\Ú^™H
+ˆŒÎJK™XÝÜŒŠÚ^™H
+ˆŽ‹Ú^™H
+ˆÎ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒYŒÌÎHŠKÚ^™H
+ˆŒLÊK›ÙWÜ™XÝ
+B‚]˜\ˆ[›™\—Ü™XÝH™XÝŠ™XÝÜŒŠ\Ú^™H
+ˆË\Ú^™H
+ˆŒÌ
+K™XÝÜŒŠÚ^™H
+ˆKÚ^™H
+ˆŒ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™ŽNHŠKÚ^™H
+ˆŒL
+K[›™\—Ü™XÝ
+B‚HÈ™X\ˆ[Ý[[™È˜[™[™›Ý\ˆØ\›HY][›ÛË‚‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒŠ\Ú^™H
+ˆË\Ú^™H
+ˆŒÌŠK™XÝÜŒŠÚ^™H
+ˆŒLËÚ^™H
+ˆ
+JKÛÛÜŠŒÌMLŠJB‚Y›Üˆ›ÛÞH[ˆËLŒŒ‹ŒŒ—N‚‚BY˜]×ØÚ\˜ÛJ™XÝÜŒŠ\Ú^™H
+ˆKÚ^™H
+ˆ›ÛÞJKÚ^™H
+ˆŒKÛÛÜŠ™M˜™ÈŠJB‚HÈœšYÚÛÜ\ˆ[™XÝ[ÛˆÛÚ[Ü˜\Y\›Ý[™H\šÈXYÛ™]XÈÛÜ™K‚‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒŠ\Ú^™H
+ˆŒË\Ú^™H
+ˆŒŒ
+K™XÝÜŒŠÚ^™H
+ˆŒÎKÚ^™H
+ˆ
+JKÛÛÜŠŒÍÍŠJB‚Y›ÜˆH[ˆN‚‚B]˜\ˆÛÚ[ÞHÚ^™H
+ˆ
+LŒŒÍH
+È›Ø]
+JH
+ˆŒÎ
+B‚BY˜]×Û[™J™XÝÜŒŠÛÚ[Þ\Ú^™H
+ˆŒŒŠK™XÝÜŒŠÛÚ[ÞÚ^™H
+ˆŒŒŠKÛÛÜŠ™Œ˜ŒNŠKÚ^™H
+ˆŒLYJB‚BY˜]×Û[™J™XÝÜŒŠÛÚ[ÞHÚ^™H
+ˆŒL‹\Ú^™H
+ˆŒŒ
+K™XÝÜŒŠÛÚ[ÞHÚ^™H
+ˆŒL‹Ú^™H
+ˆŒŒ
+KÛÛÜŠ™ŒNL˜ˆŠKÚ^™H
+ˆŒKYJB‚HÈÛÈ[HÙ\˜[ZXÈ[œÝ[]ÜœÈXY[ÈH›ÜšÙY[XÝ›ÙK‚‚Y›Üˆ[œÝ[]Ü—ÞH[ˆËLŒMËŒM×N‚‚BY˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆŒMÚ^™H
+ˆ[œÝ[]Ü—ÞJK™XÝÜŒŠÚ^™H
+ˆ‹Ú^™H
+ˆ[œÝ[]Ü—ÞJKÛÛÜŠŒÍØˆŠKÚ^™H
+ˆŒMKYJB‚BY˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆŒM‹Ú^™H
+ˆ[œÝ[]Ü—ÞJK™XÝÜŒŠÚ^™H
+ˆŒÎKÚ^™H
+ˆ[œÝ[]Ü—ÞJKÛÛÜŠ™YMÙMŠKÚ^™H
+ˆŒKYJB‚BY›Üˆš[™×Þ[ˆÌŒŒŒŽKŒÎN‚‚BBY˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆš[™×ÞÚ^™H
+ˆ
+[œÝ[]Ü—ÞHHŒÍJJK™XÝÜŒŠÚ^™H
+ˆš[™×ÞÚ^™H
+ˆ
+[œÝ[]Ü—ÞH
+ÈŒÍJJKÛÛÜŠ™ÎLŠKÚ^™H
+ˆŒÍKYJB‚HÈ›ÜšÈ\È›ØÝ\ÈH\ØÚ\™ÙH[ÈHÚ[™ÛHœšYÚ]^ž›HÚ[‚‚]˜\ˆ›Üš×ØÛÛÜˆHÛÛÜŠ˜NXÌÍHŠB‚Y˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆ\Ú^™H
+ˆŒMÊK™XÝÜŒŠÚ^™H
+ˆŒ‹\Ú^™H
+ˆŒ
+K›Üš×ØÛÛÜ‹Ú^™H
+ˆŒÍKYJB‚Y˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆÚ^™H
+ˆŒMÊK™XÝÜŒŠÚ^™H
+ˆŒ‹Ú^™H
+ˆŒ
+K›Üš×ØÛÛÜ‹Ú^™H
+ˆŒÍKYJB‚Y˜]×ØÚ\˜ÛJ™XÝÜŒŠÚ^™H
+ˆŒ‹\Ú^™H
+ˆŒ
+KÚ^™H
+ˆŒKÛÛÜŠ™™™ˆŠJB‚Y˜]×ØÚ\˜ÛJ™XÝÜŒŠÚ^™H
+ˆŒ‹Ú^™H
+ˆŒ
+KÚ^™H
+ˆŒKÛÛÜŠ™™™ˆŠJB‚HÈ[š[X]Y[™\™ÞHÚ[™ÝÈ™[XZ[œÈÝXH]YH[™œšYÚ[œÈ™Y›Ü™Hš\š[™Ë‚‚]˜\ˆÛÜ™WØ[HHŒÍ
+ÈÝÙ\ˆ
+ˆN‚Y˜]×ØÚ\˜ÛJ™XÝÜŒŠ\Ú^™H
+ˆŒËŒ
+KÚ^™H
+ˆ
+ŒMH
+ÈÝÙ\ˆ
+ˆŒN
+KÛÛÜŠŒÍKŽKŒÛÜ™WØ[JJB‚Y˜]×ØÚ\˜ÛJ™XÝÜŒŠ\Ú^™H
+ˆŒËŒ
+KÚ^™H
+ˆŒMËÛÛÜŠŒNÌKŒŒL
+ÈÝÙ\ˆ
+ˆŒMŠK˜[ÙKX^ŠKŒÚ^™H
+ˆŒÍJKYJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚]˜\ˆ\\—Ý\HÙ[\ˆ
+È\™XÝ[Ûˆ
+ˆÚ^™H
+ˆŒˆH\™XÝ[Û‹›ÜÙÛÛ˜[
+
+H
+ˆÚ^™H
+ˆŒ‚]˜\ˆÝÙ\—Ý\HÙ[\ˆ
+È\™XÝ[Ûˆ
+ˆÚ^™H
+ˆŒˆ
+È\™XÝ[Û‹›ÜÙÛÛ˜[
+
+H
+ˆÚ^™H
+ˆŒ‚]˜\ˆ\HÙ[\ˆ
+È\™XÝ[Ûˆ
+ˆÚ^™H
+ˆÌ‚ZYˆÝÙ\ˆˆŒN‚‚BY˜]×Ù[XÝšX×Ø\˜Ê\\—Ý\ÝÙ\—Ý\›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒ‹ŒÌ
+ÈÝÙ\ˆ
+ˆKX^ŠKŒÚ^™H
+ˆŒÍJJB‚BY˜]×ØÚ\˜ÛJ\Ú^™H
+ˆ
+Œ
+ÈÝÙ\ˆ
+ˆŒJKÛÛÜŠŽ‹ŽMËKŒˆ
+ÈÝÙ\ˆ
+ˆL
+JB‚\™]\›ˆ\‚™[˜È˜]×Ù[XÝšX×ÝÙX\Ûœ×ÚYJ
+HOˆ›ÚY‚‚ZYˆÝ\ÝÛZ^™\—ÛÜ[ˆÜˆ[XÝšX×Ý˜\Ú\×ØXÝ]™J
+N‚‚B\™]\›‚‚]˜\ˆÚ[ÈH[XÝšX×ÝÙX\Û—ÜÚ[Ê
+B‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆ[ÙHH
+Ú[Š›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒJH
+ÈKŒ
+H
+ˆB‚Y˜]×Ù[XÝšX×Ù[Z]\ŠÚ[ËÜÚ[Ë˜Ø\\™K[XÝšX×ÝÜÜÚ^™H
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[JSPÕ’P×ÕTÒÓK
+K[ÙH
+ˆŒŒ
+B‚Y˜]×Ù[XÝšX×Ù[Z]\ŠÚ[ËœšYÚÚ[Ë˜Ø\\™K[XÝšX×ÜšYÚÜÚ^™H
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[JSPÕ’P×ÕTÒÓKJK[ÙH
+ˆŒŒ
+B‚™[˜È˜]×Ù[XÝšX×Ý˜\
+Y™™XÝˆXÝ[Û˜\žJHOˆ›ÚY‚‚]˜\ˆÙXÛÛ™Îˆ›Ø]HY™™XÝ™[\ÙY‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆÚ[ÈH[XÝšX×ÝÙX\Û—ÜÚ[Ê
+B‚]˜\ˆÜÝÙX\ÛŽˆ™XÝÜŒˆHÚ[ËÜ‚]˜\ˆšYÚÝÙX\ÛŽˆ™XÝÜŒˆHÚ[ËœšYÚ‚]˜\ˆÚØÚ×ÜÚ[ˆ™XÝÜŒˆHÚ[Ë˜Ø\\™B‚]˜\ˆ˜Y]\ÈH˜\Ø˜[Ü˜Y]\ÊSPÕ’P×ÕTÒÓKÐSQWÐSÕ’TÕPSÔQUTÈ
+ˆ›Ø\™ÜØØ[JB‚]˜\ˆÚ\™ÙHHÛ[ÛÝÜÝ\
+ÙXÛÛ™ÈÈŒÌ
+B‚]˜\ˆÚ\™ÙWÙ˜YHHKŒHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHKŒLŠHÈŒŽ
+B‚]˜\ˆ™X[WÜÝÙ\ˆHÚ\™ÙH
+ˆÚ\™ÙWÙ˜YB‚]˜\ˆ[XÝšYšYYHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHŒL
+HÈŒÎ
+B‚]˜\ˆ™[X\ÙHHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHTÐÐTT‘WÕSQJHÈTÑSÕSQJB‚]˜\ˆÙ[\ˆHÚØÚ×ÜÚ[‚]˜\ˆ˜[Ü˜Y]\ÈH˜Y]\Â‚]˜\ˆ[HHKŒ‚‚ZYˆ™[X\ÙHˆŒ‚‚BHÈ˜[Ý]›ÝYÚH™X\˜žH\\‹\šYÚÜ[š[™ÈÚ[H™[XZ[š[™ÈÚ\™ÙY‚‚B]˜\ˆ˜[H™[X\ÙH
+ˆ™[X\ÙB‚BXÙ[\ˆHÚØÚ×ÜÚ[›\œ
+Y™™XÝÙ˜[Ù[™Ú[
+SPÕ’P×ÕTÒÓJK˜[
+B‚BXÙ[\‹žHOHÚ[Š™[X\ÙH
+ˆJH
+ˆËŒ
+ˆØØ[WÞB‚BX˜[Ü˜Y]\È
+HKŒH™[X\ÙH
+ˆŒÍ‚BX[HHKŒH™[X\ÙH
+ˆŒL‚‚]˜\ˆÜÝ\H˜]×Ù[XÝšX×Ù[Z]\ŠÜÝÙX\Û‹ÚØÚ×ÜÚ[[XÝšX×ÝÜÜÚ^™H
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[JSPÕ’P×ÕTÒÓK
+K™X[WÜÝÙ\ŠB‚]˜\ˆšYÚÝ\H˜]×Ù[XÝšX×Ù[Z]\ŠšYÚÝÙX\Û‹ÚØÚ×ÜÚ[[XÝšX×ÜšYÚÜÚ^™H
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[JSPÕ’P×ÕTÒÓKJK™X[WÜÝÙ\ŠB‚‚HÈÛ™HÚÜœšYÚ\ØÚ\™ÙHœ›ÛHXXÚÙX\Û‹\È[ˆHÛÝ\˜ÙH[š[X][Û‹‚‚ZYˆ™X[WÜÝÙ\ˆˆŒH[™™[X\ÙHHŒ‚‚BY˜]×Ù[XÝšX×Ø\˜ÊÜÝ\ÚØÚ×ÜÚ[H™XÝÜŒŠ˜Y]\È
+ˆŒÍ˜Y]\È
+ˆŒÌ
+KÙXÛÛ™È
+ˆ‹ŒË™X[WÜÝÙ\‹X^ŠK‹H
+ˆØØ[WÞJJB‚BY˜]×Ù[XÝšX×Ø\˜ÊšYÚÝ\ÚØÚ×ÜÚ[
+È™XÝÜŒŠ˜Y]\È
+ˆŒÍ˜Y]\È
+ˆŒŽ
+KÙXÛÛ™È
+ˆ‹È
+ÈË™X[WÜÝÙ\‹X^ŠK‹H
+ˆØØ[WÞJJB‚‚HÈÙY\H™X[Ú\˜XÝ\ˆ˜[š\ÚX›H[™\ˆH[XÝšXÈÛÝË‚‚]˜\ˆÚZÙHH™XÝÜŒ‹–‘T“Â‚ZYˆ[XÝšYšYYˆŒH[™™[X\ÙHHŒ‚‚B\ÚZÙHH™XÝÜŒŠÚ[ŠÙXÛÛ™È
+ˆËŒ
+KÛÜÊÙXÛÛ™È
+ˆÍËŒ
+JH
+ˆ‹H
+ˆØØ[WÞH
+ˆ[XÝšYšYY‚Y˜]×ÜX˜™\—ÙØ[YWØ˜[
+Ù[\ˆ
+ÈÚZÙK˜[Ü˜Y]\ËY™™XÝX[KY™™XÝœYXÙK[JB‚HÈÝ›Û™È\œ™YÝ[\ˆÚ]KÞY[ÝÈ›\Ú\È™\X]YHØ\ÚÝ™\ˆHÚÛH˜[‚‚]˜\ˆ›\ÚÝØ]™HHÚ[ŠÙXÛÛ™È
+ˆMËŒ
+H
+ˆH
+ÈÚ[ŠÙXÛÛ™È
+ˆŽKŒ
+ÈÊH
+ˆŒÈ
+ÈŒ‚‚]˜\ˆ›\ÚHÛ[ÛÝÜÝ\
+Û[\Š
+›\ÚÝØ]™HHŒLŠHÈŒKŒ
+JH
+ˆ[XÝšYšYY‚ZYˆ›\ÚˆŒŽ‚‚BY˜]×ØÚ\˜ÛJÙ[\ˆ
+ÈÚZÙK˜[Ü˜Y]\È
+ˆ
+KŒ
+È›\Ú
+ˆŒL
+KÛÛÜŠKŒŽM‹Œ›\Ú
+ˆÌˆ
+ˆ[JKYKLKŒYJB‚BY˜]×ØÚ\˜ÛJÙ[\ˆ
+ÈÚZÙK˜[Ü˜Y]\È
+ˆ
+KŒÍˆ
+È›\Ú
+ˆŒN
+KÛÛÜŠKŒŽŒ›\Ú
+ˆŒŒ
+ˆ[JK˜[ÙKX^Š‹ŒŒ
+ˆØØ[WÞJKYJB‚‚HÈÛÛ\XÝYÚš[™È™[XZ[œÈÜ˜\Y\›Ý[™H˜[[˜ÛY[™È\š[™È]È˜[‚‚]˜\ˆØØ[ÜÝÙ\ˆH[XÝšYšYY
+ˆ
+KŒH™[X\ÙH
+ˆŒN
+B‚ZYˆØØ[ÜÝÙ\ˆˆŒN‚‚BY˜]×ØÚ\˜ÛJÙ[\ˆ
+ÈÚZÙK˜[Ü˜Y]\È
+ˆ
+KŒÌ
+ÈÚ[ŠÙXÛÛ™È
+ˆŒ
+H
+ˆŒÊKÛÛÜŠŽ‹ŽM‹KŒŒN
+ˆØØ[ÜÝÙ\ˆ
+ˆ[JJB‚BY›ÜˆH[ˆL‚‚BB]˜\ˆHHUH
+ˆ›Ø]
+JHÈLŒ
+ÈÙXÛÛ™È
+ˆ
+‹ŒH
+È›Ø]
+H	HÊH
+ˆŒŠB‚BB]˜\ˆ[›™\ˆHÙ[\ˆ
+ÈÚZÙH
+È™XÝÜŒŠÛÜÊJKÚ[ŠJJH
+ˆ˜[Ü˜Y]\È
+ˆŽ‚‚BB]˜\ˆÝ]\—Ø[™ÛHHH
+ÈÚ[ŠÙXÛÛ™È
+ˆMËŒ
+È›Ø]
+JJH
+ˆŒŽ‚BB]˜\ˆÝ]\ˆHÙ[\ˆ
+ÈÚZÙH
+È™XÝÜŒŠÛÜÊÝ]\—Ø[™ÛJKÚ[ŠÝ]\—Ø[™ÛJJH
+ˆ˜[Ü˜Y]\È
+ˆ
+KŒÌ
+ÈŒŒˆ
+ˆÚ[ŠÙXÛÛ™È
+ˆŒKŒ
+È›Ø]
+JJJB‚BBY˜]×Ù[XÝšX×Ø\˜Ê[›™\‹Ý]\‹ÙXÛÛ™È
+ˆK
+È›Ø]
+JKØØ[ÜÝÙ\ˆ
+ˆ[H
+ˆŽL‹X^ŠKŒKŽ
+ˆØØ[WÞJJB‚‚™[˜Èš\™WÜÚ[
+ˆ›Ø]Nˆ›Ø]
+HOˆ™XÝÜŒŽ‚‚\™]\›ˆ›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÈLŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžJB‚™[˜Èš\™WÝ˜\Ú\×ØXÝ]™J
+HOˆ›ÛÛ‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚BZYˆY™™XÝšÛHOH’T‘WÕTÒÓN‚‚BB\™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜È˜]×Ùš\™WÙ[Z]\ŠÙ[\Žˆ™XÝÜŒ‹\™Ù]ˆ™XÝÜŒ‹Ú^™Nˆ›Ø]X]ˆ›Ø]HŒ
+HOˆ™XÝÜŒŽ‚‚]˜\ˆ\™XÝ[ÛˆH
+\™Ù]HÙ[\ŠK››Ü›X[^™Y
+
+B‚ZYˆš\™WÛ][˜Ú\—Ý^\™HOH[‚‚B\™]\›ˆÙ[\‚‚]˜\ˆÛÝ\˜ÙHHš\™WÛ][˜Ú\—Ý^\™K™Ù]ÜÚ^™J
+B‚]˜\ˆ˜XÝÜˆHÚ^™HÈÛÝ\˜ÙKžB‚HÈHÙ[™\˜]Y\œ™]	ÜÈ›Ý][ÛˆÙ[\ˆ\È[œÚYHH\™ÙH›Ý[™˜\ÙK‚HÈ›Ý]HÙ[\ˆÙˆ]ÈÜ]X\™HØ[˜\Ë‚‚]˜\ˆ]›ÝH™XÝÜŒŠÛÝ\˜ÙKž
+ˆËÛÝ\˜ÙKžH
+ˆLŠB‚]˜\ˆ˜]×ÜÚ^™HHÛÝ\˜ÙH
+ˆ˜XÝÜ‚‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\‹\™XÝ[Û‹˜[™ÛJ
+K™XÝÜŒ‹“Ó‘JB‚Y˜]×Ý^\™WÜ™XÝ
+š\™WÛ][˜Ú\—Ý^\™K™XÝŠ\]›Ý
+ˆ˜XÝÜ‹˜]×ÜÚ^™JK˜[ÙJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚]˜\ˆ›Þž›WÝ\HÙ[\ˆ
+È\™XÝ[Ûˆ
+ˆ
+ÛÝ\˜ÙKžH]›Ýž
+H
+ˆ˜XÝÜ‚‚ZYˆX]ˆŒN‚‚BY˜]×ØÚ\˜ÛJ›Þž›WÝ\Ú^™H
+ˆ
+ŒMH
+ÈX]
+ˆŒÍJKÛÛÜŠKŒ‹ŒL‹H
+ÈX]
+ˆJJB‚\™]\›ˆ›Þž›WÝ\‚™[˜Èš\™WÝÙX\Û—ÜÚ[Ê
+HOˆXÝ[Û˜\žN‚‚]˜\ˆ\›ˆH˜\Ø˜[ÜÜÚ][ÛŠ’T‘WÕTÒÓKš\™WÜÚ[
+LL‹ŒLÍ‹Œ
+JB‚\™]\›ˆÂ‚BH˜\›ˆŽˆ\›‹‚BH›YŽˆš\™WÜÚ[
+ÎŒL‹Œ
+H
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+’T‘WÕTÒÓK
+K‚BH˜›ÝÛHŽˆš\™WÜÚ[
+NŒMKŒ
+H
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+’T‘WÕTÒÓKJB‚_B‚™[˜È˜]×Ùš\™WÝÙX\Ûœ×ÚYJ
+HOˆ›ÚY‚‚ZYˆÝ\ÝÛZ^™\—ÛÜ[ˆÜˆš\™WÝ˜\Ú\×ØXÝ]™J
+N‚‚B\™]\›‚‚]˜\ˆÚ[ÈHš\™WÝÙX\Û—ÜÚ[Ê
+B‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚Y˜]×Ùš\™WÙ[Z]\ŠÚ[Ë›YÚ[Ë˜\›‹NŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[J’T‘WÕTÒÓK
+JB‚Y˜]×Ùš\™WÙ[Z]\ŠÚ[Ë˜›ÝÛKÚ[Ë˜\›‹NŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[J’T‘WÕTÒÓKJJB‚™[˜È˜]×Ùš\™WÜÝ™X[JÜšYÚ[Žˆ™XÝÜŒ‹\™Ù]ˆ™XÝÜŒ‹[[Ý[ˆ›Ø]ÙYYÛÙ™œÙ]ˆ›Ø]Y]ÜØØ[Nˆ›Ø]HKŒ
+HOˆ›ÚY‚‚ZYˆ[[Ý[HŒN‚‚B\™]\›‚‚]˜\ˆ[™HÜšYÚ[‹›\œ
+\™Ù][[Ý[
+B‚]˜\ˆ\™XÝ[ÛˆH[™HÜšYÚ[‚‚ZYˆ\™XÝ[Û‹›[™ÝÜÜ]X\™Y
+
+HŒN‚‚B\™]\›‚‚]˜\ˆ›Ü›X[H\™XÝ[Û‹››Ü›X[^™Y
+
+K›ÜÙÛÛ˜[
+
+B‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+ˆY]ÜØØ[B‚]˜\ˆÝ]\ˆHXÚÙY™XÝÜŒ\œ˜^J
+B‚]˜\ˆ[›™\ˆHXÚÙY™XÝÜŒ\œ˜^J
+B‚Y›ÜˆH[ˆM‚‚B]˜\ˆH›Ø]
+JHÈLËŒ‚B]˜\ˆØ]™HHÚ[Š
+ˆNŒ
+ÈÙYYÛÙ™œÙ]
+ˆLËŒ
+È›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒN
+H
+ˆËŒ
+ˆØØ[WÞB‚B[Ý]\‹˜\[™
+ÜšYÚ[‹›\œ
+[™
+H
+È›Ü›X[
+ˆØ]™JB‚BZ[›™\‹˜\[™
+ÜšYÚ[‹›\œ
+[™
+H
+È›Ü›X[
+ˆØ]™H
+ˆŠB‚Y˜]×ÜÛ[[™JÝ]\‹ÛÛÜŠŽ‹ŒŒKŽLŠKŒ
+ˆØØ[WÞKYJB‚Y˜]×ÜÛ[[™JÝ]\‹ÛÛÜŠKŒŒÌ‹ŒKŽN
+KM‹Œ
+ˆØØ[WÞKYJB‚Y˜]×ÜÛ[[™J[›™\‹ÛÛÜŠKŒŽ‹ŒL‹ŽN
+KËŒ
+ˆØØ[WÞKYJB‚Y›ÜˆH[ˆLŽ‚‚B]˜\ˆ\ÙHH›[Ù
+›Ø]
+JHÈLKŒ
+ÈÙYYÛÙ™œÙ]
+È›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒËKŒ
+H
+ˆ[[Ý[‚B]˜\ˆHÜšYÚ[‹›\œ
+\™Ù]\ÙJB‚B\
+ÏH›Ü›X[
+ˆÚ[Š\ÙH
+ˆŽKŒ
+ÈÙYYÛÙ™œÙ]
+ˆMËŒ
+H
+ˆLËŒ
+ˆØØ[WÞB‚B]˜\ˆˆH
+ËH
+È›Ø]
+H	H
+H
+ˆKÊH
+ˆØØ[WÞB‚BY˜]×ØÚ\˜ÛJ‹ÛÛÜŠKŒŒŒ
+ÈŒM
+ˆ›Ø]
+H	HÊKŒKŽ
+JB‚™[˜È˜]×Ø\›š[™×Ø˜[
+Ù[\Žˆ™XÝÜŒ‹˜Y]\Îˆ›Ø]\›Žˆ›Ø]X[Nˆ[YXÙNˆ[[Nˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ›ÝÈH›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒB‚HÈ]H[š[X[™[XZ[ˆš\ÚX›HÚ[HÛÛÝÜ™XYÈÝ™\ˆ][œÝXYÙ‚‚HÈ™\XÚ[™È][œÝ[HÚ]H›]›XÚÈš\™HXÛÛ‹‚‚Y˜]×ÜX˜™\—ÙØ[YWØ˜[
+Ù[\‹˜Y]\ËX[KYXÙK
+KŒH\›ˆ
+ˆÎ
+H
+ˆ[JB‚]˜\ˆ[X™\—Ü˜Y]\ÈH˜Y]\È
+ˆ\œŠŽKŒ‹\›ŠB‚HÈÛÙX]^™H[™Y\[X™\ˆ›ÙK‚‚Y˜]×ØÚ\˜ÛJÙ[\‹[X™\—Ü˜Y]\È
+ˆKŒÍÛÛÜŠKŒŒMŒKŒL
+ˆ\›ˆ
+ˆ[JJB‚Y˜]×ØÚ\˜ÛJÙ[\‹[X™\—Ü˜Y]\È
+ˆKŒMKÛÛÜŠKŒŒÌŒMKŒLˆ
+ˆ\›ˆ
+ˆ[JJB‚Y˜]×ØÚ\˜ÛJÙ[\‹[X™\—Ü˜Y]\ËÛÛÜŠŒKŒNŒMŽˆ
+ˆ\›ˆ
+ˆ[JJB‚HÈ\œ™YÝ[\ˆÛÛÝ]Ú\ÈÙY\HÝ\™˜XÙHÜ™Ø[šXÈ[™^\™Y‚‚Y›ÜˆH[ˆLÎ‚‚B]˜\ˆHH›Ø]
+JH
+ˆ‹ŒÎNH
+ÈŒÌB‚B]˜\ˆ\Ý[˜ÙHH[X™\—Ü˜Y]\È
+ˆ
+ŒN
+ÈMˆ
+ˆXœÙŠÚ[Š›Ø]
+JH
+ˆKÌÊJJB‚B]˜\ˆÛÛÝØÙ[\Žˆ™XÝÜŒˆHÙ[\ˆ
+È™XÝÜŒŠÛÜÊJKÚ[ŠJJH
+ˆ\Ý[˜ÙB‚B]˜\ˆÛÛÝÜÚ^™HH[X™\—Ü˜Y]\È
+ˆ
+ŒLÈ
+ÈŒH
+ˆXœÙŠÛÜÊ›Ø]
+JH
+ˆ‹ŒLJJJB‚BY˜]×ØÚ\˜ÛJÛÛÝØÙ[\‹ÛÛÝÜÚ^™KÛÛÜŠŒKŒŒË
+ŒÍ
+È›Ø]
+H	HÊH
+ˆŒL
+H
+ˆ\›ˆ
+ˆ[JJB‚HÈš[™HÛÝÚ[™Èš\ÜÝ\™\È˜]\ˆ[ˆXÚÈØ\ÛÛˆÜÚÙ\Ë‚‚Y›ÜˆH[ˆÎ‚‚B]˜\ˆHH›Ø]
+JH
+ˆ‹ŒÌH
+ÈL‚‚B]˜\ˆÜ˜XÚ×ØNˆ™XÝÜŒˆHÙ[\ˆ
+È™XÝÜŒŠÛÜÊJKÚ[ŠJJH
+ˆ[X™\—Ü˜Y]\È
+ˆŒN‚B]˜\ˆ[›ÝÎˆ™XÝÜŒˆHÙ[\ˆ
+È™XÝÜŒŠÛÜÊH
+ÈŒŒ
+KÚ[ŠH
+ÈŒŒ
+JH
+ˆ[X™\—Ü˜Y]\È
+ˆ‚‚B]˜\ˆÜ˜XÚ×ØŽˆ™XÝÜŒˆHÙ[\ˆ
+È™XÝÜŒŠÛÜÊHHŒL
+KÚ[ŠHHŒL
+JH
+ˆ[X™\—Ü˜Y]\È
+ˆÎ‚B]˜\ˆX]H
+N
+Èˆ
+ˆÚ[Š›ÝÈ
+ˆËŒ
+È›Ø]
+JH
+ˆKÊJH
+ˆ\›ˆ
+ˆ[B‚BY˜]×Û[™JÜ˜XÚ×ØK[›ÝËÛÛÜŠKŒŒM‹ŒKX]
+ˆÍJKX^ŠKŒ˜Y]\È
+ˆŒÍJKYJB‚BY˜]×Û[™J[›ÝËÜ˜XÚ×Ø‹ÛÛÜŠKŒ‹ŒMKX]
+KX^ŠKŒ˜Y]\È
+ˆŒJKYJB‚HÈ›[Y\Èš\ÙH\Ø\™[ˆ˜[œÛXÙ[ÛÛœÝ[HÚ[™Ú[™ÈÛ™ÝY\Ë‚‚Y›ÜˆH[ˆ‚‚B]˜\ˆÜ˜][ÈHLŽˆ
+È›Ø]
+JH
+ˆKÈËŒ‚B]˜\ˆÝ\™˜XÙWÞHHÜ\
+X^ŠŒKŒHÜ˜][È
+ˆÜ˜][ÊJB‚B]˜\ˆ›[YWØ˜\ÙNˆ™XÝÜŒˆHÙ[\ˆ
+È™XÝÜŒŠÜ˜][È
+ˆ[X™\—Ü˜Y]\Ë\Ý\™˜XÙWÞH
+ˆ[X™\—Ü˜Y]\È
+ˆÌŠB‚B]˜\ˆÝØ^HHÚ[Š›ÝÈ
+ˆ
+KŒˆ
+È›Ø]
+H	HÊJH
+È›Ø]
+JH
+ˆKŽLJB‚B]˜\ˆ›[YWÚZYÚH˜Y]\È
+ˆ
+ŒÍ
+ÈŒÌ
+ˆXœÙŠÚ[Š›ÝÈ
+ˆ‹
+È›Ø]
+JJJJH
+ˆ\›‚‚B]˜\ˆ›[YWÝ\ˆ™XÝÜŒˆH›[YWØ˜\ÙH
+È™XÝÜŒŠÝØ^H
+ˆ˜Y]\È
+ˆŒM‹Y›[YWÚZYÚ
+B‚B]˜\ˆ›[YWÝÚYH˜Y]\È
+ˆ
+ŒH
+ÈŒÍH
+ˆ›Ø]
+H	HÊJH
+ˆ\›‚‚B]˜\ˆÛ™ÝYHHXÚÙY™XÝÜŒ\œ˜^JÂ‚BBY›[YWØ˜\ÙHH™XÝÜŒŠ›[YWÝÚYŒ
+K‚BBY›[YWÝ\‚BBY›[YWØ˜\ÙH
+È™XÝÜŒŠ›[YWÝÚYŒ
+B‚BWJB‚BY˜]×ØÛÛÜ™YÜÛYÛÛŠÛ™ÝYKÛÛÜŠKŒŒMKŒK
+ˆ\›ˆ
+ˆ[JJB‚BY˜]×Û[™J›[YWØ˜\ÙK›[YWÝ\›\œ
+›[YWØ˜\ÙKŒÍŠKÛÛÜŠKŒÌ‹ŒLˆ
+ˆ\›ˆ
+ˆ[JKX^ŠKŒ›[YWÝÚY
+ˆ
+KYJB‚HÈÜ\œÙHÜ\šÜÈ[™Û[ÚÙHÙ[HX]Ú]Ý]›Ü›Z[™ÈH[šY›Ü›HÝ][™K‚‚Y›ÜˆH[ˆÎ‚‚B]˜\ˆ\ÙHH›[Ù
+›ÝÈ
+ˆ
+Lˆ
+È›Ø]
+JH
+ˆŒÍJH
+È›Ø]
+JH
+ˆŒMÌËKŒ
+B‚B]˜\ˆÜ\šÎˆ™XÝÜŒˆHÙ[\ˆ
+È™XÝÜŒŠÚ[Š›Ø]
+JH
+ˆËŒMÈ
+È›ÝÊH
+ˆ˜Y]\È
+ˆÌ‹\˜Y]\È
+ˆ
+ÍH
+È\ÙH
+ˆKÍJJB‚BY˜]×ØÚ\˜ÛJÜ\šËX^ŠŽ˜Y]\È
+ˆ
+ŒHH\ÙH
+ˆŒN
+JKÛÛÜŠKŒMH
+È\ÙH
+ˆŒÌŒ
+KŒH\ÙJH
+ˆ\›ˆ
+ˆ[JJB‚Y›ÜˆH[ˆ‚‚B]˜\ˆÛ[ÚÙWÜ\ÙHH›[Ù
+›ÝÈ
+ˆŒŒˆ
+È›Ø]
+JH
+ˆŒKŒ
+B‚B]˜\ˆÛ[ÚÙNˆ™XÝÜŒˆHÙ[\ˆ
+È™XÝÜŒŠÚ[Š›ÝÈ
+ˆK
+È›Ø]
+JJH
+ˆ˜Y]\È
+ˆK\˜Y]\È
+ˆ
+KŒMH
+ÈÛ[ÚÙWÜ\ÙH
+ˆKJJB‚B]˜\ˆÛ[ÚÙWÜ˜Y]\ÈH˜Y]\È
+ˆ
+ŒLˆ
+ÈÛ[ÚÙWÜ\ÙH
+ˆŒN
+B‚BY˜]×ØÚ\˜ÛJÛ[ÚÙKÛ[ÚÙWÜ˜Y]\ËÛÛÜŠŒŒÍKŒË
+KŒHÛ[ÚÙWÜ\ÙJH
+ˆŒN
+ˆ\›ˆ
+ˆ[JJB‚™[˜È˜]×Ùš\™WÝ˜\
+Y™™XÝˆXÝ[Û˜\žJHOˆ›ÚY‚‚]˜\ˆÙXÛÛ™Îˆ›Ø]HY™™XÝ™[\ÙY‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆÚ[ÈHš\™WÝÙX\Û—ÜÚ[Ê
+B‚]˜\ˆYÝÙX\ÛŽˆ™XÝÜŒˆHÚ[Ë›Y‚]˜\ˆ›ÝÛWÝÙX\ÛŽˆ™XÝÜŒˆHÚ[Ë˜›ÝÛB‚]˜\ˆ\›—ÜÚ[ˆ™XÝÜŒˆHÚ[Ë˜\›‚‚]˜\ˆ˜Y]\ÈH˜\Ø˜[Ü˜Y]\Ê’T‘WÕTÒÓKËŒ
+ˆØØ[WÞJB‚]˜\ˆYÛš][ÛˆHÛ[ÛÝÜÝ\
+ÙXÛÛ™ÈÈŒÎ
+B‚]˜\ˆ\›ˆHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHŒLŠHÈK
+B‚]˜\ˆš\™WÙ˜[ÜÝ\H‹Ì‚‚]˜\ˆ™[X\ÙHHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHš\™WÙ˜[ÜÝ\
+HÈ
+’T‘WÑQ‘‘PÕÑTUSÓˆHš\™WÙ˜[ÜÝ\
+JB‚]˜\ˆÙ[\ˆH\›—ÜÚ[‚]˜\ˆ[HHKŒ‚ZYˆ™[X\ÙHˆŒ‚‚B]˜\ˆÜ˜]š]WÙ˜[H™[X\ÙH
+ˆ™[X\ÙB‚BHÈ[™[ˆHš\ÚX›HØ]\ˆÝš\ÛÜÙHÈHÝÙ\‹[YÛÜ›™\‹‚‚BXÙ[\ˆH\›—ÜÚ[›\œ
+Y™™XÝÙ˜[Ù[™Ú[
+’T‘WÕTÒÓJKÜ˜]š]WÙ˜[
+B‚BXÙ[\‹ž
+ÏHÚ[Š™[X\ÙH
+ˆJH
+ˆM‹Œ
+ˆØØ[WÞB‚B\˜Y]\È
+HKŒH™[X\ÙH
+ˆŒŒ‚‚BX[HHKŒH™[X\ÙH
+ˆŒL‚]˜\ˆÝ™X[WÜÝ™[™ÝHYÛš][Ûˆ
+ˆ
+KŒHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHKŒŠHÈŠJB‚]˜\ˆYÝ\H˜]×Ùš\™WÙ[Z]\ŠYÝÙX\Û‹\›—ÜÚ[NŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[J’T‘WÕTÒÓK
+KÝ™X[WÜÝ™[™Ý
+B‚]˜\ˆ›ÝÛWÝ\H˜]×Ùš\™WÙ[Z]\Š›ÝÛWÝÙX\Û‹\›—ÜÚ[NŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[J’T‘WÕTÒÓKJKÝ™X[WÜÝ™[™Ý
+B‚ZYˆÝ™X[WÜÝ™[™ÝˆŒN‚‚BY˜]×Ùš\™WÜÝ™X[JYÝ\\›—ÜÚ[Ý™X[WÜÝ™[™ÝŒMË˜\ÝÙX\Û—ÜØØ[J’T‘WÕTÒÓK
+JB‚BY˜]×Ùš\™WÜÝ™X[J›ÝÛWÝ\\›—ÜÚ[Ý™X[WÜÝ™[™ÝŒË˜\ÝÙX\Û—ÜØØ[J’T‘WÕTÒÓKJJB‚Y˜]×Ø\›š[™×Ø˜[
+Ù[\‹˜Y]\Ë\›‹Y™™XÝX[KY™™XÝœYXÙK[JB‚™[˜ÈXÙWÜÚ[
+ˆ›Ø]Nˆ›Ø]
+HOˆ™XÝÜŒŽ‚‚\™]\›ˆ›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÈLŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžJB‚™[˜ÈXÙWÝÙX\Û—ÜÚ[Ê
+HOˆXÝ[Û˜\žN‚‚]˜\ˆœ™Y^™HH˜\Ø˜[ÜÜÚ][ÛŠPÑWÕTÒÓKXÙWÜÚ[
+ŒŒMŒ
+JB‚\™]\›ˆÂ‚BH™œ™Y^™HŽˆœ™Y^™K‚BH›YŽˆXÙWÜÚ[
+ÌŒMKŒ
+H
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+PÑWÕTÒÓK
+K‚BHœšYÚŽˆXÙWÜÚ[
+ÌÌŒMKŒ
+H
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+PÑWÕTÒÓKJB‚_B‚™[˜ÈXÙWÝ˜\Ú\×ØXÝ]™J
+HOˆ›ÛÛ‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚BZYˆY™™XÝšÛHOHPÑWÕTÒÓN‚‚BB\™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜È˜]×ÚXÙWÙ[Z]\ŠÙ[\Žˆ™XÝÜŒ‹\™Ù]ˆ™XÝÜŒ‹Ú^™Nˆ›Ø]œ›ÜÝÜÝÙ\Žˆ›Ø]HŒ
+HOˆ™XÝÜŒŽ‚‚]˜\ˆ\™XÝ[ÛˆH
+\™Ù]HÙ[\ŠK››Ü›X[^™Y
+
+B‚ZYˆ\™XÝ[Û‹›[™ÝÜÜ]X\™Y
+
+HŒN‚‚BY\™XÝ[ÛˆH™XÝÜŒ‹”’QÒ‚]˜\ˆ[™ÛHH\™XÝ[Û‹˜[™ÛJ
+B‚HÈ]Z[YÜž[ÙÙ[šXÈØ[››Ûˆ˜\ÙYÛˆHÛÝ\˜ÙH[š[X][ÛŽˆH\›X[™[‚HÈÝÛ™K[[Ý[Y˜\ÙKš[Û]ÛÛÛ[™\Ù\›Ú\ˆ[™Ý\YÚ[™\ˆ›Þž›K‚‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\‹[™ÛK™XÝÜŒ‹“Ó‘JB‚]˜\ˆÚYÝÈH™XÝŠ™XÝÜŒŠ\Ú^™H
+ˆLË\Ú^™H
+ˆŒÍ
+H
+È™XÝÜŒŠŒÚ^™H
+ˆŒL
+K™XÝÜŒŠÚ^™H
+ˆŽ‹Ú^™H
+ˆŽ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒŒËŒÌ
+KÚ^™H
+ˆŒMJKÚYÝÊB‚]˜\ˆ[Ý[H™XÝŠ™XÝÜŒŠ\Ú^™H
+ˆLË\Ú^™H
+ˆŒÍ
+K™XÝÜŒŠÚ^™H
+ˆKÚ^™H
+ˆŽ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLÎŠKÚ^™H
+ˆŒM
+K[Ý[
+B‚]˜\ˆ[Ý[Ú[›™\ˆH™XÝŠ™XÝÜŒŠ\Ú^™H
+ˆK\Ú^™H
+ˆŒŠK™XÝÜŒŠÚ^™H
+ˆŒÌÚ^™H
+ˆLŠJB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŽNLŠKÚ^™H
+ˆŒLJK[Ý[Ú[›™\ŠB‚Y›Üˆ›ÛÞH[ˆËLŒŒŒŒN‚‚BY˜]×ØÚ\˜ÛJ™XÝÜŒŠ\Ú^™H
+ˆŒÎKÚ^™H
+ˆ›ÛÞJKÚ^™H
+ˆŒËÛÛÜŠ™ÙMYMÈŠJB‚HÈ›Ý[™Y[œÝ[]YÛÛÛ[[šÈÚ]^Y\™YÚY[™È[™HÛ\ÚYYÚYÚ‚‚]˜\ˆ[š×ÜÝ\H™XÝÜŒŠ\Ú^™H
+ˆŒL‹Œ
+B‚]˜\ˆ[š×Ù[™H™XÝÜŒŠÚ^™H
+ˆŒKŒ
+B‚Y˜]×Û[™J[š×ÜÝ\[š×Ù[™ÛÛÜŠŒMÌYØHŠKÚ^™H
+ˆNYJB‚Y˜]×Û[™J[š×ÜÝ\[š×Ù[™ÛÛÜŠMØXHŠKÚ^™H
+ˆYJB‚Y˜]×Û[™J[š×ÜÝ\[š×Ù[™ÛÛÜŠŽŒHŠKÚ^™H
+ˆŒÎYJB‚Y˜]×Û[™J[š×ÜÝ\H™XÝÜŒŠŒÚ^™H
+ˆŒÍJK[š×Ù[™H™XÝÜŒŠŒÚ^™H
+ˆŒÍJKÛÛÜŠÍ‹Ì‹KŒŽ
+KÚ^™H
+ˆŒKYJB‚Y˜]×Û[™J[š×ÜÝ\
+È™XÝÜŒŠŒÚ^™H
+ˆŒLŠK[š×Ù[™
+È™XÝÜŒŠŒÚ^™H
+ˆŒLŠKÛÛÜŠŒLŒL‹ŒÌMJKÚ^™H
+ˆŒËYJB‚HÈÛÛÛ[™È˜[™È\ÙHH\šÈš[H[™HœšYÚÝY[Ù[\‹‚‚Y›Üˆ˜[™Þ[ˆËLŒËŒŒŒ—N‚‚BY˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆ˜[™Þ\Ú^™H
+ˆŒÊK™XÝÜŒŠÚ^™H
+ˆ˜[™ÞÚ^™H
+ˆŒÊKÛÛÜŠŒNŽLÍŠKÚ^™H
+ˆŒMKYJB‚BY˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆ˜[™Þ\Ú^™H
+ˆŒ
+K™XÝÜŒŠÚ^™H
+ˆ˜[™ÞÚ^™H
+ˆŒ
+KÛÛÜŠŽY˜ŒØ˜HŠKÚ^™H
+ˆŒKYJB‚HÈ[[Z[˜]YÛ›ÝÙ›ZÙH™\ÜÝ\™HÚ[™ÝË‚‚]˜\ˆØ]YÙWØÙ[\ˆH™XÝÜŒŠÚ^™H
+ˆŒKŒ
+B‚Y˜]×ØÚ\˜ÛJØ]YÙWØÙ[\‹Ú^™H
+ˆŒL‹ÛÛÜŠŒMÌ˜ŒÎHŠJB‚Y˜]×ØÚ\˜ÛJØ]YÙWØÙ[\‹Ú^™H
+ˆŒKÛÛÜŠ‹ŽKŒˆ
+Èœ›ÜÝÜÝÙ\ˆ
+ˆ
+JB‚Y›ÜˆÜÚÙH[ˆÎ‚‚B]˜\ˆÜÚÙWØ[™ÛHH›Ø]
+ÜÚÙJH
+ˆHÈËŒ‚B]˜\ˆÜÚÙWÝ™XÝÜˆH™XÝÜŒŠÛÜÊÜÚÙWØ[™ÛJKÚ[ŠÜÚÙWØ[™ÛJJH
+ˆÚ^™H
+ˆŒŒB‚BY˜]×Û[™JØ]YÙWØÙ[\ˆHÜÚÙWÝ™XÝÜ‹Ø]YÙWØÙ[\ˆ
+ÈÜÚÙWÝ™XÝÜ‹ÛÛÜŠŽLKKŒKŒŽ
+KX^ŠKŒÚ^™H
+ˆŒN
+KYJB‚HÈÝ\Y›Þž›HÚ]H[HÙ\˜[ZXÈÛÛ\‚‚Y˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆŒËŒ
+K™XÝÜŒŠÚ^™H
+ˆLËŒ
+KÛÛÜŠŒŒÎŠKÚ^™H
+ˆŒËYJB‚Y˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆŒŽKŒ
+K™XÝÜŒŠÚ^™H
+ˆLKŒ
+KÛÛÜŠ˜N˜ØÌHŠKÚ^™H
+ˆŒMKYJB‚Y›Üˆš[™×Þ[ˆÌŒÌK‹L—N‚‚BY˜]×Û[™J™XÝÜŒŠÚ^™H
+ˆš[™×Þ\Ú^™H
+ˆŒN
+K™XÝÜŒŠÚ^™H
+ˆš[™×ÞÚ^™H
+ˆŒN
+KÛÛÜŠŒÍÍÍŽŠKÚ^™H
+ˆŒËYJB‚]˜\ˆØØ[Ý\H™XÝÜŒŠÚ^™H
+ˆŒ‹Œ
+B‚Y˜]×ØÚ\˜ÛJØØ[Ý\Ú^™H
+ˆŒL‹ÛÛÜŠŒLÍˆŠJB‚Y˜]×ØÚ\˜ÛJØØ[Ý\Ú^™H
+ˆ
+ŒÌˆ
+Èœ›ÜÝÜÝÙ\ˆ
+ˆŒN
+KÛÛÜŠŽËŽNKŒŒˆ
+Èœ›ÜÝÜÝÙ\ˆ
+ˆŒÍ
+JB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚]˜\ˆ\HÙ[\ˆ
+È\™XÝ[Ûˆ
+ˆÚ^™H
+ˆŒ‚‚HÈÛÛ˜\Üˆ[™[žHXÙHÜž\Ý[ÈXZÙHH›Þž›H™Y[XÝ]™HÚ]Ý]‚HÈØœØÝ\š[™ÈHÙX\ÛˆÜˆHØ[Y\^H˜[‚‚]˜\ˆ˜\Ü—Ü\ÙHH›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒB‚Y›ÜˆH[ˆ‚‚B]˜\ˆšYH›[Ù
+˜\Ü—Ü\ÙH
+È›Ø]
+JH
+ˆŒKŒ
+B‚B]˜\ˆ˜\Ü—ØÙ[\ˆH\
+È\™XÝ[Ûˆ
+ˆÚ^™H
+ˆšY
+ˆŒŒÈ
+È\™XÝ[Û‹›ÜÙÛÛ˜[
+
+H
+ˆÚ[Š˜\Ü—Ü\ÙH
+ˆËŒ
+È›Ø]
+JJH
+ˆÚ^™H
+ˆŒMB‚B]˜\ˆ˜\Ü—Ø[HH
+KŒHšY
+H
+ˆ
+Œ
+Èœ›ÜÝÜÝÙ\ˆ
+ˆŒN
+B‚BY˜]×ØÚ\˜ÛJ˜\Ü—ØÙ[\‹Ú^™H
+ˆ
+ŒÍH
+ÈšY
+ˆŒMJKÛÛÜŠÎŽM‹KŒ˜\Ü—Ø[JJB‚ZYˆœ›ÜÝÜÝÙ\ˆˆŒN‚‚BY˜]×ØÚ\˜ÛJ\Ú^™H
+ˆ
+ŒLˆ
+Èœ›ÜÝÜÝÙ\ˆ
+ˆŒ
+KÛÛÜŠŒËŽL‹KŒŒM
+Èœ›ÜÝÜÝÙ\ˆ
+ˆŒŒ
+JB‚BY›ÜˆH[ˆÎ‚‚BB]˜\ˆÜž\Ý[Ø[™ÛHH˜\Ü—Ü\ÙH
+ˆŒ
+ÈUH
+ˆ›Ø]
+JHÈËŒ‚BB]˜\ˆÜž\Ý[H\
+È™XÝÜŒŠÛÜÊÜž\Ý[Ø[™ÛJKÚ[ŠÜž\Ý[Ø[™ÛJJH
+ˆÚ^™H
+ˆŒM‚‚BBY˜]×ØÚ\˜ÛJÜž\Ý[X^ŠKŒÚ^™H
+ˆŒŒŠKÛÛÜŠŽLKKŒKŒŒ
+ˆœ›ÜÝÜÝÙ\ŠJB‚\™]\›ˆ\‚™[˜È˜]×ÚXÙWÝÙX\Ûœ×ÚYJ
+HOˆ›ÚY‚‚ZYˆÝ\ÝÛZ^™\—ÛÜ[ˆÜˆXÙWÝ˜\Ú\×ØXÝ]™J
+N‚‚B\™]\›‚‚]˜\ˆÚ[ÈHXÙWÝÙX\Û—ÜÚ[Ê
+B‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆ[ÙHH
+Ú[Š›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒÎ
+H
+ÈKŒ
+H
+ˆB‚Y˜]×ÚXÙWÙ[Z]\ŠÚ[Ë›YÚ[Ë™œ™Y^™KLËŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[JPÑWÕTÒÓK
+K[ÙH
+ˆŒMŠB‚Y˜]×ÚXÙWÙ[Z]\ŠÚ[ËœšYÚÚ[Ë™œ™Y^™KLËŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[JPÑWÕTÒÓKJK[ÙH
+ˆŒMŠB‚™[˜È˜]×ÚXÙWÜÝ™X[JÜšYÚ[Žˆ™XÝÜŒ‹\™Ù]ˆ™XÝÜŒ‹[[Ý[ˆ›Ø]ÙYYÛÙ™œÙ]ˆ›Ø]Y]ÜØØ[Nˆ›Ø]HKŒ
+HOˆ›ÚY‚‚ZYˆ[[Ý[HŒN‚‚B\™]\›‚‚]˜\ˆ\™XÝ[ÛˆH\™Ù]HÜšYÚ[‚‚]˜\ˆ›Ü›X[H\™XÝ[Û‹››Ü›X[^™Y
+
+K›ÜÙÛÛ˜[
+
+B‚]˜\ˆ[™HÜšYÚ[‹›\œ
+\™Ù][[Ý[
+B‚]˜\ˆÚYHX^Š‹Œ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+ˆËŒ
+ˆY]ÜØØ[JB‚Y˜]×Û[™JÜšYÚ[‹[™ÛÛÜŠËŽLËKŒŠKÚY
+ˆ‹ŒKYJB‚Y˜]×Û[™JÜšYÚ[‹[™ÛÛÜŠŽL‹ŽNKKŒŽM
+KÚYYJB‚Y›ÜˆH[ˆLÎ‚‚B]˜\ˆ\ÙHH›[Ù
+›Ø]
+JHÈL‹Œ
+ÈÙYYÛÙ™œÙ]
+È[[Ý[
+ˆŽKKŒ
+B‚BZYˆ\ÙHˆ[[Ý[‚‚BBXÛÛ[YB‚B]˜\ˆHÜšYÚ[‹›\œ
+\™Ù]\ÙJB‚B]˜\ˆÛØ˜›HHÚ[Š\ÙH
+ˆÌKŒ
+ÈÙYYÛÙ™œÙ]
+ˆMËŒ
+H
+ˆÚY
+ˆKŒÂ‚B\
+ÏH›Ü›X[
+ˆÛØ˜›B‚B]˜\ˆ\XÛWÜ˜Y]\ÈHÚY
+ˆ
+ŒÎ
+È›Ø]
+H	HÊH
+ˆŒMŠB‚BY˜]×ØÚ\˜ÛJ\XÛWÜ˜Y]\ËÛÛÜŠŽ‹ŽMËKŒŽ
+JB‚™[˜È˜]×ÚXÙWÜÚ[
+Ù[\Žˆ™XÝÜŒ‹˜Y]\Îˆ›Ø][[Ý[ˆ›Ø][Nˆ›Ø]HKŒ
+HOˆ›ÚY‚‚ZYˆ[[Ý[HŒN‚‚B\™]\›‚‚]˜\ˆÚ[Ü˜Y]\ÈH˜Y]\È
+ˆ\œŠÌ‹KŒÌ‹[[Ý[
+B‚]˜\ˆÚ[ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚Y›ÜˆH[ˆMŽ‚‚B]˜\ˆ[™ÛHHUH
+ˆ›Ø]
+JHÈM‹Œ‚B]˜\ˆ˜YÈHKŒ
+È
+ŒLYˆH	HˆOH[ÙHLŒ
+H
+ˆ[[Ý[‚B\Ú[Ë˜\[™
+Ù[\ˆ
+È™XÝÜŒŠÛÜÊ[™ÛJKÚ[Š[™ÛJJH
+ˆÚ[Ü˜Y]\È
+ˆ˜YÊB‚Y˜]×ØÛÛÜ™YÜÛYÛÛŠÚ[ËÛÛÜŠŽLKKŒ
+ŒN
+È[[Ý[
+ˆŠH
+ˆ[JJB‚]˜\ˆÝ][™HHÚ[Ë™\XØ]J
+B‚[Ý][™K˜\[™
+Ú[ÖÌJB‚Y˜]×ÜÛ[[™JÝ][™KÛÛÜŠŽŽNKŒŽLˆ
+ˆ[JKX^Š‹Œ˜Y]\È
+ˆŒJKYJB‚Y›ÜˆH[ˆÎ‚‚B]˜\ˆHH›Ø]
+JH
+ˆ‹ŒŒH
+È[[Ý[‚B]˜\ˆ[›™\ˆHÙ[\ˆ
+È™XÝÜŒŠÛÜÊJKÚ[ŠJJH
+ˆÚ[Ü˜Y]\È
+ˆŒŽ‚B]˜\ˆÝ]\ˆHÙ[\ˆ
+È™XÝÜŒŠÛÜÊH
+ÈŒŒŠKÚ[ŠH
+ÈŒŒŠJH
+ˆÚ[Ü˜Y]\È
+ˆ
+N
+ÈŒŽ
+ˆ[[Ý[
+B‚BY˜]×Û[™J[›™\‹Ý]\‹ÛÛÜŠŽLŽNKKŒÌˆ
+ˆ[[Ý[
+ˆ[JKX^ŠKŒ˜Y]\È
+ˆŒMJKYJB‚™[˜È˜]×ÚXÙWÝ˜\
+Y™™XÝˆXÝ[Û˜\žJHOˆ›ÚY‚‚]˜\ˆÙXÛÛ™Îˆ›Ø]HY™™XÝ™[\ÙY‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆÚ[ÈHXÙWÝÙX\Û—ÜÚ[Ê
+B‚]˜\ˆYÝÙX\ÛŽˆ™XÝÜŒˆHÚ[Ë›Y‚]˜\ˆšYÚÝÙX\ÛŽˆ™XÝÜŒˆHÚ[ËœšYÚ‚]˜\ˆœ™Y^™WÜÚ[ˆ™XÝÜŒˆHÚ[Ë™œ™Y^™B‚]˜\ˆ˜Y]\ÈH˜\Ø˜[Ü˜Y]\ÊPÑWÕTÒÓKËŒ
+ˆØØ[WÞJB‚]˜\ˆÜ˜^HHÛ[ÛÝÜÝ\
+ÙXÛÛ™ÈÈŽŠB‚]˜\ˆœ™Y^™HHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHŒŒŠHÈKŒN
+B‚]˜\ˆ™[X\ÙHHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHTÐÐTT‘WÕSQJHÈTÑSÕSQJB‚]˜\ˆÙ[\ˆHœ™Y^™WÜÚ[‚]˜\ˆ[HHKŒ‚ZYˆ™[X\ÙHˆŒ‚‚B]˜\ˆÜ˜]š]WÙ˜[H™[X\ÙH
+ˆ™[X\ÙB‚BHÈš[š\Ú\Ý™[ÝÈHX›HÛÈHÛX[œ›Þ™[ˆ[š[X[™[XZ[œÈš\ÚX›B‚BHÈÚ[ˆHØ]\‹Y›Ø][™È\ÙHZÙ\ÈÝ™\‹‚‚BXÙ[\ˆHœ™Y^™WÜÚ[›\œ
+Y™™XÝÙ˜[Ù[™Ú[
+PÑWÕTÒÓJKÜ˜]š]WÙ˜[
+B‚BXÙ[\‹ž
+ÏHÚ[Š™[X\ÙH
+ˆJH
+ˆKŒ
+ˆØØ[WÞB‚B\˜Y]\È
+HKŒH™[X\ÙH
+ˆŒŽ‚BX[HHKŒH™[X\ÙH
+ˆŒL‚‚]˜\ˆÝ™X[WÜÝ™[™ÝHÜ˜^H
+ˆ
+KŒHÛ[ÛÝÜÝ\
+
+ÙXÛÛ™ÈHKŒŽ
+HÈŒÍÊJB‚]˜\ˆYÝ\H˜]×ÚXÙWÙ[Z]\ŠYÝÙX\Û‹œ™Y^™WÜÚ[LËŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[JPÑWÕTÒÓK
+KÝ™X[WÜÝ™[™Ý
+B‚]˜\ˆšYÚÝ\H˜]×ÚXÙWÙ[Z]\ŠšYÚÝÙX\Û‹œ™Y^™WÜÚ[LËŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[JPÑWÕTÒÓKJKÝ™X[WÜÝ™[™Ý
+B‚ZYˆÙXÛÛ™ÈKN‚‚BY˜]×ÚXÙWÜÝ™X[JYÝ\œ™Y^™WÜÚ[Ý™X[WÜÝ™[™ÝŒLË˜\ÝÙX\Û—ÜØØ[JPÑWÕTÒÓK
+JB‚BY˜]×ÚXÙWÜÝ™X[JšYÚÝ\œ™Y^™WÜÚ[Ý™X[WÜÝ™[™ÝŒK˜\ÝÙX\Û—ÜØØ[JPÑWÕTÒÓKJJB‚Y˜]×ÜX˜™\—ÙØ[YWØ˜[
+Ù[\‹˜Y]\ËY™™XÝX[KY™™XÝœYXÙKKŒHœ™Y^™H
+ˆN
+B‚Y˜]×ÚXÙWÜÚ[
+Ù[\‹˜Y]\Ëœ™Y^™K[JB‚ZYˆœ™Y^™HˆMH[™™[X\ÙHHŒ‚‚B]˜\ˆÜ\šÛHHMH
+ÈÚ[ŠÙXÛÛ™È
+ˆNŒ
+H
+ˆŒÍB‚BY›ÜˆH[ˆŽ‚‚BB]˜\ˆHHUH
+ˆ›Ø]
+JHÈ‹Œ
+ÈÙXÛÛ™È
+ˆÂ‚BB]˜\ˆHÙ[\ˆ
+È™XÝÜŒŠÛÜÊJKÚ[ŠJJH
+ˆ˜Y]\È
+ˆK‚BBY˜]×ØÚ\˜ÛJX^ŠKK‹
+ˆØØ[WÞJKÛÛÜŠŽLKKŒKŒÜ\šÛJJB‚™[˜ÈX˜™\—ÜÚ[
+ˆ›Ø]Nˆ›Ø]
+HOˆ™XÝÜŒŽ‚‚\™]\›ˆ›Ø\™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÈLŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžHÈŒŒ
+ˆ›Ø\™Ü™XÝœÚ^™KžJB‚™[˜ÈÛ[ÛÝÜÝ\
+˜[YNˆ›Ø]
+HOˆ›Ø]‚‚]˜\ˆˆHÛ[\Š˜[YKŒKŒ
+B‚\™]\›ˆˆ
+ˆˆ
+ˆ
+ËŒH‹Œ
+ˆŠB‚™[˜ÈX˜™\—Ú[™ÜÜÙJ˜[YNˆ›Ø]
+HOˆ[‚‚ZYˆ˜[YHŒNˆ™]\›ˆ‚ZYˆ˜[YHˆ™]\›ˆB‚ZYˆ˜[YHŽˆ™]\›ˆ‚‚ZYˆ˜[YHŽŽˆ™]\›ˆÂ‚\™]\›ˆ‚™[˜È˜]×ÜX˜™\—ÙØ[YWØ˜[
+ÜÚ][ÛŽˆ™XÝÜŒ‹˜Y]\Îˆ›Ø]X[Nˆ[YXÙNˆ[[Nˆ›Ø]
+HOˆ›ÚY‚‚ZYˆX[WÜYXÙWÝ^\™\ËœÚ^™J
+HˆÜˆX[WÜYXÙWÝ^\™\ÖÝX[WHOH[‚‚B\™]\›‚‚]˜\ˆ^\™HHX[WÜYXÙWÝ^\™\ÖÝX[WB‚]˜\ˆÚ^™HH™XÝÜŒ‹“Ó‘H
+ˆ˜Y]\È
+ˆ‹ŒÍ‚Y˜]×ØÚ\˜ÛJÜÚ][Ûˆ
+È™XÝÜŒŠ˜Y]\È
+ˆŒK˜Y]\È
+ˆŒMJK˜Y]\È
+ˆKŒÛÛÜŠŒÌ
+ˆ[JKYKLKŒYJB‚Y˜]×Ý^\™WÜ™XÝ
+^\™K™XÝŠÜÚ][ÛˆHÚ^™H
+ˆKÚ^™JK˜[ÙKÛÛÜŠKKK[JJB‚ZYˆX[\×ÜÚ\™WÜš[™×ØÛÛÜŠ
+N‚‚B]˜\ˆX\šÙ\ˆHX[WÛX\šÙ\—ØÛÛÜŠX[JB‚BY˜]×Ø\˜ÊÜÚ][Û‹˜Y]\È
+ˆKŒM‹ŒUKÍ‹X\šÙ\‹X^Š‹K˜Y]\È
+ˆŒMŠKYJB‚BY˜]×ØÚ\˜ÛJÜÚ][Ûˆ
+È™XÝÜŒŠ˜Y]\È
+ˆÌ‹\˜Y]\È
+ˆÌŠK˜Y]\È
+ˆŒŒ‹X\šÙ\ŠB‚BY˜]×ÜÝš[™ÊZWÙ›ÛÜÚ][Ûˆ
+È™XÝÜŒŠ˜Y]\È
+ˆM‹\˜Y]\È
+ˆN
+KÝŠX[H
+ÈJKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹˜Y]\È
+ˆKX^JL[
+˜Y]\È
+ˆŠJKÛÛÜŠŒMÌÌHŠJB‚™[˜È™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+HOˆ›ÚY‚‚]X[WÜYXÙWÝ^\™\Ë˜ÛX\Š
+B‚]X[WÜYXÙWÝ^\™\Ë˜\[™
+XZÙWØÛÛÜ™YØ[š[X[Ý^\™J^Y\—Ø[š[X[’S‘×ÐÓÓÔ”ÖÜ^Y\—Üš[™×ØÛÛÜ—JJB‚]X[WÜYXÙWÝ^\™\Ë˜\[™
+XZÙWØÛÛÜ™YØ[š[X[Ý^\™JZWØ[š[X[’S‘×ÐÓÓÔ”ÖØZWÜš[™×ØÛÛÜ—JJB‚™[˜ÈXZÙWØÛÛÜ™YØ[š[X[Ý^\™J[š[X[Ú[™^ˆ[\™Ù]ØÛÛÜŽˆÛÛÜŠHOˆ^\™L‘‚‚ZYˆ[š[X[Ú[™^Üˆ[š[X[Ú[™^H[š[X[Ý^\™\ËœÚ^™J
+N‚‚B\™]\›ˆ[‚]˜\ˆ[XYÙNˆ[XYÙHH[š[X[Ý^\™\ÖØ[š[X[Ú[™^K™Ù]Ú[XYÙJ
+K™\XØ]J
+B‚]˜\ˆX\ÚÎˆ[XYÙHH[š[X[Üš[™×ÛX\ÚÜÖØ[š[X[Ú[™^K™Ù]Ú[XYÙJ
+B‚Y›ÜˆH[ˆ[XYÙK™Ù]ÚZYÚ
+
+N‚‚BY›Üˆ[ˆ[XYÙK™Ù]ÝÚY
+
+N‚‚BB]˜\ˆ[[Ý[ˆ›Ø]HX\ÚË™Ù]Ü^[
+JKœ‚‚BBZYˆ[[Ý[HŒN‚‚BBBXÛÛ[YB‚BB]˜\ˆÜšYÚ[˜[ˆÛÛÜˆH[XYÙK™Ù]Ü^[
+JB‚BB]˜\ˆ™XÛÛÜ™YˆÛÛÜˆHÛÛÜ‹™œ›ÛWÚÝŠ\™Ù]ØÛÛÜ‹šX^ŠÜšYÚ[˜[œË\™Ù]ØÛÛÜ‹œÈ
+ˆŽŠKÜšYÚ[˜[‹ÜšYÚ[˜[˜JB‚BBZ[XYÙKœÙ]Ü^[
+KÜšYÚ[˜[›\œ
+™XÛÛÜ™Y[[Ý[
+JB‚\™]\›ˆ[XYÙU^\™K˜Ü™X]WÙœ›ÛWÚ[XYÙJ[XYÙJB‚™[˜ÈÝ\ÝÛZ^™\—Ü[™[
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆÚ^™HH™XÝÜŒŠZ[™ŠŒŒšY]ÜÜÜÚ^™KžHÍ‹Œ
+KZ[™ŠMŒŒšY]ÜÜÜÚ^™KžHHÍŒ
+JB‚\™]\›ˆ™XÝŠ
+šY]ÜÜÜÚ^™HHÚ^™JH
+ˆKÚ^™JB‚™[˜ÈÝ\ÝÛZ^™\—Ø[š[X[Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÝ\ÝÛZ^™\—Ü[™[
+šY]ÜÜÜÚ^™JB‚]˜\ˆØ\HŒ‚]˜\ˆÚYH
+[™[œÚ^™KžHŒHØ\
+ˆ›Ø]
+S’SPSÓSQTËœÚ^™J
+HHJJHÈ›Ø]
+S’SPSÓSQTËœÚ^™J
+JB‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+È[™^
+ˆ
+ÚY
+ÈØ\
+K‹Œ
+K™XÝÜŒŠÚYŽŒ
+JB‚™[˜ÈÝ\ÝÛZ^™\—ØÛÛÜ—Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÝ\ÝÛZ^™\—Ü[™[
+šY]ÜÜÜÚ^™JB‚]˜\ˆØ\HŒ‚]˜\ˆÚYH
+[™[œÚ^™KžHŒHØ\
+ˆ›Ø]
+’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+HHJJHÈ›Ø]
+’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+JB‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+È[™^
+ˆ
+ÚY
+ÈØ\
+KŒKŒ
+K™XÝÜŒŠÚYNŒ
+JB‚™[˜ÈÝ\ÝÛZ^™\—Ø›Ø\™Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÝ\ÝÛZ^™\—Ü[™[
+šY]ÜÜÜÚ^™JB‚]˜\ˆØ\HLŒ‚]˜\ˆÚYH
+[™[œÚ^™KžHŒHØ\
+ˆ›Ø]
+“ÐT‘ÕSQWÐÓÕS•HJJHÈ›Ø]
+“ÐT‘ÕSQWÐÓÕS•
+B‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+È›Ø]
+[™^
+H
+ˆ
+ÚY
+ÈØ\
+KŒ‹Œ
+K™XÝÜŒŠÚYÍ‹Œ
+JB‚™[˜ÈÝ\ÝÛZ^™\—ÙY™šXÝ[WÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÝ\ÝÛZ^™\—Ü[™[
+šY]ÜÜÜÚ^™JB‚]˜\ˆØ\HL‹Œ‚]˜\ˆÚYH
+[™[œÚ^™KžHŒHØ\
+ˆ‹Œ
+HÈËŒ‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+È›Ø]
+[™^
+H
+ˆ
+ÚY
+ÈØ\
+KÍŽŒ
+K™XÝÜŒŠÚYMŒ
+JB‚™[˜ÈÝ\ÝÛZ^™\—ÜÝ\Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÝ\ÝÛZ^™\—Ü[™[
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ[™[œÚ^™Kž
+ˆHHLLŒ[™[œÚ^™KžHHŽŒ
+K™XÝÜŒŠŒŒŒŒ
+JB‚™[˜È[™WØÝ\ÝÛZ^™\—ÝÝXÚ
+ØÜ™Y[—ÜÜÎˆ™XÝÜŒŠHOˆ›ÛÛ‚‚]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚ZYˆ›ÝÝ\ÝÛZ^™\—ÛÜ[Ž‚‚B\™]\›ˆ˜[ÙB‚Y›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚BZYˆÝ\ÝÛZ^™\—Ø[š[X[Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB]žWÜÙ[XÝØ[š[X[
+JB‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›ˆYB‚Y›ÜˆH[ˆ’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+N‚‚BZYˆÝ\ÝÛZ^™\—ØÛÛÜ—Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB]žWÜÙ[XÝÜš[™ÊJB‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›ˆYB‚Y›ÜˆH[ˆ“ÐT‘ÕSQWÐÓÕS•‚‚BZYˆÝ\ÝÛZ^™\—Ø›Ø\™Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB\Ù[XÝYØ›Ø\™Ý[YHHB‚BB\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚BB\^WÜÛÝ[™
+ZHŠB‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›ˆYB‚Y›ÜˆH[ˆÎ‚‚BZYˆÝ\ÝÛZ^™\—ÙY™šXÝ[WÜ™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBXÛÛ\]\—ÙY™šXÝ[HHB‚BB\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚BB\^WÜÛÝ[™
+ZHŠB‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›ˆYB‚ZYˆÝ\ÝÛZ^™\—ÜÝ\Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BXZWØ[š[X[H˜[™J
+H	HS’SPSÓSQTËœÚ^™J
+B‚BXZWÜš[™×ØÛÛÜˆH˜[™J
+H	H’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+B‚B\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚BXÝ\ÝÛZ^™\—ÛÜ[ˆH˜[ÙB‚B[™]×ÙØ[YJ
+B‚B\™]\›ˆYB‚\™]\›ˆYB‚™[˜È˜]×ØÝ\ÝÛZ^™\ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ›ÝÝ\ÝÛZ^™\—ÛÜ[Ž‚‚B\™]\›‚‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒ‹ŒŒÌŠJB‚]˜\ˆ[™[HÝ\ÝÛZ^™\—Ü[™[
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLŒŒÌÍÈŠKNŒ
+K[™[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÎ
+KZWÝ^
+˜ÚÛÜÙWÜÙ]\ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžŒ‹ÛÛÜŠ™™ÍHŠJB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÌŠKµäõçµåuêˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHS’SPS‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•LKMÛÛÜ‹•ÒUJB‚Y›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚B]˜\ˆ™XÝHÝ\ÝÛZ^™\—Ø[š[X[Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠÌM™ŠHYˆHOH^Y\—Ø[š[X[[ÙHÛÛÜŠŒŒÎˆŠKLŒ
+K™XÝ
+B‚BZYˆH[Ø›ÙWØ[š[X[Ý^\™\ËœÚ^™J
+H[™[Ø›ÙWØ[š[X[Ý^\™\ÖÚWHOH[‚‚BB]˜\ˆÜ˜Z]H™XÝŠ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ™XÝœÚ^™Kž
+ˆHHŒ‹ŒŒ
+K™XÝÜŒŠŒŒ
+JB‚BBY˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖÚWKÜ˜Z]˜[ÙJB‚BY˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^J™XÝK˜[ÙK[š]
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŠKS’SPSÓSQTÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™KžLKÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒNMJKµéµäuèˆ5å5äµç5äµçˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“Q‘P•SÖHÓÓÔˆ‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•LKMÛÛÜ‹•ÒUJB‚Y›ÜˆH[ˆ’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+N‚‚B]˜\ˆ™XÝHÝ\ÝÛZ^™\—ØÛÛÜ—Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+’S‘×ÐÓÓÔ”ÖÚWKLŒ
+K™XÝ
+B‚BZYˆHOH^Y\—Üš[™×ØÛÛÜŽ‚‚BBY˜]×Ü™XÝ
+™XÝ™Ü›ÝÊËŒ
+KÛÛÜ‹•ÒUK˜[ÙKËŒ
+B‚BY˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^J™XÝKYK[š]
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÍŠK’S‘×ÐÓÓÔ—ÓSQTÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™KžLKÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ
+KZWÝ^
+˜ÚÛÜÙWØ›Ø\™ŠKÔ’V“Ó•SÐSQÓ“QS•ÓQ•LKMÛÛÜ‹•ÒUJB‚Y›ÜˆH[ˆ“ÐT‘ÕSQWÐÓÕS•‚‚BY˜]×Ø›Ø\™Ý[YWØØ\™
+KÝ\ÝÛZ^™\—Ø›Ø\™Ü™XÝ
+KšY]ÜÜÜÚ^™JKHOHÙ[XÝYØ›Ø\™Ý[YK[š]
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÍM
+KZWÝ^
+™Y™šXÝ[HŠKÔ’V“Ó•SÐSQÓ“QS•ÓQ•LKMÛÛÜ‹•ÒUJB‚]˜\ˆY™—ÛX™[ÈHÝZWÝ^
+™Y™šXÝ[WÙX\ÞHŠKZWÝ^
+™Y™šXÝ[WÛYY][HŠKZWÝ^
+™Y™šXÝ[WÚ\™ŠWB‚]˜\ˆY™—ØÛÛÜœÈHÐÛÛÜŠLYNMHŠKÛÛÜŠ™˜XLŒŠKÛÛÜŠ™NMÎŠWB‚Y›ÜˆH[ˆÎ‚‚B]˜\ˆY™—Ü™XÝHÝ\ÝÛZ^™\—ÙY™šXÝ[WÜ™XÝ
+KšY]ÜÜÜÚ^™JB‚B]˜\ˆÙ[XÝYHHOHÛÛ\]\—ÙY™šXÝ[B‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+Y™—ØÛÛÜœÖÚWHYˆÙ[XÝY[ÙHÛÛÜŠŒŒÎˆŠKL‹Œ
+KY™—Ü™XÝ
+B‚BZYˆÙ[XÝY‚‚BBY˜]×Ü™XÝ
+Y™—Ü™XÝ™Ü›ÝÊËŒ
+KÛÛÜ‹•ÒUK˜[ÙKËŒ
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛY™—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÍ
+KY™—ÛX™[ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Y™—Ü™XÝœÚ^™KžMÛÛÜ‹•ÒUJB‚]˜\ˆÝ\Ü™XÝHÝ\ÝÛZ^™\—ÜÝ\Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒL˜NM˜ˆŠKMŒ
+KÝ\Ü™XÝ
+B‚Y˜]×ÜÝš[™ÊZWÙ›ÛÝ\Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÌJKµå5êµåõç5êˆ5çµêuåõéÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÕT•PUÒ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ý\Ü™XÝœÚ^™KžMËÛÛÜ‹•ÒUJB‚™[˜È˜]×ÜX˜™\—Ú[™
+^\™Nˆ^\™L‘[˜ÚÜŽˆ™XÝÜŒ‹\™Ù]ˆ™XÝÜŒ‹ÚYˆ›Ø]Z\œ›ÜŽˆ›ÛÛ[Nˆ›Ø]HKŒ›Ý][Û—ÛÙ™œÙ]ˆ›Ø]HŒ
+HOˆ›ÚY‚‚ZYˆ^\™HOH[ˆ™]\›‚‚]˜\ˆ[HH\™Ù]H[˜ÚÜ‚‚HÈš]H\›HÈHXÝX[ÙX\Û‹]ËX˜[\Ý[˜ÙKˆH›Ü›Y\ˆ\™ÙB‚HÈZ[š[][HXYHÚÜ\\‹[Y\›\ÈÝ™\œÚÛÝHÛH[™X]™HH›Ø\™‚‚]˜\ˆZYÚHX^ŠÚY
+ˆKŒ‹[K›[™Ý
+
+H
+ˆKŒ
+B‚]˜\ˆ[™ÛHH[K˜[™ÛJ
+H
+ÈH
+ˆH
+È›Ý][Û—ÛÙ™œÙ]‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J[˜ÚÜ‹[™ÛK™XÝÜŒŠLKŒYˆZ\œ›Üˆ[ÙHKŒKŒ
+JB‚Y˜]×Ý^\™WÜ™XÝ
+^\™K™XÝŠ]ÚY
+ˆKZZYÚÚYZYÚ
+K˜[ÙKÛÛÜŠKKK[JJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚™[˜È˜]×ÜX˜™\—ÝÜ˜\
+ÜÚ][ÛŽˆ™XÝÜŒ‹˜Y]\Îˆ›Ø][[Ý[ˆ›Ø]Ü[Žˆ›Ø]
+HOˆ›ÚY‚‚ZYˆX˜™\—ÝÜ˜\Ý^\™HOH[Üˆ[[Ý[HŒN‚‚B\™]\›‚‚HÈÙ[™H^˜XÝYÝYÙ\È™\›ÙXÙHHÜšYÚ[˜[ÚYHÜ›ÜÜÚ[™ÈÝš\Ë‚HÈ\œ™YÝ[\ˆÝ]\ˆÛÜÈ[™š[˜[ÛÛ\XÝÛØÛÛÛˆ[œÝXYÙˆ[™[Yš[™ÜË‚‚]˜\ˆœ˜[YHHÛ[\J[
+›ÛÜŠ[[Ý[
+ˆLKŽNJJKLJB‚]˜\ˆÛÝ\˜ÙHH™XÝŠŒ›Ø]
+œ˜[YH
+ˆŒL
+KŒLŒŒLŒ
+B‚]˜\ˆÚ^™HH™XÝÜŒ‹“Ó‘H
+ˆ˜Y]\È
+ˆKŒÍB‚]˜\ˆÜÛYHÜÚ][ÛˆH™XÝÜŒŠL‹ŒLŒ
+HÈŒLŒ
+ˆÚ^™B‚Y˜]×Ý^\™WÜ™XÝÜ™YÚ[ÛŠX˜™\—ÝÜ˜\Ý^\™K™XÝŠÜÛYÚ^™JKÛÝ\˜ÙKÛÛÜ‹•ÒUJB‚™[˜ÈX˜™\—Û][˜Ú\—ÜÚ[Ê
+HOˆXÝ[Û˜\žN‚‚]˜\ˆØ\\™HH˜\Ø˜[ÜÜÚ][ÛŠ•P‘T—ÕTÒÓKX˜™\—ÜÚ[
+LŽŒLŒ
+JB‚\™]\›ˆÂ‚BH˜Ø\\™HŽˆØ\\™K‚BHÈYX\Ý\™Yœ›ÛHHÛÝ\˜ÙHšY[ÎˆH][˜Ú\œÈÚ]XYÛÛ˜[HXÜ›ÜÜÂ‚BHÈHÜ[š[™Ë›Ý\™XÝHX›Ý™H[™YÙˆHØ\\™Y˜[‚‚BHÜŽˆX˜™\—ÜÚ[
+ŒŒËŒÌËŒ
+H
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+•P‘T—ÕTÒÓK
+K‚BHœÚYHŽˆX˜™\—ÜÚ[
+MŒMÍËŒ
+H
+È˜\ÝÙX\Û—ÛÙ™œÙ]
+•P‘T—ÕTÒÓKJB‚_B‚™[˜ÈX˜™\—Ý˜\Ú\×ØXÝ]™J
+HOˆ›ÛÛ‚‚Y›ÜˆY™™XÝ[ˆXÝ]™WÙY™™XÝÎ‚‚BZYˆY™™XÝšÛHOH•P‘T—ÕTÒÓN‚‚BB\™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜È˜]×ÜX˜™\—Û][˜Ú\ŠÙ[\Žˆ™XÝÜŒ‹\™Ù]ˆ™XÝÜŒ‹Ú^™Nˆ›Ø][ÙNˆ›Ø]HŒ
+HOˆ™XÝÜŒŽ‚‚]˜\ˆ\™XÝ[ÛˆH
+\™Ù]HÙ[\ŠK››Ü›X[^™Y
+
+B‚ZYˆX˜™\—Û][˜Ú\—Ý^\™HOH[‚‚B\™]\›ˆÙ[\‚‚HÈHÜš]H˜XÙ\ÈšYÚˆ]È›ÙHÙ[\ˆ\È]LŒH[ˆHLLžL‚‚HÈ[XYÙKÛÈ›Ý]H\›Ý[™HXXÚ[™H›ÙH˜]\ˆ[ˆH[XYÙHZYÚ[‚‚HÈ\ÈÙY\È›Ý][˜Ú\œÈÙX]YÛˆZ\ˆÝÛ™\ÈZÙHHÜšYÚ[˜[‚‚]˜\ˆÛÝ\˜ÙHHX˜™\—Û][˜Ú\—Ý^\™K™Ù]ÜÚ^™J
+B‚]˜\ˆ˜]×ÚZYÚHÚ^™H
+ˆ
+KŒ
+È[ÙH
+ˆŒJB‚]˜\ˆ˜XÝÜˆH˜]×ÚZYÚÈÛÝ\˜ÙKžB‚]˜\ˆ˜]×ÜÚ^™HHÛÝ\˜ÙH
+ˆ˜XÝÜ‚‚]˜\ˆ›ÙWØÙ[\—ÞHŒKŒ
+ˆ˜XÝÜ‚‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\‹\™XÝ[Û‹˜[™ÛJ
+K™XÝÜŒ‹“Ó‘JB‚Y˜]×Ý^\™WÜ™XÝ
+X˜™\—Û][˜Ú\—Ý^\™K™XÝŠ™XÝÜŒŠX›ÙWØÙ[\—ÞY˜]×ÜÚ^™KžH
+ˆJK˜]×ÜÚ^™JK˜[ÙJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚\™]\›ˆÙ[\ˆ
+È\™XÝ[Ûˆ
+ˆ
+ÌËŒ
+ˆ˜XÝÜŠB‚™[˜È˜]×ÜX˜™\—Û][˜Ú\œ×ÚYJ
+HOˆ›ÚY‚‚ZYˆÝ\ÝÛZ^™\—ÛÜ[ˆÜˆX˜™\—Ý˜\Ú\×ØXÝ]™J
+N‚‚B\™]\›‚‚]˜\ˆÚ[ÈHX˜™\—Û][˜Ú\—ÜÚ[Ê
+B‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆ[ÙHH
+Ú[Š›Ø]
+[YK™Ù]ÝXÚÜ×Û\ÙXÊ
+JH
+ˆŒ
+H
+ÈKŒ
+H
+ˆB‚Y˜]×ÜX˜™\—Û][˜Ú\ŠÚ[ËÜÚ[Ë˜Ø\\™KŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[J•P‘T—ÕTÒÓK
+K[ÙH
+ˆŒN
+B‚Y˜]×ÜX˜™\—Û][˜Ú\ŠÚ[ËœÚYKÚ[Ë˜Ø\\™KŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[J•P‘T—ÕTÒÓKJK[ÙH
+ˆŒN
+B‚™[˜È˜]×Ù[\ÝX×Ý\JÜšYÚ[Žˆ™XÝÜŒ‹\™Ù]ˆ™XÝÜŒ‹[[Ý[ˆ›Ø]™[™ˆ›Ø]ÚYˆ›Ø]
+HOˆ›ÚY‚‚ZYˆ[[Ý[HŒN‚‚B\™]\›‚‚]˜\ˆ[™HÜšYÚ[‹›\œ
+\™Ù][[Ý[
+B‚]˜\ˆ[HH[™HÜšYÚ[‚‚]˜\ˆ›Ü›X[H™XÝÜŒŠY[KžK[Kž
+K››Ü›X[^™Y
+
+B‚]˜\ˆÚ[ÈHXÚÙY™XÝÜŒ\œ˜^J
+B‚Y›ÜˆH[ˆMÎ‚‚B]˜\ˆHH›Ø]
+JHÈM‹Œ‚B]˜\ˆØ]™HHÚ[ŠH
+ˆJH
+ˆ™[™
+ÈÚ[ŠH
+ˆUH
+ˆ‹Œ
+È[[Ý[
+ˆŒ
+H
+ˆ™[™
+ˆŒL‚‚B\Ú[Ë˜\[™
+ÜšYÚ[‹›\œ
+[™JH
+È›Ü›X[
+ˆØ]™JB‚Y˜]×ÜÛ[[™JÚ[ËÛÛÜŠËKŽL
+KÚY
+ˆKMKYJB‚Y˜]×ÜÛ[[™JÚ[ËÛÛÜŠ™˜YŽŒŠKÚYYJB‚HÈHÛ[H[šÈYÙH™\›ÙXÙ\ÈHÛÛÜ™Y[\ÝXÈÙX[HÙY[ˆ[ˆHœ˜[Y\Ë‚‚]˜\ˆÙX[HHXÚÙY™XÝÜŒ\œ˜^J
+B‚Y›Üˆ[ˆÚ[Î‚‚B\ÙX[K˜\[™
+
+È›Ü›X[
+ˆÚY
+ˆŒÌŠB‚Y˜]×ÜÛ[[™JÙX[KÛÛÜŠ™MXØYˆŠKX^ŠKŒÚY
+ˆŒŒŠKYJB‚™[˜È˜]×ÜX˜™\—Ý˜\
+Y™™XÝˆXÝ[Û˜\žJHOˆ›ÚY‚‚]˜\ˆ[\ÙYˆ›Ø]HY™™XÝ™[\ÙY‚]˜\ˆH[\ÙYÈ•P‘T—ÐÐTT‘WÕSQB‚]˜\ˆØØ[WÞHH›Ø\™Ü™XÝœÚ^™KžHÈŒŒ‚]˜\ˆÚ[ÈHX˜™\—Û][˜Ú\—ÜÚ[Ê
+B‚]˜\ˆ[˜ÚÜ—ÝÜˆ™XÝÜŒˆHÚ[ËÜ‚]˜\ˆ[˜ÚÜ—ÛYˆ™XÝÜŒˆHÚ[ËœÚYB‚]˜\ˆØ\\™Nˆ™XÝÜŒˆHÚ[Ë˜Ø\\™B‚HÈ\ÙH^XÝHHØ[YHÛ‹\ØÜ™Y[ˆ˜Y]\È\ÈH]™HØ[Y\^HYXÙKˆHÛ‚HÈš^YY™™XÝ˜Y]\ÈØ\ÈX›Ý]K^\™Ù\ˆ[™Ø]\ÙYHš\ÚX›HÚ^™HÜÛ‚‚HÈHš\œÝÜ˜\[™Èœ˜[YK‚‚]˜\ˆ˜[Ü˜Y]\ÈH˜\Ø˜[Ü˜Y]\Ê•P‘T—ÕTÒÓKÐSQWÐSÕ’TÕPSÔQUTÈ
+ˆ›Ø\™ÜØØ[JB‚HÈH™X[Ø[Y\^H˜[\È[™XYH[\™Y\ÈÛKˆÝ\H˜\]‚HÈHØ\\™HÚ[ÛÈH™]šY]ÉÜÈÝYÙY[žH\È›Ý™\^YY‚‚]˜\ˆ˜[HØ\\™B‚]˜\ˆ™XXÚHÛ[ÛÝÜÝ\
+
+HŒ
+HÈŒN
+B‚]˜\ˆÜ˜\HÛ[ÛÝÜÝ\
+
+HŒJHÈÌŠB‚]˜\ˆX[Nˆ[HY™™XÝX[B‚]˜\ˆYXÙNˆ[HY™™XÝœYXÙB‚Y˜]×ÜX˜™\—Û][˜Ú\Š[˜ÚÜ—ÝÜØ\\™KŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[J•P‘T—ÕTÒÓK
+K™XXÚ
+B‚Y˜]×ÜX˜™\—Û][˜Ú\Š[˜ÚÜ—ÛYØ\\™KŒ
+ˆØØ[WÞH
+ˆ˜\ÝÙX\Û—ÜØØ[J•P‘T—ÕTÒÓKJK™XXÚ
+B‚ZYˆ[\ÙY•P‘T—ÐÐTT‘WÕSQN‚‚B]˜\ˆ›ØÝ\ÈHÜ˜\
+ˆ
+KŒHÜ˜\
+ˆJB‚BY˜]×ØÚ\˜ÛJ˜[˜[Ü˜Y]\È
+ˆ
+KH
+ÈÚ[Š
+ˆKŒ
+H
+ˆŒ
+KÛÛÜŠKŒŽMKÌ‹ŒŽ
+ˆ›ØÝ\ÊJB‚BHÈÛ˜ÙHÜ˜\[™È™YÚ[œË˜]ÈÛ›HHÛØÛÛÛ‹ˆ˜Y[™ÈHÜšYÚ[˜[˜[‚BHÈ[™\›™X]]YHš\ÚX›H\XØ]H›ÝYÚHš\œÝÜ˜\[™È\ÜË‚‚BZYˆÜ˜\HŒN‚‚BBY˜]×ÜX˜™\—ÙØ[YWØ˜[
+˜[˜[Ü˜Y]\ËX[KYXÙKKŒ
+B‚BZYˆÜ˜\ˆŒ‚‚BBY˜]×ÜX˜™\—ÝÜ˜\
+˜[˜[Ü˜Y]\ËÜ˜\Œ
+B‚Y[ÙN‚‚B]˜\ˆ™[X\ÙHHÛ[ÛÝÜÝ\
+
+[\ÙYH•P‘T—ÐÐTT‘WÕSQJHÈ•P‘T—ÑSÕSQJB‚B]˜\ˆ˜[H™[X\ÙH
+ˆ™[X\ÙB‚B]˜\ˆÝ]HY™™XÝÙ˜[Ù[™Ú[
+•P‘T—ÕTÒÓJB‚BX˜[HØ\\™K›\œ
+Ý]˜[
+B‚BX˜[Ü˜Y]\È
+HKŒH™[X\ÙH
+ˆ‚‚BHÈÙY\HÛØÛÛÛˆÛˆH˜[[™È˜[^XÝHZÙHHÛÝ\˜ÙHœ˜[Y\Ë‚‚BY˜]×ÜX˜™\—ÝÜ˜\
+˜[˜[Ü˜Y]\ËKŒŒ
+B‚™[˜ÈY]Ü—Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚HÈÙY\HY]Üˆ[ˆH™\XØ[Ù[\ˆÛÈ]Ù\È›ÝÛÝ™\ˆHÙX\ÛœÂ‚HÈ[™Ø\\™HÚ[È[Û™ÈH›ÝÛHYÙHÙˆHX›K‚‚]˜\ˆ[™[ÝÚYHZ[™ŠNŒšY]ÜÜÜÚ^™KžHŒ
+B‚\™]\›ˆ™XÝŠ
+šY]ÜÜÜÚ^™KžH[™[ÝÚY
+H
+ˆK
+šY]ÜÜÜÚ^™KžHHMLŒ
+H
+ˆK[™[ÝÚYMLŒ
+B‚™[˜ÈY]Ü—Ø]ÛŠ[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HY]Ü—Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ]Û—ÝÈH
+[™[œÚ^™KžHŒ‹Œ
+HÈMŒ‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ‹Œ
+È[™^
+ˆ]Û—ÝË‹Œ
+K™XÝÜŒŠ]Û—ÝÈHŒM‹Œ
+JB‚™[˜ÈY]Ü—ÝÜØ]ÛŠ[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HY]Ü—Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ]Û—ÝÈH
+[™[œÚ^™KžHL‹Œ
+HÈËŒ‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ‹Œ
+È[™^
+ˆ]Û—ÝËŒ
+K™XÝÜŒŠ]Û—ÝÈHŒ‹Œ
+JB‚™[˜È[™WÙY™™XÝÙY]Ü—ÝÝXÚ
+ØÜ™Y[—ÜÜÎˆ™XÝÜŒŠHOˆ›ÛÛ‚‚]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚]˜\ˆÙÙÛHH™XÝŠšY]ÜÜÜÚ^™KžHÌÍŒ‹ŒMKŒ‹Œ
+B‚ZYˆÙÙÛKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BYY™™XÝÙY]Ü—Ù[˜X›YH›ÝY™™XÝÙY]Ü—Ù[˜X›Y‚BZYˆY™™XÝÙY]Ü—Ù[˜X›Y‚‚BB\™\^WÙY™™XÝÙY]ÜŠ
+B‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›ˆYB‚ZYˆ›ÝY™™XÝÙY]Ü—Ù[˜X›Y‚‚B\™]\›ˆ˜[ÙB‚Y›ÜˆH[ˆÎ‚‚BZYˆ›ÝY]Ü—ÝÜØ]ÛŠKšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBXÛÛ[YB‚BZYˆHOH‚‚BBQ\Ü^TÙ\™\‹˜Û\›Ø\™ÜÙ]
+Y]Ü—ÜÙ][™Ü×Ý^
+
+JB‚BB\Ý]\ÈH‘Y™™XÝÙ][™ÜÈÛÜYY‚‚BY[ÙN‚‚BBYY]Ü—ÚÛHHHHB‚BBYY]Ü—Ý\™Ù]H‚BB\™\^WÙY™™XÝÙY]ÜŠ
+B‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›ˆYB‚Y›ÜˆH[ˆM‚‚BZYˆ›ÝY]Ü—Ø]ÛŠKšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBXÛÛ[YB‚B[X]ÚN‚‚BBLˆY]Ü—Ý\™Ù]H‚BBLNˆY]Ü—Ý\™Ù]HB‚BBLŽˆY]Ü—Ý\™Ù]H‚‚BBLÎˆY]Ü—Ý\™Ù]HÂ‚BBMˆY]Ü—Ý\™Ù]H‚BBMNˆY]Ü—Ý\™Ù]HB‚BBMŽˆÚ[™ÙWÙY]Ü—ÛÙ™œÙ]
+™XÝÜŒŠLK
+JB‚BBMÎˆÚ[™ÙWÙY]Ü—ÛÙ™œÙ]
+™XÝÜŒŠK
+JB‚BBNˆÚ[™ÙWÙY]Ü—ÛÙ™œÙ]
+™XÝÜŒŠLJJB‚BBNNˆÚ[™ÙWÙY]Ü—ÛÙ™œÙ]
+™XÝÜŒŠJJB‚BBLLˆÚ[™ÙWÙY]Ü—ÝÚY
+LŒL
+B‚BBLLNˆÚ[™ÙWÙY]Ü—ÝÚY
+ŒL
+B‚BBLLŽˆ™\Ù]ÙY]Ü—Ý\™Ù]
+
+B‚BBLLÎˆ™\^WÙY™™XÝÙY]ÜŠ
+B‚B\™\^WÙY™™XÝÙY]ÜŠ
+B‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›ˆYB‚\™]\›ˆY]Ü—Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊB‚™[˜ÈÚ[™ÙWÙY]Ü—ÛÙ™œÙ]
+[[Ý[ˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆY]Ü—Ý\™Ù]OHN‚‚B]˜\ˆÚYHHY]Ü—ÝØ[ÜÚYJY]Ü—ÚÛJB‚BZYˆÚYHOHÜˆÚYHOHŽ‚‚BB]X›WÝØ[ÛÙ™œÙ]ÖÜÚYWH
+ÏH[[Ý[ž‚BY[ÙN‚‚BB]X›WÝØ[ÛÙ™œÙ]ÖÜÚYWH
+ÏH[[Ý[žB‚Y[YˆY]Ü—Ý\™Ù]OH‚‚B]˜\Ù[žWÛÙ™œÙ]ÖÙY]Ü—ÚÛWH
+ÏH[[Ý[‚Y[YˆY]Ü—Ý\™Ù]OHÎ‚‚B]˜\Ù˜[ÛÙ™œÙ]ÖÙY]Ü—ÚÛWH
+ÏH[[Ý[‚Y[YˆY]Ü—Ý\™Ù]OHŽ‚‚B]˜\Ø˜[ÛÙ™œÙ]ÖÙY]Ü—ÚÛWH
+ÏH[[Ý[‚Y[ÙN‚‚B]˜\ÝÙX\Û—ÛÙ™œÙ]ÖÙY]Ü—ÚÛH
+ˆˆ
+ÈY]Ü—Ý\™Ù]H
+ÏH[[Ý[‚™[˜ÈÚ[™ÙWÙY]Ü—ÝÚY
+[[Ý[ˆ›Ø]
+HOˆ›ÚY‚‚ZYˆY]Ü—Ý\™Ù]OHN‚‚B]˜\ˆÚYHHY]Ü—ÝØ[ÜÚYJY]Ü—ÚÛJB‚B]X›WÝØ[ÜÚ^™\ÖÜÚYWHHÛ[\ŠX›WÝØ[ÜÚ^™\ÖÜÚYWH
+È[[Ý[
+ˆLŒKŒL‹Œ
+B‚B\™]\›‚‚ZYˆY]Ü—Ý\™Ù]OH‚‚B]˜\Ù[žWÜ˜YZVÙY]Ü—ÚÛWHHÛ[\Š˜\Ù[žWÜ˜YZVÙY]Ü—ÚÛWH
+È[[Ý[
+ˆLŒ‹ŒŒ
+B‚B\™]\›‚‚ZYˆY]Ü—Ý\™Ù]OHÎ‚‚B\™]\›‚‚ZYˆY]Ü—Ý\™Ù]OHŽ‚‚B]˜\Ø˜[ÜØØ[\ÖÙY]Ü—ÚÛWHHÛ[\Š˜\Ø˜[ÜØØ[\ÖÙY]Ü—ÚÛWH
+È[[Ý[‹Œ
+B‚Y[ÙN‚‚B]˜\ˆ[™^HY]Ü—ÚÛH
+ˆˆ
+ÈY]Ü—Ý\™Ù]‚B]˜\ÝÙX\Û—ÜØØ[\ÖÚ[™^HHÛ[\Š˜\ÝÙX\Û—ÜØØ[\ÖÚ[™^H
+È[[Ý[‹Œ
+B‚™[˜È\›Ý™YÝÙX\Û—ÛÙ™œÙ]
+ÛNˆ[ÙX\ÛŽˆ[
+HOˆ™XÝÜŒŽ‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÕ™XÝÜŒ—HHÂ‚BU™XÝÜŒŠŒMKŒ
+K™XÝÜŒŠLŒMKŒ
+K‚BU™XÝÜŒŠLËŒŒ
+K™XÝÜŒŠMŒLKŒ
+K‚BU™XÝÜŒŠLŒŒ
+K™XÝÜŒŠLËŒLËŒ
+K‚BU™XÝÜŒŠŒŒKŒ
+K™XÝÜŒŠŒKŒ
+K‚BU™XÝÜŒŠ‹ŒKŒ
+K™XÝÜŒŠLM‹Œ‹Œ
+K‚BU™XÝÜŒŠMKŒLLŒ
+K™XÝÜŒŠLŒŒ
+B‚WB‚\™]\›ˆ\›Ý™YÚÛH
+ˆˆ
+ÈÙX\Û—B‚™[˜È\›Ý™YÝÙX\Û—ÜØØ[JÛNˆ[ÙX\ÛŽˆ[
+HOˆ›Ø]‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÙ›Ø]HHÌKŒKŒKŒKŒKŒ‹KŒ‹KŒKKŒKŒKŒKŒKŒB‚\™]\›ˆ\›Ý™YÚÛH
+ˆˆ
+ÈÙX\Û—B‚™[˜È\›Ý™YØ˜[ÛÙ™œÙ]
+ÛNˆ[
+HOˆ™XÝÜŒŽ‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÕ™XÝÜŒ—HHÕ™XÝÜŒŠLLŒLMKŒ
+K™XÝÜŒŠŒMKŒ
+K™XÝÜŒŠÍKŒMKŒ
+K™XÝÜŒŠLŒŒŒ
+K™XÝÜŒŠKŒŒŒ
+K™XÝÜŒŠŒLŒ
+WB‚\™]\›ˆ\›Ý™YÚÛWB‚™[˜È\›Ý™YØ˜[ÜØØ[JÛNˆ[
+HOˆ›Ø]‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÙ›Ø]HHÌKŒKŒKŒKŒKŒKŒB‚\™]\›ˆ\›Ý™YÚÛWB‚™[˜È\›Ý™YÙ˜[ÛÙ™œÙ]
+ÛNˆ[
+HOˆ™XÝÜŒŽ‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÕ™XÝÜŒ—HHÕ™XÝÜŒŠŒŒMKŒ
+K™XÝÜŒŠŒÌŒ
+K™XÝÜŒŠLMKŒKŒ
+K™XÝÜŒ‹–‘T“Ë™XÝÜŒ‹–‘T“Ë™XÝÜŒŠLÌŒMŒŒ
+WB‚\™]\›ˆ\›Ý™YÚÛWB‚™[˜È\›Ý™YÙ[žWÛÙ™œÙ]
+ÛNˆ[
+HOˆ™XÝÜŒŽ‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÕ™XÝÜŒ—HHÂ‚BU™XÝÜŒŠLLËŒŒ
+K™XÝÜŒŠLKŒLLKŒ
+K™XÝÜŒŠLKŒL‹Œ
+K‚BU™XÝÜŒŠL‹ŒMŒ
+K™XÝÜŒŠKŒNKŒ
+K™XÝÜŒŠLL‹ŒMŒ
+B‚WB‚\™]\›ˆ\›Ý™YÚÛWB‚™[˜È\›Ý™YÙ[žWÜ˜Y]\ÊÛNˆ[
+HOˆ›Ø]‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÙ›Ø]HHÌLËŒL‹ŒL‹ŒL‹ŒLKŒL‹ŒB‚\™]\›ˆ\›Ý™YÚÛWB‚™[˜È\›Ý™YÝØ[ÛÙ™œÙ]
+ÚYNˆ[
+HOˆ›Ø]‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÙ›Ø]HHËL‹ŒMËŒKŒŒB‚\™]\›ˆ\›Ý™YÜÚYWB‚™[˜È\›Ý™YÝØ[ÜÚ^™JÚYNˆ[
+HOˆ›Ø]‚‚]˜\ˆ\›Ý™Yˆ\œ˜^VÙ›Ø]HHÌKŒKŒKŒKŒB‚\™]\›ˆ\›Ý™YÜÚYWB‚™[˜È™\Ù]ÙY]Ü—Ý\™Ù]
+
+HOˆ›ÚY‚‚ZYˆY]Ü—Ý\™Ù]OHN‚‚B]˜\ˆÚYHHY]Ü—ÝØ[ÜÚYJY]Ü—ÚÛJB‚B]X›WÝØ[ÛÙ™œÙ]ÖÜÚYWHH\›Ý™YÝØ[ÛÙ™œÙ]
+ÚYJB‚B]X›WÝØ[ÜÚ^™\ÖÜÚYWHH\›Ý™YÝØ[ÜÚ^™JÚYJB‚Y[YˆY]Ü—Ý\™Ù]OH‚‚B]˜\Ù[žWÛÙ™œÙ]ÖÙY]Ü—ÚÛWHH\›Ý™YÙ[žWÛÙ™œÙ]
+Y]Ü—ÚÛJB‚B]˜\Ù[žWÜ˜YZVÙY]Ü—ÚÛWHH\›Ý™YÙ[žWÜ˜Y]\ÊY]Ü—ÚÛJB‚Y[YˆY]Ü—Ý\™Ù]OHÎ‚‚B]˜\Ù˜[ÛÙ™œÙ]ÖÙY]Ü—ÚÛWHH\›Ý™YÙ˜[ÛÙ™œÙ]
+Y]Ü—ÚÛJB‚Y[YˆY]Ü—Ý\™Ù]OHŽ‚‚B]˜\Ø˜[ÛÙ™œÙ]ÖÙY]Ü—ÚÛWHH\›Ý™YØ˜[ÛÙ™œÙ]
+Y]Ü—ÚÛJB‚B]˜\Ø˜[ÜØØ[\ÖÙY]Ü—ÚÛWHH\›Ý™YØ˜[ÜØØ[JY]Ü—ÚÛJB‚Y[ÙN‚‚B]˜\ˆ[™^HY]Ü—ÚÛH
+ˆˆ
+ÈY]Ü—Ý\™Ù]‚B]˜\ÝÙX\Û—ÛÙ™œÙ]ÖÚ[™^HH\›Ý™YÝÙX\Û—ÛÙ™œÙ]
+Y]Ü—ÚÛKY]Ü—Ý\™Ù]
+B‚B]˜\ÝÙX\Û—ÜØØ[\ÖÚ[™^HH\›Ý™YÝÙX\Û—ÜØØ[JY]Ü—ÚÛKY]Ü—Ý\™Ù]
+B‚™[˜ÈÚ[™ÙWÙY]Ü—Ü›Ý][ÛŠ[[Ý[ˆ›Ø]
+HOˆ›ÚY‚‚ZYˆY™™XÝÙY]Ü—Û[ÙHOH™[XÝšXÈŽ‚‚B\™]\›‚‚ZYˆY]Ü—ÜÙ[XÝYÚ[™OH‚‚B\X˜™\—ÝÜÜ›Ý][Ûˆ
+ÏH[[Ý[‚Y[ÙN‚‚B\X˜™\—ÜÚYWÜ›Ý][Ûˆ
+ÏH[[Ý[‚™[˜ÈÙÙÛWÙY]Ü—ÛZ\œ›ÜŠ
+HOˆ›ÚY‚‚ZYˆY™™XÝÙY]Ü—Û[ÙHOH™[XÝšXÈŽ‚‚B\™]\›‚‚ZYˆY]Ü—ÜÙ[XÝYÚ[™OH‚‚B\X˜™\—ÝÜÛZ\œ›ÜˆH›ÝX˜™\—ÝÜÛZ\œ›Ü‚‚Y[ÙN‚‚B\X˜™\—ÜÚYWÛZ\œ›ÜˆH›ÝX˜™\—ÜÚYWÛZ\œ›Ü‚‚™[˜È\WÜX˜™\—Ü™\Ù]ØJ
+HOˆ›ÚY‚‚\X˜™\—ÝÜÛÙ™œÙ]H™XÝÜŒŠMŒŒLLŒ
+B‚\X˜™\—ÜÚYWÛÙ™œÙ]H™XÝÜŒŠŒŒŒŒ
+B‚\X˜™\—ÝÜÝÚYHÌ‹Œ‚\X˜™\—ÜÚYWÝÚYHÌ‹Œ‚\X˜™\—ÝÜÜ›Ý][ÛˆHY×Ý×Ü˜Y
+LŒŒ
+B‚\X˜™\—ÜÚYWÜ›Ý][ÛˆHY×Ý×Ü˜Y
+MKŒ
+B‚\X˜™\—ÝÜÛZ\œ›ÜˆH˜[ÙB‚\X˜™\—ÜÚYWÛZ\œ›ÜˆH˜[ÙB‚\Ý]\ÈH”X˜™\ˆ™\Ù]H‚‚™[˜È\WÜX˜™\—Ü™\Ù]ØŠ
+HOˆ›ÚY‚‚\X˜™\—ÝÜÛÙ™œÙ]H™XÝÜŒŠMŒKŒ
+B‚\X˜™\—ÜÚYWÛÙ™œÙ]H™XÝÜŒŠLŒLŒŒ
+B‚\X˜™\—ÝÜÝÚYHÌ‹Œ‚\X˜™\—ÜÚYWÝÚYHÌ‹Œ‚\X˜™\—ÝÜÜ›Ý][ÛˆHY×Ý×Ü˜Y
+LMÍKŒ
+B‚\X˜™\—ÜÚYWÜ›Ý][ÛˆHY×Ý×Ü˜Y
+LMKŒ
+B‚\X˜™\—ÝÜÛZ\œ›ÜˆHYB‚\X˜™\—ÜÚYWÛZ\œ›ÜˆHYB‚\Ý]\ÈH”X˜™\ˆ™\Ù]ˆ‚‚™[˜È™\^WÜX˜™\—ÙY]ÜŠ
+HOˆ›ÚY‚‚XXÝ]™WÙY™™XÝË˜ÛX\Š
+B‚XXÝ]™WÙY™™XÝË˜\[™
+ÈšÛHŽ”•P‘T—ÕTÒÓK™[\ÙYŽŒŒX[HŽŒœYXÙHŽŒJB‚™[˜È™\^WÙY™™XÝÙY]ÜŠ
+HOˆ›ÚY‚‚XXÝ]™WÙY™™XÝË˜ÛX\Š
+B‚XXÝ]™WÙY™™XÝË˜\[™
+ÈšÛHŽ™Y]Ü—ÚÛK™[\ÙYŽŒŒX[HŽŒœYXÙHŽŒJB‚™[˜ÈY]Ü—ÜÙ][™Ü×Ý^
+
+HOˆÝš[™Î‚‚]˜\ˆ˜[Y\ÈHÈ”•P‘Tˆ‹”‘TÔÈ‹‘SPÕ’PÈ‹’SSQTˆ‹’PÑH‹‘’T‘H—B‚]˜\ˆš\œÝHY]Ü—ÚÛH
+ˆ‚‚]˜\ˆØ[ÜÚYHHY]Ü—ÝØ[ÜÚYJY]Ü—ÚÛJB‚]˜\ˆØ[Û˜[Y\ÈHÈ›Y‹Ü‹œšYÚ‹˜›ÝÛH—B‚\™]\›ˆ‰\ÎˆÙX\ÛŒOI\È	KŒ™ŽÈÙX\ÛŒI\È	KŒ™ŽÈ˜[I\È	KŒ™ŽÈ˜[I\ÎÈ[žOI\È˜Y]\ÏIKŒYŽÈØ[I\ÈÙ™œÙ]IKŒYˆÚ^™OIKŒYˆˆ	HÛ˜[Y\ÖÙY]Ü—ÚÛWK˜\ÝÙX\Û—ÛÙ™œÙ]ÖÙš\œÝK˜\ÝÙX\Û—ÜØØ[\ÖÙš\œÝK˜\ÝÙX\Û—ÛÙ™œÙ]ÖÙš\œÝ
+ÈWK˜\ÝÙX\Û—ÜØØ[\ÖÙš\œÝ
+ÈWK˜\Ø˜[ÛÙ™œÙ]ÖÙY]Ü—ÚÛWK˜\Ø˜[ÜØØ[\ÖÙY]Ü—ÚÛWK˜\Ù˜[ÛÙ™œÙ]ÖÙY]Ü—ÚÛWK˜\Ù[žWÛÙ™œÙ]ÖÙY]Ü—ÚÛWK˜\Ù[žWÜ˜YZVÙY]Ü—ÚÛWKØ[Û˜[Y\ÖÝØ[ÜÚYWKX›WÝØ[ÛÙ™œÙ]ÖÝØ[ÜÚYWKX›WÝØ[ÜÚ^™\ÖÝØ[ÜÚYWWB‚™[˜È˜]×ÙY]Ü—Ø]ÛŠ™XÝˆ™XÝ‹X™[ˆÝš[™ËÙ[XÝYØ]ÛŽˆ›ÛÛH˜[ÙJHOˆ›ÚY‚‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠÌM™ŠHYˆÙ[XÝYØ]Ûˆ[ÙHÛÛÜŠŒŒÎˆŠKŒ
+K™XÝ
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÍŠKX™[Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™KžM‹ÛÛÜ‹•ÒUJB‚™[˜È˜]×ÙY™™XÝÙY]ÜŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ›ÝY™™XÝÙY]Ü—Ù[˜X›Y‚‚B\™]\›‚‚]˜\ˆ[™[HY]Ü—Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒËŒL‹ŽM
+KL‹Œ
+K[™[
+B‚]˜\ˆ˜[Y\ÈHÈ”•P‘Tˆ‹”‘TÔÈ‹‘SPÕ’PÈ‹’SSQTˆ‹’PÑH‹‘’T‘H—B‚]˜\ˆY]Ü—Ý]HHSÑPTÓ”È
+ÈÐTT‘HSQUÔˆ‚‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÍŠKY]Ü—Ý]KÔ’V“Ó•SÐSQÓ“QS•ÓQ•ÌÌMÛÛÜŠ™™ÍHŠJB‚]˜\ˆÙ[XÝYÛ˜[YNˆÝš[™ÈHÈ•ÑPTÓˆH‹•ÑPTÓˆˆ‹S‹‘S‹‘S•–H‹•ÐS—VÙY]Ü—Ý\™Ù]B‚]˜\ˆ˜[Y\ÈHY]Ü—ÜÙ][™Ü×Ý^
+
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÍKÍŠK˜[Y\ÖÙY]Ü—ÚÛWH
+ÈˆÈˆ
+ÈÙ[XÝYÛ˜[YKÔ’V“Ó•SÐSQÓ“QS•ÓQ•NLËÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠLÌÍŠK˜[Y\ËÔ’V“Ó•SÐSQÓ“QS•ÓQ•[™[œÚ^™KžHMKÛÛÜŠ™™MÙŒÈŠJB‚Y˜]×ÙY]Ü—Ø]ÛŠY]Ü—ÝÜØ]ÛŠšY]ÜÜÜÚ^™JKÓÔHŠB‚Y›ÜˆH[ˆŽ‚‚BY˜]×ÙY]Ü—Ø]ÛŠY]Ü—ÝÜØ]ÛŠH
+ÈKšY]ÜÜÜÚ^™JK˜[Y\ÖÚWKY]Ü—ÚÛHOHJB‚]˜\ˆX™[ÈHÈ•ÑPTÓˆH‹•ÑPTÓˆˆ‹S‹‘S‹‘S•–H‹•ÐS‹–H‹–
+È‹–HH‹–H
+È‹”ÒV‘KH‹”ÒV‘JÈ‹”‘TÑU‹”‘TVH—B‚Y›ÜˆH[ˆM‚‚BY˜]×ÙY]Ü—Ø]ÛŠY]Ü—Ø]ÛŠKšY]ÜÜÜÚ^™JKX™[ÖÚWK
+HOHY]Ü—Ý\™Ù][™HŠJB‚™[˜Èœ›Û[™ÝÜØ]ÛŠ[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆ™XÝŠšY]ÜÜÜÚ^™KžHÌŒ
+È[™^
+ˆM‹ŒŒ‹ŒL‹ŒŒ
+B‚™[˜Èœ›Û[™Û[ÙWÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆØ\™ÝÚYHZ[™ŠŽ‹Œ
+šY]ÜÜÜÚ^™KžHLŽŒ
+HÈËŒ
+B‚]˜\ˆÝ[ÝÚYHØ\™ÝÚY
+ˆËŒ
+ÈÌ‹Œ‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+šY]ÜÜÜÚ^™KžHÝ[ÝÚY
+H
+ˆH
+È[™^
+ˆ
+Ø\™ÝÚY
+ÈM‹Œ
+KšY]ÜÜÜÚ^™KžH
+ˆÊK™XÝÜŒŠØ\™ÝÚYZ[™ŠŒKŒšY]ÜÜÜÚ^™KžH
+ˆŒÍ
+JJB‚™[˜ÈÛYWÛ^[Ý]
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆXÝ[Û˜\žN‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆXY\—ÚHM‹Œ
+ˆ[š]‚]˜\ˆYÞHNŒ
+ˆ[š]‚]˜\ˆYÝÈHMŒ
+ˆ[š]‚]˜\ˆšYÚÝÈHNŒ
+ˆ[š]‚]˜\ˆšYÚÞHšY]ÜÜÜÚ^™KžHšYÚÝÈHMŒ
+ˆ[š]‚]˜\ˆ›ÝÛWØ˜\—ÚHŒ
+ˆ[š]‚]˜\ˆÛÛ[ÝÜHXY\—Ú
+ÈLŒ
+ˆ[š]‚]˜\ˆÛÛ[Ø›ÝÛHHšY]ÜÜÜÚ^™KžHH›ÝÛWØ˜\—ÚHL‹Œ
+ˆ[š]‚]˜\ˆÙ[\—ÛYHYÞ
+ÈYÝÈ
+ÈM‹Œ
+ˆ[š]‚]˜\ˆÙ[\—ÜšYÚHšYÚÞHM‹Œ
+ˆ[š]‚]˜\ˆÙ[\—ÝÈHX^ŠMŒ
+ˆ[š]Ù[\—ÜšYÚHÙ[\—ÛY
+B‚]˜\ˆÝ]×ÚHNŒ
+ˆ[š]‚]˜\ˆ˜Z[Ø]Û—ÚHÍŒ
+ˆ[š]‚]˜\ˆ˜Z[ÙØ\HLŒ
+ˆ[š]‚]˜\ˆ˜Z[ÜÝ\ÞHHÛÛ[ÝÜ
+ÈÝ]×Ú
+ÈLŒ
+ˆ[š]‚]˜\ˆ›ÝÛWÞHHšY]ÜÜÜÚ^™KžHH›ÝÛWØ˜\—ÚHŒ
+ˆ[š]‚]˜\ˆ›ÝÛWØ]Û—ÚHÎŒ
+ˆ[š]‚]˜\ˆ›ÝÛWÙØ\HLŒ
+ˆ[š]‚]˜\ˆ›ÝÛWØ]˜Z[ÝÈHÙ[\—ÝÈH›ÝÛWÙØ\
+ˆ‹Œ‚]˜\ˆ\™[˜WÝÈH›ÝÛWØ]˜Z[ÝÈ
+ˆŒÌ‚]˜\ˆœšY[™ÝÈH›ÝÛWØ]˜Z[ÝÈ
+ˆŒÌ‚‚]˜\ˆ^WÝÈH›ÝÛWØ]˜Z[ÝÈ
+ˆŒÎ‚]˜\ˆ\™[˜WÞHÙ[\—ÛY‚]˜\ˆœšY[™ÞH\™[˜WÞ
+È\™[˜WÝÈ
+È›ÝÛWÙØ\‚]˜\ˆ^WÞHœšY[™Þ
+ÈœšY[™ÝÈ
+È›ÝÛWÙØ\‚\™]\›ˆÂ‚BH[š]Žˆ[š]‚BHšXY\—ÚŽˆXY\—Ú‚BH›YÞŽˆYÞ‚BH›YÝÈŽˆYÝË‚BHœšYÚÞŽˆšYÚÞ‚BHœšYÚÝÈŽˆšYÚÝË‚BH˜ÛÛ[ÝÜŽˆÛÛ[ÝÜ‚BH˜ÛÛ[Ø›ÝÛHŽˆÛÛ[Ø›ÝÛK‚BH˜Ù[\—ÛYŽˆÙ[\—ÛY‚BH˜Ù[\—ÜšYÚŽˆÙ[\—ÜšYÚ‚BH˜Ù[\—ÝÈŽˆÙ[\—ÝË‚BHœÝ]×ÚŽˆÝ]×Ú‚BHœ˜Z[Ø]Û—ÚŽˆ˜Z[Ø]Û—Ú‚BHœ˜Z[ÙØ\Žˆ˜Z[ÙØ\‚BHœ˜Z[ÜÝ\ÞHŽˆ˜Z[ÜÝ\ÞK‚BH˜›ÝÛWÞHŽˆ›ÝÛWÞK‚BH˜›ÝÛWØ]Û—ÚŽˆ›ÝÛWØ]Û—Ú‚BH˜\™[˜WÝÈŽˆ\™[˜WÝË‚BH™œšY[™ÝÈŽˆœšY[™ÝË‚BHœ^WÝÈŽˆ^WÝË‚BH˜\™[˜WÞŽˆ\™[˜WÞ‚BH™œšY[™ÞŽˆœšY[™Þ‚BHœ^WÞŽˆ^WÞ‚_B‚™[˜ÈÛYWÜÝ]×Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ^[Ý]HÛYWÛ^[Ý]
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ^[Ý]›YÞ^[Ý]˜ÛÛ[ÝÜ^[Ý]›YÝË^[Ý]œÝ]×Ú
+B‚™[˜ÈÛYWÛ[ÙWÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚ZYˆ[™^OH‚‚B\™]\›ˆ™XÝŠ™XÝÜŒŠMŒŒËŒ
+H
+ˆ[š]™XÝÜŒŠŽKŒŒËŒ
+H
+ˆ[š]
+B‚ZYˆ[™^OHN‚‚B\™]\›ˆ™XÝŠ™XÝÜŒŠŒŒËŒ
+H
+ˆ[š]™XÝÜŒŠÌ‹ŒŒËŒ
+H
+ˆ[š]
+B‚ZYˆ[™^OHŽ‚‚B\™]\›ˆ™XÝŠ™XÝÜŒŠMKŒÍKŒ
+H
+ˆ[š]™XÝÜŒŠÍÌ‹ŒŒ
+H
+ˆ[š]
+B‚\™]\›ˆ™XÝŠ
+B‚™[˜È\™[˜WØØ\™Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆØ\™ÜÚ^™HH™XÝÜŒŠÍLŒÌŒ
+H
+ˆ[š]‚]˜\ˆØ\HŒ
+ˆ[š]‚]˜\ˆÝ[ÝÚYHØ\™ÜÚ^™Kž
+ˆËŒ
+ÈØ\
+ˆ‹Œ‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+šY]ÜÜÜÚ^™KžHÝ[ÝÚY
+H
+ˆH
+È›Ø]
+[™^
+H
+ˆ
+Ø\™ÜÚ^™Kž
+ÈØ\
+KM‹Œ
+ˆ[š]
+KØ\™ÜÚ^™JB‚™[˜È\™[˜WÜ^WÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+šY]ÜÜÜÚ^™KžHŽLŒ
+ˆ[š]
+H
+ˆKšY]ÜÜÜÚ^™KžHHÎŒ
+ˆ[š]
+K™XÝÜŒŠŽLŒNŒ
+H
+ˆ[š]
+B‚™[˜È\™[˜WØ›Ø\™Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆØ\HMŒ
+ˆ[š]‚]˜\ˆØ\™ÝÈHZ[™ŠŒŒ
+ˆ[š]
+šY]ÜÜÜÚ^™KžHLŒ
+ˆ[š]HØ\
+ˆ›Ø]
+“ÐT‘ÕSQWÐÓÕS•HJJHÈ›Ø]
+“ÐT‘ÕSQWÐÓÕS•
+JB‚]˜\ˆÝ[ÝÈHØ\™ÝÈ
+ˆ›Ø]
+“ÐT‘ÕSQWÐÓÕS•
+H
+ÈØ\
+ˆ›Ø]
+“ÐT‘ÕSQWÐÓÕS•HJB‚]˜\ˆÝ\ÞH
+šY]ÜÜÜÚ^™KžHÝ[ÝÊH
+ˆB‚\™]\›ˆ™XÝŠ™XÝÜŒŠÝ\Þ
+È›Ø]
+[™^
+H
+ˆ
+Ø\™ÝÈ
+ÈØ\
+KMM‹Œ
+ˆ[š]
+K™XÝÜŒŠØ\™ÝËÌ‹Œ
+ˆ[š]
+JB‚™[˜È^Y\—Ü›Ùš[WØ[š[X[Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+Œ‹Œ
+È›Ø]
+[™^
+H
+ˆŒ‹Œ
+H
+ˆ[š]L‹Œ
+ˆ[š]
+K™XÝÜŒŠMŒŒ‹Œ
+H
+ˆ[š]
+B‚™[˜È^Y\—Ü›Ùš[WØÛÛÜ—Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+ÌŒ
+È›Ø]
+[™^
+H
+ˆŒŒ
+H
+ˆ[š]ŒMŒ
+ˆ[š]
+K™XÝÜŒŠŒŒ
+H
+ˆ[š]
+B‚™[˜È^Y\—ÚYØÛÜWÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠLŒŒŒŒŒ
+H
+ˆ[š]™XÝÜŒŠMLŒ‹Œ
+H
+ˆ[š]
+B‚™[˜È^Y\—ÙÛÛÙÛWÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠÌŒŒŒŒ
+H
+ˆ[š]™XÝÜŒŠMÍKŒ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈÛYWÜ›Ùš[WÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠŽŒ
+ˆ[š]Œ‹Œ
+ˆ[š]Ž‹Œ
+ˆ[š]NŒ
+ˆ[š]
+B‚™[˜ÈÛYWÝÜØÛÛ›ÛÜ™XÝÊšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆXÝ[Û˜\žN‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆÂ‚BH˜ÛÚ[ˆŽˆ™XÝŠ™XÝÜŒŠ‹ŒNŒ
+H
+ˆ[š]™XÝÜŒŠMËŒËŒ
+H
+ˆ[š]
+K‚BH™Ù[\ÈŽˆ™XÝŠ™XÝÜŒŠNLKŒNŒ
+H
+ˆ[š]™XÝÜŒŠMËŒËŒ
+H
+ˆ[š]
+K‚BHœÛÝ[™Žˆ™XÝŠ™XÝÜŒŠLLŒLLŒ
+H
+ˆ[š]™XÝÜŒŠKŒKŒ
+H
+ˆ[š]
+K‚BHš[Žˆ™XÝŠ™XÝÜŒŠLMËŒNŒ
+H
+ˆ[š]™XÝÜŒŠMKŒMKŒ
+H
+ˆ[š]
+K‚BHœÙ][™ÜÈŽˆ™XÝŠ™XÝÜŒŠLŒËŒNŒ
+H
+ˆ[š]™XÝÜŒŠMKŒMKŒ
+H
+ˆ[š]
+K‚_B‚™[˜ÈÛYWØÛÚ[—Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆÛYWÝÜØÛÛ›ÛÜ™XÝÊšY]ÜÜÜÚ^™JK˜ÛÚ[‚‚™[˜ÈÛYWÜÙ][™Ü×Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆÛYWÝÜØÛÛ›ÛÜ™XÝÊšY]ÜÜÜÚ^™JKœÙ][™ÜÂ‚™[˜ÈÛYWÚ[Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆÛYWÝÜØÛÛ›ÛÜ™XÝÊšY]ÜÜÜÚ^™JKš[‚™[˜ÈÛYWÜÛÝ[™ÝÙÙÛWÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆÛYWÝÜØÛÛ›ÛÜ™XÝÊšY]ÜÜÜÚ^™JKœÛÝ[™‚™[˜ÈÛYWÙÙ[\×Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆÛYWÝÜØÛÛ›ÛÜ™XÝÊšY]ÜÜÜÚ^™JK™Ù[\Â‚™[˜È]ÜšX[ÜÝ\Ù]JÝ\ˆ[
+HOˆXÝ[Û˜\žN‚‚]˜\ˆÝ\ÈHUÔ’PSÔÕT×ÒHYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHUÔ’PSÔÕT×ÑS‚‚\™]\›ˆÝ\ÖØÛ[\JÝ\Ý\ËœÚ^™J
+HHJWB‚™[˜È]ÜšX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÚYHZ[™ŠÍŒŒ
+ˆ[š]šY]ÜÜÜÚ^™KžHŒ
+ˆ[š]
+B‚]˜\ˆZYÚHZ[™ŠLŒŒ
+ˆ[š]šY]ÜÜÜÚ^™KžHHÌ‹Œ
+ˆ[š]
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+šY]ÜÜÜÚ^™KžHÚY
+H
+ˆK
+šY]ÜÜÜÚ^™KžHHZYÚ
+H
+ˆJK™XÝÜŒŠÚYZYÚ
+JB‚™[˜È]ÜšX[Ü™]—Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[H]ÜšX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ
+ˆ[š][™[œÚ^™KžHHŒ
+ˆ[š]
+K™XÝÜŒŠLŒŒ
+ˆ[š]Œ
+ˆ[š]
+JB‚™[˜È]ÜšX[Û™^Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[H]ÜšX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[™[™[™H™XÝÜŒŠMŒ
+ˆ[š]Œ
+ˆ[š]
+K™XÝÜŒŠLŒŒ
+ˆ[š]Œ
+ˆ[š]
+JB‚™[˜È]ÜšX[ÜÚÚ\Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[H]ÜšX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[™[™[™H™XÝÜŒŠMŒ
+ˆ[š][™[œÚ^™KžHHŒ
+ˆ[š]
+K™XÝÜŒŠÍ‹Œ
+ˆ[š]Í‹Œ
+ˆ[š]
+JB‚™[˜È]ÜšX[ÚYÚYÚÜ™XÝ
+Ý\ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚[X]ÚÝ\‚‚BMN‚‚BB\™]\›ˆÛYWÛ[ÙWÜ™XÝ
+‹šY]ÜÜÜÚ^™JK™Ü›ÝÊŒ
+B‚BMŽ‚‚BB\™]\›ˆÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JK™Ü›ÝÊ‹Œ
+B‚BMÎ‚‚BB\™]\›ˆÛYWÛ[ÙWÜ™XÝ
+‹šY]ÜÜÜÚ^™JK™Ü›ÝÊL‹Œ
+B‚\™]\›ˆ™XÝŠ
+B‚™[˜ÈX^X™WÜÝ\Ý]ÜšX[
+
+HOˆ›ÚY‚‚ZYˆ]ÜšX[ØÛÛ\]YÜˆ]ÜšX[ÛÜ[ˆÜˆ]ÜšX[Ù\ÛZ\ÜÙYÜÙ\ÜÚ[ÛŽ‚‚B\™]\›‚‚[Ü[—Ý]ÜšX[
+
+B‚™[˜ÈÜ[—Ý]ÜšX[
+œ›ÛWÜÝ\ˆ[H
+HOˆ›ÚY‚‚]]ÜšX[ÛÜ[ˆHYB‚]]ÜšX[ÜÝ\HÛ[\Jœ›ÛWÜÝ\UÔ’PSÔÕTÐÓÕS•HJB‚\^WÜÛÝ[™
+ZHŠB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈÛÛ\]WÝ]ÜšX[
+
+HOˆ›ÚY‚‚]]ÜšX[ÛÜ[ˆH˜[ÙB‚]]ÜšX[ØÛÛ\]YHYB‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\^WÜÛÝ[™
+ZHŠB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈY˜[˜ÙWÝ]ÜšX[ÜÝ\
+
+HOˆ›ÚY‚‚ZYˆ]ÜšX[ÜÝ\HUÔ’PSÔÕTÐÓÕS•HN‚‚BXÛÛ\]WÝ]ÜšX[
+
+B‚Y[ÙN‚‚B]]ÜšX[ÜÝ\
+ÏHB‚B\^WÜÛÝ[™
+ZHŠB‚B\]Y]YWÜ™Y˜]Ê
+B‚™[˜È™]™X]Ý]ÜšX[ÜÝ\
+
+HOˆ›ÚY‚‚]]ÜšX[ÜÝ\HX^J]ÜšX[ÜÝ\HJB‚\^WÜÛÝ[™
+ZHŠB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È[™WÝ]ÜšX[ÝÝXÚ
+ØÜ™Y[—ÜÜÎˆ™XÝÜŒ‹šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ]ÜšX[ÜÚÚ\Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BXÛÛ\]WÝ]ÜšX[
+
+B‚B\™]\›‚‚ZYˆ]ÜšX[ÜÝ\ˆ[™]ÜšX[Ü™]—Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚B\™]™X]Ý]ÜšX[ÜÝ\
+
+B‚B\™]\›‚‚ZYˆ]ÜšX[Û™^Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BXY˜[˜ÙWÝ]ÜšX[ÜÝ\
+
+B‚B\™]\›‚‚™[˜È˜]×Ý]ÜšX[Ø\
+\ÚYˆÝš[™Ë™XÝˆ™XÝ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆÙ[\ˆH™XÝ™Ù]ØÙ[\Š
+B‚[X]Ú\ÚY‚‚BHÙ[ÛÛYHŽ‚‚BBY˜]×ØÚ\˜ÛJÙ[\‹NŒ
+ˆ[š]ÛÛÜŠŽÙXÙ™ˆ‹ŒŒŠJB‚BBY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠLŽŒŒ
+H
+ˆ[š]Œ‹Œ
+ˆ[š]ÛÛÜŠ™YŒÌÍŠJB‚BBY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠŒM‹Œ
+H
+ˆ[š]Œ‹Œ
+ˆ[š]ÛÛÜŠŒMÍÙ™ˆŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›ÛÙ[\ˆ
+È™XÝÜŒŠLÍŒNŒ
+H
+ˆ[š]–“ÓÔH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ŽŒ
+ˆ[š][
+Œ‹Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚BHœÚÛÝŽ‚‚BB]˜\ˆ˜[ÜÜÈHÙ[\ˆ
+È™XÝÜŒŠÍ‹ŒLŒ
+H
+ˆ[š]‚BBY˜]×ØÚ\˜ÛJ˜[ÜÜËNŒ
+ˆ[š]ÛÛÜŠ™YŒÌÍŠJB‚BBY˜]×Û[™J˜[ÜÜË˜[ÜÜÈ
+È™XÝÜŒŠMÌ‹ŒŽŒ
+H
+ˆ[š]ÛÛÜŠ™™™LYŠKKŒ
+ˆ[š]YJB‚BBY˜]×ØÚ\˜ÛJ˜[ÜÜÈ
+È™XÝÜŒŠMÌ‹ŒŽŒ
+H
+ˆ[š]LŒ
+ˆ[š]ÛÛÜŠ™™™LY‹MJJB‚BBY˜]×ÜÝš[™ÊZWÙ›ÛÙ[\ˆ
+È™XÝÜŒŠNŒM‹Œ
+H
+ˆ[š]¸¡¤S‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹LŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BH™ÛØ[Ž‚‚BB]˜\ˆ›Ø\™H™XÝŠÙ[\ˆ
+È™XÝÜŒŠNŒMŒ
+H
+ˆ[š]™XÝÜŒŠMÍ‹ŒMÍ‹Œ
+H
+ˆ[š]
+B‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠYÙˆŠKL‹Œ
+ˆ[š]
+K›Ø\™
+B‚BBY›ÜˆÛÜ›™\ˆ[ˆØ›Ø\™œÜÚ][Û‹›Ø\™œÜÚ][Ûˆ
+È™XÝÜŒŠ›Ø\™œÚ^™KžŒ
+K›Ø\™™[™H›Ø\™œÚ^™K›Ø\™™[™N‚‚BBBY˜]×ØÚ\˜ÛJÛÜ›™\‹MŒ
+ˆ[š]ÛÛÜŠŒMÌÌHŠJB‚BBY˜]×ØÚ\˜ÛJ›Ø\™™Ù]ØÙ[\Š
+KL‹Œ
+ˆ[š]ÛÛÜŠ™YŒÌÍŠJB‚BBY˜]×ØÚ\˜ÛJ›Ø\™™Ù]ØÙ[\Š
+H
+È™XÝÜŒŠÍŒLNŒ
+H
+ˆ[š]L‹Œ
+ˆ[š]ÛÛÜŠŒMÍÙ™ˆŠJB‚BHÙX\ÛœÈŽ‚‚BB]˜\ˆXÛÛœÈHÐÛÛÜŠ™YŒÌÍŠKÛÛÜŠŽYNYNŠKÛÛÜŠ™™ŽLŠKÛÛÜŠŒL˜ÎMXˆŠWB‚BBY›ÜˆH[ˆXÛÛœËœÚ^™J
+N‚‚BBB]˜\ˆÜÈHÙ[\ˆ
+È™XÝÜŒŠMMŒ
+È›Ø]
+JH
+ˆÍ‹Œ›Ø]
+
+H	HŠH
+ˆŒHL
+JH
+ˆ[š]‚BBBY˜]×ØÚ\˜ÛJÜËM‹Œ
+ˆ[š]XÛÛœÖÚWJB‚BH\›œÈŽ‚‚BB]˜\ˆYØØ\™H™XÝŠÙ[\ˆ
+È™XÝÜŒŠNL‹ŒLÍŒ
+H
+ˆ[š]™XÝÜŒŠŒŽŒ
+H
+ˆ[š]
+B‚BB]˜\ˆšYÚØØ\™H™XÝŠÙ[\ˆ
+È™XÝÜŒŠŒLÍŒ
+H
+ˆ[š]™XÝÜŒŠŒŽŒ
+H
+ˆ[š]
+B‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠKLŒ
+ˆ[š]
+KYØØ\™™Ü›ÝÊŒ
+ˆ[š]
+JB‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒMÌÌHŠKŒ
+ˆ[š]
+KYØØ\™
+B‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÌŠKŒ
+ˆ[š]
+KšYÚØØ\™
+B‚BBY˜]×ÜÝš[™ÊZWÙ›ÛYØØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+H
+ˆ[š]–SÕH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹YØØ\™œÚ^™Kž[
+L‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BH›[Ù\ÈŽ‚‚BB]˜\ˆX™[ÈHÈ”È‹‘”ˆ‹Tˆ—B‚BB]˜\ˆÛÛÜœÈHÐÛÛÜŠ™˜XLŒŠKÛÛÜŠŒÌMY™ŠKÛÛÜŠÌNˆŠWB‚BBY›ÜˆH[ˆÎ‚‚BBB]˜\ˆÚ\H™XÝŠÙ[\ˆ
+È™XÝÜŒŠMÎŒ
+È›Ø]
+JH
+ˆL‹ŒLNŒ
+H
+ˆ[š]™XÝÜŒŠŒŒ
+H
+ˆ[š]
+B‚BBBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜœÖÚWKLŒ
+ˆ[š]
+KÚ\
+B‚BBBY˜]×ÜÝš[™ÊZWÙ›ÛÚ\œÜÚ][Ûˆ
+È™XÝÜŒŠŒŽŒ
+H
+ˆ[š]X™[ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ú\œÚ^™Kž[
+LKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BHšXˆŽ‚‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÌMY™ŠKL‹Œ
+ˆ[š]
+K™XÝŠÙ[\ˆ
+È™XÝÜŒŠMÌŒLÌŒ
+H
+ˆ[š]™XÝÜŒŠMŒŒŒ
+H
+ˆ[š]
+JB‚BBY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠMŒ‹Œ
+H
+ˆ[š]MŒ
+ˆ[š]ÛÛÜŠŽMYŠJB‚BBY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠLM‹Œ‹Œ
+H
+ˆ[š]MŒ
+ˆ[š]ÛÛÜŠLYNMHŠJB‚BBY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠM‹Œ‹Œ
+H
+ˆ[š]MŒ
+ˆ[š]ÛÛÜŠ™™™LYŠJB‚BHœ™XYHŽ‚‚BBY˜]×ØÚ\˜ÛJÙ[\‹‹Œ
+ˆ[š]ÛÛÜŠ™™LN‹ŒJJB‚BBY˜]×ÜÝš[™ÊZWÙ›ÛÙ[\ˆ
+È™XÝÜŒŠLŽŒL‹Œ
+H
+ˆ[š]‘ÓÈH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹M‹Œ
+ˆ[š][
+ÍŒ
+ˆ[š]
+KÛÛÜŠ™™LNŠJB‚™[˜È˜]×Ý]ÜšX[ÛÝ™\›^JšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ›Ý]ÜšX[ÛÜ[Ž‚‚B\™]\›‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆYÚYÚH]ÜšX[ÚYÚYÚÜ™XÝ
+]ÜšX[ÜÝ\šY]ÜÜÜÚ^™JB‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒŒÌŠJB‚ZYˆYÚYÚœÚ^™KžˆŒ‚‚B]˜\ˆ[ÙHHMH
+ÈÚ[ŠY[WÙ[\ÙY
+ˆKŒ
+H
+ˆŒ‚‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LY‹[ÙJKNŒ
+ˆ[š]
+KYÚYÚ™Ü›ÝÊ‹Œ
+ˆ[š]
+JB‚]˜\ˆ[™[H]ÜšX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒËŒLËŽMŠK‹Œ
+ˆ[š]
+K[™[™Ü›ÝÊ‹Œ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™XYŽŒHŠKŒ
+ˆ[š]
+K[™[
+B‚]˜\ˆÝ\Ù]HH]ÜšX[ÜÝ\Ù]J]ÜšX[ÜÝ\
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+H
+ˆ[š]ZWÝ^
+]ÜšX[Ý]HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜŠŒŽN˜MˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ
+ˆ[š]ÎŒ
+H
+ˆ[š]ÝŠÝ\Ù]K™Ù]
+]H‹ˆŠJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•[™[œÚ^™KžHŒ
+ˆ[š][
+‹Œ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚]˜\ˆ\Ü™XÝH™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ[™[œÚ^™Kž
+ˆHHLŒ
+ˆ[š]LL‹Œ
+ˆ[š]
+K™XÝÜŒŠŒŒLŒŒ
+H
+ˆ[š]
+B‚Y˜]×Ý]ÜšX[Ø\
+ÝŠÝ\Ù]K™Ù]
+˜\‹ˆŠJK\Ü™XÝ[š]
+B‚]˜\ˆ›ÙWÞHHLŒ
+ˆ[š]‚]˜\ˆ›ÙWÛ[™\ÈHÝŠÝ\Ù]K™Ù]
+˜›ÙH‹ˆŠJKœÜ]
+—ˆŠB‚Y›Üˆ[™H[ˆ›ÙWÛ[™\Î‚‚BY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŽŒ
+ˆ[š]›ÙWÞJK[™KÔ’V“Ó•SÐSQÓ“QS•ÓQ•[™[œÚ^™KžHM‹Œ
+ˆ[š][
+M‹Œ
+ˆ[š]
+KÛÛÜŠŒÍMLŒˆŠJB‚BX›ÙWÞH
+ÏHŽŒ
+ˆ[š]‚]˜\ˆÝ×ÞH[™[œÜÚ][Û‹ž
+È[™[œÚ^™Kž
+ˆHH›Ø]
+UÔ’PSÔÕTÐÓÕS•HJH
+ˆLŒ
+ˆ[š]‚Y›ÜˆH[ˆUÔ’PSÔÕTÐÓÕS•‚‚B]˜\ˆÝØÙ[\ˆH™XÝÜŒŠÝ×Þ
+È›Ø]
+JH
+ˆŒŒ
+ˆ[š][™[™[™žHHÎŒ
+ˆ[š]
+B‚BY˜]×ØÚ\˜ÛJÝØÙ[\‹KŒ
+ˆ[š]ÛÛÜŠ™™™LYŠHYˆHOH]ÜšX[ÜÝ\[ÙHÛÛÜŠŽXXŒÌˆŠJB‚ZYˆ]ÜšX[ÜÝ\ˆ‚‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÌŠKL‹Œ
+ˆ[š]
+K]ÜšX[Ü™]—Ü™XÝ
+šY]ÜÜÜÚ^™JJB‚BY˜]×ÜÝš[™ÊZWÙ›Û]ÜšX[Ü™]—Ü™XÝ
+šY]ÜÜÜÚ^™JKœÜÚ][Ûˆ
+È™XÝÜŒŠŒŽKŒ
+H
+ˆ[š]ZWÝ^
+]ÜšX[Ü™]ˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹]ÜšX[Ü™]—Ü™XÝ
+šY]ÜÜÜÚ^™JKœÚ^™Kž[
+MKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆ™^ÛX™[HZWÝ^
+]ÜšX[ÙÛ™HŠHYˆ]ÜšX[ÜÝ\HUÔ’PSÔÕTÐÓÕS•HH[ÙHZWÝ^
+]ÜšX[Û™^ŠB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍXŽM™ˆŠKL‹Œ
+ˆ[š]
+K]ÜšX[Û™^Ü™XÝ
+šY]ÜÜÜÚ^™JJB‚Y˜]×ÜÝš[™ÊZWÙ›Û]ÜšX[Û™^Ü™XÝ
+šY]ÜÜÜÚ^™JKœÜÚ][Ûˆ
+È™XÝÜŒŠŒŽKŒ
+H
+ˆ[š]™^ÛX™[Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹]ÜšX[Û™^Ü™XÝ
+šY]ÜÜÜÚ^™JKœÚ^™Kž[
+MKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û]ÜšX[ÜÚÚ\Ü™XÝ
+šY]ÜÜÜÚ^™JKœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+H
+ˆ[š]°åÈ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹]ÜšX[ÜÚÚ\Ü™XÝ
+šY]ÜÜÜÚ^™JKœÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜŠŒÌŠJB‚™[˜ÈÛYWÛ˜]—Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠLKŒ
+È›Ø]
+[™^
+H
+ˆMŽŒŒŒKŒ
+H
+ˆ[š]™XÝÜŒŠMŒ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈÛYWØÚ\˜XÝ\—Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠÌMKŒŒŒKŒ
+H
+ˆ[š]™XÝÜŒŠMŒ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈÛYWØÛÜ™WÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠËŒŒŒKŒ
+H
+ˆ[š]™XÝÜŒŠMŒ‹Œ
+H
+ˆ[š]
+B‚™[˜È˜]×ÚÛYWØ[XšY[ÙY™™XÝÊšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚Z[š]ÚÛYWØ[XšY[Ü\XÛ\Ê
+B‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y›Üˆ\XÛH[ˆÛYWØ[XšY[Ü\XÛ\Î‚‚B]˜\ˆˆ›Ø]H›Ø]
+\XÛKž
+H
+ˆšY]ÜÜÜÚ^™Kž‚B]˜\ˆNˆ›Ø]H›[Ù
+›Ø]
+\XÛKžJH
+ÈY[WÙ[\ÙY
+ˆ›Ø]
+\XÛKœÜYY
+KKŒ
+H
+ˆšY]ÜÜÜÚ^™KžHHšY]ÜÜÜÚ^™KžH
+ˆŒ‚B]˜\ˆ[ÙHHMH
+ÈÚ[ŠY[WÙ[\ÙY
+ˆ‹Œˆ
+È›Ø]
+\XÛKœ\ÙJJH
+ˆŒB‚B]˜\ˆÚ^™Nˆ›Ø]H›Ø]
+\XÛKœÚ^™JH
+ˆ[š]
+ˆ[ÙB‚B]˜\ˆÛÛÜˆHÛÛÜŠŽÙXÙ™ˆ‹ŒL
+È[ÙH
+ˆŒ
+HYˆ[
+\XÛKšÚ[™
+HOH[ÙHÛÛÜŠ™™™LY‹Œ
+È[ÙH
+ˆŒÊB‚BZYˆ[
+\XÛKšÚ[™
+HOHŽ‚‚BBXÛÛÜˆHÛÛÜŠ˜ÍÍÙ™ˆ‹ŒÈ
+È[ÙH
+ˆŒŠB‚BY˜]×ØÚ\˜ÛJ™XÝÜŒŠJKÚ^™KÛÛÜŠB‚]˜\ˆ˜^WØ[HHŒH
+ÈÚ[ŠY[WÙ[\ÙY
+ˆÊH
+ˆŒ‚‚Y˜]×Ü™XÝ
+™XÝŠšY]ÜÜÜÚ^™Kž
+ˆŒNŒšY]ÜÜÜÚ^™Kž
+ˆŒŒ‹šY]ÜÜÜÚ^™KžJKÛÛÜŠKŒKŒKŒ˜^WØ[JJB‚Y˜]×Ü™XÝ
+™XÝŠšY]ÜÜÜÚ^™Kž
+ˆŒ‹ŒšY]ÜÜÜÚ^™Kž
+ˆŒM‹šY]ÜÜÜÚ^™KžJKÛÛÜŠŽÙXÙ™ˆ‹˜^WØ[H
+ˆŽ
+JB‚™[˜È˜]×Ü[™[™×Ú[š]WØ˜[›™\ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ[™[™×ÙœšY[™Ú[š]Kš\×Ù[\J
+N‚‚B\™]\›‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆ˜[›™\ˆH™XÝŠšY]ÜÜÜÚ^™Kž
+ˆŒŽL‹Œ
+ˆ[š]šY]ÜÜÜÚ^™Kž
+ˆMŒ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™NMÎŠKM‹Œ
+ˆ[š]
+K˜[›™\ŠB‚]˜\ˆ^HZWÝ^
+š[š]WÜ™XÙZ]™YŠH
+ÈÝŠ[™[™×ÙœšY[™Ú[š]K™Ù]
+™œ›ÛS˜[YH‹ˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û˜[›™\‹œÜÚ][Ûˆ
+È™XÝÜŒŠM‹Œ
+ˆ[š]Œ‹Œ
+ˆ[š]
+K^Ô’V“Ó•SÐSQÓ“QS•ÓQ•˜[›™\‹œÚ^™KžHLÌŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆ›Ú[—Ü™XÝH™XÝŠ˜[›™\‹™[™žHLL‹Œ
+ˆ[š]˜[›™\‹œÜÚ][Û‹žH
+ÈLŒ
+ˆ[š]M‹Œ
+ˆ[š]ÍŒ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍXŽM™ˆŠKL‹Œ
+ˆ[š]
+K›Ú[—Ü™XÝ
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û›Ú[—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒËŒ
+H
+ˆ[š]ZWÝ^
+š›Ú[—Ú[š]HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹›Ú[—Ü™XÝœÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚™[˜ÈÛYWÚ[š]WÚ›Ú[—Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚ZYˆ[™[™×ÙœšY[™Ú[š]Kš\×Ù[\J
+N‚‚B\™]\›ˆ™XÝŠ
+B‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆ˜[›™\ˆH™XÝŠšY]ÜÜÜÚ^™Kž
+ˆŒŽL‹Œ
+ˆ[š]šY]ÜÜÜÚ^™Kž
+ˆMŒ
+ˆ[š]
+B‚\™]\›ˆ™XÝŠ˜[›™\‹™[™žHLL‹Œ
+ˆ[š]˜[›™\‹œÜÚ][Û‹žH
+ÈLŒ
+ˆ[š]M‹Œ
+ˆ[š]ÍŒ
+ˆ[š]
+B‚™[˜ÈXØÙ\Ü[™[™×ÙœšY[™Ú[š]J
+HOˆ›ÚY‚‚ZYˆ[™[™×ÙœšY[™Ú[š]Kš\×Ù[\J
+N‚‚B\™]\›‚‚]˜\ˆÛÙHHÝŠ[™[™×ÙœšY[™Ú[š]K™Ù]
+œ›ÛÛPÛÙH‹ˆŠJB‚\[™[™×ÙœšY[™Ú[š]HHßB‚ZYˆÛÙKš\×Ù[\J
+N‚‚B\™]\›‚‚X\ÜØÜ™Y[ˆHTÑ”’QS‘‚\›ÛÛWØÛÙWÚ[œ]^HÛÙB‚XÛÛ›™XÝÛ][\^Y\Š
+B‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚BZ›Ú[—Û][\^Y\—Ü›ÛÛJ
+B‚Y[ÙN‚‚B\[™[™×ÜÚ\™YÜ›ÛÛWØÛÙHHÛÙB‚\^WÜÛÝ[™
+ZHŠB‚™[˜ÈœšY[™Ü›ÛÛWØÚ]Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠŒÌŒŒ
+H
+ˆ[š]™XÝÜŒŠŒKŒŒ
+H
+ˆ[š]
+B‚™[˜ÈÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ^[Ý]HÛYWÛ^[Ý]
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ^[Ý]œšYÚÞ^[Ý]˜ÛÛ[ÝÜ^[Ý]œšYÚÝË^[Ý]˜ÛÛ[Ø›ÝÛHH^[Ý]˜ÛÛ[ÝÜ
+B‚™[˜ÈÛYWÜÛØÚX[ÝX—Ü™XÝ
+XŽˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÚYH
+[™[œÚ^™KžHŒ‹Œ
+ˆ[š]
+HÈËŒ‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠKŒ
+ˆ[š]
+È›Ø]
+XŠH
+ˆ
+ÚY
+È‹Œ
+ˆ[š]
+KMŒ
+ˆ[š]
+K™XÝÜŒŠÚYÎŒ
+ˆ[š]
+JB‚™[˜ÈÛYWØYÙœšY[™Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMŒ
+ˆ[š][™[œÚ^™KžHHNŒ
+ˆ[š]
+K™XÝÜŒŠ[™[œÚ^™KžHŽŒ
+ˆ[š]ÎŒ
+ˆ[š]
+JB‚™[˜ÈÛYWØYÙœšY[™Ø]Û—Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMŒ
+ˆ[š][™[œÚ^™KžHHL‹Œ
+ˆ[š]
+K™XÝÜŒŠ[™[œÚ^™KžHŽŒ
+ˆ[š]Í‹Œ
+ˆ[š]
+JB‚™[˜ÈÛYWÙœšY[™Ü›Ý×Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÝ\ÞHHÛYWÙœšY[™×ØÛÛ[ÝÜ
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMŒ
+ˆ[š]Ý\ÞH
+È›Ø]
+[™^
+H
+ˆNŒ
+ˆ[š]
+K™XÝÜŒŠ[™[œÚ^™KžHŽŒ
+ˆ[š]L‹Œ
+ˆ[š]
+JB‚™[˜ÈÛYWÙœšY[™×ØÛÛ[ÝÜ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›Ø]‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆ[˜ÛÛZ[™×ØÛÝ[HZ[šJ‹[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝËœÚ^™J
+JB‚]˜\ˆXY\—ÚHNŒ
+ˆ[š]Yˆ[˜ÛÛZ[™×ØÛÝ[ˆ[ÙHŒ‚\™]\›ˆÌ‹Œ
+ˆ[š]
+ÈXY\—Ú
+È›Ø]
+[˜ÛÛZ[™×ØÛÝ[
+H
+ˆNŒ
+ˆ[š]‚™[˜ÈÛYWÚ[˜ÛÛZ[™×Ü™\]Y\ÝÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÝ\ÞHHLŒ
+ˆ[š]
+È›Ø]
+[™^
+H
+ˆNŒ
+ˆ[š]‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMŒ
+ˆ[š]Ý\ÞJK™XÝÜŒŠ[™[œÚ^™KžHŽŒ
+ˆ[š]Œ
+ˆ[š]
+JB‚™[˜ÈÛYWÚ[˜ÛÛZ[™×ØXØÙ\Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ›ÝÈHÛYWÚ[˜ÛÛZ[™×Ü™\]Y\ÝÜ™XÝ
+[™^šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠ›ÝËœÚ^™KžHMLŒ
+ˆ[š]Œ
+ˆ[š]
+K™XÝÜŒŠŽŒÌ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈÛYWÚ[˜ÛÛZ[™×ÙXÛ[™WÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ›ÝÈHÛYWÚ[˜ÛÛZ[™×Ü™\]Y\ÝÜ™XÝ
+[™^šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠ›ÝËœÚ^™KžHÍ‹Œ
+ˆ[š]Œ
+ˆ[š]
+K™XÝÜŒŠŽŒÌ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈÛYWÙœšY[™Ú[š]WÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ›ÝÈHÛYWÙœšY[™Ü›Ý×Ü™XÝ
+[™^šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠ›ÝËœÚ^™KžH‹Œ
+ˆ[š]LŒ
+ˆ[š]
+K™XÝÜŒŠÌ‹ŒÌ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈÛYWÙœšY[™Ü›Ùš[WÛ[Ù[Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÚYHZ[™ŠŒŒ
+ˆ[š]šY]ÜÜÜÚ^™KžHŒ
+ˆ[š]
+B‚]˜\ˆZYÚHZ[™ŠÍŒŒ
+ˆ[š]šY]ÜÜÜÚ^™KžHHLŒŒ
+ˆ[š]
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+šY]ÜÜÜÚ^™KžHÚY
+H
+ˆK
+šY]ÜÜÜÚ^™KžHHZYÚ
+H
+ˆJK™XÝÜŒŠÚYZYÚ
+JB‚™[˜ÈÛYWÙœšY[™Ü›Ùš[WØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[Ù[HÛYWÙœšY[™Ü›Ùš[WÛ[Ù[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[Ù[™[™H™XÝÜŒŠ‹Œ
+ˆ[š][Ù[œÚ^™KžHHLŒ
+ˆ[š]
+K™XÝÜŒŠÌ‹Œ
+ˆ[š]Ì‹Œ
+ˆ[š]
+JB‚™[˜ÈÛYWÙœšY[™Ü›Ùš[WÚ[š]WÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[Ù[HÛYWÙœšY[™Ü›Ùš[WÛ[Ù[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ
+ˆ[š][Ù[œÚ^™KžHHŒ
+ˆ[š]
+K™XÝÜŒŠ
+[Ù[œÚ^™KžHNŒ
+ˆ[š]
+H
+ˆKŒ
+ˆ[š]
+JB‚™[˜ÈÛYWÙœšY[™Ü›Ùš[WÜ™[[Ý™WÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[Ù[HÛYWÙœšY[™Ü›Ùš[WÛ[Ù[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠ[Ù[œÚ^™Kž
+ˆH
+ÈKŒ
+ˆ[š][Ù[œÚ^™KžHHŒ
+ˆ[š]
+K™XÝÜŒŠ
+[Ù[œÚ^™KžHNŒ
+ˆ[š]
+H
+ˆKŒ
+ˆ[š]
+JB‚™[˜ÈÛYWÛØ˜žWÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ[™[œÚ^™KžHM‹Œ
+ˆ[š][™[œÚ^™KžHHL‹Œ
+ˆ[š]
+K™XÝÜŒŠ‹Œ
+ˆ[š]Í‹Œ
+ˆ[š]
+JB‚™[˜È[œÝ\™WÚÛYWØÛÛ›™XÝY
+
+HOˆ›ÚY‚‚ZYˆ\ÜØÜ™Y[ˆOHTÒÓQN‚‚B\™]\›‚‚ZYˆ][\^Y\—ÜÝ]H[ˆÈ˜ÛÛ›™XÝY‹˜ÛÛ›™XÝ[™È—N‚‚B\™]\›‚‚XÛÛ›™XÝÛ][\^Y\Š
+B‚™[˜È\š×Û[™WÙY]
+ÛÛ›Ûˆ[™QY]
+HOˆ›ÚY‚‚ZYˆÛÛ›ÛOH[‚‚B\™]\›‚‚XÛÛ›Ûš\ÚX›HH˜[ÙB‚ZYˆÛÛ›Ûš\×Ù›ØÝ\Ê
+N‚‚BXÛÛ›Ûœ™[X\ÙWÙ›ØÝ\Ê
+B‚XÛÛ›ÛœÜÚ][ÛˆH™XÝÜŒŠMŒMŒ
+B‚XÛÛ›ÛœÚ^™HH™XÝÜŒŠKŒKŒ
+B‚™[˜È\]WÚÛYWÜÛØÚX[Ú[œ]Ê
+HOˆ›ÚY‚‚]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆ[™[HÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆÚÝ×ÜÛØÚX[Ú[œ]ÈH\ÜØÜ™Y[ˆOHTÒÓQH[™›Ý]ÜšX[ÛÜ[ˆ[™›ÝÝ\ÝÛZ^™\—ÛÜ[ˆ[™›ÝœšY[™ØÝ\ÝÛZ^™\—ÛÜ[‚‚ZYˆœšY[™ÚYÚ[œ]OH[‚‚B]˜\ˆÚÝ×ÙœšY[™Ú[œ]HÚÝ×ÜÛØÚX[Ú[œ]È[™ÛYWÜÛØÚX[ÝXˆOH‚BZYˆÚÝ×ÙœšY[™Ú[œ]‚‚BBYœšY[™ÚYÚ[œ]š\ÚX›HHYB‚BBYœšY[™ÚYÚ[œ]œÜÚ][ÛˆHÛYWØYÙœšY[™Ü™XÝ
+šY]ÜÜÜÚ^™JKœÜÚ][Û‚‚BBYœšY[™ÚYÚ[œ]œÚ^™HHÛYWØYÙœšY[™Ü™XÝ
+šY]ÜÜÜÚ^™JKœÚ^™B‚BBYœšY[™ÚYÚ[œ]œXÙZÛ\—Ý^HZWÝ^
+™œšY[™ÚYÚ[ŠB‚BY[ÙN‚‚BB\\š×Û[™WÙY]
+œšY[™ÚYÚ[œ]
+B‚ZYˆØ˜žWØÚ]Ú[œ]OH[‚‚B]˜\ˆÚÝ×ØÚ]Ú[œ]HÚÝ×ÜÛØÚX[Ú[œ]È[™ÛYWÜÛØÚX[ÝXˆOHB‚BZYˆÚÝ×ØÚ]Ú[œ]‚‚BB]˜\ˆ[œ]Ü™XÝH™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMŒ
+ˆ[š][™[œÚ^™KžHHL‹Œ
+ˆ[š]
+K™XÝÜŒŠ[™[œÚ^™KžHLNŒ
+ˆ[š]Í‹Œ
+ˆ[š]
+JB‚BB[Ø˜žWØÚ]Ú[œ]š\ÚX›HHYB‚BB[Ø˜žWØÚ]Ú[œ]œÜÚ][ÛˆH[œ]Ü™XÝœÜÚ][Û‚‚BB[Ø˜žWØÚ]Ú[œ]œÚ^™HH[œ]Ü™XÝœÚ^™B‚BB[Ø˜žWØÚ]Ú[œ]œXÙZÛ\—Ý^HZWÝ^
+›Ø˜žWØÚ]Ú[ŠB‚BY[ÙN‚‚BB\\š×Û[™WÙY]
+Ø˜žWØÚ]Ú[œ]
+B‚™[˜ÈÙ[™ÛØ˜žWØÚ]ÛY\ÜØYÙJ
+HOˆ›ÚY‚‚ZYˆØ˜žWØÚ]Ú[œ]OH[‚‚B\™]\›‚‚]˜\ˆY\ÜØYÙHHØ˜žWØÚ]Ú[œ]^œÝš\ÙYÙ\Ê
+B‚ZYˆY\ÜØYÙKš\×Ù[\J
+N‚‚B\™]\›‚‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚B\Ù[™Û][\^Y\ŠÈ\HŽˆ›Ø˜žWØÚ]‹›˜[YHŽˆ›Ùš[WÛ˜[YK›Y\ÜØYÙHŽˆY\ÜØYÙK›Y
+
+_JB‚Y[ÙN‚‚B[Ø˜žWØÚ]ÛY\ÜØYÙ\Ë˜\[™
+È›˜[YHŽˆ›Ùš[WÛ˜[YK›Y\ÜØYÙHŽˆY\ÜØYÙK›Y
+
+_JB‚B]Ú[HØ˜žWØÚ]ÛY\ÜØYÙ\ËœÚ^™J
+HˆÌ‚‚BB[Ø˜žWØÚ]ÛY\ÜØYÙ\ËœÜÙœ›Û
+
+B‚[Ø˜žWØÚ]Ú[œ]˜ÛX\Š
+B‚[Ø˜žWØÚ]Ú[œ]™Ü˜X—Ù›ØÝ\Ê
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈÛÛ—ÛØ˜žWØÚ]ÜÝX›Z]Y
+Ý^ˆÝš[™ÊHOˆ›ÚY‚‚\Ù[™ÛØ˜žWØÚ]ÛY\ÜØYÙJ
+B‚™[˜È›Ü›X[^™WÙœšY[™ÜX›X×ÚY
+˜]ÎˆÝš[™ÊHOˆÝš[™Î‚‚]˜\ˆÛX[ˆH˜]ËœÝš\ÙYÙ\Ê
+K×Ý\\Š
+Kœ™\XÙJˆ‹ˆŠB‚ZYˆÛX[‹š\×Ù[\J
+N‚‚B\™]\›ˆˆ‚‚ZYˆ›ÝÛX[‹˜™YÚ[œ×ÝÚ]
+–”HŠN‚‚BXÛX[ˆH–”Hˆ
+ÈÛX[‹š[WÜ™Yš^
+–”ŠB‚\™]\›ˆÛX[‹›Y
+LŠB‚™[˜ÈœšY[™Ø[™XYWØYY
+X›X×ÚYˆÝš[™ÊHOˆ›ÛÛ‚‚Y›Üˆ[žH[ˆœšY[™×Û\Ý‚‚BZYˆ\[ÙŠ[žJHOHTWÑPÕSÓT–H[™ÝŠ[žK™Ù]
+šY‹ˆŠJHOHX›X×ÚY‚‚BB\™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜ÈœšY[™Ù\Ü^WÛ˜[YJ[žNˆXÝ[Û˜\žJHOˆÝš[™Î‚‚]˜\ˆYHÝŠ[žK™Ù]
+šY‹ˆŠJB‚]˜\ˆ˜[YHHÝŠ[žK™Ù]
+›˜[YH‹ˆŠJKœÝš\ÙYÙ\Ê
+B‚ZYˆ›Ý˜[YKš\×Ù[\J
+H[™˜[YHOHY[™›Ý˜[YK˜™YÚ[œ×ÝÚ]
+–”HŠN‚‚B\™]\›ˆ˜[YK›Y
+Œ
+B‚Y›Üˆ—Ù[žH[ˆÛØ˜[ÛXY\˜›Ø\™‚‚BZYˆ\[ÙŠ—Ù[žJHOHTWÑPÕSÓT–H[™ÝŠ—Ù[žK™Ù]
+œX›XÒY‹ˆŠJHOHY‚‚BB]˜\ˆ—Û˜[YHHÝŠ—Ù[žK™Ù]
+›˜[YH‹ˆŠJKœÝš\ÙYÙ\Ê
+B‚BBZYˆ›Ý—Û˜[YKš\×Ù[\J
+N‚‚BBB\™]\›ˆ—Û˜[YK›Y
+Œ
+B‚\™]\›ˆY‚™[˜È\Ù\ÛØØ[ÙœšY[™
+[žNˆXÝ[Û˜\žJHOˆ›ÚY‚‚]˜\ˆYH›Ü›X[^™WÙœšY[™ÜX›X×ÚY
+ÝŠ[žK™Ù]
+šY‹ˆŠJJB‚ZYˆYš\×Ù[\J
+N‚‚B\™]\›‚‚]˜\ˆ›Ü›X[^™YHÂ‚BHšYŽˆY‚BH›˜[YHŽˆÝŠ[žK™Ù]
+›˜[YH‹ˆŠJKœÝš\ÙYÙ\Ê
+K›Y
+Œ
+K‚BHœ˜][™ÈŽˆ[
+[žK™Ù]
+œ˜][™È‹L
+JK‚BHÚ[œÈŽˆ[
+[žK™Ù]
+Ú[œÈ‹
+JK‚BH›ÜÜÙ\ÈŽˆ[
+[žK™Ù]
+›ÜÜÙ\È‹
+JK‚BH›XYÝYUY\ˆŽˆ[
+[žK™Ù]
+›XYÝYUY\ˆ‹
+JK‚BH›Û›[™HŽˆ›ÛÛ
+[žK™Ù]
+›Û›[™H‹˜[ÙJJB‚_B‚[›Ü›X[^™Y›˜[YHHœšY[™Ù\Ü^WÛ˜[YJ›Ü›X[^™Y
+B‚Y›ÜˆH[ˆœšY[™×Û\ÝœÚ^™J
+N‚‚BZYˆÝŠœšY[™×Û\ÝÚWK™Ù]
+šY‹ˆŠJHOHY‚‚BBYœšY[™×Û\ÝÚWHH›Ü›X[^™Y‚BB\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›‚‚YœšY[™×Û\Ý˜\[™
+›Ü›X[^™Y
+B‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È\WÙœšY[™×Û\ÝÙœ›ÛWÜÙ\™\ŠœšY[™Îˆ\œ˜^JHOˆ›ÚY‚‚]˜\ˆY\™ÙYˆ\œ˜^HH×B‚Y›Üˆ][H[ˆœšY[™Î‚‚BZYˆ\[ÙŠ][JHOHTWÑPÕSÓT–N‚‚BBXÛÛ[YB‚B]˜\ˆYH›Ü›X[^™WÙœšY[™ÜX›X×ÚY
+ÝŠ][K™Ù]
+šY‹ˆŠJJB‚BZYˆYš\×Ù[\J
+N‚‚BBXÛÛ[YB‚B[Y\™ÙY˜\[™
+Â‚BBHšYŽˆY‚BBH›˜[YHŽˆÝŠ][K™Ù]
+›˜[YH‹Y
+JKœÝš\ÙYÙ\Ê
+K›Y
+Œ
+K‚BBHœ˜][™ÈŽˆ[
+][K™Ù]
+œ˜][™È‹L
+JK‚BBHÚ[œÈŽˆ[
+][K™Ù]
+Ú[œÈ‹
+JK‚BBH›ÜÜÙ\ÈŽˆ[
+][K™Ù]
+›ÜÜÙ\È‹
+JK‚BBH›XYÝYUY\ˆŽˆ[
+][K™Ù]
+›XYÝYUY\ˆ‹
+JK‚BBH›Û›[™HŽˆ›ÛÛ
+][K™Ù]
+›Û›[™H‹˜[ÙJJB‚B_JB‚Y›ÜˆH[ˆY\™ÙYœÚ^™J
+N‚‚B]˜\ˆ[žNˆXÝ[Û˜\žHHY\™ÙYÚWB‚BZYˆÝŠ[žK™Ù]
+›˜[YH‹ˆŠJK˜™YÚ[œ×ÝÚ]
+–”HŠN‚‚BBY[žK›˜[YHHœšY[™Ù\Ü^WÛ˜[YJ[žJB‚ZYˆY\™ÙYš\×Ù[\J
+N‚‚BHÈHX]ÚÙ\™\ˆÙY\ÈœšY[™È[ˆY[[ÜžNÈ[ˆ[\H™\ÜÛœÙH]\Ý›Ý‚BHÈÚ\HœšY[™È]\™HÝ[Ø]™YØØ[HÛˆH]šXÙK‚‚B\™]\›‚‚YœšY[™×Û\ÝHY\™ÙY‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È™Yœ™\ÚÙœšY[™Û˜[Y\×Ùœ›ÛWÛXY\˜›Ø\™
+
+HOˆ›ÚY‚‚]˜\ˆÚ[™ÙYH˜[ÙB‚Y›ÜˆH[ˆœšY[™×Û\ÝœÚ^™J
+N‚‚B]˜\ˆ[žNˆXÝ[Û˜\žHHœšY[™×Û\ÝÚWB‚B]˜\ˆ\Ü^HHœšY[™Ù\Ü^WÛ˜[YJ[žJB‚BZYˆ\Ü^HOHÝŠ[žK™Ù]
+›˜[YH‹ˆŠJN‚‚BBY[žK›˜[YHH\Ü^B‚BBYœšY[™×Û\ÝÚWHH[žB‚BBXÚ[™ÙYHYB‚ZYˆÚ[™ÙY‚‚B\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚™[˜ÈœšY[™Ü™\]Y\ÝÙ\Ü^WÛ˜[YJ[žNˆXÝ[Û˜\žJHOˆÝš[™Î‚‚]˜\ˆYHÝŠ[žK™Ù]
+šY‹ˆŠJB‚]˜\ˆ˜[YHHÝŠ[žK™Ù]
+›˜[YH‹ˆŠJKœÝš\ÙYÙ\Ê
+B‚ZYˆ›Ý˜[YKš\×Ù[\J
+H[™˜[YHOHY[™›Ý˜[YK˜™YÚ[œ×ÝÚ]
+–”HŠN‚‚B\™]\›ˆ˜[YK›Y
+Œ
+B‚\™]\›ˆœšY[™Ù\Ü^WÛ˜[YJ[žJB‚™[˜È\WÜÛØÚX[ÜÝ]WÙœ›ÛWÜÙ\™\Š^[ØYˆXÝ[Û˜\žJHOˆ›ÚY‚‚X\WÙœšY[™×Û\ÝÙœ›ÛWÜÙ\™\Š^[ØY™Ù]
+™œšY[™È‹×JJB‚Z[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÈH×B‚Y›Üˆ][H[ˆ^[ØY™Ù]
+š[˜ÛÛZ[™È‹×JN‚‚BZYˆ\[ÙŠ][JHOHTWÑPÕSÓT–N‚‚BBZ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝË˜\[™
+][JB‚[Ý]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝÈH×B‚Y›Üˆ][H[ˆ^[ØY™Ù]
+›Ý]ÛÚ[™È‹×JN‚‚BZYˆ\[ÙŠ][JHOHTWÑPÕSÓT–N‚‚BB[Ý]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝË˜\[™
+][JB‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈœšY[™Ü™\]Y\ÝØ[™XYWÜÙ[
+X›X×ÚYˆÝš[™ÊHOˆ›ÛÛ‚‚Y›Üˆ[žH[ˆÝ]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝÎ‚‚BZYˆ\[ÙŠ[žJHOHTWÑPÕSÓT–H[™ÝŠ[žK™Ù]
+šY‹ˆŠJHOHX›X×ÚY‚‚BB\™]\›ˆYB‚\™]\›ˆ˜[ÙB‚™[˜ÈÙ[™ÙœšY[™Ü™\]Y\ÝØžWÚY
+˜]×ÚYˆÝš[™ÊHOˆ›ÚY‚‚]˜\ˆX›X×ÚYH›Ü›X[^™WÙœšY[™ÜX›X×ÚY
+˜]×ÚY
+B‚ZYˆX›X×ÚY›[™Ý
+
+HN‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Û›ÝÙ›Ý[™ŠJB‚B\™]\›‚‚ZYˆX›X×ÚYOHš\™X˜\ÙWÜX›X×ÚY‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ù^\ÝÈŠJB‚B\™]\›‚‚ZYˆœšY[™Ø[™XYWØYY
+X›X×ÚY
+N‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ù^\ÝÈŠJB‚B\™]\›‚‚ZYˆœšY[™Ü™\]Y\ÝØ[™XYWÜÙ[
+X›X×ÚY
+N‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ü™\]Y\ÝÙ^\ÝÈŠJB‚B\™]\›‚‚Y›Üˆ[žH[ˆ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÎ‚‚BZYˆÝŠ[žK™Ù]
+šY‹ˆŠJHOHX›X×ÚY‚‚BBXXØÙ\ÙœšY[™Ü™\]Y\ÝÙœ›ÛJÝŠ[žK™Ù]
+šY‹ˆŠJJB‚BB\™]\›‚‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆ[™›Ýš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+N‚‚B\Ù[™Û][\^Y\ŠÂ‚BBH\HŽˆœÙ[™ÙœšY[™Ü™\]Y\Ý‹‚BBH™œ›ÛTX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚BBH\™Ù]X›XÒYŽˆX›X×ÚY‚BBH™œ›ÛS˜[YHŽˆ›Ùš[WÛ˜[YK‚BBHœ˜][™ÈŽˆ^Y\—Ü˜][™Ë‚BBHÚ[œÈŽˆ^Y\—ÝÚ[œË‚BBH›ÜÜÙ\ÈŽˆ^Y\—ÛÜÜÙ\Ë‚BBH›XYÝYUY\ˆŽˆ^Y\—ÛXYÝYWÝY\‚‚B_JB‚BZYˆœšY[™ÚYÚ[œ]OH[‚‚BBYœšY[™ÚYÚ[œ]˜ÛX\Š
+B‚B\™]\›‚‚[Ý]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝË˜\[™
+ÈšYŽˆX›X×ÚY›˜[YHŽˆX›X×ÚYJB‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ü™\]Y\ÝÜÙ[ŠJB‚ZYˆœšY[™ÚYÚ[œ]OH[‚‚BYœšY[™ÚYÚ[œ]˜ÛX\Š
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈXØÙ\ÙœšY[™Ü™\]Y\ÝÙœ›ÛJœ›ÛWÜX›X×ÚYˆÝš[™ÊHOˆ›ÚY‚‚]˜\ˆX›X×ÚYH›Ü›X[^™WÙœšY[™ÜX›X×ÚY
+œ›ÛWÜX›X×ÚY
+B‚ZYˆX›X×ÚYš\×Ù[\J
+N‚‚B\™]\›‚‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆ[™›Ýš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+N‚‚B\Ù[™Û][\^Y\ŠÂ‚BBH\HŽˆ˜XØÙ\ÙœšY[™Ü™\]Y\Ý‹‚BBHœX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚BBH™œ›ÛTX›XÒYŽˆX›X×ÚY‚BBH›˜[YHŽˆ›Ùš[WÛ˜[YK‚BBHœ˜][™ÈŽˆ^Y\—Ü˜][™Ë‚BBHÚ[œÈŽˆ^Y\—ÝÚ[œË‚BBH›ÜÜÙ\ÈŽˆ^Y\—ÛÜÜÙ\Ë‚BBH›XYÝYUY\ˆŽˆ^Y\—ÛXYÝYWÝY\‚‚B_JB‚B\™]\›‚‚Y›ÜˆH[ˆ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝËœÚ^™J
+N‚‚BZYˆÝŠ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÖÚWK™Ù]
+šY‹ˆŠJHOHX›X×ÚY‚‚BB]\Ù\ÛØØ[ÙœšY[™
+[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÖÚWJB‚BBZ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝËœ™[[Ý™WØ]
+JB‚BBXœ™XZÂ‚\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™ØXØÙ\YŠJB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈXÛ[™WÙœšY[™Ü™\]Y\ÝØ]
+[™^ˆ[
+HOˆ›ÚY‚‚ZYˆ[™^Üˆ[™^H[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝËœÚ^™J
+N‚‚B\™]\›‚‚]˜\ˆX›X×ÚYHÝŠ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÖÚ[™^K™Ù]
+šY‹ˆŠJB‚Z[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝËœ™[[Ý™WØ]
+[™^
+B‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆ[™›Ýš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+H[™›ÝX›X×ÚYš\×Ù[\J
+N‚‚B\Ù[™Û][\^Y\ŠÂ‚BBH\HŽˆ™XÛ[™WÙœšY[™Ü™\]Y\Ý‹‚BBHœX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚BBH™œ›ÛTX›XÒYŽˆX›X×ÚY‚B_JB‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈYÙœšY[™ØžWÜX›X×ÚY
+˜]×ÚYˆÝš[™ÊHOˆ›ÚY‚‚\Ù[™ÙœšY[™Ü™\]Y\ÝØžWÚY
+˜]×ÚY
+B‚™[˜ÈÛÛ—ÙœšY[™ÛÛÚÝ\ØÛÛ\]Y
+Ü™\Ý[ˆ[™\ÜÛœÙWØÛÙNˆ[ÚXY\œÎˆXÚÙYÝš[™Ð\œ˜^K›ÙNˆXÚÙYž]P\œ˜^JHOˆ›ÚY‚‚]˜\ˆX›X×ÚYH[™[™×ÙœšY[™ÛÛÚÝ\ÚY‚\[™[™×ÙœšY[™ÛÛÚÝ\ÚYHˆ‚‚ZYˆX›X×ÚYš\×Ù[\J
+N‚‚B\™]\›‚‚]˜\ˆœšY[™Û˜[YHHX›X×ÚY‚ZYˆ™\ÜÛœÙWØÛÙHHŒ[™™\ÜÛœÙWØÛÙHÌ‚‚B]˜\ˆ]Nˆ˜\šX[H”ÓÓ‹œ\œÙWÜÝš[™Ê›ÙK™Ù]ÜÝš[™×Ùœ›ÛWÝ]Ž
+
+JB‚BZYˆ]H\ÈXÝ[Û˜\žN‚‚BB]˜\ˆšY[ÎˆXÝ[Û˜\žHH]K™Ù]
+™šY[È‹ßJB‚BBZYˆšY[Ëš\Ê›˜[YHŠN‚‚BBBYœšY[™Û˜[YHHÝŠšY[Ë›˜[YK™Ù]
+œÝš[™Õ˜[YH‹œšY[™Û˜[YJJKœÝš\ÙYÙ\Ê
+K›Y
+Œ
+B‚ZYˆ™\ÜÛœÙWØÛÙHOH‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Û›ÝÙ›Ý[™ŠJB‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚ZYˆœšY[™Ø[™XYWØYY
+X›X×ÚY
+N‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ù^\ÝÈŠJB‚B\™]\›‚‚]\Ù\ÛØØ[ÙœšY[™
+Â‚BHšYŽˆX›X×ÚY‚BH›˜[YHŽˆœšY[™Û˜[YK‚BHœ˜][™ÈŽˆL‚BHÚ[œÈŽˆ‚BH›ÜÜÙ\ÈŽˆ‚BH›XYÝYUY\ˆŽˆ‚BH›Û›[™HŽˆ˜[ÙB‚_JB‚\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™ØYYŠJB‚ZYˆœšY[™ÚYÚ[œ]OH[‚‚BYœšY[™ÚYÚ[œ]˜ÛX\Š
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È™[[Ý™WÙœšY[™Ø]
+[™^ˆ[
+HOˆ›ÚY‚‚ZYˆ[™^Üˆ[™^HœšY[™×Û\ÝœÚ^™J
+N‚‚B\™]\›‚‚]˜\ˆ\™Ù]ÚYHÝŠœšY[™×Û\ÝÚ[™^K™Ù]
+šY‹ˆŠJB‚YœšY[™×Û\Ýœ™[[Ý™WØ]
+[™^
+B‚ZYˆÛYWÙœšY[™Ü›Ùš[WÚ[™^OH[™^‚‚BZÛYWÙœšY[™Ü›Ùš[WÚ[™^HLB‚Y[YˆÛYWÙœšY[™Ü›Ùš[WÚ[™^ˆ[™^‚‚BZÛYWÙœšY[™Ü›Ùš[WÚ[™^OHB‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆ[™›Ý\™Ù]ÚYš\×Ù[\J
+H[™›Ýš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+N‚‚B\Ù[™Û][\^Y\ŠÂ‚BBH\HŽˆœ™[[Ý™WÙœšY[™‹‚BBH™œ›ÛTX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚BBH\™Ù]X›XÒYŽˆ\™Ù]ÚY‚B_JB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈX^X™WÜÙ[™Ü[™[™×ÙœšY[™Ú[š]J
+HOˆ›ÚY‚‚ZYˆ[™[™×ÙœšY[™Ú[š]WÜÙ[™š\×Ù[\J
+N‚‚B\™]\›‚‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚BXÛÛ›™XÝÛ][\^Y\Š
+B‚B\™]\›‚‚ZYˆ][\^Y\—Ü›ÛÛWØÛÙKš\×Ù[\J
+N‚‚BXÜ™X]WÛ][\^Y\—Ü›ÛÛJ
+B‚B\™]\›‚‚Y›\ÚÜ[™[™×ÙœšY[™Ú[š]WÜÙ[™
+
+B‚™[˜È›\ÚÜ[™[™×ÙœšY[™Ú[š]WÜÙ[™
+
+HOˆ›ÚY‚‚ZYˆ[™[™×ÙœšY[™Ú[š]WÜÙ[™š\×Ù[\J
+N‚‚B\™]\›‚‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆÜˆ][\^Y\—Ü›ÛÛWØÛÙKš\×Ù[\J
+N‚‚B\™]\›‚‚]˜\ˆ\™Ù]ÚYH›Ü›X[^™WÙœšY[™ÜX›X×ÚY
+ÝŠ[™[™×ÙœšY[™Ú[š]WÜÙ[™™Ù]
+\™Ù]X›XÒY‹ˆŠJJB‚ZYˆ\™Ù]ÚYš\×Ù[\J
+N‚‚B\[™[™×ÙœšY[™Ú[š]WÜÙ[™HßB‚B\™]\›‚‚\[™[™×ÙœšY[™Ú[š]WÝ\™Ù]Û˜[YHHÝŠ[™[™×ÙœšY[™Ú[š]WÜÙ[™™Ù]
+\™Ù]˜[YH‹ˆŠJB‚\[™[™×ÙœšY[™Ú[š]WÜÙ[™HßB‚\Ù[™Û][\^Y\ŠÂ‚BH\HŽˆš[š]WÙœšY[™‹‚BH\™Ù]X›XÒYŽˆ\™Ù]ÚY‚BHœ›ÛÛPÛÙHŽˆ][\^Y\—Ü›ÛÛWØÛÙK‚BH™œ›ÛS˜[YHŽˆ›Ùš[WÛ˜[YK‚BH™œ›ÛTX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚_JB‚™[˜È[š]WÙœšY[™Ý×Ü^J[™^ˆ[
+HOˆ›ÚY‚‚ZYˆ[™^Üˆ[™^HœšY[™×Û\ÝœÚ^™J
+N‚‚B\™]\›‚‚]˜\ˆœšY[™Ù[žNˆXÝ[Û˜\žHHœšY[™×Û\ÝÚ[™^B‚ZYˆ›Ý›ÛÛ
+œšY[™Ù[žK™Ù]
+›Û›[™H‹˜[ÙJJN‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ú[š]WÛÙ™›[™HŠJB‚B\™]\›‚‚\^WÜÛÝ[™
+ZHŠB‚]˜\ˆ\™Ù]ÚYH›Ü›X[^™WÙœšY[™ÜX›X×ÚY
+ÝŠœšY[™Ù[žK™Ù]
+šY‹ˆŠJJB‚ZYˆ\™Ù]ÚYš\×Ù[\J
+N‚‚B\™]\›‚‚\[™[™×ÙœšY[™Ú[š]WÜÙ[™HÂ‚BH\™Ù]X›XÒYŽˆ\™Ù]ÚY‚BH\™Ù]˜[YHŽˆÝŠœšY[™Ù[žK™Ù]
+›˜[YH‹ˆŠJB‚_B‚X\ÜØÜ™Y[ˆHTÑ”’QS‘‚[X^X™WÜÙ[™Ü[™[™×ÙœšY[™Ú[š]J
+B‚™[˜ÈÚ\˜XÝ\—ØØ\™Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆØ\™ÝÚYHZ[™ŠMNŒ
+šY]ÜÜÜÚ^™KžÈ[š]HÌŒHL‹Œ
+ˆ›Ø]
+S’SPSÓSQTËœÚ^™J
+HHJJHÈ›Ø]
+S’SPSÓSQTËœÚ^™J
+JJB‚]˜\ˆØ\™ÜÚ^™HH™XÝÜŒŠØ\™ÝÚYMLŒ
+H
+ˆ[š]‚]˜\ˆØ\HL‹Œ
+ˆ[š]‚]˜\ˆÝ[ÝÚYHØ\™ÜÚ^™Kž
+ˆ›Ø]
+S’SPSÓSQTËœÚ^™J
+JH
+ÈØ\
+ˆ›Ø]
+S’SPSÓSQTËœÚ^™J
+HHJB‚]˜\ˆÝ\ÞH
+šY]ÜÜÜÚ^™KžHÝ[ÝÚY
+H
+ˆB‚\™]\›ˆ™XÝŠ™XÝÜŒŠÝ\Þ
+È›Ø]
+[™^
+H
+ˆ
+Ø\™ÜÚ^™Kž
+ÈØ\
+KšY]ÜÜÜÚ^™KžHHMÍŒ
+ˆ[š]
+KØ\™ÜÚ^™JB‚™[˜ÈÚ\˜XÝ\—Üš[™×Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÚ^™HH™XÝÜŒŠMŒÎŒ
+H
+ˆ[š]‚]˜\ˆÛÛ[[ˆH[™^	H‚]˜\ˆ›ÝÈH[™^È‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+NLŒ
+È›Ø]
+ÛÛ[[ŠH
+ˆMLKŒ
+H
+ˆ[š]
+‹Œ
+È›Ø]
+›ÝÊH
+ˆMŒ
+H
+ˆ[š]
+KÚ^™JB‚™[˜Èœ›Û[™Ø˜XÚ×Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆ™XÝŠŒŒ‹ŒLM‹ŒŒ
+B‚™[˜ÈœšY[™ØÜ™X]WÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠLŒKŒ
+H
+ˆ[š]™XÝÜŒŠÌÌŒ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈœšY[™Ú›Ú[—Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠÌŒÍMKŒ
+H
+ˆ[š]™XÝÜŒŠÌÌŒÌ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈœšY[™Ü™XYWÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠÍKŒMÌŒ
+H
+ˆ[š]™XÝÜŒŠÌÌŒÌ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈœšY[™ÜÚ\™WÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠŒLŒ
+H
+ˆ[š]™XÝÜŒŠŒKŒŒ‹Œ
+H
+ˆ[š]
+B‚™[˜ÈœšY[™Ü^Y\—Ü™XÝ
+ÛÝˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+ŒLŒ
+È›Ø]
+ÛÝ
+H
+ˆLŒ
+H
+ˆ[š]ÍKŒ
+ˆ[š]
+K™XÝÜŒŠÍŒŒMKŒ
+H
+ˆ[š]
+B‚™[˜ÈœšY[™ÙY]Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆØ\™HœšY[™Ü^Y\—Ü™XÝ
+][\^Y\—ÜÛÝYˆ][\^Y\—ÜÛÝH[ÙHšY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠØ\™œÚ^™KžHLKŒ
+ˆ[š]Ø\™œÚ^™KžHHŒ
+ˆ[š]
+K™XÝÜŒŠLL‹ŒÍŒ
+H
+ˆ[š]
+B‚™[˜ÈœšY[™ØÚÚXÙWÜ™XÝ
+[™^ˆ[ÛÛÜœÎˆ›ÛÛšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+ÌNŒ
+È›Ø]
+[™^
+H
+ˆLLŒ
+H
+ˆ[š]
+ÌÌŒYˆÛÛÜœÈ[ÙHŒŒŒ
+H
+ˆ[š]
+K™XÝÜŒŠL‹ŒL‹Œ
+H
+ˆ[š]
+B‚™[˜ÈœšY[™Ø›Ø\™Ü™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆØ\HL‹Œ
+ˆ[š]‚]˜\ˆØ\™ÝÈHZ[™ŠMNŒ
+ˆ[š]
+šY]ÜÜÜÚ^™KžHLŒ
+ˆ[š]HØ\
+ˆ›Ø]
+“ÐT‘ÕSQWÐÓÕS•HJJHÈ›Ø]
+“ÐT‘ÕSQWÐÓÕS•
+JB‚]˜\ˆÝ[ÝÈHØ\™ÝÈ
+ˆ›Ø]
+“ÐT‘ÕSQWÐÓÕS•
+H
+ÈØ\
+ˆ›Ø]
+“ÐT‘ÕSQWÐÓÕS•HJB‚]˜\ˆÝ\ÞH
+šY]ÜÜÜÚ^™KžHÝ[ÝÊH
+ˆB‚\™]\›ˆ™XÝŠ™XÝÜŒŠÝ\Þ
+È›Ø]
+[™^
+H
+ˆ
+Ø\™ÝÈ
+ÈØ\
+KNŒ
+ˆ[š]
+K™XÝÜŒŠØ\™ÝË‹Œ
+ˆ[š]
+JB‚™[˜ÈœšY[™Û[Ù[ØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠLÍKŒMMKŒ
+H
+ˆ[š]™XÝÜŒŠKŒŒ
+H
+ˆ[š]
+B‚™[˜ÈÛÛ—Ü›ÛÛWØÛÙWØÚ[™ÙY
+˜[YNˆÝš[™ÊHOˆ›ÚY‚‚]˜\ˆÛX[ˆHˆ‚‚Y›ÜˆÚ\˜XÝ\ˆ[ˆ˜[YK×Ý\\Š
+N‚‚BZYˆPÑQ‘Ò’ÓS”T”ÕU•ÖVŒŒÍMÎH‹˜ÛÛZ[œÊÚ\˜XÝ\ŠN‚‚BBXÛX[ˆ
+ÏHÚ\˜XÝ\‚‚ZYˆÛX[ˆOH˜[YN‚‚B\›ÛÛWØÛÙWÚ[œ]^HÛX[‹›Y
+
+B‚B\›ÛÛWØÛÙWÚ[œ]˜Ø\™]ØÛÛ[[ˆH›ÛÛWØÛÙWÚ[œ]^›[™Ý
+
+B‚™[˜ÈÞ[˜×ÝÙX—Ø]]ÜÝÜ˜YÙJ
+HOˆ›ÚY‚‚ZYˆ›ÝÔËš\×Ù™X]\™JÙXˆŠN‚‚B\™]\›‚‚]˜\ˆØ]™YÜ™Yœ™\ÚHÝŠ˜]˜TØÜš\œšYÙK™]˜[
+›ØØ[ÝÜ˜YÙK™Ù]][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰ÊH	ÉÈ‹YJJB‚ZYˆ›ÝØ]™YÜ™Yœ™\Úš\×Ù[\J
+N‚‚BYš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ˆHØ]™YÜ™Yœ™\Ú‚]˜\ˆØ]™YÜ›ÝšY\ˆHÝŠ˜]˜TØÜš\œšYÙK™]˜[
+›ØØ[ÝÜ˜YÙK™Ù]][J	Þœš\™X˜\ÙT›ÝšY\‰ÊH	ÉÈ‹YJJB‚ZYˆ›ÝØ]™YÜ›ÝšY\‹š\×Ù[\J
+N‚‚BYš\™X˜\ÙWÜ›ÝšY\ˆHØ]™YÜ›ÝšY\‚‚™[˜È\œÚ\ÝÝÙX—Ø]]ÜÝÜ˜YÙJ
+HOˆ›ÚY‚‚ZYˆ›ÝÔËš\×Ù™X]\™JÙXˆŠN‚‚B\™]\›‚‚]˜\ˆØÜš\Hˆˆ‚›ØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰Ë×Ô‘Q”‘TÒ×ÊNÂ›ØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT›ÝšY\‰Ë×Ô“Õ’QT—×ÊNÂˆˆˆ‚‚\ØÜš\HØÜš\œ™\XÙJ—×Ô‘Q”‘TÒ×È‹”ÓÓ‹œÝš[™ÚYžJš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ŠJKœ™\XÙJ—×Ô“Õ’QT—×È‹”ÓÓ‹œÝš[™ÚYžJš\™X˜\ÙWÜ›ÝšY\ŠJB‚R˜]˜TØÜš\œšYÙK™]˜[
+ØÜš\YJB‚™[˜ÈÛX\—ÜØ]™YØ]]ÜÙ\ÜÚ[ÛŠ
+HOˆ›ÚY‚‚Yš\™X˜\ÙWÝZYHˆ‚‚Yš\™X˜\ÙWÜX›X×ÚYHˆ‚‚Yš\™X˜\ÙWÚYÝÚÙ[ˆHˆ‚‚Yš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ˆHˆ‚‚Yš\™X˜\ÙWÝÚÙ[—Ù^\™\×Ø]H‚Yš\™X˜\ÙWÙ[XZ[Hˆ‚‚Yš\™X˜\ÙWÜ›ÝšY\ˆH™ÝY\Ý‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚BR˜]˜TØÜš\œšYÙK™]˜[
+›ØØ[ÝÜ˜YÙKœ™[[Ý™R][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰ÊNÈØØ[ÝÜ˜YÙKœ™[[Ý™R][J	Þœš\™X˜\ÙT›ÝšY\‰ÊNÈ‹YJB‚\Ø]™WÜ^Y\—Ü›Ùš[J˜[ÙJB‚™[˜È]]ÝÚÙ[—Ú\×Ý[œ™XÛÝ™\˜X›JY\ÜØYÙNˆÝš[™ÊHOˆ›ÛÛ‚‚]˜\ˆ\\ˆHY\ÜØYÙK×Ý\\Š
+B‚\™]\›ˆ\\‹˜ÛÛZ[œÊ’S•SQÔ‘Q”‘TÒÕÒÑSˆŠHÜˆ\\‹˜ÛÛZ[œÊ•TÑT—ÑTÐP“QŠHÜˆ\\‹˜ÛÛZ[œÊ•TÑT—Ó“ÕÑ“ÕS‘ŠHÜˆ\\‹˜ÛÛZ[œÊ’S•SQÑÔS•ŠB‚™[˜È™YÚ[—ÜÚ[[ÜÙ\ÜÚ[Û—Ü™\ÝÜ™J
+HOˆ›ÚY‚‚\Ù\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™ÈH˜[ÙB‚X\ÜØÜ™Y[ˆHTÒÓQB‚Yš\™X˜\ÙWØ]]Û[ÙHHœ™\Ý[YH‚‚Yš\™X˜\ÙWÜÝ]\ÈHZWÝ^
+œ™\ÝÜš[™×ÜÙ\ÜÚ[ÛˆŠB‚\Ý\Ùš\™X˜\ÙWØ]]
+
+B‚™[˜È[š]X[^™WÜØ]™YÜÙ\ÜÚ[ÛŠ
+HOˆ›ÚY‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚B]˜\ˆÚ\™YÝ˜[YNˆÝš[™ÈHÝŠ˜]˜TØÜš\œšYÙK™]˜[
+›™]ÈT“ÙX\˜Ú\˜[\ÊÚ[™ÝË›ØØ][Û‹œÙX\˜Ú
+K™Ù]
+	Ü›ÛÛIÊH	ÉÈ‹YJJB‚BY›ÜˆÚ\˜XÝ\ˆ[ˆÚ\™YÝ˜[YK×Ý\\Š
+N‚‚BBZYˆPÑQ‘Ò’ÓS”T”ÕU•ÖVŒŒÍMÎH‹˜ÛÛZ[œÊÚ\˜XÝ\ŠN‚‚BBB\[™[™×ÜÚ\™YÜ›ÛÛWØÛÙH
+ÏHÚ\˜XÝ\‚‚B\[™[™×ÜÚ\™YÜ›ÛÛWØÛÙHH[™[™×ÜÚ\™YÜ›ÛÛWØÛÙK›Y
+
+B‚B]˜\ˆ[™Ù™—Ý˜[YNˆÝš[™ÈHÝŠ˜]˜TØÜš\œšYÙK™]˜[
+›™]ÈT“ÙX\˜Ú\˜[\ÊÚ[™ÝË›ØØ][Û‹œÙX\˜Ú
+K™Ù]
+	Ø[™›ÚY]]	ÊH	ÉÈ‹YJJB‚BY›ÜˆÚ\˜XÝ\ˆ[ˆ[™Ù™—Ý˜[YK×ÛÝÙ\Š
+N‚‚BBZYˆŒLŒÍMÎXX˜ÙYˆ‹˜ÛÛZ[œÊÚ\˜XÝ\ŠN‚‚BBB\[™[™×Ø[™›ÚYØ]]Ú[™Ù™ˆ
+ÏHÚ\˜XÝ\‚‚B\[™[™×Ø[™›ÚYØ]]Ú[™Ù™ˆH[™[™×Ø[™›ÚYØ]]Ú[™Ù™‹›Y
+
+B‚\Þ[˜×ÝÙX—Ø]]ÜÝÜ˜YÙJ
+B‚ZYˆš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[‹š\×Ù[\J
+N‚‚BZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚BB\Ù\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™ÈHYB‚BB\Ù\ÜÚ[Û—Ü™\ÝÜ™WÙXY[™HHY[WÙ[\ÙY
+ÈÑTÔÒSÓ—Ô‘TÕÔ‘WÕÐRUÔÑPÂ‚BBYš\™X˜\ÙWÜÝ]\ÈHZWÝ^
+œ™\ÝÜš[™×ÜÙ\ÜÚ[ÛˆŠB‚B\™]\›‚‚X™YÚ[—ÜÚ[[ÜÙ\ÜÚ[Û—Ü™\ÝÜ™J
+B‚™[˜ÈÜ[—Ü[™[™×ÜÚ\™YÜ›ÛÛJ
+HOˆ›ÚY‚‚ZYˆ[™[™×ÜÚ\™YÜ›ÛÛWØÛÙKš\×Ù[\J
+HÜˆ›ÛÛWØÛÙWÚ[œ]OH[‚‚B\™]\›‚‚X\ÜØÜ™Y[ˆHTÑ”’QS‘‚\›ÛÛWØÛÙWÚ[œ]^H[™[™×ÜÚ\™YÜ›ÛÛWØÛÙB‚XÛÛ›™XÝÛ][\^Y\Š
+B‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚B]˜\ˆÚ\™YØÛÙNˆÝš[™ÈH[™[™×ÜÚ\™YÜ›ÛÛWØÛÙB‚B\[™[™×ÜÚ\™YÜ›ÛÛWØÛÙHHˆ‚‚B\›ÛÛWØÛÙWÚ[œ]^HÚ\™YØÛÙB‚BZ›Ú[—Û][\^Y\—Ü›ÛÛJ
+B‚™[˜ÈÚ\™WÙœšY[™Ü›ÛÛJ
+HOˆ›ÚY‚‚ZYˆ][\^Y\—Ü›ÛÛWØÛÙKš\×Ù[\J
+N‚‚B\™]\›‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚B]˜\ˆÚ\™WÝ^ˆÝš[™ÈHµäuåuä5åH5ç5êuåõéÈ5ä5æuêµæH›ÛÜ[ÛÛHHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH’›Ú[ˆ^H›ÛÜ[ÛÛHØ[YHH‚‚B]˜\ˆØÜš\Hˆˆ‚Š
+
+HOˆÂˆÛÛœÝ\›H™]ÈT“
+Ú[™ÝË›ØØ][Û‹š™YŠNÂˆ\›œÙX\˜Ú\˜[\ËœÙ]
+	Ü›ÛÛIË×Ô“ÓÓW×ÊNÂˆÛÛœÝ]HHÝ]Nˆ	Ö›ÛÜ[ÛÛIË^ˆ×ÕV×Ë\›ˆ\›ÔÝš[™Ê
+_NÂˆYˆ
+˜]šYØ]Ü‹œÚ\™JH˜]šYØ]Ü‹œÚ\™J]JK˜Ø]Ú
+
+
+HOˆßJNÂˆ[ÙHYˆ
+˜]šYØ]Ü‹˜Û\›Ø\™
+H˜]šYØ]Ü‹˜Û\›Ø\™Üš]U^
+]K^
+È	È	È
+È]K\›
+NÂŸJJ
+NÂˆˆˆ‚‚B\ØÜš\HØÜš\œ™\XÙJ—×Ô“ÓÓW×È‹”ÓÓ‹œÝš[™ÚYžJ][\^Y\—Ü›ÛÛWØÛÙJJKœ™\XÙJ—×ÕV×È‹”ÓÓ‹œÝš[™ÚYžJÚ\™WÝ^
+JB‚BR˜]˜TØÜš\œšYÙK™]˜[
+ØÜš\YJB‚B\ÚÝ×ÛY[WÛ›ÝXÙJµè5é5êµåÈ5êµé5ê5æuæ5å5êuæuêµåuèÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÒT‘HQS•HÔS‘QŠB‚Y[ÙN‚‚BQ\Ü^TÙ\™\‹˜Û\›Ø\™ÜÙ]
+][\^Y\—Ü›ÛÛWØÛÙJB‚B\ÚÝ×ÛY[WÛ›ÝXÙJµéõåuäÈ5å5åõäõê5å5åuèµêµéÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”“ÓÓHÓÑHÓÔQQŠB‚™[˜È\]WÜ›ÛÛWØÛÙWÚ[œ]
+
+HOˆ›ÚY‚‚ZYˆ›ÛÛWØÛÙWÚ[œ]OH[‚‚B\™]\›‚‚]˜\ˆÚÝ×Ú[œ]H\ÜØÜ™Y[ˆOHTÑ”’QS‘[™][\^Y\—Ü›ÛÛWØÛÙKš\×Ù[\J
+B‚\›ÛÛWØÛÙWÚ[œ]š\ÚX›HHÚÝ×Ú[œ]‚ZYˆÚÝ×Ú[œ]‚‚B]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚B]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚B\›ÛÛWØÛÙWÚ[œ]œÜÚ][ÛˆH™XÝÜŒŠÌŒŒŒ
+H
+ˆ[š]‚B\›ÛÛWØÛÙWÚ[œ]œÚ^™HH™XÝÜŒŠÌÌŒÌ‹Œ
+H
+ˆ[š]‚™[˜ÈX[WÜš[™×ØÛÛÜ—Ú[™^
+X[Nˆ[
+HOˆ[‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™Hˆ[™X[HH[™X[H][\^Y\—Ü^Y\œËœÚ^™J
+N‚‚B\™]\›ˆ[
+][\^Y\—Ü^Y\œÖÝX[WK™Ù]
+œš[™ÐÛÛÜˆ‹
+JB‚\™]\›ˆ^Y\—Üš[™×ØÛÛÜˆYˆX[HOH[ÙHZWÜš[™×ØÛÛÜ‚‚™[˜ÈX[\×ÜÚ\™WÜš[™×ØÛÛÜŠ
+HOˆ›ÛÛ‚‚\™]\›ˆX[WÜš[™×ØÛÛÜ—Ú[™^
+
+HOHX[WÜš[™×ØÛÛÜ—Ú[™^
+JB‚™[˜ÈX[WÛX\šÙ\—ØÛÛÜŠX[Nˆ[
+HOˆÛÛÜŽ‚‚\™]\›ˆÛÛÜŠ™™™ÈŠHYˆX[HOH[ÙHÛÛÜŠYY™ˆŠB‚™[˜ÈXÝ]™WØ›Ø\™Ý[YJ
+HOˆ[‚‚ZYˆØ[YWÛ[ÙHOH›Û›[™HŽ‚‚B\™]\›ˆX]ÚØ›Ø\™Ý[YB‚\™]\›ˆÙ[XÝYØ›Ø\™Ý[YB‚™[˜È\×ÙœšY[™Ü›ÛÛWÚÜÝ
+
+HOˆ›ÛÛ‚‚\™]\›ˆ][\^Y\—ÜÛÝOH‚™[˜ÈÞ[˜×ÛX]ÚØ›Ø\™Ùœ›ÛWÜ^[ØY
+^[ØYˆXÝ[Û˜\žJHOˆ›ÚY‚‚ZYˆ›Ý^[ØYš\Ê˜›Ø\™[YHŠN‚‚B\™]\›‚‚]˜\ˆ[YHHÛ[\J[
+^[ØY˜›Ø\™[YJK“ÐT‘ÕSQWÐÓÕS•HJB‚\›ÛÛWØ›Ø\™Ý[YHH[YB‚[X]ÚØ›Ø\™Ý[YHH[YB‚ZYˆ][\^Y\—ÜÛÝOH‚‚B\Ù[XÝYØ›Ø\™Ý[YHH[YB‚™[˜È\]WÛX]ÚØ›Ø\™
+[YWÚ[™^ˆ[
+HOˆ›ÚY‚‚ZYˆ][\^Y\—ÜÛÝOH‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™ÝY\ÝØ›Ø\™ÛØÚÙYŠJB‚B\™]\›‚‚]˜\ˆ[YHHÛ[\J[YWÚ[™^“ÐT‘ÕSQWÐÓÕS•HJB‚\Ù[XÝYØ›Ø\™Ý[YHH[YB‚\›ÛÛWØ›Ø\™Ý[YHH[YB‚[X]ÚØ›Ø\™Ý[YHH[YB‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\Ù[™Û][\^Y\ŠÈ\HŽˆ\]WÜ›Ùš[H‹˜›Ø\™[YHŽˆ[Y_JB‚\^WÜÛÝ[™
+ZHŠB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È\™[˜WØ›Ø\™Ý[YWÙ›Ü—Û]™[
+\™[˜WÚ[™^ˆ[
+HOˆ[‚‚\™]\›ˆT‘SWÐ“ÐT‘ÕSQTÖØÛ[\J\™[˜WÚ[™^T‘SWÐ“ÐT‘ÕSQTËœÚ^™J
+HHJWB‚™[˜È[š]X[^™WÛÝÛ™YØÛÛXÝ[ÛœÊ
+HOˆ›ÚY‚‚[ÝÛ™YØ[š[X[Ë˜ÛX\Š
+B‚[ÝÛ™YÜš[™ÜË˜ÛX\Š
+B‚Y›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚B[ÝÛ™YØ[š[X[Ë˜\[™
+[š[X[Ý[›ØÚ×ÜšXÙJJHH
+B‚Y›ÜˆH[ˆ’S‘×ÐÓÓÔ”ËœÚ^™J
+N‚‚B[ÝÛ™YÜš[™ÜË˜\[™
+š[™×Ý[›ØÚ×ÜšXÙJJHH
+B‚™[˜È\×Ø[š[X[Ý[›ØÚÙY
+[™^ˆ[
+HOˆ›ÛÛ‚‚]˜\ˆHHÛ[\J[™^S’SPSÓSQTËœÚ^™J
+HHJB‚\™]\›ˆHÝÛ™YØ[š[X[ËœÚ^™J
+H[™›ÛÛ
+ÝÛ™YØ[š[X[ÖÚWJB‚™[˜È\×Üš[™×Ý[›ØÚÙY
+[™^ˆ[
+HOˆ›ÛÛ‚‚]˜\ˆHHÛ[\J[™^’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJB‚\™]\›ˆHÝÛ™YÜš[™ÜËœÚ^™J
+H[™›ÛÛ
+ÝÛ™YÜš[™ÜÖÚWJB‚™[˜È[š[X[Ý[›ØÚ×ÜšXÙJ[™^ˆ[
+HOˆ[‚‚]˜\ˆHHÛ[\J[™^S’SPSÕS“ÐÒ×Ô’PÑTËœÚ^™J
+HHJB‚ZYˆH”‘QWÕS“ÐÒ×ÐÓÕS•‚‚B\™]\›ˆ‚\™]\›ˆS’SPSÕS“ÐÒ×Ô’PÑTÖÚWB‚™[˜Èš[™×Ý[›ØÚ×ÜšXÙJ[™^ˆ[
+HOˆ[‚‚]˜\ˆHHÛ[\J[™^’S‘×ÕS“ÐÒ×Ô’PÑTËœÚ^™J
+HHJB‚ZYˆH”‘QWÕS“ÐÒ×ÐÓÕS•‚‚B\™]\›ˆ‚\™]\›ˆ’S‘×ÕS“ÐÒ×Ô’PÑTÖÚWB‚™[˜Èš\œÝÝ[›ØÚÙYØ[š[X[
+
+HOˆ[‚‚Y›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚BZYˆ\×Ø[š[X[Ý[›ØÚÙY
+JN‚‚BB\™]\›ˆB‚\™]\›ˆ‚™[˜Èš\œÝÝ[›ØÚÙYÜš[™Ê
+HOˆ[‚‚Y›ÜˆH[ˆ’S‘×ÐÓÓÔ”ËœÚ^™J
+N‚‚BZYˆ\×Üš[™×Ý[›ØÚÙY
+JN‚‚BB\™]\›ˆB‚\™]\›ˆ‚™[˜È[œÝ\™WÝ˜[YÛØYÝ]
+
+HOˆ›ÚY‚‚ZYˆ›Ý\×Ø[š[X[Ý[›ØÚÙY
+^Y\—Ø[š[X[
+N‚‚B\^Y\—Ø[š[X[Hš\œÝÝ[›ØÚÙYØ[š[X[
+
+B‚ZYˆ›Ý\×Üš[™×Ý[›ØÚÙY
+^Y\—Üš[™×ØÛÛÜŠN‚‚B\^Y\—Üš[™×ØÛÛÜˆHš\œÝÝ[›ØÚÙYÜš[™Ê
+B‚\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚™[˜ÈØYÛÝÛ™YØÛÛXÝ[ÛœÊÛÛ™šYÎˆÛÛ™šYÑš[JHOˆ›ÚY‚‚Z[š]X[^™WÛÝÛ™YØÛÛXÝ[ÛœÊ
+B‚]˜\ˆØ]™YØ[š[X[Îˆ˜\šX[HÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹›ÝÛ™YØ[š[X[È‹×JB‚]˜\ˆØ]™YÜš[™ÜÎˆ˜\šX[HÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹›ÝÛ™YÜš[™ÜÈ‹×JB‚ZYˆ\[ÙŠØ]™YØ[š[X[ÊHOHTWÐT”VN‚‚BY›ÜˆH[ˆZ[šJØ]™YØ[š[X[ËœÚ^™J
+KÝÛ™YØ[š[X[ËœÚ^™J
+JN‚‚BB[ÝÛ™YØ[š[X[ÖÚWHH›ÛÛ
+Ø]™YØ[š[X[ÖÚWJHÜˆ[š[X[Ý[›ØÚ×ÜšXÙJJHH‚ZYˆ\[ÙŠØ]™YÜš[™ÜÊHOHTWÐT”VN‚‚BY›ÜˆH[ˆZ[šJØ]™YÜš[™ÜËœÚ^™J
+KÝÛ™YÜš[™ÜËœÚ^™J
+JN‚‚BB[ÝÛ™YÜš[™ÜÖÚWHH›ÛÛ
+Ø]™YÜš[™ÜÖÚWJHÜˆš[™×Ý[›ØÚ×ÜšXÙJJHH‚™[˜È\WÙXÛÛ›Û^WÛZYÜ˜][ÛŠÛÛ™šYÎˆÛÛ™šYÑš[JHOˆ›ÚY‚‚]˜\ˆØ]™YÝ™\œÚ[ÛˆH[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹™XÛÛ›Û^WÝ™\œÚ[Ûˆ‹
+JB‚ZYˆØ]™YÝ™\œÚ[ÛˆHPÓÓ“ÓVWÕ‘T”ÒSÓŽ‚‚B\™]\›‚‚\^Y\—ØÛÚ[œÈH‚Z[š]X[^™WÛÝÛ™YØÛÛXÝ[ÛœÊ
+B‚Y[œÝ\™WÝ˜[YÛØYÝ]
+
+B‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹™XÛÛ›Û^WÝ™\œÚ[Ûˆ‹PÓÓ“ÓVWÕ‘T”ÒSÓŠB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹˜ÛÚ[œÈ‹^Y\—ØÛÚ[œÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›ÝÛ™YØ[š[X[È‹ÝÛ™YØ[š[X[ÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›ÝÛ™YÜš[™ÜÈ‹ÝÛ™YÜš[™ÜÊB‚XÛÛ™šYËœØ]™JVQT—Ô“Ñ’SWÔU
+B‚™[˜ÈžWÜÙ[XÝØ[š[X[
+[™^ˆ[
+HOˆ›ÛÛ‚‚]˜\ˆHHÛ[\J[™^S’SPSÓSQTËœÚ^™J
+HHJB‚ZYˆ›Ý\×Ø[š[X[Ý[›ØÚÙY
+JN‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+[›ØÚ×Ú[—ÜÚÜŠJB‚B\™]\›ˆ˜[ÙB‚\^Y\—Ø[š[X[HB‚\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\™]\›ˆYB‚™[˜ÈžWÜÙ[XÝÜš[™Ê[™^ˆ[
+HOˆ›ÛÛ‚‚]˜\ˆHHÛ[\J[™^’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJB‚ZYˆ›Ý\×Üš[™×Ý[›ØÚÙY
+JN‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+[›ØÚ×Ú[—ÜÚÜŠJB‚B\™]\›ˆ˜[ÙB‚\^Y\—Üš[™×ØÛÛÜˆHB‚\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\™]\›ˆYB‚™[˜ÈžWÜ\˜Ú\ÙWØ[š[X[
+[™^ˆ[
+HOˆ›ÛÛ‚‚]˜\ˆHHÛ[\J[™^S’SPSÓSQTËœÚ^™J
+HHJB‚ZYˆ\×Ø[š[X[Ý[›ØÚÙY
+JN‚‚B\™]\›ˆžWÜÙ[XÝØ[š[X[
+JB‚]˜\ˆšXÙHH[š[X[Ý[›ØÚ×ÜšXÙJJB‚ZYˆšXÙHH‚‚B\™]\›ˆžWÜÙ[XÝØ[š[X[
+JB‚ZYˆ^Y\—ØÛÚ[œÈšXÙN‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+››ÝÙ[›ÝYÚØÛÚ[œÈŠJB‚B\™]\›ˆ˜[ÙB‚\^Y\—ØÛÚ[œÈOHšXÙB‚[ÝÛ™YØ[š[X[ÖÚWHHYB‚\^Y\—Ø[š[X[HB‚\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+œ\˜Ú\ÙWÜÝXØÙ\ÜÈŠJB‚\^WÜÛÝ[™
+ZHŠB‚\™]\›ˆYB‚™[˜ÈžWÜ\˜Ú\ÙWÜš[™Ê[™^ˆ[
+HOˆ›ÛÛ‚‚]˜\ˆHHÛ[\J[™^’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJB‚ZYˆ\×Üš[™×Ý[›ØÚÙY
+JN‚‚B\™]\›ˆžWÜÙ[XÝÜš[™ÊJB‚]˜\ˆšXÙHHš[™×Ý[›ØÚ×ÜšXÙJJB‚ZYˆšXÙHH‚‚B\™]\›ˆžWÜÙ[XÝÜš[™ÊJB‚ZYˆ^Y\—ØÛÚ[œÈšXÙN‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+››ÝÙ[›ÝYÚØÛÚ[œÈŠJB‚B\™]\›ˆ˜[ÙB‚\^Y\—ØÛÚ[œÈOHšXÙB‚[ÝÛ™YÜš[™ÜÖÚWHHYB‚\^Y\—Üš[™×ØÛÛÜˆHB‚\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+œ\˜Ú\ÙWÜÝXØÙ\ÜÈŠJB‚\^WÜÛÝ[™
+ZHŠB‚\™]\›ˆYB‚™[˜ÈÛÛXÝ[Û—Ú][WÜšXÙWÛX™[
+[™^ˆ[\×Üš[™Îˆ›ÛÛ
+HOˆÝš[™Î‚‚ZYˆ\×Üš[™Î‚‚BZYˆ\×Üš[™×Ý[›ØÚÙY
+[™^
+N‚‚BB\™]\›ˆZWÝ^
+›ÝÛ™YÚ][HŠB‚B]˜\ˆšXÙHHš[™×Ý[›ØÚ×ÜšXÙJ[™^
+B‚B\™]\›ˆZWÝ^
+™œ™YWÚ][HŠHYˆšXÙHH[ÙHÝŠšXÙJH
+ÈZWÝ^
+˜ÛÚ[œÈŠB‚ZYˆ\×Ø[š[X[Ý[›ØÚÙY
+[™^
+N‚‚B\™]\›ˆZWÝ^
+›ÝÛ™YÚ][HŠB‚]˜\ˆ[š[X[ÜšXÙHH[š[X[Ý[›ØÚ×ÜšXÙJ[™^
+B‚\™]\›ˆZWÝ^
+™œ™YWÚ][HŠHYˆ[š[X[ÜšXÙHH[ÙHÝŠ[š[X[ÜšXÙJH
+ÈZWÝ^
+˜ÛÚ[œÈŠB‚™[˜È˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^J™XÝˆ™XÝ‹[™^ˆ[\×Üš[™Îˆ›ÛÛ[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ[›ØÚÙYH\×Üš[™×Ý[›ØÚÙY
+[™^
+HYˆ\×Üš[™È[ÙH\×Ø[š[X[Ý[›ØÚÙY
+[™^
+B‚ZYˆ[›ØÚÙY‚‚B\™]\›‚‚Y˜]×Ü™XÝ
+™XÝÛÛÜŠŒKŒËŒN
+JB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™XÝœÚ^™KžH
+ˆŠK¼'å$ˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™Kž[
+ŒŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆšXÙWÝ^HÛÛXÝ[Û—Ú][WÜšXÙWÛX™[
+[™^\×Üš[™ÊB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™XÝœÚ^™KžH
+ˆŽ
+KšXÙWÝ^Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™Kž[
+LKŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚™[˜ÈØYÜ^Y\—Ü›Ùš[J
+HOˆ›ÚY‚‚]˜\ˆÛÛ™šYÈHÛÛ™šYÑš[K›™]Ê
+B‚Z[š]X[^™WÛÝÛ™YØÛÛXÝ[ÛœÊ
+B‚ZYˆÛÛ™šYË›ØY
+VQT—Ô“Ñ’SWÔU
+HOHÒÎ‚‚BY[œÝ\™WÝ˜[YÛØYÝ]
+
+B‚B\™]\›‚‚\›Ùš[WÛ˜[YHHÝŠÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹›˜[YH‹›Ùš[WÛ˜[YJJKœÝš\ÙYÙ\Ê
+K›Y
+Œ
+B‚ZYˆ›Ùš[WÛ˜[YKš\×Ù[\J
+N‚‚B\›Ùš[WÛ˜[YHH”VQTˆH‚‚\^Y\—Ø[š[X[HÛ[\J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹˜[š[X[‹^Y\—Ø[š[X[
+JKS’SPSÓSQTËœÚ^™J
+HHJB‚\^Y\—Üš[™×ØÛÛÜˆHÛ[\J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹œš[™×ØÛÛÜˆ‹^Y\—Üš[™×ØÛÛÜŠJK’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJB‚\^Y\—ØÛÚ[œÈHX^J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹˜ÛÚ[œÈ‹^Y\—ØÛÚ[œÊJJB‚\^Y\—Û]™[HÛ[\J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹›]™[‹^Y\—Û]™[
+JKKNNJB‚\^Y\—ÞHX^J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹ž‹^Y\—Þ
+JJB‚\^Y\—ÝÚ[œÈHX^J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹Ú[œÈ‹^Y\—ÝÚ[œÊJJB‚\^Y\—ÛÜÜÙ\ÈHX^J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹›ÜÜÙ\È‹^Y\—ÛÜÜÙ\ÊJJB‚\^Y\—Ø™\ÝÜÝ™XZÈHX^J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹˜™\ÝÜÝ™XZÈ‹^Y\—Ø™\ÝÜÝ™XZÊJJB‚\^Y\—ØÝ\œ™[ÜÝ™XZÈHX^J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹˜Ý\œ™[ÜÝ™XZÈ‹^Y\—ØÝ\œ™[ÜÝ™XZÊJJB‚\^Y\—Ü˜][™ÈHÛ[\J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹œ˜][™È‹^Y\—Ü˜][™ÊJKLNNNJB‚\^Y\—ÛXYÝYWÝY\ˆHÛ[\J[
+ÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹›XYÝYWÝY\ˆ‹^Y\—ÛXYÝYWÝY\ŠJKPQÕQWÓSQWÒÑVTËœÚ^™J
+HHJB‚\ÛÝ[™Ù[˜X›YH›ÛÛ
+ÛÛ™šYË™Ù]Ý˜[YJœÙ][™ÜÈ‹œÛÝ[™Ù[˜X›Y‹ÛÝ[™Ù[˜X›Y
+JB‚]]ÜšX[ØÛÛ\]YH›ÛÛ
+ÛÛ™šYË™Ù]Ý˜[YJœÙ][™ÜÈ‹]ÜšX[ØÛÛ\]Y‹]ÜšX[ØÛÛ\]Y
+JB‚XÛÛ\]\—ÙY™šXÝ[HHÛ[\J[
+ÛÛ™šYË™Ù]Ý˜[YJœÙ][™ÜÈ‹˜ÛÛ\]\—ÙY™šXÝ[H‹ÛÛ\]\—ÙY™šXÝ[JJKŠB‚\Ù[XÝYØ›Ø\™Ý[YHHÛ[\J[
+ÛÛ™šYË™Ù]Ý˜[YJœÙ][™ÜÈ‹˜›Ø\™Ý[YH‹Ù[XÝYØ›Ø\™Ý[YJJK“ÐT‘ÕSQWÐÓÕS•HJB‚[\ÝÙZ[WØÛZ[HHÝŠÛÛ™šYË™Ù]Ý˜[YJœ^Y\ˆ‹›\ÝÙZ[WØÛZ[H‹\ÝÙZ[WØÛZ[JJB‚]ZWÛ[™ÝXYÙHHÝŠÛÛ™šYË™Ù]Ý˜[YJœÙ][™ÜÈ‹›[™ÝXYÙH‹ZWÛ[™ÝXYÙJJB‚YœšY[™×Û\ÝHÛÛ™šYË™Ù]Ý˜[YJœÛØÚX[‹™œšY[™È‹×JB‚ZYˆ\[ÙŠœšY[™×Û\Ý
+HOHTWÐT”VN‚‚BYœšY[™×Û\ÝH×B‚Z[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÈHÛÛ™šYË™Ù]Ý˜[YJœÛØÚX[‹š[˜ÛÛZ[™×Ü™\]Y\ÝÈ‹×JB‚ZYˆ\[ÙŠ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÊHOHTWÐT”VN‚‚BZ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÈH×B‚[Ý]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝÈHÛÛ™šYË™Ù]Ý˜[YJœÛØÚX[‹›Ý]ÛÚ[™×Ü™\]Y\ÝÈ‹×JB‚ZYˆ\[ÙŠÝ]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝÊHOHTWÐT”VN‚‚B[Ý]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝÈH×B‚]\]WÜ^Y\—ÛXYÝYWÝY\Š
+B‚Yš\™X˜\ÙWÝZYHÝŠÛÛ™šYË™Ù]Ý˜[YJ™š\™X˜\ÙH‹ZY‹ˆŠJB‚Yš\™X˜\ÙWÜX›X×ÚYHÝŠÛÛ™šYË™Ù]Ý˜[YJ™š\™X˜\ÙH‹œX›X×ÚY‹ˆŠJB‚Yš\™X˜\ÙWÚYÝÚÙ[ˆHÝŠÛÛ™šYË™Ù]Ý˜[YJ™š\™X˜\ÙH‹šYÝÚÙ[ˆ‹ˆŠJB‚Yš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ˆHÝŠÛÛ™šYË™Ù]Ý˜[YJ™š\™X˜\ÙH‹œ™Yœ™\ÚÝÚÙ[ˆ‹ˆŠJB‚Yš\™X˜\ÙWÝÚÙ[—Ù^\™\×Ø]H[
+ÛÛ™šYË™Ù]Ý˜[YJ™š\™X˜\ÙH‹™^\™\×Ø]‹
+JB‚Yš\™X˜\ÙWÜ›ÝšY\ˆHÝŠÛÛ™šYË™Ù]Ý˜[YJ™š\™X˜\ÙH‹œ›ÝšY\ˆ‹š\™X˜\ÙWÜ›ÝšY\ŠJB‚Yš\™X˜\ÙWÙ[XZ[HÝŠÛÛ™šYË™Ù]Ý˜[YJ™š\™X˜\ÙH‹™[XZ[‹š\™X˜\ÙWÙ[XZ[
+JB‚[ØYÛÝÛ™YØÛÛXÝ[ÛœÊÛÛ™šYÊB‚X\WÙXÛÛ›Û^WÛZYÜ˜][ÛŠÛÛ™šYÊB‚Y[œÝ\™WÝ˜[YÛØYÝ]
+
+B‚™[˜ÈØ]™WÜ^Y\—Ü›Ùš[JÞ[˜×ØÛÝYˆ›ÛÛHYJHOˆ›ÚY‚‚]˜\ˆÛÛ™šYÈHÛÛ™šYÑš[K›™]Ê
+B‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›˜[YH‹›Ùš[WÛ˜[YJB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹˜[š[X[‹^Y\—Ø[š[X[
+B‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹œš[™×ØÛÛÜˆ‹^Y\—Üš[™×ØÛÛÜŠB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹˜ÛÚ[œÈ‹^Y\—ØÛÚ[œÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹™XÛÛ›Û^WÝ™\œÚ[Ûˆ‹PÓÓ“ÓVWÕ‘T”ÒSÓŠB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›ÝÛ™YØ[š[X[È‹ÝÛ™YØ[š[X[ÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›ÝÛ™YÜš[™ÜÈ‹ÝÛ™YÜš[™ÜÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›]™[‹^Y\—Û]™[
+B‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹ž‹^Y\—Þ
+B‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹Ú[œÈ‹^Y\—ÝÚ[œÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›ÜÜÙ\È‹^Y\—ÛÜÜÙ\ÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹˜™\ÝÜÝ™XZÈ‹^Y\—Ø™\ÝÜÝ™XZÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹˜Ý\œ™[ÜÝ™XZÈ‹^Y\—ØÝ\œ™[ÜÝ™XZÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹œ˜][™È‹^Y\—Ü˜][™ÊB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›XYÝYWÝY\ˆ‹^Y\—ÛXYÝYWÝY\ŠB‚XÛÛ™šYËœÙ]Ý˜[YJœ^Y\ˆ‹›\ÝÙZ[WØÛZ[H‹\ÝÙZ[WØÛZ[JB‚XÛÛ™šYËœÙ]Ý˜[YJœÙ][™ÜÈ‹œÛÝ[™Ù[˜X›Y‹ÛÝ[™Ù[˜X›Y
+B‚XÛÛ™šYËœÙ]Ý˜[YJœÙ][™ÜÈ‹]ÜšX[ØÛÛ\]Y‹]ÜšX[ØÛÛ\]Y
+B‚XÛÛ™šYËœÙ]Ý˜[YJœÙ][™ÜÈ‹˜ÛÛ\]\—ÙY™šXÝ[H‹ÛÛ\]\—ÙY™šXÝ[JB‚XÛÛ™šYËœÙ]Ý˜[YJœÙ][™ÜÈ‹˜›Ø\™Ý[YH‹Ù[XÝYØ›Ø\™Ý[YJB‚XÛÛ™šYËœÙ]Ý˜[YJœÙ][™ÜÈ‹›[™ÝXYÙH‹ZWÛ[™ÝXYÙJB‚XÛÛ™šYËœÙ]Ý˜[YJœÛØÚX[‹™œšY[™È‹œšY[™×Û\Ý
+B‚XÛÛ™šYËœÙ]Ý˜[YJœÛØÚX[‹š[˜ÛÛZ[™×Ü™\]Y\ÝÈ‹[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÊB‚XÛÛ™šYËœÙ]Ý˜[YJœÛØÚX[‹›Ý]ÛÚ[™×Ü™\]Y\ÝÈ‹Ý]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝÊB‚XÛÛ™šYËœÙ]Ý˜[YJ™š\™X˜\ÙH‹ZY‹š\™X˜\ÙWÝZY
+B‚XÛÛ™šYËœÙ]Ý˜[YJ™š\™X˜\ÙH‹œX›X×ÚY‹š\™X˜\ÙWÜX›X×ÚY
+B‚XÛÛ™šYËœÙ]Ý˜[YJ™š\™X˜\ÙH‹šYÝÚÙ[ˆ‹š\™X˜\ÙWÚYÝÚÙ[ŠB‚XÛÛ™šYËœÙ]Ý˜[YJ™š\™X˜\ÙH‹œ™Yœ™\ÚÝÚÙ[ˆ‹š\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ŠB‚XÛÛ™šYËœÙ]Ý˜[YJ™š\™X˜\ÙH‹™^\™\×Ø]‹š\™X˜\ÙWÝÚÙ[—Ù^\™\×Ø]
+B‚XÛÛ™šYËœÙ]Ý˜[YJ™š\™X˜\ÙH‹œ›ÝšY\ˆ‹š\™X˜\ÙWÜ›ÝšY\ŠB‚XÛÛ™šYËœÙ]Ý˜[YJ™š\™X˜\ÙH‹™[XZ[‹š\™X˜\ÙWÙ[XZ[
+B‚XÛÛ™šYËœØ]™JVQT—Ô“Ñ’SWÔU
+B‚ZYˆÞ[˜×ØÛÝY[™›Ýš\™X˜\ÙWÝZYš\×Ù[\J
+N‚‚BYš\™X˜\ÙWÜ›Ùš[WÙ\HHYB‚BYš\™X˜\ÙWÜÞ[˜×Ù[^HHŽ‚™[˜ÈÙ]\Ùš\™X˜\ÙJ
+HOˆ›ÚY‚‚Yš\™X˜\ÙWØ]]Ü™\]Y\ÝH™\]Y\Ý›™]Ê
+B‚Yš\™X˜\ÙWØ]]Ü™\]Y\Ýœ™\]Y\ÝØÛÛ\]Y˜ÛÛ›™XÝ
+ÛÛ—Ùš\™X˜\ÙWØ]]ØÛÛ\]Y
+B‚XYØÚ[
+š\™X˜\ÙWØ]]Ü™\]Y\Ý
+B‚Yš\™X˜\ÙWÜ›Ùš[WÜ™\]Y\ÝH™\]Y\Ý›™]Ê
+B‚Yš\™X˜\ÙWÜ›Ùš[WÜ™\]Y\Ýœ™\]Y\ÝØÛÛ\]Y˜ÛÛ›™XÝ
+ÛÛ—Ùš\™X˜\ÙWÜ›Ùš[WØÛÛ\]Y
+B‚XYØÚ[
+š\™X˜\ÙWÜ›Ùš[WÜ™\]Y\Ý
+B‚Yš\™X˜\ÙWÜX›X×ÚYÜ™\]Y\ÝH™\]Y\Ý›™]Ê
+B‚Yš\™X˜\ÙWÜX›X×ÚYÜ™\]Y\Ýœ™\]Y\ÝØÛÛ\]Y˜ÛÛ›™XÝ
+ÛÛ—Ùš\™X˜\ÙWÜX›X×ÚYØÛÛ\]Y
+B‚XYØÚ[
+š\™X˜\ÙWÜX›X×ÚYÜ™\]Y\Ý
+B‚Yš\™X˜\ÙWÜÝ]\ÈHµäuåõê5åH5äõê5æˆ5æõè5æuèuåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHÕÈÈÒQÓˆSˆ‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚B\Ù]\Ùš\™X˜\ÙWÙÛÛÙÛWÝÙXŠ
+B‚™[˜ÈÝ\Ùš\™X˜\ÙWØ]]
+
+HOˆ›ÚY‚‚ZYˆš\™X˜\ÙWØ]]Ø\ÞHÜˆš\™X˜\ÙWØ]]Ü™\]Y\ÝOH[‚‚B\™]\›‚‚Yš\™X˜\ÙWØ]]Ø\ÞHHYB‚Yš\™X˜\ÙWÜÝ]\ÈHµçµêµåõäuê‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÓÓ“‘PÕS‘Ë‹‹ˆ‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚B\Ý\Ùš\™X˜\ÙWÝÙX—Ø]]
+
+B‚B\™]\›‚‚]˜\ˆ\œ›ÜˆHÒÂ‚ZYˆ›Ýš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[‹š\×Ù[\J
+N‚‚B]˜\ˆ™Yœ™\ÚÝ\›HšÎ‹ËÜÙXÝ\™]ÚÙ[‹™ÛÛÙÛX\\Ë˜ÛÛKÝŒKÝÚÙ[ÚÙ^OHˆ
+È’T‘PTÑWÐTWÒÑVB‚B]˜\ˆ™Yœ™\ÚØ›ÙHH™Ü˜[Ý\O\™Yœ™\ÚÝÚÙ[‰œ™Yœ™\ÚÝÚÙ[Hˆ
+Èš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[‹\šWÙ[˜ÛÙJ
+B‚BY\œ›ÜˆHš\™X˜\ÙWØ]]Ü™\]Y\Ýœ™\]Y\Ý
+™Yœ™\ÚÝ\›ÈÛÛ[U\Nˆ\XØ][Û‹Þ]ÝÝËY›Ü›K]\›[˜ÛÙY‹XØÙ\ˆ\XØ][Û‹ÚœÛÛˆ—KÛY[“QUÑÔÔÕ™Yœ™\ÚØ›ÙJB‚Y[ÙN‚‚B]˜\ˆÚYÛ\Ý\›HšÎ‹ËÚY[]]ÛÛÚ]™ÛÛÙÛX\\Ë˜ÛÛKÝŒKØXØÛÝ[ÎœÚYÛ•\ÚÙ^OHˆ
+È’T‘PTÑWÐTWÒÑVB‚BY\œ›ÜˆHš\™X˜\ÙWØ]]Ü™\]Y\Ýœ™\]Y\Ý
+ÚYÛ\Ý\›ÈÛÛ[U\Nˆ\XØ][Û‹ÚœÛÛˆ‹XØÙ\ˆ\XØ][Û‹ÚœÛÛˆ—KÛY[“QUÑÔÔÕž×œ™]\›”ÙXÝ\™UÚÙ[—ŽY_HŠB‚ZYˆ\œ›ÜˆOHÒÎ‚‚BYš\™X˜\ÙWØ]]Ø\ÞHH˜[ÙB‚BYš\™X˜\ÙWÜÝ]\ÈHµä5æuçÈ5åõæuäuåuê5ç5èµè5çÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÓÕQÑ‘“S‘H‚‚™[˜È™YÚ[—ÙÝY\ÝÜÚYÛ—Ú[Š
+HOˆ›ÚY‚‚ZYˆ›Ýš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[‹š\×Ù[\J
+N‚‚BYš\™X˜\ÙWØ]]Û[ÙHHœ™\Ý[YH‚‚BYš\™X˜\ÙWÜÝ]\ÈHZWÝ^
+œ™\ÝÜš[™×ÜÙ\ÜÚ[ÛˆŠB‚B\Ý\Ùš\™X˜\ÙWØ]]
+
+B‚B\™]\›‚‚Yš\™X˜\ÙWØ]]Û[ÙHH™ÝY\Ý‚‚Yš\™X˜\ÙWÜ›ÝšY\ˆH™ÝY\Ý‚‚Yš\™X˜\ÙWÙ[XZ[Hˆ‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚BR˜]˜TØÜš\œšYÙK™]˜[
+›ØØ[ÝÜ˜YÙKœ™[[Ý™R][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰ÊNÈØØ[ÝÜ˜YÙKœ™[[Ý™R][J	Þœš\™X˜\ÙT›ÝšY\‰ÊNÈ‹YJB‚Yš\™X˜\ÙWÝZYHˆ‚‚Yš\™X˜\ÙWÜX›X×ÚYHˆ‚‚Yš\™X˜\ÙWÚYÝÚÙ[ˆHˆ‚‚Yš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ˆHˆ‚‚Yš\™X˜\ÙWÝÚÙ[—Ù^\™\×Ø]H‚\›Ùš[WÛ˜[YHH
+µä5åuê5åËHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘ÝY\ÝHŠH
+ÈÝŠ˜[™WÜ˜[™ÙJLNNNJJB‚ZYˆ›Ùš[WÛ˜[YWÚ[œ]OH[‚‚B\›Ùš[WÛ˜[YWÚ[œ]^H›Ùš[WÛ˜[YB‚\Ý\Ùš\™X˜\ÙWØ]]
+
+B‚™[˜ÈÝ\Ù[XZ[Ø]]
+™YÚ\Ý\—ØXØÛÝ[ˆ›ÛÛ
+HOˆ›ÚY‚‚ZYˆš\™X˜\ÙWØ]]Ø\ÞHÜˆ]]Ù[XZ[Ú[œ]OH[Üˆ]]Ü\ÜÝÛÜ™Ú[œ]OH[‚‚B\™]\›‚‚]˜\ˆ[XZ[H]]Ù[XZ[Ú[œ]^œÝš\ÙYÙ\Ê
+B‚]˜\ˆ\ÜÝÛÜ™H]]Ü\ÜÝÛÜ™Ú[œ]^‚ZYˆ›Ý[XZ[˜ÛÛZ[œÊŠN‚‚BYš\™X˜\ÙWÜÝ]\ÈHµæuêH5ç5å5åµæuçÈ5æõêµåuäuêˆ5çµæuæuç5êµéõæuè5åˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘S•TˆHSQSPRS‚‚B\™]\›‚‚ZYˆ\ÜÝÛÜ™›[™Ý
+
+HŽ‚‚BYš\™X˜\ÙWÜÝ]\ÈHµå5èuæuèuçµå5åõæuæuäuêˆ5ç5å5æõæuç5ç5é5åõåuêˆˆ5êµåuåuæuçHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”TÔÕÓÔ‘UTÕU‘HˆÒTPÕT”È‚‚B\™]\›‚‚Yš\™X˜\ÙWØ]]Ø\ÞHHYB‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚BR˜]˜TØÜš\œšYÙK™]˜[
+Ú[™ÝËžœX[X[]]H	ØXÝ]™IÎÈ‹YJB‚Yš\™X˜\ÙWØ]]Û[ÙHHœ™YÚ\Ý\ˆˆYˆ™YÚ\Ý\—ØXØÛÝ[[ÙH™[XZ[‚‚Yš\™X˜\ÙWÜÝ]\ÈHµæuåuéµê5åõêuäuåuçË‹‹ˆˆYˆ™YÚ\Ý\—ØXØÛÝ[[ÙHµçµêµåõäuê‹‹ˆ‚‚]˜\ˆXÝ[ÛˆHœÚYÛ•\ˆYˆ™YÚ\Ý\—ØXØÛÝ[[ÙHœÚYÛ’[•Ú]\ÜÝÛÜ™‚‚]˜\ˆ\›HšÎ‹ËÚY[]]ÛÛÚ]™ÛÛÙÛX\\Ë˜ÛÛKÝŒKØXØÛÝ[Î‰\ÏÚÙ^OI\Èˆ	HØXÝ[Û‹’T‘PTÑWÐTWÒÑVWB‚]˜\ˆ^[ØYH”ÓÓ‹œÝš[™ÚYžJÈ™[XZ[Žˆ[XZ[œ\ÜÝÛÜ™Žˆ\ÜÝÛÜ™œ™]\›”ÙXÝ\™UÚÙ[ˆŽˆY_JB‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚B]˜\ˆØÜš\Hˆˆ‚Ú[™ÝËžœ]]Ý]HHÜÝ]\Îˆ	ÛØY[™ÉßNÂŠ\Þ[˜È
+
+HOˆÂˆžHÂˆÛÛœÝ™\ÜÛœÙHH]ØZ]™]Ú
+×ÕT“×ËÛY]Ù‰ÔÔÕ	Ë[ÙN‰ØÛÜœÉËÜ™Y[X[Î‰ÛÛZ]	ËXY\œÎžÉÐÛÛ[U\IÎ‰Ø\XØ][Û‹ÚœÛÛ‰ßK›ÙN—×Ð“ÑW×ßJNÂˆÛÛœÝ]HH]ØZ]™\ÜÛœÙKšœÛÛŠ
+NÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ
+]K™\œ›Üˆ	‰ˆ]K™\œ›Ü‹›Y\ÜØYÙJH
+	Ò	È
+È™\ÜÛœÙKœÝ]\ÊJNÂˆØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰Ë]Kœ™Yœ™\ÚÚÙ[ˆ	ÉÊNÂˆØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT›ÝšY\‰Ë	Ù[XZ[	ÊNÂˆÚ[™ÝËžœ]]Ý]HHÜÝ]\Î‰ÙÛ™IËØØ[Y™]K›ØØ[YYÚÙ[Ž™]KšYÚÙ[‹™Yœ™\ÚÚÙ[Ž™]Kœ™Yœ™\ÚÚÙ[‹^\™\Ò[Ž™]K™^\™\Ò[ˆ	ÌÍŒ	Ë›ÝšY\Ž‰Ù[XZ[	Ë[XZ[™]K™[XZ[×ÑSPRS×ßNÂˆHØ]Ú
+\œ›ÜŠHÈÚ[™ÝËžœ]]Ý]HHÜÝ]\Î‰Ù\œ›Ü‰ËY\ÜØYÙN”Ýš[™Ê\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙH\œ›ÜŠ_NÈBŸJJ
+NÂˆˆˆ‚‚B\ØÜš\HØÜš\œ™\XÙJ—×ÕT“×È‹”ÓÓ‹œÝš[™ÚYžJ\›
+JKœ™\XÙJ—×Ð“ÑW×È‹”ÓÓ‹œÝš[™ÚYžJ^[ØY
+JKœ™\XÙJ—×ÑSPRS×È‹”ÓÓ‹œÝš[™ÚYžJ[XZ[
+JB‚BR˜]˜TØÜš\œšYÙK™]˜[
+ØÜš\YJB‚BYš\™X˜\ÙWÝÙX—ÜÛÙ[^HHŒMB‚Y[ÙN‚‚B]˜\ˆ\œ›ÜˆHš\™X˜\ÙWØ]]Ü™\]Y\Ýœ™\]Y\Ý
+\›ÈÛÛ[U\Nˆ\XØ][Û‹ÚœÛÛˆ‹XØÙ\ˆ\XØ][Û‹ÚœÛÛˆ—KÛY[“QUÑÔÔÕ^[ØY
+B‚BZYˆ\œ›ÜˆOHÒÎ‚‚BBYš\™X˜\ÙWØ]]Ø\ÞHH˜[ÙB‚BBYš\™X˜\ÙWÜÝ]\ÈHµä5æuçÈ5åõæuäuåuê5ç5èµè5çÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÓÕQÑ‘“S‘H‚‚™[˜ÈÛÛ—Ø]]Ü\ÜÝÛÜ™ÜÝX›Z]Y
+Ý˜[YNˆÝš[™ÊHOˆ›ÚY‚‚\Ý\Ù[XZ[Ø]]
+]]Ù[XZ[Û[ÙHOHœ™YÚ\Ý\ˆŠB‚™[˜ÈÝ\Ùš\™X˜\ÙWÝÙX—Ø]]
+
+HOˆ›ÚY‚‚]˜\ˆØÜš\Hˆˆ‚Ú[™ÝËžœ]]Ý]HHÜÝ]\Îˆ	ÛØY[™ÉßNÂŠ\Þ[˜È
+
+HOˆÂˆžHÂˆÛÛœÝÙ^HH	××ÐTWÒÑVW×ÉÎÂˆÛÛœÝØ]™Y™Yœ™\ÚH×ÕTÑWÔ‘Q”‘TÒ×ÈÈ
+ØØ[ÝÜ˜YÙK™Ù]][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰ÊH	ÉÊHˆ	ÉÎÂˆ]™\ÜÛœÙNÂˆYˆ
+Ø]™Y™Yœ™\Ú
+HÂˆ™\ÜÛœÙHH]ØZ]™]Ú
+	ÚÎ‹ËÜÙXÝ\™]ÚÙ[‹™ÛÛÙÛX\\Ë˜ÛÛKÝŒKÝÚÙ[ÚÙ^OIÈ
+ÈÙ^KÂˆY]Ùˆ	ÔÔÕ	Ë[ÙNˆ	ØÛÜœÉËÜ™Y[X[Îˆ	ÛÛZ]	ËˆXY\œÎˆÉÐÛÛ[U\IÎˆ	Ø\XØ][Û‹Þ]ÝÝËY›Ü›K]\›[˜ÛÙY	ßKˆ›ÙNˆ	ÙÜ˜[Ý\O\™Yœ™\ÚÝÚÙ[‰œ™Yœ™\ÚÝÚÙ[IÈ
+È[˜ÛÙUT’PÛÛ\Û™[
+Ø]™Y™Yœ™\Ú
+BˆJNÂˆH[ÙHÂˆ™\ÜÛœÙHH]ØZ]™]Ú
+	ÚÎ‹ËÚY[]]ÛÛÚ]™ÛÛÙÛX\\Ë˜ÛÛKÝŒKØXØÛÝ[ÎœÚYÛ•\ÚÙ^OIÈ
+ÈÙ^KÂˆY]Ùˆ	ÔÔÕ	Ë[ÙNˆ	ØÛÜœÉËÜ™Y[X[Îˆ	ÛÛZ]	ËˆXY\œÎˆÉÐÛÛ[U\IÎˆ	Ø\XØ][Û‹ÚœÛÛ‰ßKˆ›ÙNˆ”ÓÓ‹œÝš[™ÚYžJÜ™]\›”ÙXÝ\™UÚÙ[ŽˆY_JBˆJNÂˆBˆÛÛœÝ]HH]ØZ]™\ÜÛœÙKšœÛÛŠ
+NÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ
+]K™\œ›Üˆ	‰ˆ]K™\œ›Ü‹›Y\ÜØYÙJH
+	Ò	È
+È™\ÜÛœÙKœÝ]\ÊJNÂˆÛÛœÝ™Yœ™\ÚÚÙ[ˆH]Kœ™Yœ™\ÚÚÙ[ˆ]Kœ™Yœ™\ÚÝÚÙ[ˆØ]™Y™Yœ™\ÚÂˆØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰Ë™Yœ™\ÚÚÙ[ŠNÂˆYˆ
+\Ø]™Y™Yœ™\Ú
+HÂˆØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT›ÝšY\‰Ë	ÙÝY\Ý	ÊNÂˆBˆÚ[™ÝËžœ]]Ý]HHÂˆÝ]\Îˆ	ÙÛ™IËØØ[Yˆ]K›ØØ[Y]K\Ù\—ÚYˆYÚÙ[Žˆ]KšYÚÙ[ˆ]KšYÝÚÙ[‹™Yœ™\ÚÚÙ[Žˆ™Yœ™\ÚÚÙ[‹ˆ^\™\Ò[Žˆ]K™^\™\Ò[ˆ]K™^\™\×Ú[ˆ	ÌÍŒ	ÂˆNÂˆHØ]Ú
+\œ›ÜŠHÂˆÚ[™ÝËžœ]]Ý]HHÜÝ]\Îˆ	Ù\œ›Ü‰ËY\ÜØYÙNˆÝš[™Ê\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙH\œ›ÜŠ_NÂˆBŸJJ
+NÂˆˆˆ‹œ™\XÙJ—×ÐTWÒÑVW×È‹’T‘PTÑWÐTWÒÑVJKœ™\XÙJ—×ÕTÑWÔ‘Q”‘TÒ×È‹YHˆYˆš\™X˜\ÙWØ]]Û[ÙHOH™ÝY\Ýˆ[ÙH™˜[ÙHŠB‚R˜]˜TØÜš\œšYÙK™]˜[
+ØÜš\YJB‚Yš\™X˜\ÙWÝÙX—ÜÛÙ[^HHŒMB‚™[˜ÈÙ]\Ùš\™X˜\ÙWÙÛÛÙÛWÝÙXŠ
+HOˆ›ÚY‚‚]˜\ˆØÜš\Hˆˆ‚ˆÚ[™ÝËžœÛÛÙÛTÝ]HHÜÝ]\Îˆ	ÛØY[™Ë\ÙÉßNÂˆÚ[™ÝËžœX[X[]]H	ÚYIÎÂŠ\Þ[˜È
+
+HOˆÂˆžHÂˆÛÛœÝ\ÙÈH]ØZ][\Ü
+	ÚÎ‹ËÝÝÝË™ÜÝ]XË˜ÛÛKÙš\™X˜\ÙZœËÌL‹ŒMËŒKÙš\™X˜\ÙKX\šœÉÊNÂˆÛÛœÝ]]ÙÈH]ØZ][\Ü
+	ÚÎ‹ËÝÝÝË™ÜÝ]XË˜ÛÛKÙš\™X˜\ÙZœËÌL‹ŒMËŒKÙš\™X˜\ÙKX]]šœÉÊNÂˆÛÛœÝÛÛ™šYÈHÂˆ\RÙ^Nˆ	××ÐTWÒÑVW×ÉË]]ÛXZ[Žˆ	Þ›ÛÜ[ÛÛK[Û›[™K™š\™X˜\ÙX\˜ÛÛIËˆ›Ú™XÝYˆ	Þ›ÛÜ[ÛÛK[Û›[™IËÝÜ˜YÙPXÚÙ]ˆ	Þ›ÛÜ[ÛÛK[Û›[™K™š\™X˜\Ù\ÝÜ˜YÙK˜\	ËˆY\ÜØYÚ[™ÔÙ[™\’Yˆ	ÌÎNMŒÌL‰Ë\Yˆ	ÌNŒÎNMŒÌLŽÙXŽŒMÎXØŒLØÎN™™ÌÍLMY	ÂˆNÂˆÛÛœÝ\H\ÙË™Ù]\Ê
+K›[™ÝÈ\ÙË™Ù]\Ê
+VÌHˆ\ÙËš[š]X[^™P\
+ÛÛ™šYÊNÂˆÛÛœÝ]]H]]ÙË™Ù]]]
+\
+NÂˆ]ØZ]]]ÙËœÙ]\œÚ\Ý[˜ÙJ]]]]ÙË˜œ›ÝÜÙ\“ØØ[\œÚ\Ý[˜ÙJNÂˆÛÛœÝ›ÝšY\ˆH™]È]]ÙË‘ÛÛÙÛP]]›ÝšY\Š
+NÂˆÛÛœÝ™\ÛÛ™T›ÝšY\ˆH
+\Ù\ŠHOˆÂˆYˆ
+]\Ù\ŠH™]\›ˆ	ÙÝY\Ý	ÎÂˆYˆ
+\Ù\‹š\Ð[›Ûž[[Ý\ÊH™]\›ˆ	ÙÝY\Ý	ÎÂˆÛÛœÝ›ÝšY\’YH
+\Ù\‹œ›ÝšY\‘]H	‰ˆ\Ù\‹œ›ÝšY\‘]VÌH	‰ˆ\Ù\‹œ›ÝšY\‘]VÌKœ›ÝšY\’Y
+H	ÉÎÂˆYˆ
+›ÝšY\’YOOH	ÙÛÛÙÛK˜ÛÛIÊH™]\›ˆ	ÙÛÛÙÛIÎÂˆYˆ
+›ÝšY\’YOOH	Ü\ÜÝÛÜ™	ÊH™]\›ˆ	Ù[XZ[	ÎÂˆ™]\›ˆ	ÙÛÛÙÛIÎÂˆNÂˆ]]ÙË›Û]]Ý]PÚ[™ÙY
+]]\Þ[˜È
+\Ù\ŠHOˆÂˆYˆ
+]\Ù\ŠHÂˆÚ[™ÝËžœÙ\ÜÚ[Û”™\ÝÜ™PÚXÚÙYHYNÂˆ™]\›ŽÂˆBˆYˆ
+Ú[™ÝËžœX[X[]]OOH	ØXÝ]™IÊH™]\›ŽÂˆžHÂˆÛÛœÝYÚÙ[ˆH]ØZ]\Ù\‹™Ù]YÚÙ[Š
+NÂˆÛÛœÝ™Yœ™\ÚÚÙ[ˆH\Ù\‹œ™Yœ™\ÚÚÙ[ˆ	ÉÎÂˆÛÛœÝ›ÝšY\ˆH™\ÛÛ™T›ÝšY\Š\Ù\ŠNÂˆØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰Ë™Yœ™\ÚÚÙ[ŠNÂˆØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT›ÝšY\‰Ë›ÝšY\ŠNÂˆÚ[™ÝËžœ]]Ý]HHÂˆÝ]\Îˆ	ÙÛ™IËØØ[Yˆ\Ù\‹ZYYÚÙ[ŽˆYÚÙ[‹ˆ™Yœ™\ÚÚÙ[Žˆ™Yœ™\ÚÚÙ[‹^\™\Ò[Žˆ	ÌÍŒ	Ëˆ›ÝšY\Žˆ›ÝšY\‹[XZ[ˆ\Ù\‹™[XZ[	ÉËˆ\Ü^S˜[YNˆ\Ù\‹™\Ü^S˜[YH	ÉÂˆNÂˆHØ]Ú
+\œ›ÜŠHÂˆÚ[™ÝËžœ]]Ý]HHÜÝ]\Îˆ	Ù\œ›Ü‰ËY\ÜØYÙNˆÝš[™Ê\œ›Üˆ	‰ˆ
+\œ›Ü‹˜ÛÙH\œ›Ü‹›Y\ÜØYÙJH\œ›ÜŠ_NÂˆHš[˜[HÂˆÚ[™ÝËžœÙ\ÜÚ[Û”™\ÝÜ™PÚXÚÙYHYNÂˆBˆJNÂˆÚ[™ÝËžœ™YÚ[‘ÛÛÙÛS[šÈH
+ÛÚÙ[‹X›XÕ\›^Y\“˜[YJHOˆÂˆÚ[™ÝËžœX[X[]]H	ØXÝ]™IÎÂˆÚ[™ÝËžœÛÛÙÛTÝ]HHÜÝ]\Îˆ	ÛÜ[š[™ÉßNÂˆ]]ÙËœÚYÛ’[•Ú]Ü\
+]]›ÝšY\ŠK[Š\Þ[˜È
+™\Ý[
+HOˆÂˆÛÛœÝ\Ù\ˆH™\Ý[\Ù\ŽÂˆÛÛœÝYÚÙ[ˆH]ØZ]\Ù\‹™Ù]YÚÙ[ŠYJNÂˆØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT™Yœ™\ÚÚÙ[‰Ë\Ù\‹œ™Yœ™\ÚÚÙ[ˆ	ÉÊNÂˆØØ[ÝÜ˜YÙKœÙ]][J	Þœš\™X˜\ÙT›ÝšY\‰Ë	ÙÛÛÙÛIÊNÂˆÚ[™ÝËžœÛÛÙÛTÝ]HHÂˆÝ]\Îˆ	ÙÛ™IËØØ[Yˆ\Ù\‹ZYYÚÙ[ŽˆYÚÙ[‹ˆ™Yœ™\ÚÚÙ[Žˆ\Ù\‹œ™Yœ™\ÚÚÙ[ˆ	ÉË^\™\Ò[Žˆ	ÌÍŒ	Ëˆ›ÝšY\Žˆ	ÙÛÛÙÛIË[XZ[ˆ\Ù\‹™[XZ[	ÉË\Ü^S˜[YNˆ\Ù\‹™\Ü^S˜[YH	ÉÂˆNÂˆJK˜Ø]Ú
+
+\œ›ÜŠHOˆÂˆÚ[™ÝËžœÛÛÙÛTÝ]HHÜÝ]\Îˆ	Ù\œ›Ü‰ËY\ÜØYÙNˆÝš[™Ê\œ›Üˆ	‰ˆ
+\œ›Ü‹˜ÛÙH\œ›Ü‹›Y\ÜØYÙJH\œ›ÜŠ_NÂˆJK™š[˜[J
+
+HOˆÂˆÚ[™ÝËžœX[X[]]H	ÚYIÎÂˆJNÂˆNÂˆÚ[™ÝËžœÛÛÙÛTÝ]HHÜÝ]\Îˆ	Ü™XYIßNÂˆHØ]Ú
+\œ›ÜŠHÂˆÚ[™ÝËžœÛÛÙÛTÝ]HHÜÝ]\Îˆ	Ù\œ›Ü‰ËY\ÜØYÙNˆÝš[™Ê\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙH\œ›ÜŠ_NÂˆBŸJJ
+NÂˆˆˆ‹œ™\XÙJ—×ÐTWÒÑVW×È‹’T‘PTÑWÐTWÒÑVJB‚R˜]˜TØÜš\œšYÙK™]˜[
+ØÜš\YJB‚™[˜È™YÚ[—ÙÛÛÙÛWÜÚYÛ—Ú[Š
+HOˆ›ÚY‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚BR˜]˜TØÜš\œšYÙK™]˜[
+Ú[™ÝËžœX[X[]]H	ØXÝ]™IÎÈ‹YJB‚ZYˆÔËš\×Ù™X]\™J˜[™›ÚYŠN‚‚BYš\™X˜\ÙWÜÝ]\ÈHµé5åuêµåÈ5æõè5æuèuå5çµä5åuäuæ5åõêˆ5çQÛÛÙÛK‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“ÔS’S‘ÈÑPÕT‘HÓÓÑÓHÒQÓ‹RS‹‹‹ˆ‚‚B\[™[™×ÙÛÛÙÛWÚ[™Ù™—Ü™\]Y\ÝHYB‚BXÛÛ›™XÝÛ][\^Y\Š
+B‚BZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚BB\Ù[™Û][\^Y\ŠÈ\HŽˆ˜Ü™X]WØ]]Ú[™Ù™ˆŸJB‚BB\[™[™×ÙÛÛÙÛWÚ[™Ù™—Ü™\]Y\ÝH˜[ÙB‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚ZYˆ›ÝÔËš\×Ù™X]\™JÙXˆŠN‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJ‘ÛÛÙÛHÙÚ[ˆ\È[˜]˜Z[X›HÛˆ\È]šXÙHŠB‚B\™]\›‚‚]˜\ˆX›X×Ý\›HšÎ‹ËÙš\™\ÝÜ™K™ÛÛÙÛX\\Ë˜ÛÛKÝŒKÜ›Ú™XÝËÉ\ËÙ]X˜\Ù\ËÊY˜][
+KÙØÝ[Y[ËÜX›XÒYËÉ\Èˆ	HÑ’T‘PTÑWÔ“Ò‘PÕÒQš\™X˜\ÙWÜX›X×ÚYB‚]˜\ˆØ[ÜØÜš\HÚ[™ÝËžœ™YÚ[‘ÛÛÙÛS[šÈ	‰ˆÚ[™ÝËžœ™YÚ[‘ÛÛÙÛS[šÊ	\Ë	\Ë	\ÊHˆ	HÒ”ÓÓ‹œÝš[™ÚYžJš\™X˜\ÙWÚYÝÚÙ[ŠK”ÓÓ‹œÝš[™ÚYžJX›X×Ý\›
+K”ÓÓ‹œÝš[™ÚYžJ›Ùš[WÛ˜[YJWB‚R˜]˜TØÜš\œšYÙK™]˜[
+Ø[ÜØÜš\YJB‚Yš\™X˜\ÙWÜÝ]\ÈHµé5åuêµåÈÛÛÙÛK‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“ÔS’S‘ÈÓÓÑÓK‹‹ˆ‚‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈÛÛ—Ùš\™X˜\ÙWØ]]ØÛÛ\]Y
+Ü™\Ý[ˆ[™\ÜÛœÙWØÛÙNˆ[ÚXY\œÎˆXÚÙYÝš[™Ð\œ˜^K›ÙNˆXÚÙYž]P\œ˜^JHOˆ›ÚY‚‚Yš\™X˜\ÙWØ]]Ø\ÞHH˜[ÙB‚ZYˆ™\ÜÛœÙWØÛÙHŒÜˆ™\ÜÛœÙWØÛÙHHÌ‚‚BYš\™X˜\ÙWÜÝ]\ÈHµä5æuçÈ5åõæuäuåuê5ç5èµè5çÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÓÕQÑ‘“S‘H‚‚BZYˆš\™X˜\ÙWØ]]Û[ÙHOHœ™\Ý[YHˆ[™™\ÜÛœÙWØÛÙHH[™™\ÜÛœÙWØÛÙHL‚‚BBXÛX\—ÜØ]™YØ]]ÜÙ\ÜÚ[ÛŠ
+B‚BBX\ÜØÜ™Y[ˆHTÐUU‚BBYš\™X˜\ÙWÜÝ]\ÈHµäuåõê5åH5äõê5æˆ5æõè5æuèuåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHÕÈÈÒQÓˆSˆ‚‚B\™]\›‚‚]˜\ˆ™\ÜÛœÙWÝ^H›ÙK™Ù]ÜÝš[™×Ùœ›ÛWÝ]Ž
+
+KœÝš\ÙYÙ\Ê
+B‚]˜\ˆœÛÛˆH”ÓÓ‹›™]Ê
+B‚]˜\ˆ\œÙWÙ\œ›ÜˆHœÛÛ‹œ\œÙJ™\ÜÛœÙWÝ^
+B‚ZYˆ\œÙWÙ\œ›ÜˆOHÒÈÜˆ\[ÙŠœÛÛ‹™]JHOHTWÑPÕSÓT–N‚‚B]˜\ˆXYÛ›ÜÝXÈH™\ÜÛœÙWÝ^›Y
+ÌŠKœ™\XÙJ—ˆ‹ˆŠB‚BYš\™X˜\ÙWÜÝ]\ÈH
+
+µêuäµæuä5êˆ5åõêuäuåuçÎˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHPÐÓÕS•T”“ÔŽˆŠH
+ÈXYÛ›ÜÝXÊKœÝš\ÙYÙ\Ê
+B‚B\\ÚÙ\œ›ÜŠ‘š\™X˜\ÙH]]™\ÜÛœÙHÛÝ[›Ý™H\œÙY
+	Y
+Nˆ	\Èˆ	HÜ™\ÜÛœÙWØÛÙK™\ÜÛœÙWÝ^›Y
+
+WJB‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚]˜\ˆ™\ÜÛœÙNˆXÝ[Û˜\žHHœÛÛ‹™]B‚X\WÙš\™X˜\ÙWØ]]Ü™\ÜÛœÙJ™\ÜÛœÙJB‚™[˜È\WÙš\™X˜\ÙWØ]]Ü™\ÜÛœÙJ™\ÜÛœÙNˆXÝ[Û˜\žJHOˆ›ÚY‚‚Yš\™X˜\ÙWØ]]Ø\ÞHH˜[ÙB‚\Ù\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™ÈH˜[ÙB‚]˜\ˆ™]š[Ý\×ÝZYHš\™X˜\ÙWÝZY‚Yš\™X˜\ÙWÝZYHÝŠ™\ÜÛœÙK™Ù]
+›ØØ[Y‹™\ÜÛœÙK™Ù]
+\Ù\—ÚY‹š\™X˜\ÙWÝZY
+JJB‚ZYˆ™\ÜÛœÙKš\Êœ›ÝšY\ˆŠN‚‚BYš\™X˜\ÙWÜ›ÝšY\ˆHÝŠ™\ÜÛœÙKœ›ÝšY\ŠB‚ZYˆ™\ÜÛœÙKš\Ê™[XZ[ŠN‚‚BYš\™X˜\ÙWÙ[XZ[HÝŠ™\ÜÛœÙK™[XZ[
+B‚Y[Yˆš\™X˜\ÙWØ]]Û[ÙHOH™[XZ[ˆÜˆš\™X˜\ÙWØ]]Û[ÙHOHœ™YÚ\Ý\ˆŽ‚‚BYš\™X˜\ÙWÜ›ÝšY\ˆH™[XZ[‚‚BYš\™X˜\ÙWÙ[XZ[H]]Ù[XZ[Ú[œ]^œÝš\ÙYÙ\Ê
+HYˆ]]Ù[XZ[Ú[œ]OH[[ÙHˆ‚‚Y[Yˆš\™X˜\ÙWØ]]Û[ÙHOH™ÝY\ÝˆÜˆš\™X˜\ÙWØ]]Û[ÙHOH™ÝY\ÝÜ™\Ý[YHŽ‚‚BYš\™X˜\ÙWÜ›ÝšY\ˆH™ÝY\Ý‚‚BYš\™X˜\ÙWÙ[XZ[Hˆ‚‚Yš\™X˜\ÙWÚYÝÚÙ[ˆHÝŠ™\ÜÛœÙK™Ù]
+šYÚÙ[ˆ‹™\ÜÛœÙK™Ù]
+šYÝÚÙ[ˆ‹ˆŠJJB‚Yš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ˆHÝŠ™\ÜÛœÙK™Ù]
+œ™Yœ™\ÚÚÙ[ˆ‹™\ÜÛœÙK™Ù]
+œ™Yœ™\ÚÝÚÙ[ˆ‹š\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[ŠJJB‚\\œÚ\ÝÝÙX—Ø]]ÜÝÜ˜YÙJ
+B‚]˜\ˆ^\™\×Ú[ˆH[
+ÝŠ™\ÜÛœÙK™Ù]
+™^\™\Ò[ˆ‹™\ÜÛœÙK™Ù]
+™^\™\×Ú[ˆ‹ŒÍŒŠJJJB‚Yš\™X˜\ÙWÝÚÙ[—Ù^\™\×Ø]H[
+[YK™Ù]Ý[š^Ý[YWÙœ›ÛWÜÞ\Ý[J
+JH
+ÈX^JŒ^\™\×Ú[ŠB‚ZYˆ›Ýš\™X˜\ÙWÝZYš\×Ù[\J
+N‚‚BHÈHX›XÈQ\È]\›Z[š\ÝXÈ\ˆš\™X˜\ÙH\Ù\‹ˆ\È[ÛÈ™\Z\œÈÛ\‚‚BHÈ›Ùš[\ÈÚÜÙH[›Ûž[[Ý\ÈQØ\ÈØ\œšYY[ÈHÛÛÙÛHXØÛÝ[[™Ø]\ÙY‚BHÈš\™\ÝÜ™HÝÛ™\œÚ\[\ÈÈ™]\›ˆË‚‚B]˜\ˆ^XÝYÜX›X×ÚYH–”Hˆ
+Èš\™X˜\ÙWÝZYœÚLM—Ý^
+
+KœÝXœÝŠ
+K×Ý\\Š
+B‚BZYˆš\™X˜\ÙWÜX›X×ÚYOH^XÝYÜX›X×ÚYÜˆ™]š[Ý\×ÝZYOHš\™X˜\ÙWÝZY‚‚BBYš\™X˜\ÙWÜX›X×ÚYH^XÝYÜX›X×ÚY‚\Ø]™WÜ^Y\—Ü›Ùš[J˜[ÙJB‚Yš\™X˜\ÙWÜÝ]\ÈHµçµèuåuè5æõê5çÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÖSÑQ‚‚\Þ[˜×Ùš\™X˜\ÙWÜ›Ùš[J
+B‚\Þ[˜×Ùš\™X˜\ÙWÜX›X×ÚY
+
+B‚ZYˆ\ÜØÜ™Y[ˆOHTÐUU‚‚BX]]Ù[XZ[Û[ÙHHˆ‚‚BX\ÜØÜ™Y[ˆHTÒÓQB‚[X^X™WÜÝ\Ý]ÜšX[
+
+B‚ZYˆ›Ý[™[™×ÜÚ\™YÜ›ÛÛWØÛÙKš\×Ù[\J
+N‚‚B[Ü[—Ü[™[™×ÜÚ\™YÜ›ÛÛJ
+B‚ZYˆÔËš\×Ù™X]\™JÙXˆŠH[™›Ý[™[™×Ø[™›ÚYØ]]Ú[™Ù™‹š\×Ù[\J
+H[™š\™X˜\ÙWÜ›ÝšY\ˆOH™ÛÛÙÛHŽ‚‚B\[™[™×Ø]]Ú[™Ù™—Ü^[ØYHÂ‚BBH\HŽˆ˜ÛÛ\]WØ]]Ú[™Ù™ˆ‹‚BBHš[™Ù™•ÚÙ[ˆŽœ[™[™×Ø[™›ÚYØ]]Ú[™Ù™‹‚BBH›ØØ[YŽ™š\™X˜\ÙWÝZY‚BBHšYÚÙ[ˆŽ™š\™X˜\ÙWÚYÝÚÙ[‹‚BBHœ™Yœ™\ÚÚÙ[ˆŽ™š\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[‹‚BBH™^\™\Ò[ˆŽœÝŠX^JŒš\™X˜\ÙWÝÚÙ[—Ù^\™\×Ø]H[
+[YK™Ù]Ý[š^Ý[YWÙœ›ÛWÜÞ\Ý[J
+JJJK‚BBHœ›ÝšY\ˆŽˆ™ÛÛÙÛH‹‚BBH™[XZ[Ž™š\™X˜\ÙWÙ[XZ[‚BBH™\Ü^S˜[YHŽœ›Ùš[WÛ˜[YB‚B_B‚BXÛÛ›™XÝÛ][\^Y\Š
+B‚BZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚BB\Ù[™Û][\^Y\Š[™[™×Ø]]Ú[™Ù™—Ü^[ØY
+B‚BB\[™[™×Ø]]Ú[™Ù™—Ü^[ØYHßB‚BB\[™[™×Ø[™›ÚYØ]]Ú[™Ù™ˆHˆ‚‚BB\ÚÝ×ÛY[WÛ›ÝXÙJµå5åõêuäuåuçÈ5è5êuç5åÈ5ç5ä5é5ç5æuéõéµæuåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHPÐÓÕS•ÑS•ÈHTŠB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È\]WÙš\™X˜\ÙJ[Nˆ›Ø]
+HOˆ›ÚY‚‚ZYˆÙ\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™Î‚‚B\Ù\ÜÚ[Û—Ü™\ÝÜ™WÙXY[™HOH[B‚BZYˆÙ\ÜÚ[Û—Ü™\ÝÜ™WÙXY[™HHŒ‚‚BB\Ù\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™ÈH˜[ÙB‚BBZYˆš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[‹š\×Ù[\J
+H[™\ÜØÜ™Y[ˆOHTÒÓQN‚‚BBBX\ÜØÜ™Y[ˆHTÐUU‚BBBYš\™X˜\ÙWÜÝ]\ÈHµäuåõê5åH5äõê5æˆ5æõè5æuèuåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHÕÈÈÒQÓˆSˆ‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚BYš\™X˜\ÙWÝÙX—ÜÛÙ[^HOH[B‚BZYˆš\™X˜\ÙWÝÙX—ÜÛÙ[^HHŒ‚‚BBYš\™X˜\ÙWÝÙX—ÜÛÙ[^HHŒB‚BB\ÛÙš\™X˜\ÙWÝÙX—ÜÝ]J
+B‚ZYˆ\ÜØÜ™Y[ˆOHTÐUU[™›Ýš\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[‹š\×Ù[\J
+H[™›Ýš\™X˜\ÙWØ]]Ø\ÞN‚‚BZYˆš\™X˜\ÙWÝÚÙ[—Ù^\™\×Ø]H[
+[YK™Ù]Ý[š^Ý[YWÙœ›ÛWÜÞ\Ý[J
+JH
+ÈLŒ‚‚BB\Ý\Ùš\™X˜\ÙWØ]]
+
+B‚ZYˆš\™X˜\ÙWÜ›Ùš[WÙ\N‚‚BYš\™X˜\ÙWÜÞ[˜×Ù[^HOH[B‚BZYˆš\™X˜\ÙWÜÞ[˜×Ù[^HHŒ‚‚BBB\Þ[˜×Ùš\™X˜\ÙWÜ›Ùš[J
+B‚™[˜ÈÛÙš\™X˜\ÙWÝÙX—ÜÝ]J
+HOˆ›ÚY‚‚ZYˆš\™X˜\ÙWØ]]Ø\ÞN‚‚B]˜\ˆ]]Ý^HÝŠ˜]˜TØÜš\œšYÙK™]˜[
+’”ÓÓ‹œÝš[™ÚYžJÚ[™ÝËžœ]]Ý]HßJH‹YJJB‚B]˜\ˆ]]Ù]Nˆ˜\šX[H”ÓÓ‹œ\œÙWÜÝš[™Ê]]Ý^
+B‚BZYˆ]]Ù]H\ÈXÝ[Û˜\žN‚‚BB]˜\ˆ]]ÜÝ]HH]]Ù]H\ÈXÝ[Û˜\žB‚BB]˜\ˆ]]ÜÝ]\ÈHÝŠ]]ÜÝ]K™Ù]
+œÝ]\È‹ˆŠJB‚BBZYˆ]]ÜÝ]\ÈOH™Û™HŽ‚‚BBBX\WÙš\™X˜\ÙWØ]]Ü™\ÜÛœÙJ]]ÜÝ]JB‚BBY[Yˆ]]ÜÝ]\ÈOH™\œ›ÜˆŽ‚‚BBBYš\™X˜\ÙWØ]]Ø\ÞHH˜[ÙB‚BBB]˜\ˆ]]Ù\œ›ÜˆHÝŠ]]ÜÝ]K™Ù]
+›Y\ÜØYÙH‹•[šÛ›ÝÛˆ\œ›ÜˆŠJB‚BBBYš\™X˜\ÙWÜÝ]\ÈH
+µêuäµæuä5êˆ5åõæuäuåuêˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÒQÓ‹RSˆT”“ÔŽˆŠH
+È]]Ù\œ›Ü‹›Y
+Í
+B‚BBBZYˆš\™X˜\ÙWØ]]Û[ÙHOHœ™\Ý[YHˆ[™]]ÝÚÙ[—Ú\×Ý[œ™XÛÝ™\˜X›J]]Ù\œ›ÜŠN‚‚BBBBXÛX\—ÜØ]™YØ]]ÜÙ\ÜÚ[ÛŠ
+B‚BBBBX\ÜØÜ™Y[ˆHTÐUU‚BBBBYš\™X˜\ÙWÜÝ]\ÈHµäuåõê5åH5äõê5æˆ5æõè5æuèuåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHÕÈÈÒQÓˆSˆ‚‚BBB\]Y]YWÜ™Y˜]Ê
+B‚BZYˆÙ\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™Î‚‚BB]˜\ˆ™\ÝÜ™WØÚXÚÙYHÝŠ˜]˜TØÜš\œšYÙK™]˜[
+Ú[™ÝËžœÙ\ÜÚ[Û”™\ÝÜ™PÚXÚÙYÈ	ÌIÈˆ	Ì	È‹YJJHOHŒH‚‚BBZYˆ™\ÝÜ™WØÚXÚÙY[™š\™X˜\ÙWÜ™Yœ™\ÚÝÚÙ[‹š\×Ù[\J
+H[™›Ýš\™X˜\ÙWØ]]Ø\ÞN‚‚BBB\Ù\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™ÈH˜[ÙB‚BBBX\ÜØÜ™Y[ˆHTÐUU‚BBBYš\™X˜\ÙWÜÝ]\ÈHµäuåõê5åH5äõê5æˆ5æõè5æuèuåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHÕÈÈÒQÓˆSˆ‚‚]˜\ˆÛÛÙÛWÝ^HÝŠ˜]˜TØÜš\œšYÙK™]˜[
+’”ÓÓ‹œÝš[™ÚYžJÚ[™ÝËžœÛÛÙÛTÝ]HßJH‹YJJB‚]˜\ˆÛÛÙÛWÙ]Nˆ˜\šX[H”ÓÓ‹œ\œÙWÜÝš[™ÊÛÛÙÛWÝ^
+B‚ZYˆÛÛÙÛWÙ]H\ÈXÝ[Û˜\žN‚‚B]˜\ˆÛÛÙÛWÜÝ]HHÛÛÙÛWÙ]H\ÈXÝ[Û˜\žB‚B]˜\ˆÛÛÙÛWÜÝ]\ÈHÝŠÛÛÙÛWÜÝ]K™Ù]
+œÝ]\È‹ˆŠJB‚BZYˆÛÛÙÛWÜÝ]\ÈOH™Û™HŽ‚‚BBYš\™X˜\ÙWÜ›ÝšY\ˆH™ÛÛÙÛH‚‚BBYš\™X˜\ÙWÙ[XZ[HÝŠÛÛÙÛWÜÝ]K™Ù]
+™[XZ[‹ˆŠJB‚BB]˜\ˆÛÛÙÛWÛ˜[YNˆÝš[™ÈHÝŠÛÛÙÛWÜÝ]K™Ù]
+™\Ü^S˜[YH‹ˆŠJKœÝš\ÙYÙ\Ê
+K›Y
+Œ
+B‚BBZYˆ›ÝÛÛÙÛWÛ˜[YKš\×Ù[\J
+N‚‚BBB\›Ùš[WÛ˜[YHHÛÛÙÛWÛ˜[YB‚BBBZYˆ›Ùš[WÛ˜[YWÚ[œ]OH[‚‚BBBB\›Ùš[WÛ˜[YWÚ[œ]^H›Ùš[WÛ˜[YB‚BBX\WÙš\™X˜\ÙWØ]]Ü™\ÜÛœÙJÛÛÙÛWÜÝ]JB‚BBR˜]˜TØÜš\œšYÙK™]˜[
+Ú[™ÝËžœÛÛÙÛTÝ]HHÜÝ]\Îˆ	ØÛÛ›™XÝY	ßH‹YJB‚BY[YˆÛÛÙÛWÜÝ]\ÈOH™\œ›ÜˆŽ‚‚BBYš\™X˜\ÙWÜÝ]\ÈH
+µêuäµæuä5êˆÛÛÙÛNˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘ÓÓÑÓHT”“ÔŽˆŠH
+ÈÝŠÛÛÙÛWÜÝ]K™Ù]
+›Y\ÜØYÙH‹•[šÛ›ÝÛˆ\œ›ÜˆŠJK›Y
+Í
+B‚BBR˜]˜TØÜš\œšYÙK™]˜[
+Ú[™ÝËžœÛÛÙÛTÝ]HHÜÝ]\Îˆ	Ü™XYIßH‹YJB‚BB\]Y]YWÜ™Y˜]Ê
+B‚]˜\ˆ›Ùš[WÝ^HÝŠ˜]˜TØÜš\œšYÙK™]˜[
+’”ÓÓ‹œÝš[™ÚYžJÚ[™ÝËžœ›Ùš[TÝ]HßJH‹YJJB‚]˜\ˆ›Ùš[WÙ]Nˆ˜\šX[H”ÓÓ‹œ\œÙWÜÝš[™Ê›Ùš[WÝ^
+B‚ZYˆ›Ùš[WÙ]H\ÈXÝ[Û˜\žN‚‚B]˜\ˆ›Ùš[WÜÝ]HH›Ùš[WÙ]H\ÈXÝ[Û˜\žB‚B]˜\ˆ›Ùš[WÜÝ]\ÈHÝŠ›Ùš[WÜÝ]K™Ù]
+œÝ]\È‹ˆŠJB‚BZYˆ›Ùš[WÜÝ]\ÈOH™Û™HŽ‚‚BBYš\™X˜\ÙWÜÝ]\ÈHµçµèuåuè5æõê5çÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÖSÑQ‚‚BBR˜]˜TØÜš\œšYÙK™]˜[
+Ú[™ÝËžœ›Ùš[TÝ]HHßH‹YJB‚BB\]Y]YWÜ™Y˜]Ê
+B‚BY[Yˆ›Ùš[WÜÝ]\ÈOH™\œ›ÜˆŽ‚‚BBYš\™X˜\ÙWÜÝ]\ÈH
+µêuäµæuä5êˆ5èuè5æõê5åuçÎˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÖSÈT”“ÔŽˆŠH
+ÈÝŠ›Ùš[WÜÝ]K™Ù]
+›Y\ÜØYÙH‹•[šÛ›ÝÛˆ\œ›ÜˆŠJK›Y
+Ž
+B‚BBR˜]˜TØÜš\œšYÙK™]˜[
+Ú[™ÝËžœ›Ùš[TÝ]HHßH‹YJB‚BB\]Y]YWÜ™Y˜]Ê
+B‚™[˜Èš\™\ÝÜ™WÙšY[Ê[˜ÛYWÜX›X×ÚYˆ›ÛÛHYJHOˆXÝ[Û˜\žN‚‚]˜\ˆšY[ÈHÂ‚BH›˜[YHŽˆÈœÝš[™Õ˜[YHŽˆ›Ùš[WÛ˜[Y_K‚BH˜[š[X[ŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—Ø[š[X[
+_K‚BHœš[™ÐÛÛÜˆŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—Üš[™×ØÛÛÜŠ_K‚BH˜ÛÚ[œÈŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—ØÛÚ[œÊ_K‚BH™XÛÛ›Û^U™\œÚ[ÛˆŽˆÈš[YÙ\•˜[YHŽˆÝŠPÓÓ“ÓVWÕ‘T”ÒSÓŠ_K‚BH›ÝÛ™Y[š[X[ÈŽˆÈœÝš[™Õ˜[YHŽˆ”ÓÓ‹œÝš[™ÚYžJÝÛ™YØ[š[X[Ê_K‚BH›ÝÛ™Yš[™ÜÈŽˆÈœÝš[™Õ˜[YHŽˆ”ÓÓ‹œÝš[™ÚYžJÝÛ™YÜš[™ÜÊ_K‚BH›]™[ŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—Û]™[
+_K‚BHžŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—Þ
+_K‚BHÚ[œÈŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—ÝÚ[œÊ_K‚BH›ÜÜÙ\ÈŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—ÛÜÜÙ\Ê_K‚BH˜™\ÝÝ™XZÈŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—Ø™\ÝÜÝ™XZÊ_K‚BH˜Ý\œ™[Ý™XZÈŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—ØÝ\œ™[ÜÝ™XZÊ_K‚BHœ˜][™ÈŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—Ü˜][™Ê_K‚BH›XYÝYUY\ˆŽˆÈš[YÙ\•˜[YHŽˆÝŠ^Y\—ÛXYÝYWÝY\Š_B‚_B‚ZYˆ[˜ÛYWÜX›X×ÚY‚‚BYšY[ÖÈœX›XÒY—HHÈœÝš[™Õ˜[YHŽˆš\™X˜\ÙWÜX›X×ÚYB‚\™]\›ˆšY[Â‚™[˜ÈÞ[˜×Ùš\™X˜\ÙWÜ›Ùš[J
+HOˆ›ÚY‚‚ZYˆš\™X˜\ÙWÝZYš\×Ù[\J
+HÜˆš\™X˜\ÙWÚYÝÚÙ[‹š\×Ù[\J
+HÜˆš\™X˜\ÙWÜ›Ùš[WÜ™\]Y\ÝOH[‚‚B\™]\›‚‚ZYˆÔËš\×Ù™X]\™JÙXˆŠN‚‚BYš\™X˜\ÙWÜ›Ùš[WÙ\HH˜[ÙB‚BYš\™X˜\ÙWÜÝ]\ÈHµçµèuè5æõê5çË‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÖSÒS‘Ë‹‹ˆ‚‚B]˜\ˆ›Ùš[WÝ\›HšÎ‹ËÙš\™\ÝÜ™K™ÛÛÙÛX\\Ë˜ÛÛKÝŒKÜ›Ú™XÝËÉ\ËÙ]X˜\Ù\ËÊY˜][
+KÙØÝ[Y[ËÝ\Ù\œËÉ\Èˆ	HÑ’T‘PTÑWÔ“Ò‘PÕÒQš\™X˜\ÙWÝZYB‚B]˜\ˆX›X×Ý\›HšÎ‹ËÙš\™\ÝÜ™K™ÛÛÙÛX\\Ë˜ÛÛKÝŒKÜ›Ú™XÝËÉ\ËÙ]X˜\Ù\ËÊY˜][
+KÙØÝ[Y[ËÜX›XÒYËÉ\Èˆ	HÑ’T‘PTÑWÔ“Ò‘PÕÒQš\™X˜\ÙWÜX›X×ÚYB‚B]˜\ˆ›Ùš[WÜ^[ØYH”ÓÓ‹œÝš[™ÚYžJÈ™šY[ÈŽˆš\™\ÝÜ™WÙšY[Ê
+_JB‚B]˜\ˆX›X×ÙšY[ÈHÈZYŽˆÈœÝš[™Õ˜[YHŽˆš\™X˜\ÙWÝZYK›˜[YHŽˆÈœÝš[™Õ˜[YHŽˆ›Ùš[WÛ˜[Y__B‚B]˜\ˆX›X×Ü^[ØYH”ÓÓ‹œÝš[™ÚYžJÈ™šY[ÈŽˆX›X×ÙšY[ßJB‚B]˜\ˆÙX—ÜØÜš\Hˆˆ‚Ú[™ÝËžœ›Ùš[TÝ]HHÜÝ]\Îˆ	ÛØY[™ÉßNÂŠ\Þ[˜È
+
+HOˆÂˆžHÂˆÛÛœÝXY\œÈHÉÐ]]Üš^˜][Û‰Îˆ	Ð™X\™\ˆ	È
+È×ÕÒÑS—×Ë	ÐÛÛ[U\IÎˆ	Ø\XØ][Û‹ÚœÛÛ‰ßNÂˆÛÛœÝ™\ÜÛœÙ\ÈH]ØZ]›ÛZ\ÙK˜[
+Âˆ™]Ú
+×Ô“Ñ’SWÕT“×ËÛY]Ùˆ	ÔUÒ	Ë[ÙNˆ	ØÛÜœÉËÜ™Y[X[Îˆ	ÛÛZ]	ËXY\œË›ÙNˆ×Ô“Ñ’SWÐ“ÑW×ßJKˆ™]Ú
+×ÔP“P×ÕT“×ËÛY]Ùˆ	ÔUÒ	Ë[ÙNˆ	ØÛÜœÉËÜ™Y[X[Îˆ	ÛÛZ]	ËXY\œË›ÙNˆ×ÔP“P×Ð“ÑW×ßJBˆJNÂˆ›Üˆ
+ÛÛœÝ™\ÜÛœÙHÙˆ™\ÜÛœÙ\ÊHÂˆYˆ
+\™\ÜÛœÙK›ÚÊH›ÝÈ™]È\œ›ÜŠ	Ò	È
+È™\ÜÛœÙKœÝ]\È
+È	Îˆ	È
+È
+]ØZ]™\ÜÛœÙK^
+
+JKœÛXÙJ
+JNÂˆBˆÚ[™ÝËžœ›Ùš[TÝ]HHÜÝ]\Îˆ	ÙÛ™IßNÂˆHØ]Ú
+\œ›ÜŠHÂˆÚ[™ÝËžœ›Ùš[TÝ]HHÜÝ]\Îˆ	Ù\œ›Ü‰ËY\ÜØYÙNˆÝš[™Ê\œ›Üˆ	‰ˆ\œ›Ü‹›Y\ÜØYÙH\œ›ÜŠ_NÂˆBŸJJ
+NÂˆˆˆ‚‚B]ÙX—ÜØÜš\HÙX—ÜØÜš\œ™\XÙJ—×ÕÒÑS—×È‹”ÓÓ‹œÝš[™ÚYžJš\™X˜\ÙWÚYÝÚÙ[ŠJB‚B]ÙX—ÜØÜš\HÙX—ÜØÜš\œ™\XÙJ—×Ô“Ñ’SWÕT“×È‹”ÓÓ‹œÝš[™ÚYžJ›Ùš[WÝ\›
+JB‚B]ÙX—ÜØÜš\HÙX—ÜØÜš\œ™\XÙJ—×ÔP“P×ÕT“×È‹”ÓÓ‹œÝš[™ÚYžJX›X×Ý\›
+JB‚B]ÙX—ÜØÜš\HÙX—ÜØÜš\œ™\XÙJ—×Ô“Ñ’SWÐ“ÑW×È‹”ÓÓ‹œÝš[™ÚYžJ›Ùš[WÜ^[ØY
+JB‚B]ÙX—ÜØÜš\HÙX—ÜØÜš\œ™\XÙJ—×ÔP“P×Ð“ÑW×È‹”ÓÓ‹œÝš[™ÚYžJX›X×Ü^[ØY
+JB‚BR˜]˜TØÜš\œšYÙK™]˜[
+ÙX—ÜØÜš\YJB‚B\™]\›‚‚ZYˆš\™X˜\ÙWÜ›Ùš[WÜ™\]Y\Ý™Ù]ÚØÛY[ÜÝ]\Ê
+HOHÛY[”ÕUT×ÑTÐÓÓ“‘PÕQ‚‚B\™]\›‚‚Yš\™X˜\ÙWÜ›Ùš[WÙ\HH˜[ÙB‚Yš\™X˜\ÙWÜÝ]\ÈHµçµèuè5æõê5çË‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÖSÒS‘Ë‹‹ˆ‚‚]˜\ˆ\›HšÎ‹ËÙš\™\ÝÜ™K™ÛÛÙÛX\\Ë˜ÛÛKÝŒKÜ›Ú™XÝËÉ\ËÙ]X˜\Ù\ËÊY˜][
+KÙØÝ[Y[ËÝ\Ù\œËÉ\Èˆ	HÑ’T‘PTÑWÔ“Ò‘PÕÒQš\™X˜\ÙWÝZYB‚]˜\ˆ^[ØYH”ÓÓ‹œÝš[™ÚYžJÈ™šY[ÈŽˆš\™\ÝÜ™WÙšY[Ê
+_JB‚]˜\ˆ\œ›ÜˆHš\™X˜\ÙWÜ›Ùš[WÜ™\]Y\Ýœ™\]Y\Ý
+\›È]]Üš^˜][ÛŽˆ™X\™\ˆˆ
+Èš\™X˜\ÙWÚYÝÚÙ[‹ÛÛ[U\Nˆ\XØ][Û‹ÚœÛÛˆ—KÛY[“QUÑÔUÒ^[ØY
+B‚ZYˆ\œ›ÜˆOHÒÎ‚‚BYš\™X˜\ÙWÜ›Ùš[WÙ\HHYB‚BYš\™X˜\ÙWÜÞ[˜×Ù[^HHKŒ‚™[˜ÈÞ[˜×Ùš\™X˜\ÙWÜX›X×ÚY
+
+HOˆ›ÚY‚‚ZYˆš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+HÜˆš\™X˜\ÙWÚYÝÚÙ[‹š\×Ù[\J
+HÜˆš\™X˜\ÙWÜX›X×ÚYÜ™\]Y\ÝOH[‚‚B\™]\›‚‚ZYˆš\™X˜\ÙWÜX›X×ÚYÜ™\]Y\Ý™Ù]ÚØÛY[ÜÝ]\Ê
+HOHÛY[”ÕUT×ÑTÐÓÓ“‘PÕQ‚‚B\™]\›‚‚]˜\ˆ\›HšÎ‹ËÙš\™\ÝÜ™K™ÛÛÙÛX\\Ë˜ÛÛKÝŒKÜ›Ú™XÝËÉ\ËÙ]X˜\Ù\ËÊY˜][
+KÙØÝ[Y[ËÜX›XÒYËÉ\Èˆ	HÑ’T‘PTÑWÔ“Ò‘PÕÒQš\™X˜\ÙWÜX›X×ÚYB‚]˜\ˆšY[ÈHÈZYŽˆÈœÝš[™Õ˜[YHŽˆš\™X˜\ÙWÝZYK›˜[YHŽˆÈœÝš[™Õ˜[YHŽˆ›Ùš[WÛ˜[Y__B‚Yš\™X˜\ÙWÜX›X×ÚYÜ™\]Y\Ýœ™\]Y\Ý
+\›È]]Üš^˜][ÛŽˆ™X\™\ˆˆ
+Èš\™X˜\ÙWÚYÝÚÙ[‹ÛÛ[U\Nˆ\XØ][Û‹ÚœÛÛˆ—KÛY[“QUÑÔUÒ”ÓÓ‹œÝš[™ÚYžJÈ™šY[ÈŽˆšY[ßJJB‚™[˜ÈÛÛ—Ùš\™X˜\ÙWÜ›Ùš[WØÛÛ\]Y
+Ü™\Ý[ˆ[™\ÜÛœÙWØÛÙNˆ[ÚXY\œÎˆXÚÙYÝš[™Ð\œ˜^KØ›ÙNˆXÚÙYž]P\œ˜^JHOˆ›ÚY‚‚ZYˆ™\ÜÛœÙWØÛÙHHŒ[™™\ÜÛœÙWØÛÙHÌ‚‚BYš\™X˜\ÙWÜÝ]\ÈHµçµèuåuè5æõê5çÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÖSÑQ‚‚Y[ÙN‚‚BYš\™X˜\ÙWÜÝ]\ÈHµçµçµêµæuçÈ5ç5èuè5æõê5åuçÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÖSÈS‘S‘È‚‚BYš\™X˜\ÙWÜ›Ùš[WÙ\HHYB‚BYš\™X˜\ÙWÜÞ[˜×Ù[^HHŒ‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈÛÛ—Ùš\™X˜\ÙWÜX›X×ÚYØÛÛ\]Y
+Ü™\Ý[ˆ[Ü™\ÜÛœÙWØÛÙNˆ[ÚXY\œÎˆXÚÙYÝš[™Ð\œ˜^KØ›ÙNˆXÚÙYž]P\œ˜^JHOˆ›ÚY‚‚\\ÜÂ‚™[˜ÈÛÛ—Ü›Ùš[WÛ˜[YWØÚ[™ÙY
+˜[YNˆÝš[™ÊHOˆ›ÚY‚‚]˜\ˆÛX[ˆH˜[YKœÝš\ÙYÙ\Ê
+K›Y
+Œ
+B‚ZYˆÛX[‹š\×Ù[\J
+N‚‚B\™]\›‚‚\›Ùš[WÛ˜[YHHÛX[‚‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈÛÛ—Ü›Ùš[WÛ˜[YWÜÝX›Z]Y
+Ý˜[YNˆÝš[™ÊHOˆ›ÚY‚‚XÛÛ[Z]Ü›Ùš[WÛ˜[YJ
+B‚\›Ùš[WÛ˜[YWÚ[œ]œ™[X\ÙWÙ›ØÝ\Ê
+B‚™[˜ÈÛÛ[Z]Ü›Ùš[WÛ˜[YJ
+HOˆ›ÚY‚‚ZYˆ›Ùš[WÛ˜[YWÚ[œ]OH[‚‚B\™]\›‚‚]˜\ˆÛX[ˆH›Ùš[WÛ˜[YWÚ[œ]^œÝš\ÙYÙ\Ê
+K›Y
+Œ
+B‚ZYˆÛX[‹š\×Ù[\J
+N‚‚B\›Ùš[WÛ˜[YWÚ[œ]^H›Ùš[WÛ˜[YB‚B\™]\›‚‚\›Ùš[WÛ˜[YHHÛX[‚‚\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜È\]WÜ›Ùš[WÛ˜[YWÚ[œ]
+
+HOˆ›ÚY‚‚ZYˆ›Ùš[WÛ˜[YWÚ[œ]OH[‚‚B\™]\›‚‚]˜\ˆÚÝ[ÜÚÝÈH\ÜØÜ™Y[ˆOHTÔVQT—Ô“Ñ’SB‚\›Ùš[WÛ˜[YWÚ[œ]š\ÚX›HHÚÝ[ÜÚÝÂ‚ZYˆÚÝ[ÜÚÝÎ‚‚B]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚B]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚B\›Ùš[WÛ˜[YWÚ[œ]œÜÚ][ÛˆH™XÝÜŒŠŒ‹ŒLÎKŒ
+H
+ˆ[š]‚B\›Ùš[WÛ˜[YWÚ[œ]œÚ^™HH™XÝÜŒŠÍLŒLŒ
+H
+ˆ[š]‚™[˜È\]WØ]]Ú[œ]Ê
+HOˆ›ÚY‚‚ZYˆ]]Ù[XZ[Ú[œ]OH[Üˆ]]Ü\ÜÝÛÜ™Ú[œ]OH[‚‚B\™]\›‚‚]˜\ˆÚÝ[ÜÚÝÈH\ÜØÜ™Y[ˆOHTÐUU[™›Ý]]Ù[XZ[Û[ÙKš\×Ù[\J
+B‚X]]Ù[XZ[Ú[œ]š\ÚX›HHÚÝ[ÜÚÝÂ‚X]]Ü\ÜÝÛÜ™Ú[œ]š\ÚX›HHÚÝ[ÜÚÝÂ‚ZYˆÚÝ[ÜÚÝÎ‚‚B]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚B]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚BX]]Ù[XZ[Ú[œ]œÜÚ][ÛˆH™XÝÜŒŠÌÌŒÎŒ
+H
+ˆ[š]‚BX]]Ù[XZ[Ú[œ]œÚ^™HH™XÝÜŒŠÌŒNŒ
+H
+ˆ[š]‚BX]]Ü\ÜÝÛÜ™Ú[œ]œÜÚ][ÛˆH™XÝÜŒŠÌÌŒÍMKŒ
+H
+ˆ[š]‚BX]]Ü\ÜÝÛÜ™Ú[œ]œÚ^™HH™XÝÜŒŠÌŒNŒ
+H
+ˆ[š]‚™[˜È]]ØÚÚXÙWÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠÌÌŒŒNŒ
+È›Ø]
+[™^
+H
+ˆ‹Œ
+H
+ˆ[š]™XÝÜŒŠÌŒ‹Œ
+H
+ˆ[š]
+B‚™[˜È]]ÜÝX›Z]Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠÌÌŒMKŒ
+H
+ˆ[š]™XÝÜŒŠÌŒ‹Œ
+H
+ˆ[š]
+B‚™[˜È]]ØØ[˜Ù[Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠKŒM‹Œ
+H
+ˆ[š]™XÝÜŒŠŽŒL‹Œ
+H
+ˆ[š]
+B‚™[˜ÈÚ]Ü[™[
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚\™]\›ˆ™XÝŠ
+šY]ÜÜÜÚ^™HH™XÝÜŒŠLŒÎLŒ
+JH
+ˆK™XÝÜŒŠLŒÎLŒ
+JB‚™[˜ÈÚ]ØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÚ]Ü[™[
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ[™[™[™žHMKŒ[™[œÜÚ][Û‹žH
+ÈL‹Œ‹Œ‹Œ
+B‚™[˜ÈÚ]ÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[™[HÚ]Ü[™[
+šY]ÜÜÜÚ^™JB‚\™]\›ˆ™XÝŠ[™[™[™žHLÍKŒ[™[™[™žHHÌ‹ŒLL‹ŒLŒ
+B‚™[˜È\]WØÚ]Ú[œ]
+
+HOˆ›ÚY‚‚ZYˆÚ]Ú[œ]OH[‚‚B\™]\›‚‚]˜\ˆÚÝ[ÜÚÝÈH
+\ÜØÜ™Y[ˆOHTÑÐSQH[™Ø[YWÛ[ÙHOH›Û›[™Hˆ[™Ú]ÛÜ[ˆ[™›Ý^]ØÛÛ™š\›WÛÜ[ŠHÜˆ
+\ÜØÜ™Y[ˆOHTÑ”’QS‘[™œšY[™Ü›ÛÛWØÚ]ÛÜ[ˆ[™›Ý][\^Y\—Ü›ÛÛWØÛÙKš\×Ù[\J
+JB‚XÚ]Ú[œ]š\ÚX›HHÚÝ[ÜÚÝÂ‚ZYˆÚÝ[ÜÚÝÎ‚‚B]˜\ˆ[™[HÚ]Ü[™[
+Ù]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™JB‚BXÚ]Ú[œ]œÜÚ][ÛˆH[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ[™[œÚ^™KžHHÌ‹Œ
+B‚BXÚ]Ú[œ]œÚ^™HH™XÝÜŒŠ[™[œÚ^™KžHMÍŒLŒ
+B‚™[˜ÈÛÛ—ØÚ]ÜÝX›Z]Y
+Ý˜[YNˆÝš[™ÊHOˆ›ÚY‚‚\Ù[™ØÚ]ÛY\ÜØYÙJ
+B‚™[˜ÈÙ[™ØÚ]ÛY\ÜØYÙJ
+HOˆ›ÚY‚‚ZYˆÚ]Ú[œ]OH[‚‚B\™]\›‚‚]˜\ˆY\ÜØYÙHHÚ]Ú[œ]^œÝš\ÙYÙ\Ê
+B‚ZYˆY\ÜØYÙKš\×Ù[\J
+N‚‚B\™]\›‚‚\Ù[™Û][\^Y\ŠÈ\HŽˆ˜Ú]‹›Y\ÜØYÙHŽ›Y\ÜØYÙK›Y
+
+_JB‚XÚ]Ú[œ]˜ÛX\Š
+B‚XÚ]Ú[œ]™Ü˜X—Ù›ØÝ\Ê
+B‚\^WÜÛÝ[™
+ZHŠB‚™[˜È˜]×ÛX]ÚØÚ]
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒËŒ‹Ž
+JB‚]˜\ˆ[™[HÚ]Ü[™[
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLŽØˆŠKŒ
+K[™[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+Kµéµìõä5æ5èµçH5å5åõäuêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘”’QS‘ÒU‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžKÛÛÜŠ™™ÍHŠJB‚]˜\ˆÛÜÙHHÚ]ØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™YLÍLŠKL‹Œ
+KÛÜÙJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÜÙKœÜÚ][Ûˆ
+È™XÝÜŒŠŒŽKŒ
+K°åÈ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛÜÙKœÚ^™KžÛÛÜ‹•ÒUJB‚]˜\ˆš\œÝÚ[™^ˆ[HX^JX]ÚØÚ]ÛY\ÜØYÙ\ËœÚ^™J
+HHŠB‚]˜\ˆ›ÝÈH‚Y›ÜˆH[ˆ˜[™ÙJš\œÝÚ[™^X]ÚØÚ]ÛY\ÜØYÙ\ËœÚ^™J
+JN‚‚B]˜\ˆY\ÜØYÙNˆXÝ[Û˜\žHHX]ÚØÚ]ÛY\ÜØYÙ\ÖÚWB‚B]˜\ˆÙ[™\—ÜÛÝH[
+Y\ÜØYÙK™Ù]
+œÛÝ‹LJJB‚B]˜\ˆÙ[™\ˆHÝŠY\ÜØYÙK™Ù]
+›˜[YH‹ˆŠJB‚B]˜\ˆ[™HHÙ[™\ˆ
+ÈŽˆˆ
+ÈÝŠY\ÜØYÙK™Ù]
+›Y\ÜØYÙH‹ˆŠJB‚B]˜\ˆš[™×Ú[™^H^Y\—Üš[™×ØÛÛÜ‚‚BY›Üˆ^Y\—Ù]H[ˆ][\^Y\—Ü^Y\œÎ‚‚BBZYˆ[
+^Y\—Ù]K™Ù]
+œÛÝ‹LJJHOHÙ[™\—ÜÛÝ‚‚BBB\š[™×Ú[™^H[
+^Y\—Ù]K™Ù]
+œš[™ÐÛÛÜˆ‹š[™×Ú[™^
+JB‚BBBXœ™XZÂ‚B]˜\ˆÛÛÜŽˆÛÛÜˆH’S‘×ÐÓÓÔ”ÖØÛ[\Jš[™×Ú[™^’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJWK›YÚ[™Y
+ŒÍJB‚BY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŽŒL‹Œ
+È›ÝÈ
+ˆÎŒ
+K[™KÔ’V“Ó•SÐSQÓ“QS•ÓQ•[™[œÚ^™KžHM‹ŒNÛÛÜŠB‚B\›ÝÈ
+ÏHB‚]˜\ˆÙ[™Ü™XÝHÚ]ÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒL˜NM˜ˆŠKMŒ
+KÙ[™Ü™XÝ
+B‚Y˜]×ÜÝš[™ÊZWÙ›ÛÙ[™Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒÌ‹Œ
+Kµêuç5æuåõåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÑS‘‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ù[™Ü™XÝœÚ^™KžMËÛÛÜ‹•ÒUJB‚™[˜ÈÛÛ›™XÝÛ][\^Y\Š
+HOˆ›ÚY‚‚ZYˆ][\^Y\—ÜÛØÚÙ]™Ù]Ü™XYWÜÝ]J
+H[ˆÕÙX”ÛØÚÙ]Y\‹”ÕUWÓÔS‹ÙX”ÛØÚÙ]Y\‹”ÕUWÐÓÓ“‘PÕS‘×N‚‚B\™]\›‚‚[][\^Y\—ÜÛØÚÙ]HÙX”ÛØÚÙ]Y\‹›™]Ê
+B‚]˜\ˆ\œ›ÜˆH][\^Y\—ÜÛØÚÙ]˜ÛÛ›™XÝÝ×Ý\›
+PUÒÔÑT•‘T—ÕT“
+B‚ZYˆ\œ›ÜˆOHÒÎ‚‚B[][\^Y\—ÜÝ]HH™\œ›Üˆ‚‚B[][\^Y\—Ù\œ›ÜˆHµç5ä5è5æuêµçÈ5ç5å5êµåõäuê5ç5êuê5êˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÛÝ[›ÝÛÛ›™XÝÈÙ\™\ˆ‚‚Y[ÙN‚‚B[][\^Y\—ÜÝ]HH˜ÛÛ›™XÝ[™È‚‚B[][\^Y\—Ù\œ›ÜˆHˆ‚‚™[˜ÈÛÛ][\^Y\Š
+HOˆ›ÚY‚‚ZYˆ][\^Y\—ÜÛØÚÙ]™Ù]Ü™XYWÜÝ]J
+HOHÙX”ÛØÚÙ]Y\‹”ÕUWÐÓÔÑQ‚‚BZYˆ][\^Y\—ÜÝ]H›Ý[ˆÈ™\ØÛÛ›™XÝY‹™\œ›Üˆ—N‚‚BB[][\^Y\—ÜÝ]HH™\ØÛÛ›™XÝY‚‚BB[][\^Y\—Ù\œ›ÜˆHµå5åõæuäuåuê5ç5êuê5êˆ5è5åuêµéÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”Ù\™\ˆÛÛ›™XÝ[ÛˆÛÜÙY‚‚BBZYˆX]ÚXZÚ[™×ÜÙX\˜Ú[™Î‚‚BBB[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB‚BBB\[™[™×Ùš[™ÛX]ÚH˜[ÙB‚BBBX\™[˜WÙžÜ\ÙHHšYH‚‚BBBX\™[˜WÙžÙ[\ÙYHŒ‚BBB\[™[™×Ø\™[˜WÛX]ÚHßB‚BBBX\™[˜WÛX]ÚYÛÜÛ™[HßB‚B\™]\›‚‚[][\^Y\—ÜÛØÚÙ]œÛ
+
+B‚ZYˆ][\^Y\—ÜÛØÚÙ]™Ù]Ü™XYWÜÝ]J
+HOHÙX”ÛØÚÙ]Y\‹”ÕUWÓÔSˆ[™][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝ[™ÈŽ‚‚B[][\^Y\—ÜÝ]HH˜ÛÛ›™XÝY‚‚]Ú[H][\^Y\—ÜÛØÚÙ]™Ù]Ü™XYWÜÝ]J
+HOHÙX”ÛØÚÙ]Y\‹”ÕUWÓÔSˆ[™][\^Y\—ÜÛØÚÙ]™Ù]Ø]˜Z[X›WÜXÚÙ]ØÛÝ[
+
+Hˆ‚‚B]˜\ˆ^[ØYH”ÓÓ‹œ\œÙWÜÝš[™Ê][\^Y\—ÜÛØÚÙ]™Ù]ÜXÚÙ]
+
+K™Ù]ÜÝš[™×Ùœ›ÛWÝ]Ž
+
+JB‚BZYˆ\[ÙŠ^[ØY
+HOHTWÑPÕSÓT–N‚‚BBZ[™WÛ][\^Y\—ÛY\ÜØYÙJ^[ØY
+B‚™[˜ÈÙ[™Û][\^Y\Š^[ØYˆXÝ[Û˜\žJHOˆ›ÚY‚‚ZYˆ][\^Y\—ÜÛØÚÙ]™Ù]Ü™XYWÜÝ]J
+HOHÙX”ÛØÚÙ]Y\‹”ÕUWÓÔSŽ‚‚B[][\^Y\—ÜÛØÚÙ]œÙ[™Ý^
+”ÓÓ‹œÝš[™ÚYžJ^[ØY
+JB‚™[˜ÈÙ[™Ùš[™ÛX]Ú
+
+HOˆ›ÚY‚‚XÛÛ[Z]Ü›Ùš[WÛ˜[YJ
+B‚\[™[™×Ùš[™ÛX]ÚH˜[ÙB‚[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈHYB‚[][\^Y\—ÛØØ[Ø[š[X[H^Y\—Ø[š[X[‚[][\^Y\—ÛØØ[Üš[™×ØÛÛÜˆH^Y\—Üš[™×ØÛÛÜ‚‚\Ù[™Û][\^Y\ŠÂ‚BH\HŽˆ™š[™ÛX]Ú‹‚BH›˜[YHŽˆ›Ùš[WÛ˜[YK‚BH˜[š[X[Žˆ^Y\—Ø[š[X[‚BHœš[™ÐÛÛÜˆŽˆ^Y\—Üš[™×ØÛÛÜ‹‚BH›]™[Žˆ^Y\—Û]™[‚BHÚ[œÈŽˆ^Y\—ÝÚ[œË‚BH›ÜÜÙ\ÈŽˆ^Y\—ÛÜÜÙ\Ë‚BH˜\™[˜HŽˆÙ[XÝYØ\™[˜K‚BHœ˜][™ÈŽˆ^Y\—Ü˜][™Ë‚BH›XYÝYUY\ˆŽˆ^Y\—ÛXYÝYWÝY\‹‚BHœX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚY‚_JB‚™[˜ÈÝ\Ø\™[˜WÜÙX\˜Ú
+
+HOˆ›ÚY‚‚]˜\ˆ[žNˆ[H[
+T‘SWÑS•–WÐÓÔÕÖØÛ[\JÙ[XÝYØ\™[˜KT‘SWÑS•–WÐÓÔÕËœÚ^™J
+HHJWJB‚ZYˆ^Y\—ØÛÚ[œÈ[žN‚‚B\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+››ÝÙ[›ÝYÚØÛÚ[œÈŠJB‚B\™]\›‚‚\[™[™×Ùš[™ÛX]ÚHYB‚[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈHYB‚[X]ÚÜÛÝ\˜ÙHH˜\™[˜H‚‚X\™[˜WÙžÜ\ÙHHœÙX\˜Ú[™È‚‚X\™[˜WÙžÙ[\ÙYHŒ‚[][\^Y\—Ù\œ›ÜˆHˆ‚‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚BXÛÛ›™XÝÛ][\^Y\Š
+B‚B[][\^Y\—Ù\œ›ÜˆHµå5êuê5êˆ5çµêµèµåuê5ê5è5èuåH5êuåuäH5äuèµåuäÈ5æõçµå5êuè5æuåuêˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”Ù\™\ˆ\ÈØZÚ[™È\žHYØZ[ˆÚÜH‚‚B\™]\›‚‚\Ù[™Ùš[™ÛX]Ú
+
+B‚™[˜ÈØ[˜Ù[ÛX]ÚXZÚ[™Ê
+HOˆ›ÚY‚‚\[™[™×Ùš[™ÛX]ÚH˜[ÙB‚[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB‚X\™[˜WÙžÜ\ÙHHšYH‚‚X\™[˜WÙžÙ[\ÙYHŒ‚\[™[™×Ø\™[˜WÛX]ÚHßB‚X\™[˜WÛX]ÚYÛÜÛ™[HßB‚\Ù[™Û][\^Y\ŠÈ\HŽˆ˜Ø[˜Ù[ÛX]ÚŸJB‚™[˜ÈÜ™X]WÛ][\^Y\—Ü›ÛÛJ
+HOˆ›ÚY‚‚XÛÛ[Z]Ü›Ùš[WÛ˜[YJ
+B‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚BXÛÛ›™XÝÛ][\^Y\Š
+B‚B[][\^Y\—Ù\œ›ÜˆHµå5êuê5êˆ5çµêµèµåuê5ê5è5èuåH5êuåuäH5äuèµåuäÈ5æõçµå5êuè5æuåuêˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”Ù\™\ˆ\ÈØZÚ[™È\žHYØZ[ˆÚÜH‚‚B\™]\›‚‚[][\^Y\—ÛØØ[Ø[š[X[H^Y\—Ø[š[X[‚[][\^Y\—ÛØØ[Üš[™×ØÛÛÜˆH^Y\—Üš[™×ØÛÛÜ‚‚\Ù[™Û][\^Y\ŠÂ‚BH\HŽˆ˜Ü™X]WÜ›ÛÛH‹‚BH›˜[YHŽœ›Ùš[WÛ˜[YK‚BH˜[š[X[Žœ^Y\—Ø[š[X[‚BHœš[™ÐÛÛÜˆŽœ^Y\—Üš[™×ØÛÛÜ‹‚BH˜›Ø\™[YHŽœÙ[XÝYØ›Ø\™Ý[YK‚BH›]™[Žœ^Y\—Û]™[‚BHÚ[œÈŽœ^Y\—ÝÚ[œË‚BH›ÜÜÙ\ÈŽœ^Y\—ÛÜÜÙ\Ë‚BHœ˜][™ÈŽœ^Y\—Ü˜][™Ë‚BH›XYÝYUY\ˆŽœ^Y\—ÛXYÝYWÝY\‹‚BHœX›XÒYŽ™š\™X˜\ÙWÜX›X×ÚY‚_JB‚™[˜È›Ú[—Û][\^Y\—Ü›ÛÛJ
+HOˆ›ÚY‚‚XÛÛ[Z]Ü›Ùš[WÛ˜[YJ
+B‚]˜\ˆÛÙHH›ÛÛWØÛÙWÚ[œ]^œÝš\ÙYÙ\Ê
+K×Ý\\Š
+B‚ZYˆÛÙK›[™Ý
+
+HOH‚‚B[][\^Y\—Ù\œ›ÜˆHµå5æõè5æuèuåH5éõåuäÈ5åõäõê5äuçÈ5êµåuåuæuçHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘[\ˆHXÚ\˜XÝ\ˆ›ÛÛHÛÙH‚‚B\™]\›‚‚ZYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYŽ‚‚BXÛÛ›™XÝÛ][\^Y\Š
+B‚B[][\^Y\—Ù\œ›ÜˆHµå5êuê5êˆ5çµêµèµåuê5ê5è5èuåH5êuåuäH5äuèµåuäÈ5æõçµå5êuè5æuåuêˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”Ù\™\ˆ\ÈØZÚ[™È\žHYØZ[ˆÚÜH‚‚B\™]\›‚‚[][\^Y\—ÛØØ[Ø[š[X[H^Y\—Ø[š[X[‚[][\^Y\—ÛØØ[Üš[™×ØÛÛÜˆH^Y\—Üš[™×ØÛÛÜ‚‚\Ù[™Û][\^Y\ŠÂ‚BH\HŽˆš›Ú[—Ü›ÛÛH‹‚BHœ›ÛÛPÛÙHŽ˜ÛÙK‚BH›˜[YHŽœ›Ùš[WÛ˜[YK‚BH˜[š[X[Žœ^Y\—Ø[š[X[‚BHœš[™ÐÛÛÜˆŽœ^Y\—Üš[™×ØÛÛÜ‹‚BH›]™[Žœ^Y\—Û]™[‚BHÚ[œÈŽœ^Y\—ÝÚ[œË‚BH›ÜÜÙ\ÈŽœ^Y\—ÛÜÜÙ\Ë‚BHœ˜][™ÈŽœ^Y\—Ü˜][™Ë‚BH›XYÝYUY\ˆŽœ^Y\—ÛXYÝYWÝY\‹‚BHœX›XÒYŽ™š\™X˜\ÙWÜX›X×ÚY‚_JB‚™[˜È\]WÛX]ÚØÚ\˜XÝ\Š[š[X[ˆ[HLKš[™×ØÛÛÜŽˆ[HLJHOˆ›ÚY‚‚ZYˆ][\^Y\—ÜÛÝ‚‚B\™]\›‚‚]˜\ˆÝ\œ™[Ø[š[X[ˆ[H^Y\—Ø[š[X[Yˆ][\^Y\—ÜÛÝOH[ÙHZWØ[š[X[‚]˜\ˆÝ\œ™[Üš[™Îˆ[H^Y\—Üš[™×ØÛÛÜˆYˆ][\^Y\—ÜÛÝOH[ÙHZWÜš[™×ØÛÛÜ‚‚ZYˆ[š[X[H‚‚BZYˆ›Ý\×Ø[š[X[Ý[›ØÚÙY
+[š[X[
+N‚‚BB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+[›ØÚ×Ú[—ÜÚÜŠJB‚BB\™]\›‚‚BXÝ\œ™[Ø[š[X[H[š[X[‚ZYˆš[™×ØÛÛÜˆH‚‚BZYˆ›Ý\×Üš[™×Ý[›ØÚÙY
+š[™×ØÛÛÜŠN‚‚BB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+[›ØÚ×Ú[—ÜÚÜŠJB‚BB\™]\›‚‚BXÝ\œ™[Üš[™ÈHš[™×ØÛÛÜ‚‚ZYˆ][\^Y\—ÜÛÝOH‚‚B\^Y\—Ø[š[X[HÝ\œ™[Ø[š[X[‚B\^Y\—Üš[™×ØÛÛÜˆHÝ\œ™[Üš[™Â‚Y[ÙN‚‚BXZWØ[š[X[HÝ\œ™[Ø[š[X[‚BXZWÜš[™×ØÛÛÜˆHÝ\œ™[Üš[™Â‚\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚\Ù[™Û][\^Y\ŠÈ\HŽˆ\]WÜ›Ùš[H‹˜[š[X[Ž˜Ý\œ™[Ø[š[X[œš[™ÐÛÛÜˆŽ˜Ý\œ™[Üš[™ßJB‚™[˜ÈÙÙÛWÛ][\^Y\—Ü™XYJ
+HOˆ›ÚY‚‚[][\^Y\—Ü™XYHH›Ý][\^Y\—Ü™XYB‚\Ù[™Û][\^Y\ŠÈ\HŽˆœ™XYH‹œ™XYHŽ›][\^Y\—Ü™XY_JB‚™[˜ÈX]™WÛ][\^Y\—Ü›ÛÛJ
+HOˆ›ÚY‚‚ZYˆ][\^Y\—Ü›ÛÛWØÛÙHOHˆŽ‚‚B\Ù[™Û][\^Y\ŠÈ\HŽˆ›X]™WÜ›ÛÛHŸJB‚[][\^Y\—Ü›ÛÛWØÛÙHHˆ‚‚[][\^Y\—Ü^Y\œË˜ÛX\Š
+B‚[][\^Y\—ÜÛÝHLB‚[][\^Y\—Ü™XYHH˜[ÙB‚YœšY[™ØÝ\ÝÛZ^™\—ÛÜ[ˆH˜[ÙB‚YœšY[™ÛÜÛ™[Ü›Ùš[WÛÜ[ˆH˜[ÙB‚[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB‚\[™[™×Ùš[™ÛX]ÚH˜[ÙB‚ZYˆ][\^Y\—ÛØØ[Ø[š[X[H‚‚B\^Y\—Ø[š[X[H][\^Y\—ÛØØ[Ø[š[X[‚B\^Y\—Üš[™×ØÛÛÜˆH][\^Y\—ÛØØ[Üš[™×ØÛÛÜ‚‚B\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚[][\^Y\—ÛØØ[Ø[š[X[HLB‚[][\^Y\—ÛØØ[Üš[™×ØÛÛÜˆHLB‚™[˜È[™WÛ][\^Y\—ÛY\ÜØYÙJ^[ØYˆXÝ[Û˜\žJHOˆ›ÚY‚‚[X]ÚÝŠ^[ØY™Ù]
+\H‹ˆŠJN‚‚BH˜ÛÛ›™XÝYŽ‚‚BB[][\^Y\—ÜÝ]HH˜ÛÛ›™XÝY‚‚BB[][\^Y\—Ù\œ›ÜˆHˆ‚‚BB]˜\ˆ\ÝÜžHH^[ØY™Ù]
+›Ø˜žPÚ]‹×JB‚BBZYˆ\[ÙŠ\ÝÜžJHOHTWÐT”VH[™\ÝÜžKœÚ^™J
+Hˆ‚‚BBB[Ø˜žWØÚ]ÛY\ÜØYÙ\ÈH\ÝÜžB‚BBB]Ú[HØ˜žWØÚ]ÛY\ÜØYÙ\ËœÚ^™J
+HˆÌ‚‚BBBB[Ø˜žWØÚ]ÛY\ÜØYÙ\ËœÜÙœ›Û
+
+B‚BBZYˆ[™[™×ÙÛÛÙÛWÚ[™Ù™—Ü™\]Y\Ý‚‚BBB\Ù[™Û][\^Y\ŠÈ\HŽˆ˜Ü™X]WØ]]Ú[™Ù™ˆŸJB‚BBB\[™[™×ÙÛÛÙÛWÚ[™Ù™—Ü™\]Y\ÝH˜[ÙB‚BBZYˆ›Ý[™[™×Ø]]Ú[™Ù™—Ü^[ØYš\×Ù[\J
+N‚‚BBB\Ù[™Û][\^Y\Š[™[™×Ø]]Ú[™Ù™—Ü^[ØY
+B‚BBB\[™[™×Ø]]Ú[™Ù™—Ü^[ØYHßB‚BBB\[™[™×Ø[™›ÚYØ]]Ú[™Ù™ˆHˆ‚‚BBZYˆ›Ý[™[™×ÜÚ\™YÜ›ÛÛWØÛÙKš\×Ù[\J
+N‚‚BBB]˜\ˆÚ\™YØÛÙNˆÝš[™ÈH[™[™×ÜÚ\™YÜ›ÛÛWØÛÙB‚BBB\[™[™×ÜÚ\™YÜ›ÛÛWØÛÙHHˆ‚‚BBB\›ÛÛWØÛÙWÚ[œ]^HÚ\™YØÛÙB‚BBBZ›Ú[—Û][\^Y\—Ü›ÛÛJ
+B‚BBY[Yˆ[™[™×Ùš[™ÛX]Ú‚‚BBB\Ù[™Ùš[™ÛX]Ú
+
+B‚BBY[Yˆ›Ý[™[™×ÙœšY[™Ú[š]WÜÙ[™š\×Ù[\J
+N‚‚BBB[X^X™WÜÙ[™Ü[™[™×ÙœšY[™Ú[š]J
+B‚BB\Þ[˜×Ü^Y\—Ü™\Ù[˜ÙJ
+B‚BB\™YÚ\Ý\—Ù˜ÛWÝÚÙ[—ÝÚ]ÜÙ\™\Š
+B‚BH™˜ÛWÜ™YÚ\Ý\™YŽ‚‚BB\\ÜÂ‚BH›XY\˜›Ø\™Ž‚‚BBYÛØ˜[ÛXY\˜›Ø\™H^[ØY™Ù]
+™[šY\È‹×JB‚BB\™Yœ™\ÚÙœšY[™Û˜[Y\×Ùœ›ÛWÛXY\˜›Ø\™
+
+B‚BBY›ÜˆH[ˆÛØ˜[ÛXY\˜›Ø\™œÚ^™J
+N‚‚BBB]˜\ˆ[žNˆXÝ[Û˜\žHHÛØ˜[ÛXY\˜›Ø\™ÚWB‚BBBZYˆÝŠ[žK™Ù]
+œX›XÒY‹ˆŠJHOHš\™X˜\ÙWÜX›X×ÚY‚‚BBBB\^Y\—ÝÛÜ›Ü˜[šÈH[
+[žK™Ù]
+œ˜[šÈ‹
+JB‚BBBBXœ™XZÂ‚BH™œšY[™×Û\Ý‹œÛØÚX[ÜÝ]HŽ‚‚BBZYˆÝŠ^[ØY™Ù]
+\H‹ˆŠJHOHœÛØÚX[ÜÝ]HŽ‚‚BBBX\WÜÛØÚX[ÜÝ]WÙœ›ÛWÜÙ\™\Š^[ØY
+B‚BBY[ÙN‚‚BBBX\WÙœšY[™×Û\ÝÙœ›ÛWÜÙ\™\Š^[ØY™Ù]
+™œšY[™È‹×JJB‚BH™œšY[™Ü™\]Y\ÝÜ™\Ý[Ž‚‚BBZYˆ›ÛÛ
+^[ØY™Ù]
+›ÚÈ‹˜[ÙJJN‚‚BBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ü™\]Y\ÝÜÙ[ŠJB‚BBY[ÙN‚‚BBB]˜\ˆÛÙHHÝŠ^[ØY™Ù]
+˜ÛÙH‹ˆŠJB‚BBBZYˆÛÙHOH‘VTÕÈŽ‚‚BBBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ù^\ÝÈŠJB‚BBBY[YˆÛÙHOH”S‘S‘ÈŽ‚‚BBBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ü™\]Y\ÝÙ^\ÝÈŠJB‚BBBY[YˆÛÙHOH’SÓÓRS‘ÈŽ‚‚BBBBXXØÙ\ÙœšY[™Ü™\]Y\ÝÙœ›ÛJÝŠ^[ØY™Ù]
+\™Ù]X›XÒY‹ˆŠJJB‚BBBY[ÙN‚‚BBBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Û›ÝÙ›Ý[™ŠJB‚BH™œšY[™ØXØÙ\Ü™\Ý[Ž‚‚BBZYˆ›ÛÛ
+^[ØY™Ù]
+›ÚÈ‹˜[ÙJJN‚‚BBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™ØXØÙ\YŠJB‚BBY[ÙN‚‚BBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Û›ÝÙ›Ý[™ŠJB‚BH™œšY[™Ü™\]Y\ÝÛ›ÝYžHŽ‚‚BBZÛYWÜÛØÚX[ÝXˆH‚BB]˜\ˆ™\]Y\ÝÛ˜[YHHÝŠ^[ØY™Ù]
+œ™\]Y\Ý‹ßJK™Ù]
+›˜[YH‹ˆŠJB‚BB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ü™\]Y\ÝÚ[˜ÛÛZ[™ÈŠH	H™\]Y\ÝÛ˜[YJB‚BB\^WÜÛÝ[™
+š[š]HŠB‚BH™œšY[™ØXØÙ\YÛ›ÝYžHŽ‚‚BBZÛYWÜÛØÚX[ÝXˆH‚BB]˜\ˆXØÙ\YÛ˜[YHHÝŠ^[ØY™Ù]
+™œ›ÛS˜[YH‹^[ØY™Ù]
+™œšY[™‹ßJK™Ù]
+›˜[YH‹ˆŠJJB‚BB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™ØYYÞ[ÝHŠH	HXØÙ\YÛ˜[YJB‚BB\^WÜÛÝ[™
+š[š]HŠB‚BH™œšY[™ØYÜ™\Ý[Ž‚‚BB\\ÜÂ‚BH™œšY[™ØYYÛ›ÝYžHŽ‚‚BB\\ÜÂ‚BH™œšY[™Ú[š]HŽ‚‚BB\[™[™×ÙœšY[™Ú[š]HHÂ‚BBBH™œ›ÛS˜[YHŽˆÝŠ^[ØY™Ù]
+™œ›ÛS˜[YH‹ˆŠJK‚BBBH™œ›ÛTX›XÒYŽˆÝŠ^[ØY™Ù]
+™œ›ÛTX›XÒY‹ˆŠJK‚BBBHœ›ÛÛPÛÙHŽˆÝŠ^[ØY™Ù]
+œ›ÛÛPÛÙH‹ˆŠJB‚BB_B‚BB\^WÜÛÝ[™
+š[š]HŠB‚BB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+š[š]WÜ™XÙZ]™YŠH
+È[™[™×ÙœšY[™Ú[š]K™œ›ÛS˜[YJB‚BB\ÚÝ×ÝÙX—Û›ÝYšXØ][ÛŠ‚BBBH–›ÛÜ[ÛÛH‹‚BBB]ZWÝ^
+š[š]WÜ™XÙZ]™YŠH
+ÈÝŠ[™[™×ÙœšY[™Ú[š]K™Ù]
+™œ›ÛS˜[YH‹ˆŠJK‚BBB^Èœ›ÛÛPÛÙHŽˆÝŠ[™[™×ÙœšY[™Ú[š]K™Ù]
+œ›ÛÛPÛÙH‹ˆŠJK\HŽˆ™œšY[™Ú[š]HŸB‚BBJB‚BHš[š]WÜÙ[Ž‚‚BB]˜\ˆÛ›[™HH›ÛÛ
+^[ØY™Ù]
+›Û›[™H‹˜[ÙJJB‚BB]˜\ˆ\™Ù]Û˜[YHH[™[™×ÙœšY[™Ú[š]WÝ\™Ù]Û˜[YB‚BB\[™[™×ÙœšY[™Ú[š]WÝ\™Ù]Û˜[YHHˆ‚‚BBZYˆ›Ý\™Ù]Û˜[YKš\×Ù[\J
+N‚‚BBB\ÚÝ×ÛY[WÛ›ÝXÙJ
+µå5åµçµè5å5çˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH’[š]HÙ[ÈŠH
+È\™Ù]Û˜[YJB‚BBY[ÙN‚‚BBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+š[š]WÜÙ[ÛÛ›[™HŠHYˆÛ›[™H[ÙHZWÝ^
+š[š]WÜÙ[ÛÙ™›[™HŠJB‚BH˜]]Ú[™Ù™ˆŽ‚‚BB]˜\ˆ]]Ý\›ˆÝš[™ÈHÝŠ^[ØY™Ù]
+\›‹ˆŠJB‚BBZYˆÔËš\×Ù™X]\™J˜[™›ÚYŠH[™]]Ý\›˜™YÚ[œ×ÝÚ]
+šÎ‹ËÛ[ÜÚLŒŒ™Ú]X‹š[ËÞ›ÛÜ[ÛÛK[[Øš[KÈŠN‚‚BBBYš\™X˜\ÙWÜÝ]\ÈHµå5êuç5æuçµåH5ä5êˆ5å5æõè5æuèuå5äuäõé5äõé5çÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘’S’TÒÒQÓ‹RSˆSˆSÕTˆ”“ÕÔÑTˆ‚‚BBBSÔËœÚ[ÛÜ[Š]]Ý\›
+B‚BH˜]]Ú[™Ù™—ØÛÛ\]HŽ‚‚BB]˜\ˆÛÛÙÛWÛ˜[YNˆÝš[™ÈHÝŠ^[ØY™Ù]
+™\Ü^S˜[YH‹ˆŠJKœÝš\ÙYÙ\Ê
+K›Y
+Œ
+B‚BBZYˆ›ÝÛÛÙÛWÛ˜[YKš\×Ù[\J
+N‚‚BBB\›Ùš[WÛ˜[YHHÛÛÙÛWÛ˜[YB‚BBBZYˆ›Ùš[WÛ˜[YWÚ[œ]OH[‚‚BBBB\›Ùš[WÛ˜[YWÚ[œ]^H›Ùš[WÛ˜[YB‚BBX\WÙš\™X˜\ÙWØ]]Ü™\ÜÛœÙJ^[ØY
+B‚BB\ÚÝ×ÛY[WÛ›ÝXÙJµå5êµåõäuê5êˆ5èµçHÛÛÙÛHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÒQÓ‘QSˆÒUÓÓÑÓHŠB‚BHš›Ú[™YŽ‚‚BB[][\^Y\—Ü›ÛÛWØÛÙHHÝŠ^[ØY™Ù]
+œ›ÛÛPÛÙH‹ˆŠJB‚BB[][\^Y\—ÜÛÝH[
+^[ØY™Ù]
+œÛÝ‹LJJB‚BB[][\^Y\—Ü™XYHH˜[ÙB‚BBZYˆÝŠ^[ØY™Ù]
+œÛÝ\˜ÙH‹ˆŠJHOH˜\™[˜HŽ‚‚BBB[X]ÚÜÛÝ\˜ÙHH˜\™[˜H‚‚BB[X^X™WÜÙ[™Ü[™[™×ÙœšY[™Ú[š]J
+B‚BHœÙX\˜Ú[™ÈŽ‚‚BB[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈHYB‚BB[][\^Y\—Ù\œ›ÜˆHˆ‚‚BHœÙX\˜ÚØØ[˜Ù[YŽ‚‚BB[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB‚BB\[™[™×Ùš[™ÛX]ÚH˜[ÙB‚BBX\™[˜WÙžÜ\ÙHHšYH‚‚BBX\™[˜WÙžÙ[\ÙYHŒ‚BB\[™[™×Ø\™[˜WÛX]ÚHßB‚BBX\™[˜WÛX]ÚYÛÜÛ™[HßB‚BBZYˆÝŠ^[ØY™Ù]
+œ™X\ÛÛˆ‹ˆŠJHOH[Y[Ý]Ž‚‚BBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+œÙX\˜ÚÝ[Y[Ý]ŠJB‚BHœ›ÛÛWÜÝ]HŽ‚‚BB[][\^Y\—Ü^Y\œÈH^[ØY™Ù]
+œ^Y\œÈ‹×JB‚BB]\›ˆH[
+^[ØY™Ù]
+\›ˆ‹
+JB‚BB\Þ[˜×ÛX]ÚØ›Ø\™Ùœ›ÛWÜ^[ØY
+^[ØY
+B‚BBZYˆ\™[˜WÙžÜ\ÙHOH™›Ý[™Ž‚‚BBBX\™[˜WÛX]ÚYÛÜÛ™[H\™[˜WÛÜÛ™[Ù]J
+B‚BBZYˆ][\^Y\—Ü^Y\œËœÚ^™J
+Hˆ‚‚BBB]˜\ˆš\œÝÜ^Y\ŽˆXÝ[Û˜\žHH][\^Y\—Ü^Y\œÖÌB‚BBB\^Y\—Ø[š[X[H[
+š\œÝÜ^Y\‹™Ù]
+˜[š[X[‹^Y\—Ø[š[X[
+JB‚BBB\^Y\—Üš[™×ØÛÛÜˆH[
+š\œÝÜ^Y\‹™Ù]
+œš[™ÐÛÛÜˆ‹^Y\—Üš[™×ØÛÛÜŠJB‚BBZYˆ][\^Y\—Ü^Y\œËœÚ^™J
+HˆN‚‚BBB]˜\ˆÙXÛÛ™Ü^Y\ŽˆXÝ[Û˜\žHH][\^Y\—Ü^Y\œÖÌWB‚BBBXZWØ[š[X[H[
+ÙXÛÛ™Ü^Y\‹™Ù]
+˜[š[X[‹ZWØ[š[X[
+JB‚BBBXZWÜš[™×ØÛÛÜˆH[
+ÙXÛÛ™Ü^Y\‹™Ù]
+œš[™ÐÛÛÜˆ‹ZWÜš[™×ØÛÛÜŠJB‚BB\™XZ[ÝX[WÜYXÙWÝ^\™\Ê
+B‚BH›X]ÚÜÝ\YŽ‚‚BBZYˆÝŠ^[ØY™Ù]
+œÛÝ\˜ÙH‹™œšY[™ŠJHOH˜\™[˜HŽ‚‚BBBX™YÚ[—Ø\™[˜WÛX]ÚÙ›Ý[™
+^[ØY
+B‚BBY[ÙN‚‚BBBX\WÛX]ÚÜÝ\Y
+^[ØY
+B‚BHœÚÝŽ‚‚BB]˜\ˆ˜[Ú[™^H[
+^[ØY™Ù]
+˜˜[[™^‹LJJB‚BBZYˆ˜[Ú[™^H[™˜[Ú[™^˜[ËœÚ^™J
+H[™˜[ÖØ˜[Ú[™^K˜[]™N‚‚BBB]˜\ˆ[H™XÝÜŒŠ›Ø]
+^[ØY™Ù]
+œ[‹Œ
+JK›Ø]
+^[ØY™Ù]
+œ[H‹Œ
+JJB‚BBB]˜\ˆÝ™[™ÝH›Ø]
+^[ØY™Ù]
+œÝ™[™Ý‹Œ
+JB‚BBBZYˆ[›[™ÝÜÜ]X\™Y
+
+HˆŒ‚‚BBBBX˜[ÖØ˜[Ú[™^KˆH[››Ü›X[^™Y
+
+H
+ˆ
+Ý™[™Ý
+ˆŒÎ
+B‚BBBB]\›—ÜÚÝØÛÛ[Z]YHYB‚BBBB]\›—Ü[™[™×Ü™\ÛÛ™HHYB‚BBBB]\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB‚BH\›ˆŽ‚‚BB]\›ˆH[
+^[ØY™Ù]
+\›ˆ‹
+JB‚BB]\›—ÜÚÝØÛÛ[Z]YH˜[ÙB‚BB]\›—Ü[™[™×Ü™\ÛÛ™HH˜[ÙB‚BB]\›—ÛÜÛ™[ÜØÛÜ™YH˜[ÙB‚BB]\]WÝ\›—ÜÝ]\×Ùœ›ÛWÜÙ\™\Š›ÛÛ
+^[ØY™Ù]
+˜ÛÛ[YU\›ˆ‹˜[ÙJJJB‚BH˜Ú]Ž‚‚BB[X]ÚØÚ]ÛY\ÜØYÙ\Ë˜\[™
+Â‚BBBHœÛÝŽˆ[
+^[ØY™Ù]
+œ^Y\”ÛÝ‹LJJK‚BBBH›˜[YHŽˆÝŠ^[ØY™Ù]
+›˜[YH‹ˆŠJK‚BBBH›Y\ÜØYÙHŽˆÝŠ^[ØY™Ù]
+›Y\ÜØYÙH‹ˆŠJB‚BB_JB‚BB]Ú[HX]ÚØÚ]ÛY\ÜØYÙ\ËœÚ^™J
+HˆŒ‚‚BBB[X]ÚØÚ]ÛY\ÜØYÙ\ËœÜÙœ›Û
+
+B‚BH›Ø˜žWØÚ]Ž‚‚BB[Ø˜žWØÚ]ÛY\ÜØYÙ\Ë˜\[™
+Â‚BBBH›˜[YHŽˆÝŠ^[ØY™Ù]
+›˜[YH‹”^Y\ˆŠJK‚BBBH›Y\ÜØYÙHŽˆÝŠ^[ØY™Ù]
+›Y\ÜØYÙH‹ˆŠJB‚BB_JB‚BB]Ú[HØ˜žWØÚ]ÛY\ÜØYÙ\ËœÚ^™J
+HˆÌ‚‚BBB[Ø˜žWØÚ]ÛY\ÜØYÙ\ËœÜÙœ›Û
+
+B‚BH›X]ÚÛÝ™\ˆŽ‚‚BB]˜\ˆÚ[›™\—ÜÛÝH[
+^[ØY™Ù]
+Ú[›™\”ÛÝ‹LJJB‚BBZYˆÚ[›™\—ÜÛÝH‚‚BBBYš[š\ÚÛX]Ú
+Ú[›™\—ÜÛÝ
+B‚BH›ÜÛ™[ÛYŽ‚‚BBZYˆX]ÚÙš[š\ÚY‚‚BBB\\ÜÂ‚BBY[ÙN‚‚BBBZYˆX]ÚÜÛÝ\˜ÙHOH˜\™[˜HŽ‚‚BBBBX\ÜØÜ™Y[ˆHTÐT‘SB‚BBBB[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB‚BBBY[ÙN‚‚BBBBX\ÜØÜ™Y[ˆHTÑ”’QS‘‚BBB[][\^Y\—Ü™XYHH˜[ÙB‚BBB[][\^Y\—Ù\œ›ÜˆHµå5æuê5æuäH5æuéµä5çµå5åõäõêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“ÜÛ™[YH›ÛÛH‚‚BH™\œ›ÜˆŽ‚‚BB[][\^Y\—Ù\œ›ÜˆHÝŠ^[ØY™Ù]
+›Y\ÜØYÙH‹”Ù\™\ˆ\œ›ÜˆŠJB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈÝ\ÜÙ[XÝYÛ[ÙJ[ÙNˆÝš[™ÊHOˆ›ÚY‚‚YØ[YWÛ[ÙHH[ÙB‚[X]ÚÜÛÝ\˜ÙHH[ÙB‚XÝ\ÝÛZ^™\—ÛÜ[ˆH˜[ÙB‚YY™™XÝÙY]Ü—Ù[˜X›YH˜[ÙB‚Y^]ØÛÛ™š\›WÛÜ[ˆH˜[ÙB‚XÚ]ÛÜ[ˆH˜[ÙB‚[X]ÚØÚ]ÛY\ÜØYÙ\Ë˜ÛX\Š
+B‚[X]ÚXZÚ[™×ÜÙX\˜Ú[™ÈH˜[ÙB‚\[™[™×Ùš[™ÛX]ÚH˜[ÙB‚X\ÜØÜ™Y[ˆHTÑÐSQB‚[™]×ÙØ[YJ
+B‚ZYˆØ[YWÛ[ÙHOH™œšY[™Ž‚‚B\Ý]\ÈH”™Y^Y\‰ÜÈ\›ˆHØØ[X]Ú‚‚Y[ÙN‚‚B\Ý]\ÈH–[Ý\ˆ\›ˆHÝXÚH™Y˜[[˜XÚÈ[™™[X\ÙH‚‚™[˜ÈÝ\ØÛÛ\]\—ÜÙ]\
+
+HOˆ›ÚY‚‚HÈ™\\™HH›Ø\™™Z[™H[Ù[]È›Ý[ÝÈHÚÝ[[B‚HÈ^Y\ˆÛÛ™š\›\ÈH[š[X[[™Y™X[ÞH›Üˆ\ÈÛÛ\]\ˆX]Ú‚‚\Ý\ÜÙ[XÝYÛ[ÙJ˜ÛÛ\]\ˆŠB‚XÝ\ÝÛZ^™\—ÛÜ[ˆHYB‚\Ý]\ÈHZWÝ^
+˜ÚÛÜÙWÜÙ]\ŠB‚\]Y]YWÜ™Y˜]Ê
+B‚™[˜ÈÚÝ×ÛY[WÛ›ÝXÙJ^ˆÝš[™ÊHOˆ›ÚY‚‚[Y[WÛ›ÝXÙHH^‚[Y[WÛ›ÝXÙWÝ[YHH‹‚™[˜È^Y\—Û]™[ÛX™[
+
+HOˆÝš[™Î‚‚ZYˆZWÛ[™ÝXYÙHOHšHŽ‚‚B\™]\›ˆµê5çµå	Yˆ	H^Y\—Û]™[‚\™]\›ˆ“U‘S	Yˆ	H^Y\—Û]™[‚™[˜ÈZ[WØÛZ[WÜ™XÝ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚\™]\›ˆ™XÝŠ™XÝÜŒŠ
+šY]ÜÜÜÚ^™KžHŒŒ
+ˆ[š]
+H
+ˆKšY]ÜÜÜÚ^™KžH
+ˆŒŠK™XÝÜŒŠŒŒÎŒ
+H
+ˆ[š]
+B‚™[˜È˜]×Ü™]Ø\™×ÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒŒ
+JB‚Y˜]×Ùœ›Û[™ÚXY\ŠšY]ÜÜÜÚ^™KZWÝ^
+™Z[WÝ]HŠKZWÝ^
+™Z[WÜÝXˆŠJB‚]˜\ˆØ\™H™XÝŠ™XÝÜŒŠ
+šY]ÜÜÜÚ^™KžHŒ
+ˆ[š]
+H
+ˆKMŒŒ
+ˆ[š]
+K™XÝÜŒŠŒŒŒ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒŒMŽLŠKŽŒ
+ˆ[š]
+KØ\™™Ü›ÝÊ‹Œ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™NMÎŠKŒ
+ˆ[š]
+KØ\™
+B‚Y˜]×ØÚ\˜ÛJØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠØ\™œÚ^™Kž
+ˆKMŒ
+ˆ[š]
+KNŒ
+ˆ[š]ÛÛÜŠ™™˜ÎÙŠJB‚Y˜]×ØÚ\˜ÛJØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠØ\™œÚ^™Kž
+ˆKMŒ
+ˆ[š]
+KÍ‹Œ
+ˆ[š]ÛÛÜŠ™NNMÌXˆŠK˜[ÙKŒ
+ˆ[š]YJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠÌŒLŒ
+H
+ˆ[š]ŠÈˆ
+ÈÝŠRSWÔ‘UÐT‘ÐÓÒS”ÊH
+ÈZWÝ^
+˜ÛÚ[œÈŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™KžHŒŒ
+ˆ[š][
+ŽŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒŽL‹Œ
+H
+ˆ[š]
+µæuêµê5åˆ	YˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH˜[[˜ÙNˆ	YŠH	H^Y\—ØÛÚ[œËÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™KžHŒ
+ˆ[š][
+M‹Œ
+ˆ[š]
+KÛÛÜŠ™™™ŒÍÈŠJB‚]˜\ˆÛZ[HHZ[WØÛZ[WÜ™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ™XYHHØ[—ØÛZ[WÙZ[J
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒL˜NM˜ˆŠHYˆ™XYH[ÙHÛÛÜŠŒÌMYŠKNŒ
+ˆ[š]
+KÛZ[JB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛZ[KœÜÚ][Ûˆ
+È™XÝÜŒŠŒLŒ
+H
+ˆ[š]ZWÝ^
+˜ÛZ[HŠHYˆ™XYH[ÙHZWÝ^
+˜ÛZ[YYŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛZ[KœÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚™[˜ÈZWÝ^
+Ù^NˆÝš[™ÊHOˆÝš[™Î‚‚ZYˆZWÛ[™ÝXYÙHOHšHŽ‚‚B\™]\›ˆÝŠRWÕVÒK™Ù]
+Ù^KRWÕVÑS‹™Ù]
+Ù^KÙ^JJJB‚\™]\›ˆÝŠRWÕVÑS‹™Ù]
+Ù^KÙ^JJB‚™[˜ÈZWØ[š[X[Û˜[YJ[™^ˆ[
+HOˆÝš[™Î‚‚]˜\ˆÙ^\ÈHÈ™[\[‹ž™Xœ˜H‹›[ÛšÙ^H‹š\È‹œš[›È‹™Ú\˜Y™™H‹YÙ\ˆ—B‚\™]\›ˆZWÝ^
+Ù^\ÖØÛ[\J[™^Ù^\ËœÚ^™J
+HHJWJB‚™[˜ÈZWÜš[™×Û˜[YJ[™^ˆ[
+HOˆÝš[™Î‚‚]˜\ˆÙ^\ÈHÈœ™Y‹›Ü˜[™ÙH‹˜›YH‹™Ü™Y[ˆ‹œ\œH‹\œ][Ú\ÙH‹œ[šÈ—B‚\™]\›ˆZWÝ^
+Ù^\ÖØÛ[\J[™^Ù^\ËœÚ^™J
+HHJWJB‚™[˜È›Ùš[WÚ[š]X[
+
+HOˆÝš[™Î‚‚]˜\ˆÛX[ˆH›Ùš[WÛ˜[YKœÝš\ÙYÙ\Ê
+B‚\™]\›ˆÛX[‹›Y
+JK×Ý\\Š
+HYˆ›ÝÛX[‹š\×Ù[\J
+H[ÙH”‚‚™[˜È[™WÙœ›Û[™ÝÝXÚ
+ØÜ™Y[—ÜÜÎˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆšY]ÜÜÜÚ^™HHÙ]ÝšY]ÜÜÜ™XÝ
+
+KœÚ^™B‚ZYˆÛYWÚ[š]WÚ›Ú[—Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BXXØÙ\Ü[™[™×ÙœšY[™Ú[š]J
+B‚B\™]\›‚‚ZYˆ\ÜØÜ™Y[ˆOHTÔÔTÒ‚‚BX\ÜØÜ™Y[ˆHTÐUU‚B\™]\›‚‚ZYˆ\ÜØÜ™Y[ˆOHTÐUU‚‚BZYˆÙ\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™Î‚‚BB\™]\›‚‚BZYˆ]]Ù[XZ[Û[ÙKš\×Ù[\J
+N‚‚BBZYˆ]]ØÚÚXÙWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBYš\™X˜\ÙWØ]]Û[ÙHH™ÛÛÙÛH‚‚BBBX™YÚ[—ÙÛÛÙÛWÜÚYÛ—Ú[Š
+B‚BBY[Yˆ]]ØÚÚXÙWÜ™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBX]]Ù[XZ[Û[ÙHH›ÙÚ[ˆ‚‚BBBYš\™X˜\ÙWÜÝ]\ÈHµå5åµæuè5åH5çµæuæuç5åuèuæuèuçµåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘S•TˆSPRSS‘TÔÕÓÔ‘‚‚BBY[Yˆ]]ØÚÚXÙWÜ™XÝ
+‹šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBX™YÚ[—ÙÝY\ÝÜÚYÛ—Ú[Š
+B‚BBY[Yˆ]]ØÚÚXÙWÜ™XÝ
+ËšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBX]]Ù[XZ[Û[ÙHHœ™YÚ\Ý\ˆ‚‚BBBYš\™X˜\ÙWÜÝ]\ÈHµéµê5åH5åõêuäuåuçÈ5åõäõêHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÔ‘PUHH‘UÈPÐÓÕS•‚‚BY[ÙN‚‚BBZYˆ]]ÜÝX›Z]Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBB\Ý\Ù[XZ[Ø]]
+]]Ù[XZ[Û[ÙHOHœ™YÚ\Ý\ˆŠB‚BBY[Yˆ]]ØØ[˜Ù[Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBX]]Ù[XZ[Û[ÙHHˆ‚‚BBBYš\™X˜\ÙWÜÝ]\ÈHµäuåõê5åH5äõê5æˆ5æõè5æuèuåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHÕÈÈÒQÓˆSˆ‚‚B\]Y]YWÜ™Y˜]Ê
+B‚B\™]\›‚‚ZYˆ\ÜØÜ™Y[ˆOHTÒÓQN‚‚BZYˆ]ÜšX[ÛÜ[Ž‚‚BBZ[™WÝ]ÜšX[ÝÝXÚ
+ØÜ™Y[—ÜÜËšY]ÜÜÜÚ^™JB‚BB\™]\›‚‚BZYˆÛYWÙœšY[™Ü›Ùš[WÚ[™^H‚‚BBZYˆÛYWÙœšY[™Ü›Ùš[WØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBZÛYWÙœšY[™Ü›Ùš[WÚ[™^HLB‚BBB\]Y]YWÜ™Y˜]Ê
+B‚BBB\™]\›‚‚BBZYˆÛYWÙœšY[™Ü›Ùš[WÚ[š]WÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBB]˜\ˆ[š]WÚ[™^HÛYWÙœšY[™Ü›Ùš[WÚ[™^‚BBB]˜\ˆœšY[™Ù[žNˆXÝ[Û˜\žHHœšY[™×Û\ÝÚ[š]WÚ[™^HYˆ[š]WÚ[™^H[™[š]WÚ[™^œšY[™×Û\ÝœÚ^™J
+H[ÙHßB‚BBBZYˆ›ÛÛ
+œšY[™Ù[žK™Ù]
+›Û›[™H‹˜[ÙJJN‚‚BBBBZÛYWÙœšY[™Ü›Ùš[WÚ[™^HLB‚BBBBZ[š]WÙœšY[™Ý×Ü^J[š]WÚ[™^
+B‚BBBY[ÙN‚‚BBBB\ÚÝ×ÛY[WÛ›ÝXÙJZWÝ^
+™œšY[™Ú[š]WÛÙ™›[™HŠJB‚BBB\™]\›‚‚BBZYˆÛYWÙœšY[™Ü›Ùš[WÜ™[[Ý™WÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBB\™[[Ý™WÙœšY[™Ø]
+ÛYWÙœšY[™Ü›Ùš[WÚ[™^
+B‚BBB\™]\›‚‚BBZYˆ›ÝÛYWÙœšY[™Ü›Ùš[WÛ[Ù[Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBZÛYWÙœšY[™Ü›Ùš[WÚ[™^HLB‚BBB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›‚‚B]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚BZYˆÛYWÚ[Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB[Ü[—Ý]ÜšX[
+
+B‚BB\™]\›‚‚BZYˆÛYWÜÛØÚX[ÝX—Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBZÛYWÜÛØÚX[ÝXˆH‚BBZYˆØ˜žWØÚ]Ú[œ]OH[‚‚BBB[Ø˜žWØÚ]Ú[œ]œ™[X\ÙWÙ›ØÝ\Ê
+B‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›‚‚BZYˆÛYWÜÛØÚX[ÝX—Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBZÛYWÜÛØÚX[ÝXˆHB‚BBZYˆœšY[™ÚYÚ[œ]OH[‚‚BBBYœšY[™ÚYÚ[œ]œ™[X\ÙWÙ›ØÝ\Ê
+B‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›‚‚BZYˆÛYWÜÛØÚX[ÝX—Ü™XÝ
+‹šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBZÛYWÜÛØÚX[ÝXˆH‚‚BB\Ù[™Û][\^Y\ŠÈ\HŽˆ™Ù]ÛXY\˜›Ø\™ŸJB‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›‚‚BZYˆÛYWÚ[š]WÚ›Ú[—Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBXXØÙ\Ü[™[™×ÙœšY[™Ú[š]J
+B‚BB\™]\›‚‚BZYˆÛYWÜÛÝ[™ÝÙÙÛWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB\ÛÝ[™Ù[˜X›YH›ÝÛÝ[™Ù[˜X›Y‚BB\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚BB\^WÜÛÝ[™
+ZHŠB‚BB\]Y]YWÜ™Y˜]Ê
+B‚BB\™]\›‚‚BZYˆÛYWÜÛØÚX[ÝXˆOH‚‚BBY›ÜˆH[ˆZ[šJ‹[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝËœÚ^™J
+JN‚‚BBBZYˆÛYWÚ[˜ÛÛZ[™×ØXØÙ\Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBXXØÙ\ÙœšY[™Ü™\]Y\ÝÙœ›ÛJÝŠ[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÖÚWK™Ù]
+šY‹ˆŠJJB‚BBBB\™]\›‚‚BBBZYˆÛYWÚ[˜ÛÛZ[™×ÙXÛ[™WÜ™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBYXÛ[™WÙœšY[™Ü™\]Y\ÝØ]
+JB‚BBBB\™]\›‚‚BBZYˆÛYWØYÙœšY[™Ø]Û—Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBZYˆœšY[™ÚYÚ[œ]OH[‚‚BBBB\Ù[™ÙœšY[™Ü™\]Y\ÝØžWÚY
+œšY[™ÚYÚ[œ]^
+B‚BBB\™]\›‚‚BBY›ÜˆH[ˆZ[šJËœšY[™×Û\ÝœÚ^™J
+JN‚‚BBB]˜\ˆ›ÝÈHÛYWÙœšY[™Ü›Ý×Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚BBB]˜\ˆ[š]WÜ™XÝHÛYWÙœšY[™Ú[š]WÜ™XÝ
+KšY]ÜÜÜÚ^™JB‚BBBZYˆ[š]WÜ™XÝš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBZ[š]WÙœšY[™Ý×Ü^JJB‚BBBB\™]\›‚‚BBBZYˆ›ÝËš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBZÛYWÙœšY[™Ü›Ùš[WÚ[™^HB‚BBBB\^WÜÛÝ[™
+ZHŠB‚BBBB\]Y]YWÜ™Y˜]Ê
+B‚BBBB\™]\›‚‚BY[YˆÛYWÜÛØÚX[ÝXˆOHN‚‚BBZYˆÛYWÛØ˜žWÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBB\Ù[™ÛØ˜žWØÚ]ÛY\ÜØYÙJ
+B‚BBB\™]\›‚‚BZYˆÛYWØÚ\˜XÝ\—Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBX\ÜØÜ™Y[ˆHTÔ“Ñ’SB‚BB\™]\›‚‚BZYˆÛYWØÛÜ™WÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBX\ÜØÜ™Y[ˆHTÔÒÔ‚BB\ÚÜÜYÙHHÒÔÔQÑWÑQ‘‘PÕÂ‚BB\™]\›‚‚BZYˆÛYWÜ›Ùš[WÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBX\ÜØÜ™Y[ˆHTÔVQT—Ô“Ñ’SB‚BB\™]\›‚‚BZYˆÛYWÜÙ][™Ü×Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB]ZWÛ[™ÝXYÙHH™[ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHšH‚‚BB\Ø]™WÜ^Y\—Ü›Ùš[J
+B‚BB\ÚÝ×ÛY[WÛ›ÝXÙJ‘[™Û\Ú[\™˜XÙHˆYˆZWÛ[™ÝXYÙHOH™[ˆˆ[ÙHµå5çµçµêuéÈ5å5åuåõç5èÈ5ç5èµäuê5æuêˆŠB‚BB\™]\›‚‚BY›ÜˆH[ˆŽ‚‚BBZYˆ›ÝÛYWÛ˜]—Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBXÛÛ[YB‚BBZYˆHOH‚‚BBBX\ÜØÜ™Y[ˆHTÔÒÔ‚BBB\ÚÜÜYÙHHÒÔÔQÑWÒP‚‚BBY[ÙN‚‚BBBX\ÜØÜ™Y[ˆHTÔ‘UÐT‘Â‚BB\™]\›‚‚BZYˆÛYWÛ[ÙWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBX\ÜØÜ™Y[ˆHTÐT‘SB‚BB\™]\›‚‚BZYˆÛYWÛ[ÙWÜ™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBX\ÜØÜ™Y[ˆHTÑ”’QS‘‚BBXÛÛ›™XÝÛ][\^Y\Š
+B‚BB\™]\›‚‚BZYˆÛYWÛ[ÙWÜ™XÝ
+‹šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BB\^WÜÛÝ[™
+ZHŠB‚BB\Ý\ØÛÛ\]\—ÜÙ]\
+
+B‚BB\™]\›‚‚Y[ÙN‚‚BZYˆœ›Û[™Ø˜XÚ×Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBZYˆ\ÜØÜ™Y[ˆOHTÔÒÔ[™ÚÜÜYÙHOHÒÔÔQÑWÒPŽ‚‚BBB\ÚÜÜYÙHHÒÔÔQÑWÒP‚‚BBB\^WÜÛÝ[™
+ZHŠB‚BBB\]Y]YWÜ™Y˜]Ê
+B‚BBB\™]\›‚‚BBZYˆ\ÜØÜ™Y[ˆOHTÔVQT—Ô“Ñ’SN‚‚BBBXÛÛ[Z]Ü›Ùš[WÛ˜[YJ
+B‚BBZYˆ\ÜØÜ™Y[ˆOHTÑ”’QS‘‚‚BBB[X]™WÛ][\^Y\—Ü›ÛÛJ
+B‚BBZYˆ\ÜØÜ™Y[ˆOHTÐT‘SN‚‚BBBXØ[˜Ù[ÛX]ÚXZÚ[™Ê
+B‚BBX\ÜØÜ™Y[ˆHTÒÓQB‚BB\™]\›‚‚BZYˆ\ÜØÜ™Y[ˆOHTÔ“Ñ’SN‚‚BBY›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚BBBZYˆÚ\˜XÝ\—ØØ\™Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBB]žWÜÙ[XÝØ[š[X[
+JB‚BBBB\]Y]YWÜ™Y˜]Ê
+B‚BBBB\™]\›‚‚BBY›ÜˆH[ˆ’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+N‚‚BBBZYˆÚ\˜XÝ\—Üš[™×Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBB]žWÜÙ[XÝÜš[™ÊJB‚BBBB\]Y]YWÜ™Y˜]Ê
+B‚BBBB\™]\›‚‚BY[Yˆ\ÜØÜ™Y[ˆOHTÔÒÔ‚‚BBZYˆÚÜÜYÙHOHÒÔÔQÑWÒPŽ‚‚BBBY›ÜˆH[ˆÎ‚‚BBBBZYˆÚÜØØ]YÛÜžWÜ™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBB\ÚÜÜYÙHHÔÒÔÔQÑWÐS’SPSËÒÔÔQÑWÔ’S‘ÔËÒÔÔQÑWÑQ‘‘PÕ×VÚWB‚BBBBB\^WÜÛÝ[™
+ZHŠB‚BBBBB\]Y]YWÜ™Y˜]Ê
+B‚BBBBB\™]\›‚‚BBY[YˆÚÜÜYÙHOHÒÔÔQÑWÐS’SPSÎ‚‚BBBY›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚BBBBZYˆÚÜÙ]Z[ÙÜšYÜ™XÝ
+KšY]ÜÜÜÚ^™KS’SPSÓSQTËœÚ^™J
+JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBB]žWÜ\˜Ú\ÙWØ[š[X[
+JB‚BBBBB\]Y]YWÜ™Y˜]Ê
+B‚BBBBB\™]\›‚‚BBY[YˆÚÜÜYÙHOHÒÔÔQÑWÔ’S‘ÔÎ‚‚BBBY›ÜˆH[ˆ’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+N‚‚BBBBZYˆÚÜÙ]Z[ÙÜšYÜ™XÝ
+KšY]ÜÜÜÚ^™K’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBB]žWÜ\˜Ú\ÙWÜš[™ÊJB‚BBBBB\]Y]YWÜ™Y˜]Ê
+B‚BBBBB\™]\›‚‚BY[Yˆ\ÜØÜ™Y[ˆOHTÐT‘SN‚‚BBY›ÜˆH[ˆÎ‚‚BBBZYˆ\™[˜WØØ\™Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBB\Ù[XÝYØ\™[˜HHB‚BBBB\™]\›‚‚BBZYˆ\™[˜WÜ^WÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBZYˆX]ÚXZÚ[™×ÜÙX\˜Ú[™Î‚‚BBBBXØ[˜Ù[ÛX]ÚXZÚ[™Ê
+B‚BBBY[ÙN‚‚BBBB\Ý\Ø\™[˜WÜÙX\˜Ú
+
+B‚BBB\™]\›‚‚BY[Yˆ\ÜØÜ™Y[ˆOHTÔ‘UÐT‘Î‚‚BBZYˆZ[WØÛZ[WÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBXÛZ[WÙZ[WÜ™]Ø\™
+
+B‚BBB\™]\›‚‚BY[Yˆ\ÜØÜ™Y[ˆOHTÔVQT—Ô“Ñ’SN‚‚BBZYˆ^Y\—ÙÛÛÙÛWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBZYˆš\™X˜\ÙWÜ›ÝšY\ˆOH™ÛÛÙÛHŽ‚‚BBBBX™YÚ[—ÙÛÛÙÛWÜÚYÛ—Ú[Š
+B‚BBB\™]\›‚‚BBZYˆ^Y\—ÚYØÛÜWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBZYˆ›Ýš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+N‚‚BBBBQ\Ü^TÙ\™\‹˜Û\›Ø\™ÜÙ]
+š\™X˜\ÙWÜX›X×ÚY
+B‚BBBB\ÚÝ×ÛY[WÛ›ÝXÙJµå5çµåµå5å5å5åuèµêµéÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”VQTˆQÓÔQQŠB‚BBB\™]\›‚‚BBY›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚BBBZYˆ^Y\—Ü›Ùš[WØ[š[X[Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBB]žWÜÙ[XÝØ[š[X[
+JB‚BBBB\]Y]YWÜ™Y˜]Ê
+B‚BBBB\™]\›‚‚BBY›ÜˆH[ˆ’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+N‚‚BBBZYˆ^Y\—Ü›Ùš[WØÛÛÜ—Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBB]žWÜÙ[XÝÜš[™ÊJB‚BBBB\]Y]YWÜ™Y˜]Ê
+B‚BBBB\™]\›‚‚BY[Yˆ\ÜØÜ™Y[ˆOHTÑ”’QS‘‚‚BBZYˆœšY[™Ü›ÛÛWØÚ]ÛÜ[Ž‚‚BBBZYˆÚ]ØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBYœšY[™Ü›ÛÛWØÚ]ÛÜ[ˆH˜[ÙB‚BBBBZYˆÚ]Ú[œ]OH[‚‚BBBBBXÚ]Ú[œ]œ™[X\ÙWÙ›ØÝ\Ê
+B‚BBBB\™]\›‚‚BBBZYˆÚ]ÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBB\Ù[™ØÚ]ÛY\ÜØYÙJ
+B‚BBBB\™]\›‚‚BBZYˆœšY[™ØÝ\ÝÛZ^™\—ÛÜ[ˆÜˆœšY[™ÛÜÛ™[Ü›Ùš[WÛÜ[Ž‚‚BBBZYˆœšY[™Û[Ù[ØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBYœšY[™ØÝ\ÝÛZ^™\—ÛÜ[ˆH˜[ÙB‚BBBBYœšY[™ÛÜÛ™[Ü›Ùš[WÛÜ[ˆH˜[ÙB‚BBBB\™]\›‚‚BBBZYˆœšY[™ØÝ\ÝÛZ^™\—ÛÜ[Ž‚‚BBBBY›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚BBBBBZYˆœšY[™ØÚÚXÙWÜ™XÝ
+K˜[ÙKšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBBBZYˆžWÜÙ[XÝØ[š[X[
+JN‚‚BBBBBBB]\]WÛX]ÚØÚ\˜XÝ\ŠKLJB‚BBBBBB\™]\›‚‚BBBBBZYˆœšY[™ØÚÚXÙWÜ™XÝ
+KYKšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBBBZYˆžWÜÙ[XÝÜš[™ÊJN‚‚BBBBBBB]\]WÛX]ÚØÚ\˜XÝ\ŠLKJB‚BBBBBB\™]\›‚‚BBBBY›ÜˆH[ˆ“ÐT‘ÕSQWÐÓÕS•‚‚BBBBBZYˆœšY[™Ø›Ø\™Ü™XÝ
+KšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBBB]\]WÛX]ÚØ›Ø\™
+JB‚BBBBBB\™]\›‚‚BBB\™]\›‚‚BBZYˆ][\^Y\—Ü›ÛÛWØÛÙKš\×Ù[\J
+N‚‚BBBZYˆœšY[™ØÜ™X]WÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBXÜ™X]WÛ][\^Y\—Ü›ÛÛJ
+B‚BBBB\™]\›‚‚BBBZYˆœšY[™Ú›Ú[—Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBZ›Ú[—Û][\^Y\—Ü›ÛÛJ
+B‚BBBB\™]\›‚‚BBY[ÙN‚‚BBBZYˆœšY[™ÜÚ\™WÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBB\Ú\™WÙœšY[™Ü›ÛÛJ
+B‚BBBB\™]\›‚‚BBBZYˆœšY[™Ü›ÛÛWØÚ]Ü™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBYœšY[™Ü›ÛÛWØÚ]ÛÜ[ˆHYB‚BBBBZYˆÚ]Ú[œ]OH[‚‚BBBBBXÚ]Ú[œ]™Ü˜X—Ù›ØÝ\Ê
+B‚BBBB\^WÜÛÝ[™
+ZHŠB‚BBBB\™]\›‚‚BBB]˜\ˆØØ[ÜÛÝH][\^Y\—ÜÛÝYˆ][\^Y\—ÜÛÝH[ÙH‚BBBZYˆœšY[™Ü^Y\—Ü™XÝ
+ØØ[ÜÛÝšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBYœšY[™ØÝ\ÝÛZ^™\—ÛÜ[ˆHYB‚BBBB\™]\›‚‚BBB]˜\ˆÜÛ™[ÜÛÝHHH][\^Y\—ÜÛÝ‚BBBZYˆÜÛ™[ÜÛÝH[™ÜÛ™[ÜÛÝ][\^Y\—Ü^Y\œËœÚ^™J
+H[™œšY[™Ü^Y\—Ü™XÝ
+ÜÛ™[ÜÛÝšY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBBYœšY[™ÛÜÛ™[Ü›Ùš[WÛÜ[ˆHYB‚BBBB\™]\›‚‚BBBZYˆœšY[™Ü™XYWÜ™XÝ
+šY]ÜÜÜÚ^™JKš\×ÜÚ[
+ØÜ™Y[—ÜÜÊN‚‚BBBB]ÙÙÛWÛ][\^Y\—Ü™XYJ
+B‚BBBB\™]\›‚‚™[˜È˜]×ÛY[WØ˜XÚÙÜ›Ý[™
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆÝ™\›^HHÛÛÜŠŒMKŒMKŒLKŒŠB‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÝ™\›^JB‚Y›ÜˆH[ˆN‚‚B]˜\ˆ\ÙHH›[Ù
+Y[WÙ[\ÙY
+ˆ
+LŒ
+È›Ø]
+H	H
+H
+ˆËŒ
+H
+È›Ø]
+H
+ˆÊKšY]ÜÜÜÚ^™KžH
+ÈLŒŒ
+B‚B]˜\ˆH›[Ù
+›Ø]
+H
+ˆMH
+ÈÌJKšY]ÜÜÜÚ^™Kž
+B‚B]˜\ˆHHšY]ÜÜÜÚ^™KžH
+ÈŒH\ÙB‚B]˜\ˆ˜Y]\ÈHËŒ
+È›Ø]
+H	HJH
+ˆK‚‚BY˜]×ØÚ\˜ÛJ™XÝÜŒŠJK˜Y]\ËÛÛÜŠKŽMKŒŒMŠK˜[ÙK‹ŒYJB‚]˜\ˆÜš^›ÛˆH™XÝŠŒšY]ÜÜÜÚ^™KžH
+ˆÍ‹šY]ÜÜÜÚ^™KžšY]ÜÜÜÚ^™KžH
+ˆŒ
+B‚Y˜]×Ü™XÝ
+Üš^›Û‹ÛÛÜŠŒŒŒŒÌKŒÍJJB‚™[˜È˜]×Þ›ÛÜ[ÛÛWÛÙÛÊÙ[\Žˆ™XÝÜŒ‹ØØ[Nˆ›Ø]™]™X[ˆ›Ø]HKŒ
+HOˆ›ÚY‚‚]˜\ˆ›ØˆHÚ[ŠY[WÙ[\ÙY
+ˆ‹JH
+ˆKŒ
+ˆØØ[B‚]˜\ˆÈHÙ[\ˆ
+È™XÝÜŒŠŒ›ØŠB‚]˜\ˆš[™×Ü˜Y]\ÈH‹Œ
+ˆØØ[B‚Y˜]×ØÚ\˜ÛJËš[™×Ü˜Y]\È
+ˆKŒNÛÛÜŠŒMKŽLKŒŒMˆ
+ˆ™]™X[
+JB‚Y˜]×ØÚ\˜ÛJËš[™×Ü˜Y]\ËÛÛÜŠ™™XMMHŠK˜[ÙKŒŒ
+ˆØØ[KYJB‚Y˜]×Ø\˜ÊËš[™×Ü˜Y]\ËL‹ŒÍKLÎÌÛÛÜ‹•ÒUKŒŒ
+ˆØØ[KYJB‚Y˜]×Ø\˜ÊËš[™×Ü˜Y]\ËÎ‹ŒÍKÌÛÛÜ‹•ÒUKŒŒ
+ˆØØ[KYJB‚]˜\ˆX\ˆHŒ
+ˆØØ[B‚Y˜]×ØÚ\˜ÛJÈ
+È™XÝÜŒŠLÌKŒLÍŒ
+H
+ˆØØ[KX\‹ÛÛÜŠŒÙˆŠJB‚Y˜]×ØÚ\˜ÛJÈ
+È™XÝÜŒŠÌKŒLÍŒ
+H
+ˆØØ[KX\‹ÛÛÜŠŒÙˆŠJB‚Y˜]×ØÚ\˜ÛJÈ
+È™XÝÜŒ‹–‘T“ËËŒ
+ˆØØ[KÛÛÜŠŽLØYXŽŠJB‚Y˜]×ØÚ\˜ÛJÈ
+È™XÝÜŒŠLMŒMËŒ
+H
+ˆØØ[K‹Œ
+ˆØØ[KÛÛÜŠŒLŒÌÎŠJB‚Y˜]×ØÚ\˜ÛJÈ
+È™XÝÜŒŠMŒMËŒ
+H
+ˆØØ[K‹Œ
+ˆØØ[KÛÛÜŠŒLŒÌÎŠJB‚Y˜]×Û[™JÈ
+È™XÝÜŒŠŒËŒ
+H
+ˆØØ[KÈ
+È™XÝÜŒŠŒŽKŒ
+H
+ˆØØ[KÛÛÜŠÙŽˆŠKL‹Œ
+ˆØØ[KYJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÈ
+È™XÝÜŒŠLŒKŒLNŒ
+H
+ˆØØ[K–“ÓÔSÓÓH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹LŒ
+ˆØØ[K[
+MŒ
+ˆØØ[JKÛÛÜŠKŒŽ‹ŒK™]™X[
+JB‚™[˜È˜]×ÜÜ\ÚÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆØY[™×ÝX[WÝ^\™HOH[‚‚BY˜]×Ý^\™WÜ™XÝ
+ØY[™×ÝX[WÝ^\™K™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JK˜[ÙJB‚Y[ÙN‚‚BY˜]×ÛY[WØ˜XÚÙÜ›Ý[™
+šY]ÜÜÜÚ^™JB‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒËŒŒ
+JB‚]˜\ˆ[˜[˜ÙHHÛ[ÛÝÜÝ\
+Ü\ÚÙ[\ÙYÈÍJB‚]˜\ˆ^]Ø[HHKŒHÛ[ÛÝÜÝ\
+
+Ü\ÚÙ[\ÙYH‹JHÈMJB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÙÛ×ÝÚYHLLŒ
+ˆ[š]
+ˆ
+ŽLˆ
+È[˜[˜ÙH
+ˆŒ
+B‚]˜\ˆÙÛ×ÚZYÚHÙÛ×ÝÚY
+ˆMÍŒÈMŒ‚]˜\ˆÙÛ×Ü™XÝH™XÝŠ™XÝÜŒŠ
+šY]ÜÜÜÚ^™KžHÙÛ×ÝÚY
+H
+ˆKMŒ
+ˆ[š]
+K™XÝÜŒŠÙÛ×ÝÚYÙÛ×ÚZYÚ
+JB‚ZYˆ›ÛÜ[ÛÛWÛÙÛ×Ý^\™HOH[‚‚BY˜]×Ý^\™WÜ™XÝ
+›ÛÜ[ÛÛWÛÙÛ×Ý^\™KÙÛ×Ü™XÝ˜[ÙKÛÛÜŠKŒKŒKŒ[˜[˜ÙH
+ˆ^]Ø[JJB‚Y[ÙN‚‚BY˜]×Þ›ÛÜ[ÛÛWÛÙÛÊ™XÝÜŒŠšY]ÜÜÜÚ^™Kž
+ˆKL‹Œ
+ˆ[š]
+K
+L
+È[˜[˜ÙH
+ˆŒL
+H
+ˆ[š][˜[˜ÙH
+ˆ^]Ø[JB‚]˜\ˆØY[™×ÝÚYHZ[™ŠŒŒŒ
+ˆ[š]šY]ÜÜÜÚ^™Kž
+ˆLŠB‚]˜\ˆØY[™×Ü™XÝH™XÝŠ
+šY]ÜÜÜÚ^™KžHØY[™×ÝÚY
+H
+ˆKšY]ÜÜÜÚ^™KžHHNŒ
+ˆ[š]ØY[™×ÝÚYŒËŒ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒMKŒÍKŒËŽLŠKL‹Œ
+KØY[™×Ü™XÝ™Ü›ÝÊKŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLÎYŠKLŒ
+KØY[™×Ü™XÝ
+B‚]˜\ˆ›ÙÜ™\ÜÈHÛ[\ŠÜ\ÚÙ[\ÙYÈ‹ŽKŒKŒ
+B‚]˜\ˆš[Ü™XÝH™XÝŠØY[™×Ü™XÝœÜÚ][Û‹™XÝÜŒŠX^ŠL‹Œ
+ˆ[š]ØY[™×Ü™XÝœÚ^™Kž
+ˆ›ÙÜ™\ÜÊKØY[™×Ü™XÝœÚ^™KžJJB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™ÙŠKLŒ
+Kš[Ü™XÝ
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠŒØY[™×Ü™XÝœÜÚ][Û‹žHHL‹Œ
+ˆ[š]
+K“ÐQS‘ÈHTÓS‘‹‹ˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹šY]ÜÜÜÚ^™Kž[
+LËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚™[˜È˜]×Ùœ›Û[™
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚HÈÛ™HÛÚ\™[š\ÝX[Ú[XÜ›ÜÜÈ]™\žHY[H™\XÙ\ÈHÛÛXÝ[ÛˆÙ‚‚HÈ[œ™[]YYØXÞH˜XÚÙÜ›Ý[™Ë‚‚Y˜]×ÛY[WØ˜XÚÙÜ›Ý[™
+šY]ÜÜÜÚ^™JB‚Y˜]×Û[Ù\›—ÚÛYWØ˜XÚÙ›Ü
+šY]ÜÜÜÚ^™KÈšXY\—ÚŽŒŒJB‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒŒM‹ŒKŒÎ
+JB‚ZYˆ\ÜØÜ™Y[ˆOHTÐUU‚‚BY˜]×Ø]]ÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚Y[Yˆ\ÜØÜ™Y[ˆOHTÒÓQN‚‚BY˜]×ÚÛYWÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚Y[Yˆ\ÜØÜ™Y[ˆOHTÔ“Ñ’SN‚‚BY˜]×Ü›Ùš[WÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚Y[Yˆ\ÜØÜ™Y[ˆOHTÔÒÔ‚‚BY˜]×ÜÚÜÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚Y[Yˆ\ÜØÜ™Y[ˆOHTÐT‘SN‚‚BY˜]×Ø\™[˜WÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚Y[Yˆ\ÜØÜ™Y[ˆOHTÔVQT—Ô“Ñ’SN‚‚BY˜]×Ü^Y\—Ü›Ùš[WÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚Y[Yˆ\ÜØÜ™Y[ˆOHTÑ”’QS‘‚‚BY˜]×ÙœšY[™ÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚Y[Yˆ\ÜØÜ™Y[ˆOHTÔ‘UÐT‘Î‚‚BY˜]×Ü™]Ø\™×ÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚Y˜]×Ü[™[™×Ú[š]WØ˜[›™\ŠšY]ÜÜÜÚ^™JB‚ZYˆY[WÛ›ÝXÙWÝ[YHˆŒ‚‚B]˜\ˆØ\ÝH™XÝŠšY]ÜÜÜÚ^™Kž
+ˆŒÌKšY]ÜÜÜÚ^™KžHHŽŒšY]ÜÜÜÚ^™Kž
+ˆŒÎ‹Œ
+B‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒŒMŽM
+KMŒ
+KØ\Ý
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ\ÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŽKŒ
+KY[WÛ›ÝXÙKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\ÝœÚ^™KžMÛÛÜŠ™™ÍHŠJB‚™[˜È˜]×Ø]]ÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Û[Ù\›—ÚÛYWØ˜XÚÙ›Ü
+šY]ÜÜÜÚ^™KÈšXY\—ÚŽŒŒJB‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒŒMKŒKMŠJB‚HÈH[˜[˜ÙH\È›ÝÈH™X[Ü]ØÜ™Y[ŽˆØ[YHY[]HÛˆHY‚HÈ[[YYX]HXØÛÝ[XÝ[ÛœÈÛˆHšYÚ‚‚]˜\ˆš\ÝX[Ü[™[H™XÝŠ™XÝÜŒŠÌ‹ŒÌ‹Œ
+H
+ˆ[š]™XÝÜŒŠŒLŒM‹Œ
+H
+ˆ[š]
+B‚]˜\ˆXÝ[Û—Ü[™[H™XÝŠ™XÝÜŒŠŽ‹ŒLŒ
+H
+ˆ[š]™XÝÜŒŠMŒŒŒŒ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒLKŒŒM
+KÍ‹Œ
+ˆ[š]
+Kš\ÝX[Ü[™[
+B‚Y˜]×Ü™XÝ
+š\ÝX[Ü[™[ÛÛÜŠŒŽŽKŒŒŒŠK˜[ÙK‹Œ
+ˆ[š]YJB‚]˜\ˆÜ[ØÙ[\ˆHš\ÝX[Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠš\ÝX[Ü[™[œÚ^™Kž
+ˆLš\ÝX[Ü[™[œÚ^™KžH
+ˆÊB‚Y›Üˆš[™È[ˆ˜[™ÙJ‹LJN‚‚B]˜\ˆ˜Y]\ÈH
+Ì‹Œ
+È›Ø]
+š[™ÊH
+ˆKŒ
+ÈÚ[ŠY[WÙ[\ÙY
+ˆKŽ
+È›Ø]
+š[™ÊJH
+ˆKŒ
+H
+ˆ[š]‚B]˜\ˆš[™×ØÛÛÜˆHÛÛÜŠŒKŽ‹KŒŒH
+ˆ›Ø]
+ÈHš[™ÊJB‚BY˜]×ØÚ\˜ÛJÜ[ØÙ[\‹˜Y]\Ëš[™×ØÛÛÜ‹˜[ÙKX^Š‹ŒKŒ
+ˆ[š]
+KYJB‚Y˜]×ØÚ\˜ÛJÜ[ØÙ[\‹LŒ
+ˆ[š]ÛÛÜŠŒLŒÎÌ‹ŠJB‚Y˜]×ØÚ\˜ÛJÜ[ØÙ[\‹‹Œ
+ˆ[š]ÛÛÜŠŒÍKŽLKŒŒMŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Ûš\ÝX[Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÎŒ
+H
+ˆ[š]–“ÓÔSÓÓH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹š\ÝX[Ü[™[œÚ^™Kž[
+Œ
+ˆ[š]
+KÛÛÜŠ™™™ŒXMˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Ûš\ÝX[Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒLM‹Œ
+H
+ˆ[š]“SÑT“ˆQUSÓˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹š\ÝX[Ü[™[œÚ^™Kž[
+M‹Œ
+ˆ[š]
+KÛÛÜŠŒÙMY™ˆŠJB‚]˜\ˆ\›×Ü™]šY]Îˆ^\™L‘H[‚ZYˆ^Y\—Ø[š[X[Y™X[ÞWÚ\›×Ý^\™\ËœÚ^™J
+H[™^Y\—Üš[™×ØÛÛÜˆY™X[ÞWÚ\›×Ý^\™\ÖÜ^Y\—Ø[š[X[KœÚ^™J
+N‚‚BZ\›×Ü™]šY]ÈHY™X[ÞWÚ\›×Ý^\™\ÖÜ^Y\—Ø[š[X[VÜ^Y\—Üš[™×ØÛÛÜ—H\È^\™L‘‚ZYˆ\›×Ü™]šY]ÈOH[‚‚B]˜\ˆ\›×ÜÚ^™HH™XÝÜŒŠÌŒÍLŒ
+H
+ˆ[š]‚BY˜]×Ý^\™WÜ™XÝ
+\›×Ü™]šY]Ë™XÝŠÜ[ØÙ[\ˆ
+È™XÝÜŒŠŒNŒ
+ˆ[š]
+HH\›×ÜÚ^™H
+ˆK\›×ÜÚ^™JK˜[ÙJB‚]˜\ˆ™X]\™WÛX™[ÈHÈµéõê5äuåuêˆ5çµå5æuê5æuçH‹µåµæuê5åuêˆ5çµêµåõç5é5åuêˆ‹µçµêuåõéÈ5èµçH5åõäuê5æuçH—HYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÈ‘TÕUTÈ‹‘SSRPÈT‘STÈ‹”VHÒU”’QS‘È—B‚Y›ÜˆH[ˆÎ‚‚B]˜\ˆÚ\H™XÝŠš\ÝX[Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÎŒ
+È›Ø]
+JH
+ˆNŒNŒ
+H
+ˆ[š]™XÝÜŒŠMŽŒŒ
+H
+ˆ[š]
+B‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒŒM‹ŽŠKMKŒ
+ˆ[š]
+KÚ\
+B‚BY˜]×ØÚ\˜ÛJÚ\œÜÚ][Ûˆ
+È™XÝÜŒŠNKŒŒ‹Œ
+H
+ˆ[š]KŒ
+ˆ[š]ÐÛÛÜŠXÙŒHŠKÛÛÜŠ˜MMØÙ™ˆŠKÛÛÜŠL™™ˆŠWVÚWJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛÚ\œÜÚ][Ûˆ
+È™XÝÜŒŠÌKŒŽŒ
+H
+ˆ[š]™X]\™WÛX™[ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ú\œÚ^™KžHÎŒ
+ˆ[š][
+LŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒŽŒŽŽM
+KÍŒ
+ˆ[š]
+KXÝ[Û—Ü[™[
+B‚Y˜]×Ü™XÝ
+XÝ[Û—Ü[™[ÛÛÜŠŒÎMKKŒŒŽ
+K˜[ÙK‹Œ
+ˆ[š]YJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛXÝ[Û—Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÌ‹Œ
+H
+ˆ[š]µå5æuæõè5èuåH5ç5åµæuê5åˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘S•TˆHT‘SH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹XÝ[Û—Ü[™[œÚ^™Kž[
+ÌŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛXÝ[Û—Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒLŒ
+H
+ˆ[š]
+µäuåõê5åH5äõê5æˆ5æõè5æuèuåˆYˆ]]Ù[XZ[Û[ÙKš\×Ù[\J
+H[ÙH
+µæuéµæuê5êˆ5åõêuäuåuçÈ5åõäõêHˆYˆ]]Ù[XZ[Û[ÙHOHœ™YÚ\Ý\ˆˆ[ÙHµæõè5æuèuå5ç5åõêuäuåuçÈŠJHYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH
+ÒÓÔÑHHÒQÓ‹RSˆQUÑˆYˆ]]Ù[XZ[Û[ÙKš\×Ù[\J
+H[ÙH
+Ô‘PUHSÕTˆPÐÓÕS•ˆYˆ]]Ù[XZ[Û[ÙHOHœ™YÚ\Ý\ˆˆ[ÙH”ÒQÓˆSˆÈSÕTˆPÐÓÕS•ŠJKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹XÝ[Û—Ü[™[œÚ^™Kž[
+M‹Œ
+ˆ[š]
+KÛÛÜŠŽY™YYˆŠJB‚ZYˆÙ\ÜÚ[Û—Ü™\ÝÜ™WÜ[™[™È[™]]Ù[XZ[Û[ÙKš\×Ù[\J
+N‚‚BY˜]×ÜÝš[™ÊZWÙ›ÛXÝ[Û—Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÌLŒ
+ˆ[š]
+KZWÝ^
+œ™\ÝÜš[™×ÜÙ\ÜÚ[ÛˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹XÝ[Û—Ü[™[œÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜŠŽY™YYˆŠJB‚Y[Yˆ]]Ù[XZ[Û[ÙKš\×Ù[\J
+N‚‚B]˜\ˆX™[ÈHÈµæõè5æuèuå5èµçHÛXZ[‹µæõè5æuèuå5èµçH5çµæuæuç‹µæõè5æuèuå5æõä5åuê5åÈ‹µå5ê5êuçµå—HYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÈÓÓ•S•QHÒUÓÓÑÓH‹”ÒQÓˆSˆÒUSPRS‹ÓÓ•S•QHTÈÕQTÕ‹”‘QÒTÕTˆ—B‚B]˜\ˆÛÛÜœÈHÐÛÛÜŠXNÙ™ˆŠKÛÛÜŠŒÍØÙMÈŠKÛÛÜŠŒÌXÙŽLHŠKÛÛÜŠ˜ŒÎ™ˆŠWB‚B]˜\ˆXÛÛœÈHÈ‘È‹‹¸¦.ˆ‹ŠÈ—B‚BY›ÜˆH[ˆ‚‚BB]˜\ˆ™XÝH]]ØÚÚXÙWÜ™XÝ
+KšY]ÜÜÜÚ^™JB‚BBY˜]×ÙÛ\Ü×ØØ\™
+™XÝÛÛÜœÖÚWK[š]˜[ÙJB‚BBY˜]×ØÚ\˜ÛJ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÎŒÌËŒ
+H
+ˆ[š]Œ‹Œ
+ˆ[š]ÛÛÜŠÛÛÜœÖÚWKœ‹ÛÛÜœÖÚWK™ËÛÛÜœÖÚWK˜‹ŒÌŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠMËŒ‹Œ
+H
+ˆ[š]XÛÛœÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹‹Œ
+ˆ[š][
+Œ‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ‹Œ‹Œ
+H
+ˆ[š]X™[ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™KžHŒ
+ˆ[š][
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y[ÙN‚‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠÌÌŒŒ‹Œ
+H
+ˆ[š]µæõêµåuäuêˆ5çµæuæuçˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘SPRSQ‘TÔÈ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÌŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠŽY™YYˆŠJB‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠÌÌŒÌÎKŒ
+H
+ˆ[š]µèuæuèuçµåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”TÔÕÓÔ‘‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÌŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠŽY™YYˆŠJB‚B]˜\ˆÝX›Z]H]]ÜÝX›Z]Ü™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÌXÙŽLHŠKNŒ
+ˆ[š]
+KÝX›Z]
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛÝX›Z]œÜÚ][Ûˆ
+È™XÝÜŒŠŒKŒ
+H
+ˆ[š]
+µæuéµæuê5êˆ5åõêuäuåuçÈˆYˆ]]Ù[XZ[Û[ÙHOHœ™YÚ\Ý\ˆˆ[ÙHµæõè5æuèuåŠHYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH
+Ô‘PUHPÐÓÕS•ˆYˆ]]Ù[XZ[Û[ÙHOHœ™YÚ\Ý\ˆˆ[ÙH”ÒQÓˆSˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÝX›Z]œÚ^™Kž[
+ŒËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚B]˜\ˆØ[˜Ù[H]]ØØ[˜Ù[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒØMNHŠKMŒ
+ˆ[š]
+KØ[˜Ù[
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ[˜Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÍŒ
+H
+ˆ[š]µåõåµê5å5ç5ä5é5êuê5åuæuåuêˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHPÒÈÈÔSÓ”È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø[˜Ù[œÚ^™Kž[
+NŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆÝ]\×ØÛÛÜˆHÛÛÜŠÙYMYHŠHYˆ›Ý
+µêuäµæuäˆ[ˆš\™X˜\ÙWÜÝ]\ÈÜˆ‘T”“Ôˆˆ[ˆš\™X˜\ÙWÜÝ]\ÊH[ÙHÛÛÜŠ™™ÍÍÍÈŠB‚Y˜]×ÜÝš[™ÊZWÙ›ÛXÝ[Û—Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒXÝ[Û—Ü[™[œÚ^™KžHHŒ
+H
+ˆ[š]š\™X˜\ÙWÜÝ]\ËÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹XÝ[Û—Ü[™[œÚ^™KžHŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÝ]\×ØÛÛÜŠB‚™[˜È˜]×ÙœšY[™ÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒKŒLŠJB‚Y˜]×Ùœ›Û[™ÚXY\ŠšY]ÜÜÜÚ^™KµçµêuåõéÈ5çµåuç5åõäuêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”VHH”’QS‘‹µéµê5åH5åõäõê5ä5åH5å5éµæ5ê5é5åH5äuä5çµéµèµåuêˆ5éõåuäÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÜ™X]HH›ÛÛHÜˆ›Ú[ˆÚ]HÛÙHŠB‚]˜\ˆ[™[H™XÝŠ™XÝÜŒŠMÍKŒLKŒ
+H
+ˆ[š]™XÝÜŒŠLÌŒLÍKŒ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒKŒM‹ŽMJKŽŒ
+ˆ[š]
+K[™[
+B‚]˜\ˆÛÛ›™XÝ[Û—Ý^Hµçµåõåuäuê5ç5êuê5êˆˆYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆ[ÙH
+µçµêµåõäuê5ç5êuê5ê‹‹‹ˆˆYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝ[™Èˆ[ÙHµå5êuê5êˆ5ç5ä5çµåõåuäuêŠB‚ZYˆZWÛ[™ÝXYÙHOHšHŽ‚‚BXÛÛ›™XÝ[Û—Ý^HÛÛ›™XÝYˆYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆ[ÙH
+ÛÛ›™XÝ[™Ë‹‹ˆˆYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝ[™Èˆ[ÙH‘\ØÛÛ›™XÝYŠB‚]˜\ˆÛÛ›™XÝ[Û—ØÛÛÜˆHÛÛÜŠLYNMHŠHYˆ][\^Y\—ÜÝ]HOH˜ÛÛ›™XÝYˆ[ÙHÛÛÜŠ™™™XHŠB‚]˜\ˆÝ]\×Ü[H™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÌÌŒŒŒ
+H
+ˆ[š]™XÝÜŒŠÌŒMKŒ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒŒŒŽMŠKŒŒ
+ˆ[š]
+KÝ]\×Ü[
+B‚Y˜]×ØÚ\˜ÛJÝ]\×Ü[œÜÚ][Ûˆ
+È™XÝÜŒŠÍKŒËŒ
+H
+ˆ[š]LŒ
+ˆ[š]ÛÛ›™XÝ[Û—ØÛÛÜŠB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÝ]\×Ü[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÍ‹Œ
+H
+ˆ[š]ÛÛ›™XÝ[Û—Ý^Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ý]\×Ü[œÚ^™Kž[
+ŒËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚ZYˆ][\^Y\—Ü›ÛÛWØÛÙKš\×Ù[\J
+N‚‚B]˜\ˆÜ™X]WÜ™XÝHœšY[™ØÜ™X]WÜ™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠÍMYˆŠKNŒ
+ˆ[š]
+KÜ™X]WÜ™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛÜ™X]WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒLŒ
+H
+ˆ[š]µæuéµæuê5êˆ5åõäõê5åõäõêHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÔ‘PUH“ÓÓH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ü™X]WÜ™XÝœÚ^™Kž[
+ŒËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠŒŒŒ‹Œ
+ˆ[š]
+Kµä5åHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“Ôˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹šY]ÜÜÜÚ^™Kž[
+NKŒ
+ˆ[š]
+KÛÛÜŠ˜NXÙLˆŠJB‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠÌŒKŒ
+H
+ˆ[š]µéõåuäÈ5å5åõäõêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”“ÓÓHÓÑH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÌÌŒ
+ˆ[š][
+M‹Œ
+ˆ[š]
+KÛÛÜŠ™Ù™™ˆŠJB‚B]˜\ˆ›Ú[—Ü™XÝHœšY[™Ú›Ú[—Ü™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™ØÈŠKNŒ
+ˆ[š]
+K›Ú[—Ü™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û›Ú[—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒKŒ
+H
+ˆ[š]µå5éµæ5ê5é5åuêˆ5ç5åõäõêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH’“ÒSˆ“ÓÓH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹›Ú[—Ü™XÝœÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y[ÙN‚‚BY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒLKŒ
+H
+ˆ[š]µéõåuäÈ5å5åõäõêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”“ÓÓHÓÑH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+NŒ
+ˆ[š]
+KÛÛÜŠ˜NXÙLˆŠJB‚BY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒNLŒ
+H
+ˆ[š]][\^Y\—Ü›ÛÛWØÛÙKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚B]˜\ˆÚ\™WÜ™XÝHœšY[™ÜÚ\™WÜ™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒYŽY™ŠKM‹Œ
+ˆ[š]
+KÚ\™WÜ™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛÚ\™WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]µêuæuêµåuèÈ5ç5åõäuêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÒT‘HS•’UH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ú\™WÜ™XÝœÚ^™Kž[
+NŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BY›ÜˆH[ˆŽ‚‚BB]˜\ˆ^Y\—Ü™XÝHœšY[™Ü^Y\—Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒYXˆŠKMËŒ
+ˆ[š]
+K^Y\—Ü™XÝ
+B‚BB]˜\ˆ^Y\—ÛX™[HµçµçµêµæuçÈ5ç5êuåõéõçË‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•ØZ][™È›Üˆ^Y\‹‹‹ˆ‚‚BB]˜\ˆ™XYWÛX™[Hˆ‚‚BB]˜\ˆ\×Ü™XYHH˜[ÙB‚BBZYˆH][\^Y\—Ü^Y\œËœÚ^™J
+N‚‚BBB]˜\ˆ^Y\—Ù]NˆXÝ[Û˜\žHH][\^Y\—Ü^Y\œÖÚWB‚BBB\^Y\—ÛX™[HÝŠ^Y\—Ù]K™Ù]
+›˜[YH‹”^Y\ˆŠJB‚BBBZ\×Ü™XYHH›ÛÛ
+^Y\—Ù]K™Ù]
+œ™XYH‹˜[ÙJJB‚BBB\™XYWÛX™[H
+µçµåuæõçÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”‘PQHŠHYˆ\×Ü™XYH[ÙH
+µç5ä5çµåuæõçÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH““Õ‘PQHŠB‚BBB]˜\ˆ]˜]\—Ú[™^H[
+^Y\—Ù]K™Ù]
+˜[š[X[‹
+JB‚BBBZYˆ]˜]\—Ú[™^H[™]˜]\—Ú[™^[Ø›ÙWØ[š[X[Ý^\™\ËœÚ^™J
+N‚‚BBBBY˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖØ]˜]\—Ú[™^K™XÝŠ^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠL‹ŒL‹Œ
+H
+ˆ[š]™XÝÜŒŠLKŒLÌŒ
+H
+ˆ[š]
+K˜[ÙJB‚BBBY˜]×ÜÝš[™ÊZWÙ›Û^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLKŒÎKŒ
+H
+ˆ[š]^Y\—ÛX™[Ô’V“Ó•SÐSQÓ“QS•ÓQ•LKŒ
+ˆ[š][
+ŒKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BBBY˜]×ÜÝš[™ÊZWÙ›Û^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLKŒÌŒ
+H
+ˆ[š]
+µê5çµå	YˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“U‘S	YŠH	H[
+^Y\—Ù]K™Ù]
+›]™[‹JJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•LKŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠ˜NXÙLˆŠJB‚BBBY˜]×ÜÝš[™ÊZWÙ›Û^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLKŒM‹Œ
+H
+ˆ[š]ZWØ[š[X[Û˜[YJ]˜]\—Ú[™^
+KÔ’V“Ó•SÐSQÓ“QS•ÓQ•LKŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚BBBY˜]×ÜÛX[ÛY™X[ÞJ^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠÌ‹ŒÎŒ
+H
+ˆ[š][
+^Y\—Ù]K™Ù]
+œš[™ÐÛÛÜˆ‹
+JKÍKŒ
+ˆ[š]
+B‚BBY[ÙN‚‚BBBY˜]×ÜÝš[™ÊZWÙ›Û^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒÌ‹Œ
+H
+ˆ[š]^Y\—ÛX™[Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹^Y\—Ü™XÝœÚ^™Kž[
+ŒKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLKŒLËŒ
+H
+ˆ[š]™XYWÛX™[Ô’V“Ó•SÐSQÓ“QS•ÓQ•LKŒ
+ˆ[š][
+MKŒ
+ˆ[š]
+KÛÛÜŠLYNMHŠHYˆ\×Ü™XYH[ÙHÛÛÜŠ˜NXÙLˆŠJB‚BBZYˆHOH][\^Y\—ÜÛÝ‚‚BBBY˜]×ÜÝš[™ÊZWÙ›Û^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLŒMKŒ
+H
+ˆ[š]µç5åõéµåH5ç5êuæuè5åuæHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•TÈÒS‘ÑH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹LŒ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜŠÌ™™ˆŠJB‚BBY[YˆH][\^Y\—Ü^Y\œËœÚ^™J
+N‚‚BBBY˜]×ÜÝš[™ÊZWÙ›Û^Y\—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLKŒMLKŒ
+H
+ˆ[š]µç5åõéµåH5ç5é5ê5åué5æuçˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•T“Ôˆ“Ñ’SH‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•ŒLŒ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠÌ™™ˆŠJB‚B]˜\ˆ™XYWÜ™XÝHœšY[™Ü™XYWÜ™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍXŽM™ˆŠHYˆ›Ý][\^Y\—Ü™XYH[ÙHÛÛÜŠ™XŒ™ˆŠKNŒ
+ˆ[š]
+K™XYWÜ™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û™XYWÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒKŒ
+H
+ˆ[š]
+µäuæuæ5åuç5çµåuæõè5åuêˆˆYˆ][\^Y\—Ü™XYH[ÙHµä5è5æH5çµåuæõçÈŠHYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH
+““Õ‘PQHˆYˆ][\^Y\—Ü™XYH[ÙH’IÓH‘PQHŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XYWÜ™XÝœÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚B]˜\ˆÚ]Ü™XÝHœšY[™Ü›ÛÛWØÚ]Ü™XÝ
+šY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒXŽLXNŠKMŒ
+ˆ[š]
+KÚ]Ü™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛÚ]Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒÌKŒ
+H
+ˆ[š]ZWÝ^
+œ›ÛÛWØÚ]ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ú]Ü™XÝœÚ^™Kž[
+MKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚ZYˆ][\^Y\—Ù\œ›ÜˆOHˆŽ‚‚BY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÍKŒ[™[œÚ^™KžHHKŒ
+H
+ˆ[š]][\^Y\—Ù\œ›Ü‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžHÌŒ
+ˆ[š][
+MKŒ
+ˆ[š]
+KÛÛÜŠ™™ŽÍØHŠJB‚ZYˆœšY[™ØÝ\ÝÛZ^™\—ÛÜ[Ž‚‚BY˜]×ÙœšY[™ØÝ\ÝÛZ^™\ŠšY]ÜÜÜÚ^™JB‚Y[YˆœšY[™ÛÜÛ™[Ü›Ùš[WÛÜ[Ž‚‚BY˜]×ÙœšY[™ÛÜÛ™[Ü›Ùš[JšY]ÜÜÜÚ^™JB‚Y[YˆœšY[™Ü›ÛÛWØÚ]ÛÜ[Ž‚‚BY˜]×ÛX]ÚØÚ]
+šY]ÜÜÜÚ^™JB‚™[˜È˜]×ÜÛX[ÛY™X[ÞJÙ[\Žˆ™XÝÜŒ‹ÛÛÜ—Ú[™^ˆ[˜Y]\Îˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆš[™×ØÛÛÜŽˆÛÛÜˆH’S‘×ÐÓÓÔ”ÖØÛ[\JÛÛÜ—Ú[™^’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJWB‚Y˜]×ØÚ\˜ÛJÙ[\‹˜Y]\ËÛÛÜŠŒKŒŒŒÍJJB‚Y˜]×ØÚ\˜ÛJÙ[\‹˜Y]\È
+ˆŽ‹š[™×ØÛÛÜ‹˜[ÙK˜Y]\È
+ˆŒÍYJB‚]˜\ˆ˜[™Ø[™Û\Îˆ\œ˜^VÙ›Ø]HHÌŒH
+ˆKKH
+ˆKWB‚Y›Üˆ[™ÛNˆ›Ø][ˆ˜[™Ø[™Û\Î‚‚BY˜]×Ø\˜ÊÙ[\‹˜Y]\È
+ˆŽ‹[™ÛHHŒŒ[™ÛH
+ÈŒŒÛÛÜŠ™™™ÈŠK˜Y]\È
+ˆŒÍKYJB‚Y˜]×ØÚ\˜ÛJÙ[\‹˜Y]\È
+ˆËÛÛÜŠŒYXˆŠJB‚™[˜È˜]×ÙœšY[™Û[Ù[Ø˜\ÙJšY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹]NˆÝš[™Ë[Ù[ÚZYÚˆ›Ø]HLLŒ
+HOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒŒ‹ŒKÌŠJB‚]˜\ˆ[Ù[ÞHHX^ŠÌŒ
+šY]ÜÜÜÚ^™KžHÈ[š]H[Ù[ÚZYÚ
+H
+ˆJB‚]˜\ˆ[Ù[H™XÝŠ™XÝÜŒŠÌŒ[Ù[ÞJH
+ˆ[š]™XÝÜŒŠÍŒ[Ù[ÚZYÚ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLØHŠKŽŒ
+ˆ[š]
+K[Ù[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒKŒ
+H
+ˆ[š]]KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+ÌŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚]˜\ˆÛÜÙHHœšY[™Û[Ù[ØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™ÍLMNHŠKLËŒ
+ˆ[š]
+KÛÜÙJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÜÙKœÜÚ][Ûˆ
+È™XÝÜŒŠŒÌËŒ
+H
+ˆ[š]µèuäµåuêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÓÔÑH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛÜÙKœÚ^™Kž[
+MKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚\™]\›ˆ[Ù[‚™[˜È˜]×ÙœšY[™ØÝ\ÝÛZ^™\ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[Ù[H˜]×ÙœšY[™Û[Ù[Ø˜\ÙJšY]ÜÜÜÚ^™KZWÝ^
+˜ÚÛÜÙWÜÙ]\ŠKMŒŒ
+B‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÙ[XÝYØ[š[X[ˆ[H^Y\—Ø[š[X[Yˆ][\^Y\—ÜÛÝOH[ÙHZWØ[š[X[‚]˜\ˆÙ[XÝYÜš[™Îˆ[H^Y\—Üš[™×ØÛÛÜˆYˆ][\^Y\—ÜÛÝOH[ÙHZWÜš[™×ØÛÛÜ‚‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒLL‹Œ
+H
+ˆ[š]µäuåõê5åH5äõçµåuêˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHSˆS’SPS‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚B]˜\ˆÚÚXÙHHœšY[™ØÚÚXÙWÜ™XÝ
+K˜[ÙKšY]ÜÜÜÚ^™JB‚BZYˆHOHÙ[XÝYØ[š[X[‚‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠKMËŒ
+ˆ[š]
+KÚÚXÙK™Ü›ÝÊ‹Œ
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒYXˆŠKMKŒ
+ˆ[š]
+KÚÚXÙJB‚BY˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖÚWKÚÚXÙK™Ü›ÝÊMËŒ
+ˆ[š]
+K˜[ÙJB‚BY˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^JÚÚXÙKK˜[ÙK[š]
+B‚BZYˆHOHÙ[XÝYØ[š[X[‚‚BBY˜]×ØÚ\˜ÛJÚÚXÙKœÜÚ][Ûˆ
+È™XÝÜŒŠÎŒMŒ
+H
+ˆ[š]L‹Œ
+ˆ[š]ÛÛÜŠ™™™LYŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›ÛÚÚXÙKœÜÚ][Ûˆ
+È™XÝÜŒŠËŒNKŒ
+H
+ˆ[š]¸§$È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Œ‹Œ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒŒ‹Œ
+H
+ˆ[š]µäuåõê5åH5éµäuèˆ5äµç5äµçˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÒÓÔÑHH’S‘ÈÓÓÔˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y›ÜˆH[ˆ’S‘×ÐÓÓÔ”ËœÚ^™J
+N‚‚B]˜\ˆÛÛÜ—ØÚÚXÙHHœšY[™ØÚÚXÙWÜ™XÝ
+KYKšY]ÜÜÜÚ^™JB‚BZYˆHOHÙ[XÝYÜš[™Î‚‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠKMËŒ
+ˆ[š]
+KÛÛÜ—ØÚÚXÙK™Ü›ÝÊ‹Œ
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒYXˆŠKMKŒ
+ˆ[š]
+KÛÛÜ—ØÚÚXÙJB‚BY˜]×ØÚ\˜ÛJÛÛÜ—ØÚÚXÙK™Ù]ØÙ[\Š
+KŽKŒ
+ˆ[š]’S‘×ÐÓÓÔ”ÖÚWJB‚BY˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^JÛÛÜ—ØÚÚXÙKKYK[š]
+B‚BZYˆHOHÙ[XÝYÜš[™Î‚‚BBY˜]×ØÚ\˜ÛJÛÛÜ—ØÚÚXÙK™Ù]ØÙ[\Š
+KÍ‹Œ
+ˆ[š]ÛÛÜ‹•ÒUK˜[ÙKŒ
+ˆ[š]YJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÌÌ‹Œ
+H
+ˆ[š]ZWÝ^
+˜ÚÛÜÙWØ›Ø\™ŠHYˆ\×ÙœšY[™Ü›ÛÛWÚÜÝ
+
+H[ÙHZWÝ^
+™ÝY\ÝØ›Ø\™ÛØÚÙYŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆ\Ü^WØ›Ø\™HÙ[XÝYØ›Ø\™Ý[YHYˆ\×ÙœšY[™Ü›ÛÛWÚÜÝ
+
+H[ÙH›ÛÛWØ›Ø\™Ý[YB‚Y›ÜˆH[ˆ“ÐT‘ÕSQWÐÓÕS•‚‚B]˜\ˆ›Ø\™Ü™XÝÚ][HHœšY[™Ø›Ø\™Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚BY˜]×Ø›Ø\™Ý[YWØØ\™
+K›Ø\™Ü™XÝÚ][KHOH\Ü^WØ›Ø\™[š]
+B‚BZYˆ›Ý\×ÙœšY[™Ü›ÛÛWÚÜÝ
+
+N‚‚BBY˜]×Ü™XÝ
+›Ø\™Ü™XÝÚ][KÛÛÜŠŒKŒËŒŒÍJJB‚ZYˆ›Ý\×ÙœšY[™Ü›ÛÛWÚÜÝ
+
+N‚‚BY˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒLŒ
+H
+ˆ[š]ZWÝ^
+šÜÝØ›Ø\™ÛÛ›HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜŠ˜NXÙLˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒLNŒ
+H
+ˆ[š]
+µè5äuåõê5åNˆ	\È8 (ˆ	\È8 (ˆ	\ÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”Ù[XÝYˆ	\È8 (ˆ	\È8 (ˆ	\ÈŠH	HÝZWØ[š[X[Û˜[YJÙ[XÝYØ[š[X[
+KZWÜš[™×Û˜[YJÙ[XÝYÜš[™ÊK›Ø\™Ý[YWÛ˜[YJ\Ü^WØ›Ø\™
+WKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+NŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒMŒ
+H
+ˆ[š]µå5êuæuè5åuæH5åõç5ê5éÈ5äuåõäõê5åuäuçµêuåõéÈ5å5è5åuæõåõæHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•\ÈÚÚXÙH\Y\ÈÛ›HÈ\ÈX]Ú‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+M‹Œ
+ˆ[š]
+KÛÛÜŠ˜NXÙLˆŠJB‚™[˜È˜]×ÙœšY[™ÛÜÛ™[Ü›Ùš[JšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[Ù[H˜]×ÙœšY[™Û[Ù[Ø˜\ÙJšY]ÜÜÜÚ^™Kµé5ê5åué5æuç5å5æuê5æuäHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“ÔÓ‘S•“Ñ’SHŠB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÜÛ™[ÜÛÝHHH][\^Y\—ÜÛÝ‚ZYˆÜÛ™[ÜÛÝÜˆÜÛ™[ÜÛÝH][\^Y\—Ü^Y\œËœÚ^™J
+N‚‚B\™]\›‚‚]˜\ˆ]NˆXÝ[Û˜\žHH][\^Y\—Ü^Y\œÖÛÜÛ™[ÜÛÝB‚]˜\ˆ[š[X[H[
+]K™Ù]
+˜[š[X[‹
+JB‚Y˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖØ[š[X[K™XÝŠ[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠMKŒLKŒ
+H
+ˆ[š]™XÝÜŒŠŒÌŒ
+H
+ˆ[š]
+K˜[ÙJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠÌÌŒMMKŒ
+H
+ˆ[š]ÝŠ]K™Ù]
+›˜[YH‹”^Y\ˆŠJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•ÌÌŒ
+ˆ[š][
+ÌŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠÌÌŒŒKŒ
+H
+ˆ[š]
+µê5çµåˆ	YˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“]™[ˆ	YŠH	H[
+]K™Ù]
+›]™[‹JJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•ÌÌŒ
+ˆ[š][
+ŒŒ
+ˆ[š]
+KÛÛÜŠ˜NXÙLˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠÌÌŒLŒ
+H
+ˆ[š]
+µäõçµåuêŽˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH[š[X[ˆŠH
+ÈZWØ[š[X[Û˜[YJ[š[X[
+KÔ’V“Ó•SÐSQÓ“QS•ÓQ•ÌÌŒ
+ˆ[š][
+ŒŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠÌÌŒŽLŒ
+H
+ˆ[š]
+µäµç5äµçˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”š[™ÎˆŠH
+ÈZWÜš[™×Û˜[YJ[
+]K™Ù]
+œš[™ÐÛÛÜˆ‹
+JJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•ÌÌŒ
+ˆ[š][
+ŒŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠÌÌŒÍLŒ
+H
+ˆ[š]
+µè5æuéµåõåuè5åuêŽˆ	Y8 (ˆ5å5é5èuäõæuçNˆ	YˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•Ú[œÎˆ	Y8 (ˆÜÜÙ\Îˆ	YŠH	HÚ[
+]K™Ù]
+Ú[œÈ‹
+JK[
+]K™Ù]
+›ÜÜÙ\È‹
+JWKÔ’V“Ó•SÐSQÓ“QS•ÓQ•ÍLŒ
+ˆ[š][
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒKŒ
+H
+ˆ[š]µä5é5êuê5åuæuåuêˆ5åõäuê5êµæuåuêˆ5åuè5êµåuè5æuçH5è5åuèué5æuçH5æuêµåuåuèué5åH5äuå5çµêuæˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“[Ü™HÛØÚX[Ü[ÛœÈ[™Ý]È\™HÛÛZ[™È]\ˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+M‹Œ
+ˆ[š]
+KÛÛÜŠÌ™™ˆŠJB‚™[˜È˜]×Ø\™[˜WÜ™]šY]Ê™]šY]Îˆ™XÝ‹\™[˜WÚ[™^ˆ[[š]ˆ›Ø]
+HOˆ›ÚY‚‚ZYˆ\™[˜WÚ[™^OH‚‚BY˜]×Ü™XÝ
+™]šY]ËÛÛÜŠ™ŽØÍˆŠJB‚BY˜]×ØÚ\˜ÛJ™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠ™]šY]ËœÚ^™Kž
+ˆÎ™]šY]ËœÚ^™KžH
+ˆŒJKÍŒ
+ˆ[š]ÛÛÜŠ™™™ŠJB‚BY˜]×Ü™XÝ
+™XÝŠ™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™]šY]ËœÚ^™KžH
+ˆŽ
+K™XÝÜŒŠ™]šY]ËœÚ^™Kž™]šY]ËœÚ^™KžH
+ˆŒÌŠJKÛÛÜŠYXYÌˆŠJB‚B]˜\ˆØ]WÞH™]šY]ËœÜÚ][Û‹ž
+È™]šY]ËœÚ^™Kž
+ˆŒŒ‚‚B]˜\ˆØ]WÞHH™]šY]ËœÜÚ][Û‹žH
+È™]šY]ËœÚ^™KžH
+ˆ‚‚BY˜]×Û[™J™XÝÜŒŠØ]WÞHKŒ
+ˆ[š]Ø]WÞJK™XÝÜŒŠØ]WÞ
+ÈKŒ
+ˆ[š]Ø]WÞJKÛÛÜŠ˜ŽL™Œ™ˆŠKLËŒ
+ˆ[š]YJB‚BY˜]×Û[™J™XÝÜŒŠØ]WÞHÌKŒ
+ˆ[š]Ø]WÞJK™XÝÜŒŠØ]WÞHÌKŒ
+ˆ[š]Ø]WÞH
+ÈÌ‹Œ
+ˆ[š]
+KÛÛÜŠŽŒLHŠKLŒ
+ˆ[š]YJB‚BY˜]×Û[™J™XÝÜŒŠØ]WÞ
+ÈÌKŒ
+ˆ[š]Ø]WÞJK™XÝÜŒŠØ]WÞ
+ÈÌKŒ
+ˆ[š]Ø]WÞH
+ÈÌ‹Œ
+ˆ[š]
+KÛÛÜŠŽŒLHŠKLŒ
+ˆ[š]YJB‚B]˜\ˆ™YWØÙ[\ˆH™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠ™]šY]ËœÚ^™Kž
+ˆÌË™]šY]ËœÚ^™KžH
+ˆJB‚BY˜]×Û[™J™YWØÙ[\‹™YWØÙ[\ˆ
+È™XÝÜŒŠLM‹ŒÎŒ
+H
+ˆ[š]ÛÛÜŠÌÌ™ˆŠKMKŒ
+ˆ[š]YJB‚BY›ÜˆÙ™œÙ][ˆÕ™XÝÜŒŠM‹ŒLLËŒ
+K™XÝÜŒŠNŒLÍKŒ
+K™XÝÜŒŠÌKŒLNŒ
+K™XÝÜŒŠL‹ŒKŒ
+K™XÝÜŒŠŒŒ
+WN‚‚BBY˜]×ØÚ\˜ÛJ™YWØÙ[\ˆ
+ÈÙ™œÙ]
+ˆ[š]ÌKŒ
+ˆ[š]ÛÛÜŠ™Œ™ŽXÈŠJB‚Y[Yˆ\™[˜WÚ[™^OHN‚‚BY˜]×Ü™XÝ
+™]šY]ËÛÛÜŠŽYMØˆŠJB‚BY˜]×Ü™XÝ
+™XÝŠ™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™]šY]ËœÚ^™KžH
+ˆÌŠK™XÝÜŒŠ™]šY]ËœÚ^™Kž™]šY]ËœÚ^™KžH
+ˆŒŽ
+JKÛÛÜŠ˜ŽMHŠJB‚BY›ÜˆH[ˆN‚‚BB]˜\ˆH™]šY]ËœÜÚ][Û‹ž
+È
+Œ‹Œ
+È›Ø]
+JH
+ˆÎŒ
+H
+ˆ[š]‚BB]˜\ˆX[ˆH›Ø]
+
+H	HÊHHJH
+ˆŒ
+ˆ[š]‚BBY˜]×Û[™J™XÝÜŒŠ™]šY]ËœÜÚ][Û‹žHHŒ
+K™XÝÜŒŠ
+ÈX[‹™]šY]ËœÜÚ][Û‹žH
+È™]šY]ËœÚ^™KžH
+ˆŽŠKÛÛÜŠŒŒÍ˜ÌÙHŠKLËŒ
+ˆ[š]YJB‚BBY›Üˆˆ[ˆ‚‚BBB]˜\ˆHH™]šY]ËœÜÚ][Û‹žH
+È
+ÍŒ
+È›Ø]
+ŠH
+ˆËŒ
+H
+ˆ[š]‚BBBY˜]×Û[™J™XÝÜŒŠH‹Œ
+ˆ[š]JK™XÝÜŒŠ
+ÈËŒ
+ˆ[š]JKÛÛÜŠ˜ÌYLMYŠKËŒ
+ˆ[š]YJB‚B]˜\ˆ]›Ü›HH™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠ™]šY]ËœÚ^™Kž
+ˆN™]šY]ËœÚ^™KžH
+ˆÍJB‚BY˜]×ØÚ\˜ÛJ]›Ü›KNŒ
+ˆ[š]ÛÛÜŠ™NMXÈŠJB‚BY˜]×ØÚ\˜ÛJ]›Ü›KKŒ
+ˆ[š]ÛÛÜŠ˜MØLÙŠK˜[ÙKŒ
+ˆ[š]YJB‚Y[ÙN‚‚BY˜]×Ü™XÝ
+™]šY]ËÛÛÜŠŒÌŽHŠJB‚BY˜]×ØÚ\˜ÛJ™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠ™]šY]ËœÚ^™Kž
+ˆÎ™]šY]ËœÚ^™KžH
+ˆŒŒ
+KÌŒ
+ˆ[š]ÛÛÜŠ™™ŽNMMŠJB‚B]˜\ˆ[Ý[Z[ˆHXÚÙY™XÝÜŒ\œ˜^JÂ‚BB\™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™]šY]ËœÚ^™KžJK‚BB\™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠ™]šY]ËœÚ^™Kž
+ˆL™]šY]ËœÚ^™KžH
+ˆŒŽ
+K‚BB\™]šY]Ë™[™‚BWJB‚BY˜]×ØÛÛÜ™YÜÛYÛÛŠ[Ý[Z[‹ÛÛÜŠLLÎHŠJB‚B]˜\ˆ]˜WÝÜH™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠ™]šY]ËœÚ^™Kž
+ˆL™]šY]ËœÚ^™KžH
+ˆŒŽJB‚BY˜]×Û[™J]˜WÝÜ™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠ™]šY]ËœÚ^™Kž
+ˆË™]šY]ËœÚ^™KžJKÛÛÜŠ™™XŒ™ŠKŒŒ
+ˆ[š]YJB‚BY˜]×Û[™J]˜WÝÜ™]šY]ËœÜÚ][Ûˆ
+È™XÝÜŒŠ™]šY]ËœÚ^™Kž
+ˆMË™]šY]ËœÚ^™KžJKÛÛÜŠ™™˜ŒL˜ˆŠKŒ
+ˆ[š]YJB‚™[˜È˜]×Ø\™[˜WÝ[›™[Ùž
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹[[œÚ]Nˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÙ[\ˆHšY]ÜÜÜÚ^™H
+ˆB‚Y›Üˆš[™È[ˆ‚‚B]˜\ˆ\ÙHH\™[˜WÙžÙ[\ÙY
+ˆ
+K
+È›Ø]
+š[™ÊH
+ˆŒN
+H
+È›Ø]
+š[™ÊH
+ˆÂ‚B]˜\ˆ˜Y]\ÈH›[Ù
+\ÙKKŒ
+H
+ˆX^ŠšY]ÜÜÜÚ^™KžšY]ÜÜÜÚ^™KžJH
+ˆŒ‚‚B]˜\ˆ[HH
+KŒH›[Ù
+\ÙKKŒ
+JH
+ˆŒM
+ˆ[[œÚ]B‚BY˜]×Ø\˜ÊÙ[\‹˜Y]\ËŒUKÌ‹ÛÛÜŠŽÙXÙ™ˆ‹[JKËŒ
+ˆ[š]YJB‚Y›Üˆ˜^H[ˆLŽ‚‚B]˜\ˆ[™ÛHH\™[˜WÙžÙ[\ÙY
+ˆŽH
+È›Ø]
+˜^JH
+ˆUHÈL‹Œ‚B]˜\ˆ[™ÝHX^ŠšY]ÜÜÜÚ^™KžšY]ÜÜÜÚ^™KžJH
+ˆMB‚B]˜\ˆ[™HÙ[\ˆ
+È™XÝÜŒŠÛÜÊ[™ÛJKÚ[Š[™ÛJJH
+ˆ[™Ý‚BY˜]×Û[™JÙ[\‹[™ÛÛÜŠ™™™LY‹ŒÈ
+ˆ[[œÚ]JK‹Œ
+ˆ[š]YJB‚™[˜È˜]×Ø\™[˜WÛX]ÚÙ›Ý[™Ù›\Ú
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ\™[˜WÙžÜ\ÙHOH™›Ý[™Ž‚‚B\™]\›‚‚]˜\ˆ›ÙÜ™\ÜÈHÛ[\Š\™[˜WÙžÙ[\ÙYÈT‘SWÓPUÒÑ“ÕS‘ÑTUSÓ‹ŒKŒ
+B‚]˜\ˆ›\ÚHŒ‚ZYˆ›ÙÜ™\ÜÈŒN‚‚BY›\ÚHKŒH›ÙÜ™\ÜÈÈŒN‚Y[Yˆ›ÙÜ™\ÜÈˆŽŽ‚‚BY›\ÚH
+›ÙÜ™\ÜÈHŽŠHÈŒN‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠKŒŽM‹Ì‹›\Ú
+ˆŠJB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆ˜[›™\ˆH™XÝŠšY]ÜÜÜÚ^™Kž
+ˆŒŒ‹ÍŒ
+ˆ[š]šY]ÜÜÜÚ^™Kž
+ˆM‹Ì‹Œ
+ˆ[š]
+B‚]˜\ˆ[ÙHHŽLˆ
+ÈÚ[Š\™[˜WÙžÙ[\ÙY
+ˆŒ
+H
+ˆŒ‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LY‹ŽLˆ
+ˆ[ÙJKŒŒ
+ˆ[š]
+K˜[›™\ŠB‚Y˜]×ÜÝš[™ÊZWÙ›Û˜[›™\‹œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]ZWÝ^
+›X]ÚÙ›Ý[™ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹˜[›™\‹œÚ^™Kž[
+ÍŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚ZYˆ›ÙÜ™\ÜÈˆN‚‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠŒ˜[›™\‹™[™žH
+ÈNŒ
+ˆ[š]
+KZWÝ^
+™[\š[™×Ø\™[˜HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹šY]ÜÜÜÚ^™Kž[
+M‹Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚™[˜È˜]×ÛX]ÚXZÚ[™×ØØ\™
+™XÝˆ™XÝ‹\×ÛØØ[Ü^Y\Žˆ›ÛÛ[š]ˆ›Ø]ÜÛ™[ˆXÝ[Û˜\žHHßJHOˆ›ÚY‚‚]˜\ˆXØÙ[ˆÛÛÜˆH’S‘×ÐÓÓÔ”ÖØÛ[\J^Y\—Üš[™×ØÛÛÜ‹’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJWHYˆ\×ÛØØ[Ü^Y\ˆ[ÙHÛÛÜŠŒÙ˜™ˆŠB‚ZYˆ›Ý\×ÛØØ[Ü^Y\ˆ[™›ÝÜÛ™[š\×Ù[\J
+N‚‚BXXØÙ[H’S‘×ÐÓÓÔ”ÖØÛ[\J[
+ÜÛ™[™Ù]
+œš[™ÐÛÛÜˆ‹ŠJK’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJWB‚]˜\ˆØ\™ÙÛÝÈHËŒ‚ZYˆ›Ý\×ÛØØ[Ü^Y\ˆ[™\™[˜WÙžÜ\ÙHOH™›Ý[™Ž‚‚BXØ\™ÙÛÝÈHËŒ
+ÈÚ[Š\™[˜WÙžÙ[\ÙY
+ˆËŒ
+H
+ˆŒ‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒŒŽM
+KŒ
+ˆ[š]
+K™XÝ™Ü›ÝÊØ\™ÙÛÝÈ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™YŒ™ˆŠKŒŒ
+ˆ[š]
+K™XÝ
+B‚]˜\ˆÜ˜Z]H™XÝŠ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠMKŒMKŒ
+H
+ˆ[š]™XÝÜŒŠ™XÝœÚ^™KžHÌŒ
+ˆ[š]™XÝœÚ^™KžHHM‹Œ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+XØÙ[™\šÙ[™Y
+ŠKM‹Œ
+ˆ[š]
+KÜ˜Z]
+B‚Y˜]×ØÚ\˜ÛJÜ˜Z]™Ù]ØÙ[\Š
+KLL‹Œ
+ˆ[š]ÛÛÜŠXØÙ[ŒŒÊJB‚ZYˆ\×ÛØØ[Ü^Y\Ž‚‚B]˜\ˆ\›Îˆ^\™L‘H[‚BZYˆ^Y\—Ø[š[X[H[™^Y\—Ø[š[X[Y™X[ÞWÚ\›×Ý^\™\ËœÚ^™J
+N‚‚BB]˜\ˆÛÛÜœÎˆ\œ˜^HHY™X[ÞWÚ\›×Ý^\™\ÖÜ^Y\—Ø[š[X[B‚BBZYˆ^Y\—Üš[™×ØÛÛÜˆH[™^Y\—Üš[™×ØÛÛÜˆÛÛÜœËœÚ^™J
+N‚‚BBBZ\›ÈHÛÛÜœÖÜ^Y\—Üš[™×ØÛÛÜ—H\È^\™L‘‚BZYˆ\›ÈOH[‚‚BB]˜\ˆ\›×ÜÚ^™HH™XÝÜŒŠŒLŒÌŒ
+H
+ˆ[š]‚BBY˜]×Ý^\™WÜ™XÝ
+\›Ë™XÝŠÜ˜Z]™Ù]ØÙ[\Š
+HH\›×ÜÚ^™H
+ˆH
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]\›×ÜÚ^™JK˜[ÙJB‚BY[Yˆ[Ø›ÙWØ[š[X[Ý^\™\ÖÜ^Y\—Ø[š[X[HOH[‚‚BBY˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖÜ^Y\—Ø[š[X[KÜ˜Z]™Ü›ÝÊLŒ‹Œ
+ˆ[š]
+K˜[ÙJB‚Y[ÙN‚‚B]˜\ˆX]ÚYH›ÝÜÛ™[š\×Ù[\J
+B‚BZYˆX]ÚY‚‚BB]˜\ˆÜÛ™[Ø[š[X[HÛ[\J[
+ÜÛ™[™Ù]
+˜[š[X[‹
+JKS’SPSÓSQTËœÚ^™J
+HHJB‚BB]˜\ˆÜÛ™[Üš[™ÈHÛ[\J[
+ÜÛ™[™Ù]
+œš[™ÐÛÛÜˆ‹
+JK’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJB‚BB]˜\ˆ\›Îˆ^\™L‘H[‚BBZYˆÜÛ™[Ø[š[X[H[™ÜÛ™[Ø[š[X[Y™X[ÞWÚ\›×Ý^\™\ËœÚ^™J
+N‚‚BBB]˜\ˆÛÛÜœÎˆ\œ˜^HHY™X[ÞWÚ\›×Ý^\™\ÖÛÜÛ™[Ø[š[X[B‚BBBZYˆÜÛ™[Üš[™ÈH[™ÜÛ™[Üš[™ÈÛÛÜœËœÚ^™J
+N‚‚BBBBZ\›ÈHÛÛÜœÖÛÜÛ™[Üš[™×H\È^\™L‘‚BBZYˆ\›ÈOH[‚‚BBB]˜\ˆ\›×ÜÚ^™HH™XÝÜŒŠŒLŒÌŒ
+H
+ˆ[š]‚BBBY˜]×Ý^\™WÜ™XÝ
+\›Ë™XÝŠÜ˜Z]™Ù]ØÙ[\Š
+HH\›×ÜÚ^™H
+ˆH
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]\›×ÜÚ^™JK˜[ÙJB‚BBY[YˆÜÛ™[Ø[š[X[[Ø›ÙWØ[š[X[Ý^\™\ËœÚ^™J
+H[™[Ø›ÙWØ[š[X[Ý^\™\ÖÛÜÛ™[Ø[š[X[HOH[‚‚BBBY˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖÛÜÛ™[Ø[š[X[KÜ˜Z]™Ü›ÝÊLŒ‹Œ
+ˆ[š]
+K˜[ÙJB‚BY[ÙN‚‚BBHÈÞXÛHÚ[ÝY]\ÈÚ[HÙX\˜Ú[™ÈÈÝYÙÙ\ÝX[žHÜÜÚX›HÜÛ™[Ë‚BBHÈ]™]™\ˆ™][™]HÜXÚYšXÈ^Y\ˆ\È[™XYH™Y[ˆ›Ý[™‚‚BB]˜\ˆ™]šY]×Ø[š[X[H[
+›ÛÜŠY[WÙ[\ÙY
+ˆ‹JJH	HS’SPSÓSQTËœÚ^™J
+B‚BB]˜\ˆ™]šY]×Ý^\™Nˆ^\™L‘H[Ø›ÙWØ[š[X[Ý^\™\ÖÜ™]šY]×Ø[š[X[B‚BBZYˆ™]šY]×Ý^\™HOH[‚‚BBB]˜\ˆÚ[ÝY]WÜÚ^™HH™XÝÜŒŠNLŒLŒ
+H
+ˆ[š]‚BBBY˜]×Ý^\™WÜ™XÝ
+™]šY]×Ý^\™K™XÝŠÜ˜Z]™Ù]ØÙ[\Š
+HHÚ[ÝY]WÜÚ^™H
+ˆH
+È™XÝÜŒŠŒL‹Œ
+H
+ˆ[š]Ú[ÝY]WÜÚ^™JK˜[ÙKÛÛÜŠŒŒL‹ŒNÌŠJB‚BBY˜]×ØÚ\˜ÛJÜ˜Z]™Ù]ØÙ[\Š
+H
+È™XÝÜŒŠŒKŒ
+H
+ˆ[š]Œ
+ˆ[š]ÛÛÜŠŒËŒŒL‹Î
+JB‚BBY˜]×ÜÝš[™ÊZWÙ›ÛÜ˜Z]™Ù]ØÙ[\Š
+H
+È™XÝÜŒŠLÌKŒŒŒ
+H
+ˆ[š]È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Œ‹Œ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆ˜[YWØ˜\ˆH™XÝŠ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™XÝœÚ^™KžHHÌŒ
+ˆ[š]
+K™XÝÜŒŠ™XÝœÚ^™KžÌŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™™™™ˆŠKŒ
+K˜[YWØ˜\ŠB‚]˜\ˆØ\™Û˜[YHH›Ùš[WÛ˜[YHYˆ\×ÛØØ[Ü^Y\ˆ[ÙH
+µçµåõé5êuæuçK‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÑPTÒS‘Ë‹‹ˆŠB‚ZYˆ›Ý\×ÛØØ[Ü^Y\ˆ[™›ÝÜÛ™[š\×Ù[\J
+N‚‚BXØ\™Û˜[YHHÝŠÜÛ™[™Ù]
+›˜[YH‹Ø\™Û˜[YJJB‚Y˜]×ÜÝš[™ÊZWÙ›Û˜[YWØ˜\‹œÜÚ][Ûˆ
+È™XÝÜŒŠLŒÌKŒ
+H
+ˆ[š]Ø\™Û˜[YKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹˜[YWØ˜\‹œÚ^™KžHŒŒ
+ˆ[š][
+ŒKŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚]˜\ˆ]Z[H^Y\—Û]™[ÛX™[
+
+HYˆ\×ÛØØ[Ü^Y\ˆ[ÙH
+µæuê5æuäH5çµêµä5æuçH5æuéµæ5ê5èÈ5äuéõê5åuäHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHHPUÒQÔÓ‘S•ÒSTPTˆŠB‚ZYˆ›Ý\×ÛØØ[Ü^Y\ˆ[™›ÝÜÛ™[š\×Ù[\J
+N‚‚BY]Z[H
+µäõæuê5åuäŽˆ	YˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”US‘Îˆ	YŠH	H[
+ÜÛ™[™Ù]
+œ˜][™È‹L
+JB‚Y˜]×ÜÝš[™ÊZWÙ›Û˜[YWØ˜\‹œÜÚ][Ûˆ
+È™XÝÜŒŠLŒMŒ
+H
+ˆ[š]]Z[Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹˜[YWØ˜\‹œÚ^™KžHŒŒ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜŠYÌNŠJB‚]˜\ˆ˜YÙWØÙ[\ˆH™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]‚Y˜]×ØÚ\˜ÛJ˜YÙWØÙ[\‹ŒËŒ
+ˆ[š]ÛÛÜŠ™™™LYŠHYˆ\×ÛØØ[Ü^Y\ˆ[ÙHÛÛÜŠNYÙŒŠJB‚]˜\ˆ˜YÙWÝ˜[YHHÝŠ^Y\—Û]™[
+HYˆ\×ÛØØ[Ü^Y\ˆ[ÙHÈ‚‚ZYˆ›Ý\×ÛØØ[Ü^Y\ˆ[™›ÝÜÛ™[š\×Ù[\J
+N‚‚BX˜YÙWÝ˜[YHHÝŠ[
+ÜÛ™[™Ù]
+›]™[‹JJJB‚Y˜]×ÜÝš[™ÊZWÙ›Û˜YÙWØÙ[\ˆ
+È™XÝÜŒŠLNŒËŒ
+H
+ˆ[š]˜YÙWÝ˜[YKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Í‹Œ
+ˆ[š][
+MËŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚™[˜È˜]×Ø\™[˜WÜÙX\˜ÚÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ø\™[˜WÝ[›™[Ùž
+šY]ÜÜÜÚ^™KKŒYˆ\™[˜WÙžÜ\ÙHOHœÙX\˜Ú[™Èˆ[ÙHKŒÍJB‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒÍKŒËÌ
+JB‚]˜\ˆXY\—Ý]HHµçµåõé5êuæuçH5æuê5æuäHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘’S‘S‘ÈSˆÔÓ‘S•‚‚ZYˆ\™[˜WÙžÜ\ÙHOH™›Ý[™Ž‚‚BZXY\—Ý]HHZWÝ^
+›X]ÚÙ›Ý[™ŠB‚Y˜]×Ùœ›Û[™ÚXY\ŠšY]ÜÜÜÚ^™KXY\—Ý]Kµåµæuê5å5ä5åuè5ç5æuæuçÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“Ó“S‘HT‘SHŠB‚]˜\ˆØ\™ÜÚ^™HH™XÝÜŒŠÌŒÎLŒ
+H
+ˆ[š]‚]˜\ˆØ\HLKŒ
+ˆ[š]‚]˜\ˆÝ[ÝÚYHØ\™ÜÚ^™Kž
+ˆ‹Œ
+ÈØ\‚]˜\ˆÝ\ÞH
+šY]ÜÜÜÚ^™KžHÝ[ÝÚY
+H
+ˆB‚]˜\ˆØ\™ÞHHLÌ‹Œ
+ˆ[š]‚ZYˆ\™[˜WÙžÜ\ÙHOH™›Ý[™Ž‚‚B]˜\ˆÛ˜\HKŒHÝÊKŒHÛ[\Š\™[˜WÙžÙ[\ÙYÈKŒKŒ
+KËŒ
+B‚BXØ\™ÞHH\œŠNŒ
+ˆ[š]LÌ‹Œ
+ˆ[š]Û˜\
+B‚]˜\ˆØØ[ØØ\™H™XÝŠ™XÝÜŒŠÝ\ÞØ\™ÞJKØ\™ÜÚ^™JB‚]˜\ˆÜÛ™[ØØ\™H™XÝŠ™XÝÜŒŠÝ\Þ
+ÈØ\™ÜÚ^™Kž
+ÈØ\Ø\™ÞJKØ\™ÜÚ^™JB‚]˜\ˆÜÛ™[Ù]HH\™[˜WÛX]ÚYÛÜÛ™[Yˆ\™[˜WÙžÜ\ÙHOH™›Ý[™ˆ[ÙHßB‚Y˜]×ÛX]ÚXZÚ[™×ØØ\™
+ØØ[ØØ\™YK[š]
+B‚Y˜]×ÛX]ÚXZÚ[™×ØØ\™
+ÜÛ™[ØØ\™˜[ÙK[š]ÜÛ™[Ù]JB‚]˜\ˆœ×ØÙ[\ˆH™XÝÜŒŠšY]ÜÜÜÚ^™Kž
+ˆKØ\™ÞH
+ÈØ\™ÜÚ^™KžH
+ˆ
+B‚]˜\ˆœ×Ü[ÙHHŒ‹Œ
+ÈÚ[ŠY[WÙ[\ÙY
+ˆËŒ
+H
+ˆŒ‚ZYˆ\™[˜WÙžÜ\ÙHOH™›Ý[™Ž‚‚B]œ×Ü[ÙHHŽŒ
+ÈÚ[Š\™[˜WÙžÙ[\ÙY
+ˆKŒ
+H
+ˆŒ‚Y˜]×ØÚ\˜ÛJœ×ØÙ[\‹œ×Ü[ÙH
+ˆ[š]ÛÛÜŠŒ‹ŒŒLËŽLŠJB‚Y˜]×ØÚ\˜ÛJœ×ØÙ[\‹MKŒ
+ˆ[š]ÛÛÜŠØ™ÌYˆŠHYˆ\™[˜WÙžÜ\ÙHOH™›Ý[™ˆ[ÙHÛÛÜŠ™™™LYŠK˜[ÙKËŒ
+ˆ[š]YJB‚Y˜]×ÜÝš[™ÊZWÙ›Ûœ×ØÙ[\ˆ
+È™XÝÜŒŠMNŒŒŒ
+H
+ˆ[š]•”È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹LM‹Œ
+ˆ[š][
+Œ
+ˆ[š]
+KÛÛÜŠ˜™ŒLÙˆŠJB‚]˜\ˆÝÎˆÝš[™ÈHÈ‹ˆ‹‹‹ˆ‹‹‹‹ˆ—VÚ[
+Y[WÙ[\ÙY
+ˆ‹ŒŠH	H×B‚]˜\ˆÝ]\×Û[™HH
+µçµåõé5êuæuçH5æuê5æuäH5çµêµä5æuçHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÑPTÒS‘È“ÔˆHPUÒŠH
+ÈÝÂ‚ZYˆ\™[˜WÙžÜ\ÙHOH™›Ý[™Ž‚‚B\Ý]\×Û[™HHÝŠÜÛ™[Ù]K™Ù]
+›˜[YH‹ˆŠJH
+È
+ˆ5çµåuæõçÈ5ç5éõê5äHHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHˆ\È™XYHHŠB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠŒM‹Œ
+ˆ[š]
+KÝ]\×Û[™KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹šY]ÜÜÜÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚]˜\ˆ\™[˜WÛ˜[Y\ÈHÝZWÝ^
+œØZÝ\˜HŠKZWÝ^
+˜˜[X›ÛÈŠKZWÝ^
+›ÛØ[›ÈŠWB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠŒNNŒ
+ˆ[š]
+K
+µå5åµæuê5å5êuè5äuåõê5åˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÑSPÕQT‘SNˆŠH
+È\™[˜WÛ˜[Y\ÖØÛ[\JÙ[XÝYØ\™[˜KŠWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹šY]ÜÜÜÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜŠ˜ÎYYÈŠJB‚]˜\ˆØ[˜Ù[H\™[˜WÜ^WÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒËŒL‹ŽLŠKNŒ
+ˆ[š]
+KØ[˜Ù[™Ü›ÝÊKŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™MHŠKM‹Œ
+ˆ[š]
+KØ[˜Ù[
+B‚Y˜]×ÜÝš[™ÊZWÙ›ÛØ[˜Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÎŒ
+H
+ˆ[š]ZWÝ^
+˜Ø[˜Ù[ÜÙX\˜ÚŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø[˜Ù[œÚ^™Kž[
+ŒŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×Ø\™[˜WÛX]ÚÙ›Ý[™Ù›\Ú
+šY]ÜÜÜÚ^™JB‚™[˜È˜]×Ø\™[˜WÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚ZYˆX]ÚXZÚ[™×ÜÙX\˜Ú[™ÈÜˆ\™[˜WÙžÜ\ÙHOH™›Ý[™Ž‚‚BY˜]×Ø\™[˜WÜÙX\˜ÚÜØÜ™Y[ŠšY]ÜÜÜÚ^™JB‚B\™]\›‚‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒŒŠJB‚Y˜]×Ùœ›Û[™ÚXY\ŠšY]ÜÜÜÚ^™KZWÝ^
+˜\™[˜WÝ]HŠKZWÝ^
+˜\™[˜WÝ]WÜÝXˆŠJB‚]˜\ˆ˜[Y\ÈHÝZWÝ^
+œØZÝ\˜HŠKZWÝ^
+˜˜[X›ÛÈŠKZWÝ^
+›ÛØ[›ÈŠWB‚]˜\ˆ[šY\ÈHÌLLB‚]˜\ˆš^™\ÈHÌLLLŒB‚]˜\ˆØ\™ØÛÛÜœÈHÐÛÛÜŠ™ŒXXÈŠKÛÛÜŠŒ˜MYŠKÛÛÜŠ™MXŒÍˆŠWB‚Y›ÜˆH[ˆÎ‚‚B]˜\ˆØ\™H\™[˜WØØ\™Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚B]˜\ˆÙ[XÝYHHOHÙ[XÝYØ\™[˜B‚B]˜\ˆ[ÙHHÚ[ŠY[WÙ[\ÙY
+ˆŒˆ
+È›Ø]
+JH
+ˆŽ
+H
+ˆËŒYˆÙ[XÝY[ÙHŒ‚B]˜\ˆ›Ü™\ŽˆÛÛÜˆHÛÛÜŠ™™™LYŠHYˆÙ[XÝY[ÙHØ\™ØÛÛÜœÖÚWB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ›Ü™\‹œ‹›Ü™\‹™Ë›Ü™\‹˜‹ŒMŠKËŒ
+ˆ[š]
+KØ\™™Ü›ÝÊ
+Œ
+È[ÙHYˆÙ[XÝY[ÙHKŒ
+H
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒNŒL‹ŒLKŽMJKŒ‹Œ
+ˆ[š]
+KØ\™
+B‚BY˜]×Ü™XÝ
+Ø\™ÛÛÜŠ›Ü™\‹œ‹›Ü™\‹™Ë›Ü™\‹˜‹MJK˜[ÙK
+ËŒYˆÙ[XÝY[ÙHKJH
+ˆ[š]YJB‚BZYˆÙ[XÝY‚‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LY‹ŒN
+ÈÚ[ŠY[WÙ[\ÙY
+ˆKŒ
+H
+ˆŒ
+KŒ
+ˆ[š]
+KØ\™™Ü›ÝÊLŒ
+ˆ[š]
+JB‚B]˜\ˆ™]šY]ÈH™XÝŠØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠMKŒMKŒ
+H
+ˆ[š]™XÝÜŒŠØ\™œÚ^™KžHÌŒ
+ˆ[š]ŒKŒ
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+Ø\™ØÛÛÜœÖÚWKMËŒ
+ˆ[š]
+K™]šY]Ë™Ü›ÝÊËŒ
+ˆ[š]
+JB‚BY˜]×Ø\™[˜WÜ™]šY]Ê™]šY]ËK[š]
+B‚B]˜\ˆ]WÜ™XÝH™XÝŠØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠMKŒŒÌ‹Œ
+H
+ˆ[š]™XÝÜŒŠØ\™œÚ^™KžHÌŒ
+ˆ[š]MŒ
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠØ\™ØÛÛÜœÖÚWKœ‹Ø\™ØÛÛÜœÖÚWK™ËØ\™ØÛÛÜœÖÚWK˜‹ŒÌŠKLËŒ
+ˆ[š]
+K]WÜ™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û]WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒÍ‹Œ
+H
+ˆ[š]˜[Y\ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹]WÜ™XÝœÚ^™Kž[
+ŒKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚B]˜\ˆ[žWÝ^HZWÝ^
+™[žWÙœ™YHŠHYˆ[šY\ÖÚWHOH[ÙHZWÝ^
+™[žHŠH
+ÈÝŠ[šY\ÖÚWJH
+ÈZWÝ^
+˜ÛÚ[œÈŠB‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒÌKŒ
+H
+ˆ[š][žWÝ^Ô’V“Ó•SÐSQÓ“QS•ÓQ•Ø\™œÚ^™KžHŒ
+ˆ[š][
+MKŒ
+ˆ[š]
+KÛÛÜŠ˜ÎNHŠJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒÍŒËŒ
+H
+ˆ[š]ZWÝ^
+œš^™HŠH
+ÈÝŠš^™\ÖÚWJH
+ÈZWÝ^
+˜ÛÚ[œÈŠKÔ’V“Ó•SÐSQÓ“QS•ÓQ•Ø\™œÚ^™KžHŒ
+ˆ[š][
+MËŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒÎL‹Œ
+H
+ˆ[š]ZWÝ^
+˜\™[˜WØ›Ø\™Ùš^YŠH
+ÈŽˆˆ
+È›Ø\™Ý[YWÛ˜[YJ\™[˜WØ›Ø\™Ý[YWÙ›Ü—Û]™[
+JJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•Ø\™œÚ^™KžHŒ
+ˆ[š][
+LËŒ
+ˆ[š]
+KÛÛÜŠŒ™™HŠJB‚BZYˆÙ[XÝY‚‚BBY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]ZWÝ^
+œÙ[XÝYŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™Kž[
+MKŒ
+ˆ[š]
+KÛÛÜŠŒMŽXˆŠJB‚]˜\ˆ^HH\™[˜WÜ^WÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒËŒL‹ŽL
+KNŒ
+ˆ[š]
+K^K™Ü›ÝÊKŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™XŒ™ˆŠHYˆX]ÚXZÚ[™×ÜÙX\˜Ú[™È[ÙHÛÛÜŠ™™LNŠKM‹Œ
+ˆ[š]
+K^JB‚Y˜]×ÜÝš[™ÊZWÙ›Û^KœÜÚ][Ûˆ
+È™XÝÜŒŠŒÎŒ
+H
+ˆ[š]ZWÝ^
+˜Ø[˜Ù[ÜÙX\˜ÚŠHYˆX]ÚXZÚ[™×ÜÙX\˜Ú[™È[ÙHZWÝ^
+™š[™ÛX]ÚŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹^KœÚ^™Kž[
+ŒŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚ZYˆX]ÚXZÚ[™×ÜÙX\˜Ú[™Î‚‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠŒ^KœÜÚ][Û‹žHHŽŒ
+ˆ[š]
+KZWÝ^
+œÙX\˜Ú[™ÈŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹šY]ÜÜÜÚ^™Kž[
+M‹Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚™[˜È˜]×Ü›Ùš[WÜÝ]ØØ\™
+™XÝˆ™XÝ‹X™[ˆÝš[™Ë˜[YNˆÝš[™ËXØÙ[ˆÛÛÜ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒËŒL‹Ž
+KMËŒ
+ˆ[š]
+K™XÝ™Ü›ÝÊËŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™ŒYˆŠKMKŒ
+ˆ[š]
+K™XÝ
+B‚Y˜]×ØÚ\˜ÛJ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŽŒ
+ˆ[š]™XÝœÚ^™KžH
+ˆL
+KMŒ
+ˆ[š]XØÙ[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLËŒÌŒ
+H
+ˆ[š]X™[Ô’V“Ó•SÐSQÓ“QS•ÓQ•™XÝœÚ^™KžHKŒ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠŒÌŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLËŒŒ‹Œ
+H
+ˆ[š]˜[YKÔ’V“Ó•SÐSQÓ“QS•ÓQ•™XÝœÚ^™KžHKŒ
+ˆ[š][
+Œ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚™[˜È˜]×Ü^Y\—Ü›Ùš[WÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒŒ
+JB‚Y˜]×Ùœ›Û[™ÚXY\ŠšY]ÜÜÜÚ^™KZWÝ^
+œ›Ùš[WÝ]HŠKZWÝ^
+œ›Ùš[WÜÝXˆŠJB‚]˜\ˆ\›×Ü[™[H™XÝŠ™XÝÜŒŠÎŒL‹Œ
+H
+ˆ[š]™XÝÜŒŠLŒMÌŒ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒŒMŽ
+KËŒ
+ˆ[š]
+K\›×Ü[™[™Ü›ÝÊKŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠÍHŠKŒ
+ˆ[š]
+K\›×Ü[™[
+B‚]˜\ˆÛÝ×ØÙ[\ˆH\›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ\›×Ü[™[œÚ^™Kž
+ˆLMÎŒ
+ˆ[š]
+B‚Y˜]×ØÚ\˜ÛJÛÝ×ØÙ[\‹MKŒ
+ˆ[š]ÛÛÜŠŽ‹ŽNKŒŒŽ
+JB‚]˜\ˆÙ][WØÙ[\ˆH\›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ\›×Ü[™[œÚ^™Kž
+ˆLÌŽŒ
+ˆ[š]
+B‚Y˜]×ÝÛÛÙÜÙ][JÙ][WØÙ[\‹[š]
+ˆ‹˜[ÙJB‚]˜\ˆ\›×Ý^\™Nˆ^\™L‘H[‚ZYˆ^Y\—Ø[š[X[Y™X[ÞWÚ\›×Ý^\™\ËœÚ^™J
+N‚‚B]˜\ˆ\›×ØÛÛÜœÎˆ\œ˜^HHY™X[ÞWÚ\›×Ý^\™\ÖÜ^Y\—Ø[š[X[B‚BZYˆ^Y\—Üš[™×ØÛÛÜˆ\›×ØÛÛÜœËœÚ^™J
+N‚‚BBZ\›×Ý^\™HH\›×ØÛÛÜœÖÜ^Y\—Üš[™×ØÛÛÜ—H\È^\™L‘‚ZYˆ\›×Ý^\™HOH[‚‚B]˜\ˆ\›×ÜÚ^™HH™XÝÜŒŠŒŒŒŽ‹Œ
+H
+ˆ[š]‚B]˜\ˆÜ›Ý[™ÛÙ™œÙ]ˆ›Ø]H\›×ÜÚ^™KžH
+ˆ›Ø]
+T“×ÑÔ“ÕS‘ÓÑ‘”ÑUÖØÛ[\J^Y\—Ø[š[X[T“×ÑÔ“ÕS‘ÓÑ‘”ÑUËœÚ^™J
+HHJWJB‚B]˜\ˆ\›×ØÙ[\ˆH\›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ\›×Ü[™[œÚ^™Kž
+ˆLN‹Œ
+ˆ[š]
+ÈÜ›Ý[™ÛÙ™œÙ]
+B‚BY˜]×Ý^\™WÜ™XÝ
+\›×Ý^\™K™XÝŠ\›×ØÙ[\ˆH\›×ÜÚ^™H
+ˆK\›×ÜÚ^™JK˜[ÙJB‚Y˜]×ÜÝš[™ÊZWÙ›Û\›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÎ‹Œ
+H
+ˆ[š]ZWÝ^
+›XZ[—ØÚ\˜XÝ\ˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹\›×Ü[™[œÚ^™Kž[
+L‹Œ
+ˆ[š]
+KÛÛÜŠ™Ž™ˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û\›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒLKŒ
+H
+ˆ[š]ZWØ[š[X[Û˜[YJ^Y\—Ø[š[X[
+KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹\›×Ü[™[œÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û\›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒLKŒ
+H
+ˆ[š]ZWÝ^
+˜ÚÛÜÙWÛXZ[ˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹\›×Ü[™[œÚ^™KžHŒ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚Y›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚B]˜\ˆ[š[X[Ü™XÝH^Y\—Ü›Ùš[WØ[š[X[Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚B]˜\ˆ[š[X[ÜÙ[XÝYHHOH^Y\—Ø[š[X[‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠHYˆ[š[X[ÜÙ[XÝY[ÙHÛÛÜŠŒÌŠKLËŒ
+ˆ[š]
+K[š[X[Ü™XÝ™Ü›ÝÊ
+ŒYˆ[š[X[ÜÙ[XÝY[ÙH‹Œ
+H
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™NYŽYŠKLKŒ
+ˆ[š]
+K[š[X[Ü™XÝ
+B‚BZYˆH[Ø›ÙWØ[š[X[Ý^\™\ËœÚ^™J
+H[™[Ø›ÙWØ[š[X[Ý^\™\ÖÚWHOH[‚‚BBY˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖÚWK[š[X[Ü™XÝ™Ü›ÝÊMKŒ
+ˆ[š]
+K˜[ÙJB‚BY˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^J[š[X[Ü™XÝK˜[ÙK[š]
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û\›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒL‹Œ
+H
+ˆ[š]ZWÝ^
+™˜]›Üš]WØÛÛÜˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹\›×Ü[™[œÚ^™KžHŒ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚Y›ÜˆH[ˆ’S‘×ÐÓÓÔ”ËœÚ^™J
+N‚‚B]˜\ˆÛÛÜ—Ü™XÝH^Y\—Ü›Ùš[WØÛÛÜ—Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚B]˜\ˆÛÛÜ—ØÙ[\ˆHÛÛÜ—Ü™XÝ™Ù]ØÙ[\Š
+B‚BZYˆHOH^Y\—Üš[™×ØÛÛÜŽ‚‚BBY˜]×ØÚ\˜ÛJÛÛÜ—ØÙ[\‹KŒ
+ˆ[š]ÛÛÜ‹•ÒUJB‚BBY˜]×ØÚ\˜ÛJÛÛÜ—ØÙ[\‹ŒKŒ
+ˆ[š]ÛÛÜŠ™™™LYŠJB‚BY˜]×ØÚ\˜ÛJÛÛÜ—ØÙ[\‹MËŒ
+ˆ[š]’S‘×ÐÓÓÔ”ÖÚWJB‚BY˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^JÛÛÜ—Ü™XÝKYK[š]
+B‚‚]˜\ˆ[™›×Ü[™[H™XÝŠ™XÝÜŒŠÍŒL‹Œ
+H
+ˆ[š]™XÝÜŒŠÍŽŒMÌŒ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒŒMŽLŠKËŒ
+ˆ[š]
+K[™›×Ü[™[™Ü›ÝÊKŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™XYŽŒHŠKŒ
+ˆ[š]
+K[™›×Ü[™[
+B‚Y˜]×ØÚ\˜ÛJ[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ‹ŒŽKŒ
+H
+ˆ[š]KŒ
+ˆ[š]ÛÛÜŠŽMYŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒKŒŒ
+H
+ˆ[š]›Ùš[WÚ[š]X[
+
+KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹LŒ
+ˆ[š][
+‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠLÌŒÌ‹Œ
+H
+ˆ[š]µêuçH5å5êuåõéõçÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”VQTˆSQH‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•ÍLŒ
+ˆ[š][
+LËŒ
+ˆ[š]
+KÛÛÜŠŒŽN˜MˆŠJB‚]˜\ˆÛÚ[—Ø›ÞH™XÝŠ[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMNŒËŒ
+H
+ˆ[š]™XÝÜŒŠMÍ‹ŒÍŒ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLÙMÈŠKMËŒ
+ˆ[š]
+KÛÚ[—Ø›Þ
+B‚Y˜]×ØÚ\˜ÛJÛÚ[—Ø›ÞœÜÚ][Ûˆ
+È™XÝÜŒŠÍKŒÍËŒ
+H
+ˆ[š]MËŒ
+ˆ[š]ÛÛÜŠ™™˜ÎÙŠJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÚ[—Ø›ÞœÜÚ][Ûˆ
+È™XÝÜŒŠKŒËŒ
+H
+ˆ[š]ÝŠ^Y\—ØÛÚ[œÊKÔ’V“Ó•SÐSQÓ“QS•ÓQ•MKŒ
+ˆ[š][
+Œ‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆÜ™XÝH™XÝŠ[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠLÌŒLŒ
+H
+ˆ[š]™XÝÜŒŠŒŒŒ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ˜ØY™HŠKKŒ
+ˆ[š]
+KÜ™XÝ
+B‚]˜\ˆÜ˜][ÈHÛ[\Š›Ø]
+^Y\—Þ
+HÈ›Ø]
+X^JK^Y\—Û™^Û]™[Þ
+JKŒKŒ
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠXÎNŠKKŒ
+ˆ[š]
+K™XÝŠÜ™XÝœÜÚ][Û‹™XÝÜŒŠÜ™XÝœÚ^™Kž
+ˆÜ˜][ËÜ™XÝœÚ^™KžJJJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMKŒLŒKŒ
+H
+ˆ[š]ÝŠ^Y\—Þ
+H
+ÈˆÈˆ
+ÈÝŠ^Y\—Û™^Û]™[Þ
+H
+Èˆ‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•MÌŒ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜŠL˜ÌˆŠJB‚]˜\ˆXØÛÝ[Ý\HH
+‘ÛÛÙÛNˆˆ
+Èš\™X˜\ÙWÙ[XZ[
+HYˆš\™X˜\ÙWÜ›ÝšY\ˆOH™ÛÛÙÛHˆ[ÙH
+µåõêuäuåuçÈ5ä5åuê5åÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘ÕQTÕPÐÓÕS•ŠB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠLÌŒMŒ
+H
+ˆ[š]XØÛÝ[Ý\H
+Èˆ8 (ˆˆ
+Èš\™X˜\ÙWÜÝ]\È
+Èˆ8 (ˆˆ
+ÈÓQS•Õ‘T”ÒSÓ‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•NKŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠŒŽN˜MˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÌŒMKŒ
+H
+ˆ[š]ZWÝ^
+˜Ø\™Y\ˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™›×Ü[™[œÚ^™KžHŒŒ
+ˆ[š][
+ŒŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚]˜\ˆÝ[ÛX]Ú\ÈH^Y\—ÝÚ[œÈ
+È^Y\—ÛÜÜÙ\Â‚]˜\ˆÚ[—Ü˜]HH‚ZYˆÝ[ÛX]Ú\Èˆ‚‚B]Ú[—Ü˜]HH[
+›Ý[™
+›Ø]
+^Y\—ÝÚ[œÊH
+ˆLŒÈ›Ø]
+Ý[ÛX]Ú\ÊJJB‚]˜\ˆX™[ÈHÝZWÝ^
+›X]Ú\ÈŠKZWÝ^
+Ú[œÈŠKZWÝ^
+›ÜÜÙ\ÈŠKZWÝ^
+Ú[—Ü˜]HŠKZWÝ^
+˜™\ÝÜÝ™XZÈŠKZWÝ^
+ÛÜ›Ü˜[šÈŠWB‚]˜\ˆ˜[š×Ý˜[YHH
+¸ %ˆYˆ^Y\—ÝÛÜ›Ü˜[šÈH[ÙHˆÈˆ
+ÈÝŠ^Y\—ÝÛÜ›Ü˜[šÊJHYˆ^Y\—ÝÚ[œÈ
+È^Y\—ÛÜÜÙ\Èˆ[ÙHÝŠ^Y\—Ü˜][™ÊB‚]˜\ˆ˜[Y\ÈHÜÝŠÝ[ÛX]Ú\ÊKÝŠ^Y\—ÝÚ[œÊKÝŠ^Y\—ÛÜÜÙ\ÊKÝŠÚ[—Ü˜]JH
+È‰H‹ÝŠ^Y\—Ø™\ÝÜÝ™XZÊK˜[š×Ý˜[YWB‚]˜\ˆXØÙ[ÈHÐÛÛÜŠ˜ŽNŠKÛÛÜŠXÎNŠKÛÛÜŠ™Y˜HŠKÛÛÜŠ™™˜ÎÙŠKÛÛÜŠŽYNYNŠKÛÛÜŠ™™ŽŒÙŠWB‚Y›ÜˆH[ˆŽ‚‚B]˜\ˆÛÛ[[ˆHH	H‚‚B]˜\ˆ›ÝÈHHÈ‚‚B]˜\ˆÝ]Ü™XÝH™XÝŠ[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÌŒ
+È›Ø]
+ÛÛ[[ŠH
+ˆÍMŒNLŒ
+È›Ø]
+›ÝÊH
+ˆLL‹Œ
+H
+ˆ[š]™XÝÜŒŠÌÌŒŒ
+H
+ˆ[š]
+B‚BY˜]×Ü›Ùš[WÜÝ]ØØ\™
+Ý]Ü™XÝX™[ÖÚWK˜[Y\ÖÚWKXØÙ[ÖÚWK[š]
+B‚]˜\ˆYØ›ÞH™XÝŠ[™›×Ü[™[œÜÚ][Ûˆ
+È™XÝÜŒŠÌŒLNŒ
+H
+ˆ[š]™XÝÜŒŠÍLŒ‹Œ
+H
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™YYNŠKL‹Œ
+ˆ[š]
+KYØ›Þ
+B‚]˜\ˆ[™[™×ÚYHµçµêµåõäuê‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÓÓ“‘PÕS‘Ë‹‹ˆ‚‚]˜\ˆXØÛÝ[ÚYÝ^H
+µçµåµå5å5ä5æuêuæNˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”VQTˆQˆŠH
+È
+š\™X˜\ÙWÜX›X×ÚYYˆ›Ýš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+H[ÙH[™[™×ÚY
+B‚Y˜]×ÜÝš[™ÊZWÙ›ÛYØ›ÞœÜÚ][Ûˆ
+È™XÝÜŒŠM‹ŒŽKŒ
+H
+ˆ[š]XØÛÝ[ÚYÝ^Ô’V“Ó•SÐSQÓ“QS•ÓQ•YØ›ÞœÚ^™KžHÌ‹Œ
+ˆ[š][
+NŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚]˜\ˆÛÛÙÛWÜ™XÝH^Y\—ÙÛÛÙÛWÜ™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆÛÛÙÛWØÛÛ›™XÝYHš\™X˜\ÙWÜ›ÝšY\ˆOH™ÛÛÙÛH‚‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠÎXMŽŠHYˆÛÛÙÛWØÛÛ›™XÝY[ÙHÛÛÜŠŽYŠKL‹Œ
+ˆ[š]
+KÛÛÙÛWÜ™XÝ
+B‚]˜\ˆÛÛÙÛWÛX™[H
+‘ÛÛÙÛH5çµåõåuäuêˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘ÓÓÑÓHS’ÑQŠHYˆÛÛÙÛWØÛÛ›™XÝY[ÙH
+µåõæuäuåuêÛÛÙÛHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÓÓ“‘PÕÓÓÑÓHŠB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÛÙÛWÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŽKŒ
+H
+ˆ[š]ÛÛÙÛWÛX™[Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛÛÙÛWÜ™XÝœÚ^™Kž[
+MKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆÛÜWÜ™XÝH^Y\—ÚYØÛÜWÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŽN˜MˆŠHYˆ›Ýš\™X˜\ÙWÜX›X×ÚYš\×Ù[\J
+H[ÙHÛÛÜŠÌNŠKL‹Œ
+ˆ[š]
+KÛÜWÜ™XÝ
+B‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÜWÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŽKŒ
+H
+ˆ[š]µå5èµêµéõåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÓÔHQ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛÜWÜ™XÝœÚ^™Kž[
+M‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚™[˜È˜]×ÚÛYWÜÛØÚX[Ü[™[
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆ[™[HÛYWÜÛØÚX[Ü[™[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒËŒLËŽLÊKŒ‹Œ
+ˆ[š]
+K[™[™Ü›ÝÊKŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒL‹ŒŒŽMÊKŒŒ
+ˆ[š]
+K[™[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÍŒ
+H
+ˆ[š]ZWÝ^
+œÛØÚX[ÚXˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+NŒ
+ˆ[š]
+KÛÛÜŠ™™ÍHŠJB‚Y›ÜˆXˆ[ˆÎ‚‚B]˜\ˆX—Ü™XÝHÛYWÜÛØÚX[ÝX—Ü™XÝ
+X‹šY]ÜÜÜÚ^™JB‚B]˜\ˆÙ[XÝYHXˆOHÛYWÜÛØÚX[ÝX‚‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÌMY™ŠHYˆÙ[XÝY[ÙHÛÛÜŠŒYXˆŠKMŒ
+ˆ[š]
+KX—Ü™XÝ
+B‚B]˜\ˆX—ÛX™[HZWÝ^
+™œšY[™×ÝXˆŠB‚BZYˆXˆOHN‚‚BB]X—ÛX™[HZWÝ^
+˜Ú]ÝXˆŠB‚BY[YˆXˆOHŽ‚‚BB]X—ÛX™[HZWÝ^
+›XYÝYWÝXˆŠB‚BY˜]×ÜÝš[™ÊZWÙ›ÛX—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+H
+ˆ[š]X—ÛX™[Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹X—Ü™XÝœÚ^™Kž[
+LËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚ZYˆÛYWÜÛØÚX[ÝXˆOH‚‚B]˜\ˆ[˜ÛÛZ[™×ØÛÝ[HZ[šJ‹[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝËœÚ^™J
+JB‚BZYˆ[˜ÛÛZ[™×ØÛÝ[ˆ‚‚BBY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]ZWÝ^
+™œšY[™Ü™\]Y\Ý×Ý]HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+L‹Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚BY›ÜˆH[ˆ[˜ÛÛZ[™×ØÛÝ[‚‚BB]˜\ˆ™\]Y\ÝÜ›ÝÈHÛYWÚ[˜ÛÛZ[™×Ü™\]Y\ÝÜ™XÝ
+KšY]ÜÜÜÚ^™JB‚BB]˜\ˆ™\]Y\ÝÙ[žNˆXÝ[Û˜\žHH[˜ÛÛZ[™×ÙœšY[™Ü™\]Y\ÝÖÚWB‚BB]˜\ˆ™\]Y\ÝÛ˜[YHHœšY[™Ü™\]Y\ÝÙ\Ü^WÛ˜[YJ™\]Y\ÝÙ[žJB‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ˜MMŒŠKL‹Œ
+ˆ[š]
+K™\]Y\ÝÜ›ÝÊB‚BBY˜]×ØÚ\˜ÛJ™\]Y\ÝÜ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒŒ
+H
+ˆ[š]MŒ
+ˆ[š]ÛÛÜŠ™™™LYŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û™\]Y\ÝÜ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠMŒÌŒ
+H
+ˆ[š]™\]Y\ÝÛ˜[YKœÝXœÝŠJKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹M‹Œ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û™\]Y\ÝÜ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠ‹ŒŒŒ
+H
+ˆ[š]™\]Y\ÝÛ˜[YKÔ’V“Ó•SÐSQÓ“QS•ÓQ•™\]Y\ÝÜ›ÝËœÚ^™KžHMÌŒ
+ˆ[š][
+LËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û™\]Y\ÝÜ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠ‹ŒÍ‹Œ
+H
+ˆ[š]ÝŠ™\]Y\ÝÙ[žK™Ù]
+šY‹ˆŠJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•™\]Y\ÝÜ›ÝËœÚ^™KžHMÌŒ
+ˆ[š][
+KŒ
+ˆ[š]
+KÛÛÜŠŽÙXÙ™ˆŠJB‚BB]˜\ˆXØÙ\Ü™XÝHÛYWÚ[˜ÛÛZ[™×ØXØÙ\Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚BB]˜\ˆXÛ[™WÜ™XÝHÛYWÚ[˜ÛÛZ[™×ÙXÛ[™WÜ™XÝ
+KšY]ÜÜÜÚ^™JB‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍXŽM™ˆŠKLŒ
+ˆ[š]
+KXØÙ\Ü™XÝ
+B‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™NMÎŠKLŒ
+ˆ[š]
+KXÛ[™WÜ™XÝ
+B‚BBY˜]×ÜÝš[™ÊZWÙ›ÛXØÙ\Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ‹Œ
+H
+ˆ[š]ZWÝ^
+™œšY[™Ü™\]Y\ÝØXØÙ\ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹XØÙ\Ü™XÝœÚ^™Kž[
+LKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BBY˜]×ÜÝš[™ÊZWÙ›ÛXÛ[™WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ‹Œ
+H
+ˆ[š]ZWÝ^
+™œšY[™Ü™\]Y\ÝÙXÛ[™HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹XÛ[™WÜ™XÝœÚ^™Kž[
+LKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚B]˜\ˆš\ÚX›WØÛÝ[HZ[šJËœšY[™×Û\ÝœÚ^™J
+JB‚BZYˆš\ÚX›WØÛÝ[OH[™[˜ÛÛZ[™×ØÛÝ[OH[™Ý]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝËš\×Ù[\J
+N‚‚BBY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒMÌŒ
+H
+ˆ[š]ZWÝ^
+››×ÙœšY[™ÈŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžHŒŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠŽÙXÙ™ˆŠJB‚BY›ÜˆH[ˆš\ÚX›WØÛÝ[‚‚BB]˜\ˆ›ÝÈHÛYWÙœšY[™Ü›Ý×Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚BB]˜\ˆœšY[™Ù[žNˆXÝ[Û˜\žHHœšY[™×Û\ÝÚWB‚BB]˜\ˆ\Ü^WÛ˜[YHHœšY[™Ù\Ü^WÛ˜[YJœšY[™Ù[žJB‚BB]˜\ˆ\×ÛÛ›[™HH›ÛÛ
+œšY[™Ù[žK™Ù]
+›Û›[™H‹˜[ÙJJB‚BB]˜\ˆÙ[XÝYHHOHÛYWÙœšY[™Ü›Ùš[WÚ[™^‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÌŠHYˆÙ[XÝY[ÙHÛÛÜŠŒMÌÌHŠKMŒ
+ˆ[š]
+K›ÝÊB‚BBY˜]×ØÚ\˜ÛJ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+H
+ˆ[š]M‹Œ
+ˆ[š]ÛÛÜŠŒÍXŽM™ˆŠHYˆ\×ÛÛ›[™H[ÙHÛÛÜŠ™Y˜HŠJB‚BBY˜]×ØÚ\˜ÛJ›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+H
+ˆ[š]‹Œ
+ˆ[š]ÛÛÜ‹•ÒUHYˆ\×ÛÛ›[™H[ÙHÛÛÜŠ™™™ŠJB‚BB]˜\ˆ[š]X[H\Ü^WÛ˜[YKœÝXœÝŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠM‹ŒÌ‹Œ
+H
+ˆ[š][š]X[Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹M‹Œ
+ˆ[š][
+M‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ‹Œ
+H
+ˆ[š]\Ü^WÛ˜[YKÔ’V“Ó•SÐSQÓ“QS•ÓQ•›ÝËœÚ^™KžHMLŒ
+ˆ[š][
+MKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BB]˜\ˆÝ]\×Ý^HZWÝ^
+™œšY[™ÛÛ›[™HŠHYˆ\×ÛÛ›[™H[ÙHZWÝ^
+™œšY[™ÛÙ™›[™HŠB‚BBY˜]×ÜÝš[™ÊZWÙ›Û›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]Ý]\×Ý^Ô’V“Ó•SÐSQÓ“QS•ÓQ•›ÝËœÚ^™KžHMLŒ
+ˆ[š][
+LŒ
+ˆ[š]
+KÛÛÜŠŒÍXŽM™ˆŠHYˆ\×ÛÛ›[™H[ÙHÛÛÜŠ™Y˜HŠJB‚BB]˜\ˆ[š]WÜ™XÝHÛYWÙœšY[™Ú[š]WÜ™XÝ
+KšY]ÜÜÜÚ^™JB‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍXŽM™ˆŠHYˆ\×ÛÛ›[™H[ÙHÛÛÜŠXMÍHŠKLŒ
+ˆ[š]
+K[š]WÜ™XÝ
+B‚BBY˜]×ÜÝš[™ÊZWÙ›Û[š]WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ‹Œ
+H
+ˆ[š]ZWÝ^
+š[š]WÙœšY[™ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[š]WÜ™XÝœÚ^™Kž[
+L‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BZYˆ›ÝÝ]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝËš\×Ù[\J
+N‚‚BB]˜\ˆ[™[™×ÞHHÛYWÙœšY[™×ØÛÛ[ÝÜ
+šY]ÜÜÜÚ^™JH
+È›Ø]
+Z[šJËœšY[™×Û\ÝœÚ^™J
+JJH
+ˆNŒ
+ˆ[š]
+È‹Œ
+ˆ[š]‚BBY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠNŒ
+ˆ[š][™[™×ÞJKZWÝ^
+™œšY[™Ü™\]Y\ÝÜ[™[™ÈŠH
+Èˆ
+ˆ
+ÈÝŠÝ]ÛÚ[™×ÙœšY[™Ü™\]Y\ÝËœÚ^™J
+JH
+ÈŠH‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•[™[œÚ^™KžHÍ‹Œ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLŽØˆŠKL‹Œ
+ˆ[š]
+KÛYWØYÙœšY[™Ü™XÝ
+šY]ÜÜÜÚ^™JJB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠÍMYˆŠKMŒ
+ˆ[š]
+KÛYWØYÙœšY[™Ø]Û—Ü™XÝ
+šY]ÜÜÜÚ^™JJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛÛYWØYÙœšY[™Ø]Û—Ü™XÝ
+šY]ÜÜÜÚ^™JKœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]ZWÝ^
+˜YÙœšY[™ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛYWØYÙœšY[™Ø]Û—Ü™XÝ
+šY]ÜÜÜÚ^™JKœÚ^™Kž[
+MKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y[YˆÛYWÜÛØÚX[ÝXˆOHN‚‚BY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÌ‹Œ
+H
+ˆ[š]ZWÝ^
+›Ø˜žWØÚ]Ý]HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜŠ˜NXÙLˆŠJB‚B]˜\ˆš\œÝÚ[™^ˆ[HX^JØ˜žWØÚ]ÛY\ÜØYÙ\ËœÚ^™J
+HHÊB‚B]˜\ˆ›ÝÈH‚BY›ÜˆH[ˆ˜[™ÙJš\œÝÚ[™^Ø˜žWØÚ]ÛY\ÜØYÙ\ËœÚ^™J
+JN‚‚BB]˜\ˆY\ÜØYÙNˆXÝ[Û˜\žHHØ˜žWØÚ]ÛY\ÜØYÙ\ÖÚWB‚BB]˜\ˆ[™HHÝŠY\ÜØYÙK™Ù]
+›˜[YH‹ˆŠJH
+ÈŽˆˆ
+ÈÝŠY\ÜØYÙK™Ù]
+›Y\ÜØYÙH‹ˆŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠNŒ
+ˆ[š]LŒ
+ˆ[š]
+È›ÝÈ
+ˆÍŒ
+ˆ[š]
+K[™KÔ’V“Ó•SÐSQÓ“QS•ÓQ•[™[œÚ^™KžHÍ‹Œ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠ™Ù™™ˆŠJB‚BB\›ÝÈ
+ÏHB‚B]˜\ˆ[œ]Ø™ÈH™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMŒ
+ˆ[š][™[œÚ^™KžHHL‹Œ
+ˆ[š]
+K™XÝÜŒŠ[™[œÚ^™KžHLNŒ
+ˆ[š]Í‹Œ
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLŽØˆŠKL‹Œ
+ˆ[š]
+K[œ]Ø™ÊB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒL˜NM˜ˆŠKL‹Œ
+ˆ[š]
+KÛYWÛØ˜žWÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™JJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛÛYWÛØ˜žWÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™JKœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]µêuç5æuåõåˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”ÑS‘‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛYWÛØ˜žWÜÙ[™Ü™XÝ
+šY]ÜÜÜÚ^™JKœÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y[ÙN‚‚BY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÌ‹Œ
+H
+ˆ[š]ZWÝ^
+›XY\˜›Ø\™Ý]HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜŠ˜NXÙLˆŠJB‚B]˜\ˆXYÝYWÜ™XÝH™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMŒ
+ˆ[š]Œ
+ˆ[š]
+K™XÝÜŒŠ[™[œÚ^™KžHŽŒ
+ˆ[š]L‹Œ
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+XYÝYWØÛÛÜŠ^Y\—ÛXYÝYWÝY\ŠKMŒ
+ˆ[š]
+KXYÝYWÜ™XÝ
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛXYÝYWÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠMŒŒ‹Œ
+H
+ˆ[š]XYÝYWÛ˜[YJ^Y\—ÛXYÝYWÝY\ŠKÔ’V“Ó•SÐSQÓ“QS•ÓQ•XYÝYWÜ™XÝœÚ^™KžHŽŒ
+ˆ[š][
+M‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛXYÝYWÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠMŒ‹Œ
+H
+ˆ[š]ZWÝ^
+œ˜][™×ÛX™[ŠH
+ÈŽˆˆ
+ÈÝŠ^Y\—Ü˜][™ÊKÔ’V“Ó•SÐSQÓ“QS•ÓQ•XYÝYWÜ™XÝœÚ^™KžHŽŒ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚B]˜\ˆ›Ø\™ØÛÝ[HZ[šJKÛØ˜[ÛXY\˜›Ø\™œÚ^™J
+JB‚BZYˆ›Ø\™ØÛÝ[OH‚‚BBY˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒLŒ
+H
+ˆ[š]‹‹‹ˆˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH“ØY[™È˜[šÚ[™ÜË‹‹ˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+LËŒ
+ˆ[š]
+KÛÛÜŠŽÙXÙ™ˆŠJB‚BY›ÜˆH[ˆ›Ø\™ØÛÝ[‚‚BB]˜\ˆ[žNˆXÝ[Û˜\žHHÛØ˜[ÛXY\˜›Ø\™ÚWB‚BB]˜\ˆ›Ý×ÞHHMMŒ
+È›Ø]
+JH
+ˆ‹Œ‚BB]˜\ˆ›ÝÈH™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠMŒ
+ˆ[š]›Ý×ÞH
+ˆ[š]
+K™XÝÜŒŠ[™[œÚ^™KžHŽŒ
+ˆ[š]Œ
+ˆ[š]
+JB‚BB]˜\ˆ\×ÛYHHÝŠ[žK™Ù]
+œX›XÒY‹ˆŠJHOHš\™X˜\ÙWÜX›X×ÚY‚BBY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™M˜NŠHYˆ\×ÛYH[ÙHÛÛÜŠŒMÌÌHŠKL‹Œ
+ˆ[š]
+K›ÝÊB‚BB]˜\ˆ›Ý×ØÛÛÜˆHÛÛÜŠŒMÌÌHŠHYˆ\×ÛYH[ÙHÛÛÜ‹•ÒUB‚BBY˜]×ÜÝš[™ÊZWÙ›Û›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠLŒ‹Œ
+H
+ˆ[š]ˆÈˆ
+ÈÝŠ[žK™Ù]
+œ˜[šÈ‹H
+ÈJJH
+Èˆˆ
+ÈÝŠ[žK™Ù]
+›˜[YH‹ˆŠJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•›ÝËœÚ^™KžHLŒ
+ˆ[š][
+LËŒ
+ˆ[š]
+K›Ý×ØÛÛÜŠB‚BBY˜]×ÜÝš[™ÊZWÙ›Û›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠ›ÝËœÚ^™KžHÌ‹Œ
+ˆ[š]‹Œ
+H
+ˆ[š]ÝŠ[žK™Ù]
+œ˜][™È‹
+JKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Œ‹Œ
+ˆ[š][
+LËŒ
+ˆ[š]
+K›Ý×ØÛÛÜŠB‚™[˜È˜]×ÚÛYWÙœšY[™Ü›Ùš[JšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆÛYWÙœšY[™Ü›Ùš[WÚ[™^ÜˆÛYWÙœšY[™Ü›Ùš[WÚ[™^HœšY[™×Û\ÝœÚ^™J
+N‚‚B\™]\›‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒŒÌŠJB‚]˜\ˆ[Ù[HÛYWÙœšY[™Ü›Ùš[WÛ[Ù[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒËŒLËŽMŠKŒ
+ˆ[š]
+K[Ù[™Ü›ÝÊ‹Œ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™XYŽŒHŠKŒ‹Œ
+ˆ[š]
+K[Ù[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒÍŒ
+H
+ˆ[š]ZWÝ^
+™œšY[™Ü›Ùš[WÝ]HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+NŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛYWÙœšY[™Ü›Ùš[WØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™JKœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+H
+ˆ[š]°åÈ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛYWÙœšY[™Ü›Ùš[WØÛÜÙWÜ™XÝ
+šY]ÜÜÜÚ^™JKœÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜŠŒÌŠJB‚]˜\ˆœšY[™Ù[žNˆXÝ[Û˜\žHHœšY[™×Û\ÝÚÛYWÙœšY[™Ü›Ùš[WÚ[™^B‚]˜\ˆ\Ü^WÛ˜[YHHœšY[™Ù\Ü^WÛ˜[YJœšY[™Ù[žJB‚]˜\ˆ]˜]\—ØÙ[\ˆH[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠ[Ù[œÚ^™Kž
+ˆKL‹Œ
+ˆ[š]
+B‚Y˜]×ØÚ\˜ÛJ]˜]\—ØÙ[\‹ÍŒ
+ˆ[š]ÛÛÜŠŽMYŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û]˜]\—ØÙ[\ˆ
+È™XÝÜŒŠLNŒL‹Œ
+H
+ˆ[š]\Ü^WÛ˜[YKœÝXœÝŠJKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Í‹Œ
+ˆ[š][
+ŽŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒMŒ
+H
+ˆ[š]\Ü^WÛ˜[YKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒMÍŒ
+H
+ˆ[š]ÝŠœšY[™Ù[žK™Ù]
+šY‹ˆŠJKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+L‹Œ
+ˆ[š]
+KÛÛÜŠLÌNŠJB‚]˜\ˆÛ›[™WÝ^HZWÝ^
+™œšY[™ÛÛ›[™HŠHYˆ›ÛÛ
+œšY[™Ù[žK™Ù]
+›Û›[™H‹˜[ÙJJH[ÙHZWÝ^
+™œšY[™ÛÙ™›[™HŠB‚]˜\ˆÛ›[™WØÛÛÜˆHÛÛÜŠŒÍXŽM™ˆŠHYˆ›ÛÛ
+œšY[™Ù[žK™Ù]
+›Û›[™H‹˜[ÙJJH[ÙHÛÛÜŠ™Y˜HŠB‚Y˜]×ÜÝš[™ÊZWÙ›Û[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒNNŒ
+H
+ˆ[š]Û›[™WÝ^Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[Ù[œÚ^™Kž[
+LËŒ
+ˆ[š]
+KÛ›[™WØÛÛÜŠB‚]˜\ˆÝ]ÈH™XÝŠ[Ù[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ
+ˆ[š]ŒMŒ
+ˆ[š]
+K™XÝÜŒŠ[Ù[œÚ^™KžHŒ
+ˆ[š]Ì‹Œ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™Œ™˜ˆŠKMŒ
+ˆ[š]
+KÝ]ÊB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÝ]ËœÜÚ][Ûˆ
+È™XÝÜŒŠMŒŒ
+H
+ˆ[š]XYÝYWÛ˜[YJ[
+œšY[™Ù[žK™Ù]
+›XYÝYUY\ˆ‹
+JJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•Ý]ËœÚ^™KžHŽŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÝ]ËœÜÚ][Ûˆ
+È™XÝÜŒŠMŒŒ
+H
+ˆ[š]ZWÝ^
+œ˜][™×ÛX™[ŠH
+ÈŽˆˆ
+ÈÝŠœšY[™Ù[žK™Ù]
+œ˜][™È‹L
+JKÔ’V“Ó•SÐSQÓ“QS•ÓQ•Ý]ËœÚ^™KžHŽŒ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠLÌNŠJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÝ]ËœÜÚ][Ûˆ
+È™XÝÜŒŠMŒŒ‹Œ
+H
+ˆ[š]ZWÝ^
+Ú[œÈŠH
+ÈŽˆˆ
+ÈÝŠœšY[™Ù[žK™Ù]
+Ú[œÈ‹
+JH
+Èˆˆ
+ÈZWÝ^
+›ÜÜÙ\ÈŠH
+ÈŽˆˆ
+ÈÝŠœšY[™Ù[žK™Ù]
+›ÜÜÙ\È‹
+JKÔ’V“Ó•SÐSQÓ“QS•ÓQ•Ý]ËœÚ^™KžHŽŒ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠLÌNŠJB‚]˜\ˆ[š]WÜ™XÝHÛYWÙœšY[™Ü›Ùš[WÚ[š]WÜ™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆØ[—Ú[š]HH›ÛÛ
+œšY[™Ù[žK™Ù]
+›Û›[™H‹˜[ÙJJB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍXŽM™ˆŠHYˆØ[—Ú[š]H[ÙHÛÛÜŠXMÍHŠKL‹Œ
+ˆ[š]
+K[š]WÜ™XÝ
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[š]WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+H
+ˆ[š]ZWÝ^
+š[š]WÙœšY[™ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[š]WÜ™XÝœÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™NMÎŠKL‹Œ
+ˆ[š]
+KÛYWÙœšY[™Ü›Ùš[WÜ™[[Ý™WÜ™XÝ
+šY]ÜÜÜÚ^™JJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛYWÙœšY[™Ü›Ùš[WÜ™[[Ý™WÜ™XÝ
+šY]ÜÜÜÚ^™JKœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹Œ
+H
+ˆ[š]ZWÝ^
+œ™[[Ý™WÙœšY[™ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛYWÙœšY[™Ü›Ùš[WÜ™[[Ý™WÜ™XÝ
+šY]ÜÜÜÚ^™JKœÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚™[˜È˜]×ÜÜ[ÝÛÜ›ÚÛYJšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ý^\™WÜ™XÝ
+›Ø][™×ÜÜ[×ÚÛYWÝ^\™K™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JK˜[ÙJB‚HÈÝXH]™H[™\™ÞH\È^Y\™YÝ™\ˆH›ÙXÝ[Ûˆ\‚‚Y›ÜˆÜ\šÈ[ˆM‚‚B]˜\ˆ\ÙHHY[WÙ[\ÙY
+ˆ
+ŒÌˆ
+È›Ø]
+Ü\šÈ	H
+H
+ˆŒÊH
+È›Ø]
+Ü\šÊH
+ˆKÌB‚B]˜\ˆÜ\š×ÜÜÈH™XÝÜŒŠ›[Ù
+\ÙH
+ˆLKŒšY]ÜÜÜÚ^™Kž
+KLLŒ
+ˆ[š]
+È›[Ù
+›Ø]
+Ü\šÈ
+ˆÌJKÍŒŒ
+H
+ˆ[š]
+B‚BY˜]×ØÚ\˜ÛJÜ\š×ÜÜË
+KŒˆ
+È›Ø]
+Ü\šÈ	HÊJH
+ˆ[š]ÛÛÜŠÎŽMKKŒŒŒ
+ÈÚ[Š\ÙH
+ˆ‹Œ
+H
+ˆŒ
+JB‚]˜\ˆÜ[Ü[ÙHH
+Ú[ŠY[WÙ[\ÙY
+ˆ‹ŠH
+ÈKŒ
+H
+ˆB‚Y˜]×Ø\˜Ê™XÝÜŒŠŒÌŒËŒ
+H
+ˆ[š]
+MÍ‹Œ
+ÈÜ[Ü[ÙH
+ˆŒ
+H
+ˆ[š]ŒMKHHŒMKÛÛÜŠ‹ŽLËKŒŒŒ
+ÈÜ[Ü[ÙH
+ˆŒLŠKËŒ
+ˆ[š]YJB‚‚HÈ[˜[ZXÈÛÛ[\È˜]ÛˆÛ›H[œÚYHHØÝ[Y[\Hœ˜[Y\Ë‚‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠŒKŒŒ
+H
+ˆ[š]µêuèµê5æH5å5éõê5äHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHUHÐUTÈ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÌŒ
+ˆ[š][
+ÎKŒ
+ˆ[š]
+KÛÛÜŠ™Ù˜Y™ˆŠJB‚]˜\ˆ›Ùš[HHÛYWÜ›Ùš[WÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝš[™ÊZWÙ›Û›Ùš[KœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒËŒ
+H
+ˆ[š]›Ùš[WÛ˜[YKÔ’V“Ó•SÐSQÓ“QS•ÓQ•›Ùš[KœÚ^™KžHÌ‹Œ
+ˆ[š][
+NŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û›Ùš[KœÜÚ][Ûˆ
+È™XÝÜŒŠŒ‹ŒŒ
+H
+ˆ[š]^Y\—Û]™[ÛX™[
+
+KÔ’V“Ó•SÐSQÓ“QS•ÓQ•›Ùš[KœÚ^™KžHÌ‹Œ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜŠÎYM™™ˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û›Ùš[KœÜÚ][Ûˆ
+È™XÝÜŒŠ‹ŒKŒ
+H
+ˆ[š]›Ùš[WÚ[š]X[
+
+KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Œ
+ˆ[š][
+Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚‚]˜\ˆÛÚ[ˆHÛYWØÛÚ[—Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆÙ[\ÈHÛYWÙÙ[\×Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÚ[‹œÜÚ][Ûˆ
+È™XÝÜŒŠ‹ŒÍŒ
+H
+ˆ[š]ÝŠ^Y\—ØÛÚ[œÊKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛÚ[‹œÚ^™KžHKŒ
+ˆ[š][
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÙ[\ËœÜÚ][Ûˆ
+È™XÝÜŒŠ‹ŒÍŒ
+H
+ˆ[š]Œ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ù[\ËœÚ^™KžHKŒ
+ˆ[š][
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y›ÜˆÛÛ›ÛÙ]H[ˆÖÚÛYWÜÙ][™Ü×Ü™XÝ
+šY]ÜÜÜÚ^™JK¸¦¦H—KÚÛYWÚ[Ü™XÝ
+šY]ÜÜÜÚ^™JK¸§"H—WN‚‚B]˜\ˆÛÛ›ÛÜ™XÝˆ™XÝˆHÛÛ›ÛÙ]VÌB‚BY˜]×ÜÝš[™ÊZWÙ›ÛÛÛ›ÛÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒÍ‹Œ
+H
+ˆ[š]ÛÛ›ÛÙ]VÌWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛÛ›ÛÜ™XÝœÚ^™Kž[
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚‚]˜\ˆÜ[Ý]\ÈHÈµåµæuê5å5êµåõê5åuêµæuêˆ‹µéõê5äH5èµçH5åõäuê‹µéõê5äH5çµå5æuê—HYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÈ”S’ÑQT‘SH‹‘”’QS‘UH‹”URPÒÈUH—B‚Y›Üˆ[ÙH[ˆÎ‚‚B]˜\ˆ[ÙWÜ™XÝHÛYWÛ[ÙWÜ™XÝ
+[ÙKšY]ÜÜÜÚ^™JB‚BY˜]×ÜÝš[™ÊZWÙ›Û[ÙWÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ[ÙWÜ™XÝœÚ^™KžH
+ˆ
+KÜ[Ý]\ÖÛ[ÙWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[ÙWÜ™XÝœÚ^™Kž[
+
+KŒYˆ[ÙHOHˆ[ÙHŒŒ
+H
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆØÚ×ÛX™[ÈHÈµäõçµåuæuåuêˆ‹µç5æuäuåuêˆ‹ZWÝ^
+œÚÜŠKZWÝ^
+œ™]Ø\™ÈŠWHYˆZWÛ[™ÝXYÙHOHšHˆ[ÙHÈ’T“ÑTÈ‹ÓÔ‘TÈ‹”ÒÔ‹”‘UÐT‘È—B‚]˜\ˆØÚ×ØÙ[\œÈHÌÎMËŒMKŒÌÌËŒLKŒB‚Y›ÜˆH[ˆ‚‚B]˜\ˆÙ[\ˆH™XÝÜŒŠØÚ×ØÙ[\œÖÚWKMKŒ
+H
+ˆ[š]‚BZYˆHOH‚‚BBY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠŒNŒ
+H
+ˆ[š]MŒ
+ˆ[š]ÛÛÜŠÍÙ™ˆŠJB‚BBY˜]×Ø\˜ÊÙ[\ˆ
+È™XÝÜŒŠŒLËŒ
+H
+ˆ[š]NŒ
+ˆ[š]KUKM‹ÛÛÜŠÍÙ™ˆŠK‹Œ
+ˆ[š]YJB‚BY[YˆHOHN‚‚BBY˜]×ØÚ\˜ÛJÙ[\‹NŒ
+ˆ[š]ÛÛÜŠ™MY™ˆ‹ŒŒŠJB‚BBY˜]×ØÚ\˜ÛJÙ[\‹LŒ
+ˆ[š]ÛÛÜŠÌ™Y™ˆŠK˜[ÙKŒ
+ˆ[š]YJB‚BBY˜]×ØÚ\˜ÛJÙ[\‹Œ
+ˆ[š]ÛÛÜ‹•ÒUJB‚BY[ÙN‚‚BBY˜]×ÚÛYWÛ˜]—ÚXÛÛŠHH‹Ù[\‹[š]
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠ
+ØÚ×ØÙ[\œÖÚWHHÌŒ
+H
+ˆ[š]ŽM‹Œ
+ˆ[š]
+KØÚ×ÛX™[ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹MŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×Ü[™[™×Ú[š]WØ˜[›™\ŠšY]ÜÜÜÚ^™JB‚Y˜]×Ý]ÜšX[ÛÝ™\›^JšY]ÜÜÜÚ^™JB‚™[˜È˜]×ÚÛYWÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚ZYˆ›Ø][™×ÜÜ[×ÚÛYWÝ^\™HOH[‚‚BY˜]×ÜÜ[ÝÛÜ›ÚÛYJšY]ÜÜÜÚ^™JB‚B\™]\›‚‚]˜\ˆ^[Ý]HÛYWÛ^[Ý]
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]ˆ›Ø]H^[Ý][š]‚Y˜]×ÚÛYWØ[XšY[ÙY™™XÝÊšY]ÜÜÜÚ^™JB‚Y˜]×Û[Ù\›—ÚÛYWØ˜XÚÙ›Ü
+šY]ÜÜÜÚ^™K^[Ý]
+B‚Y˜]×Ü™XÝ
+™XÝŠŒŒšY]ÜÜÜÚ^™Kž^[Ý]šXY\—Ú
+KÛÛÜŠŒŒKŒKŽ
+JB‚Y˜]×Ü™XÝ
+™XÝŠŒ^[Ý]šXY\—ÚH‹Œ
+ˆ[š]šY]ÜÜÜÚ^™Kž‹Œ
+ˆ[š]
+KÛÛÜŠ™Ù™ˆ‹ÌŠJB‚]˜\ˆYØ™×ÝÎˆ›Ø]H^[Ý]›YÞ
+È^[Ý]›YÝÈ
+ÈLŒ
+ˆ[š]‚Y˜]×Ü™XÝ
+™XÝŠŒ^[Ý]šXY\—ÚYØ™×ÝËšY]ÜÜÜÚ^™KžHH^[Ý]šXY\—Ú
+KÛÛÜŠŒKŒKŒLŒŒ
+JB‚]˜\ˆÝ]×ÜÝš\HÛYWÜÝ]×Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÙÛ\Ü×ØØ\™
+Ý]×ÜÝš\ÛÛÜŠYÙ™ˆŠK[š]˜[ÙJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÝ]×ÜÝš\œÜÚ][Ûˆ
+È™XÝÜŒŠL‹ŒŒ‹Œ
+H
+ˆ[š]
+µè5æuéµåõåuè5åuêŽˆ	YˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH•ÒS”Îˆ	YŠH	H^Y\—ÝÚ[œËÔ’V“Ó•SÐSQÓ“QS•ÓQ•Ý]×ÜÝš\œÚ^™KžHM‹Œ
+ˆ[š][
+LËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÝ]×ÜÝš\œÜÚ][Ûˆ
+È™XÝÜŒŠL‹ŒŒ
+H
+ˆ[š]
+µê5éµèÎˆ	YˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”Õ‘PRÎˆ	YŠH	H^Y\—ØÝ\œ™[ÜÝ™XZËÔ’V“Ó•SÐSQÓ“QS•ÓQ•Ý]×ÜÝš\œÚ^™KžHM‹Œ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠŽÙXÙ™ˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÝ]×ÜÝš\œÜÚ][Ûˆ
+È™XÝÜŒŠL‹ŒMŒ
+H
+ˆ[š]XYÝYWÛ˜[YJ^Y\—ÛXYÝYWÝY\ŠH
+Èˆ8 (ˆˆ
+ÈÝŠ^Y\—Ü˜][™ÊKÔ’V“Ó•SÐSQÓ“QS•ÓQ•Ý]×ÜÝš\œÚ^™KžHM‹Œ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚‚HÈ[X›ÙH\›ÈÚ]HÙ[XÝYY™X[ÞHÜ˜\Y\›Ý[™]ÈØZ\Ý‚‚]˜\ˆÚ\˜XÝ\—Ø\™XHHÛYWØÚ\˜XÝ\—Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆYWÜ\ÙHHY[WÙ[\ÙY
+ˆKMB‚]˜\ˆ\›×ÜÜÝHÚ\˜XÝ\—Ø\™XKœÜÚ][Ûˆ
+È™XÝÜŒŠÚ\˜XÝ\—Ø\™XKœÚ^™Kž
+ˆKÚ\˜XÝ\—Ø\™XKœÚ^™KžH
+ˆ
+B‚Y›Üˆ[È[ˆ˜[™ÙJKLJN‚‚B]˜\ˆ[×Ü˜Y]\ÈH
+MŒ
+È›Ø]
+[ÊH
+ˆŽKŒ
+H
+ˆ[š]‚BY˜]×ØÚ\˜ÛJ\›×ÜÜÝ[×Ü˜Y]\ËÛÛÜŠŒŒ‹ÎKŒŒN
+ˆ›Ø]
+ˆH[ÊJJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÚ\˜XÝ\—Ø\™XKœÜÚ][Ûˆ
+È™XÝÜŒŠŒËŒ
+ˆ[š]
+KµçµåuæõçÈ5ç5éõê5äHˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”‘PQH“ÔˆUH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ú\˜XÝ\—Ø\™XKœÚ^™Kž[
+MËŒ
+ˆ[š]
+KÛÛÜŠŽÙXÙ™ˆŠJB‚HÈÙY\HÛÛ\ÈÛYÚH[œÚYHHš\ÚX›HÜ[™HÛÈHYH[Ý[Û‚‚HÈ™]™\ˆXZÙ\ÈH[š[X[\X\ˆÈ›Ø]X›Ý™HHÛÛÙ[ˆÝYÙK‚‚]˜\ˆ\›×ÜÚ^™HHÚ\˜XÝ\—Ø\™XKœÚ^™B‚]˜\ˆÜ›Ý[™ÛÙ™œÙ]ˆ›Ø]H\›×ÜÚ^™KžH
+ˆ›Ø]
+T“×ÑÔ“ÕS‘ÓÑ‘”ÑUÖØÛ[\J^Y\—Ø[š[X[T“×ÑÔ“ÕS‘ÓÑ‘”ÑUËœÚ^™J
+HHJWJB‚]˜\ˆ\›×ØÙ[\ˆHÚ\˜XÝ\—Ø\™XKœÜÚ][Ûˆ
+È™XÝÜŒŠÚ\˜XÝ\—Ø\™XKœÚ^™Kž
+ˆLÚ\˜XÝ\—Ø\™XKœÚ^™KžH
+ˆH
+ÈL‹Œ
+ˆ[š]
+ÈÜ›Ý[™ÛÙ™œÙ]
+B‚]˜\ˆœ™X]HHKŒ
+ÈÚ[ŠYWÜ\ÙJH
+ˆŒ‚‚HÈÙY\Û›HH[žHYH[Ý™[Y[ÛÈH™Y]Ý^H[YÛˆHÝYÙK‚‚]˜\ˆÙ[WÙ›Ø]HÚ[ŠYWÜ\ÙH
+ˆÌŠH
+ˆH
+ˆ[š]‚]˜\ˆ[š[X]YØÙ[\ˆH\›×ØÙ[\ˆ
+È™XÝÜŒŠŒÙ[WÙ›Ø]
+B‚]˜\ˆØZ\ÝØÙ[\ˆHÚ\˜XÝ\—Ø\™XKœÜÚ][Ûˆ
+È™XÝÜŒŠÚ\˜XÝ\—Ø\™XKœÚ^™Kž
+ˆLÚ\˜XÝ\—Ø\™XKœÚ^™KžH
+ˆN
+ÈÙ[WÙ›Ø]
+B‚]˜\ˆš[™×Ü˜Y]\ÈHM‹Œ
+ˆ[š]‚]˜\ˆš[™×ÝÚYH‹Œ
+ˆ[š]‚]˜\ˆš[™×ØÛÛÜŽˆÛÛÜˆH’S‘×ÐÓÓÔ”ÖØÛ[\J^Y\—Üš[™×ØÛÛÜ‹’S‘×ÐÓÓÔ”ËœÚ^™J
+HHJWB‚]˜\ˆ[™ØÛÛÜŽˆÛÛÜˆHT“×ÒS‘ÐÓÓÔ”ÖØÛ[\J^Y\—Ø[š[X[T“×ÒS‘ÐÓÓÔ”ËœÚ^™J
+HHJWB‚]˜\ˆÙ][WØÙ[\ˆHÚ\˜XÝ\—Ø\™XKœÜÚ][Ûˆ
+È™XÝÜŒŠÚ\˜XÝ\—Ø\™XKœÚ^™Kž
+ˆLÚ\˜XÝ\—Ø\™XKœÚ^™KžH
+ˆŽM
+B‚Y˜]×ÝÛÛÙÜÙ][JÙ][WØÙ[\‹[š]YJB‚]˜\ˆ[YÜ˜]YÚ\›Îˆ^\™L‘H[‚ZYˆ^Y\—Ø[š[X[H[™^Y\—Ø[š[X[Y™X[ÞWÚ\›×Ý^\™\ËœÚ^™J
+N‚‚B]˜\ˆ\›×ØÛÛÜœÎˆ\œ˜^HHY™X[ÞWÚ\›×Ý^\™\ÖÜ^Y\—Ø[š[X[B‚BZYˆ^Y\—Üš[™×ØÛÛÜˆH[™^Y\—Üš[™×ØÛÛÜˆ\›×ØÛÛÜœËœÚ^™J
+N‚‚BBZ[YÜ˜]YÚ\›ÈH\›×ØÛÛÜœÖÜ^Y\—Üš[™×ØÛÛÜ—H\È^\™L‘‚ZYˆ[YÜ˜]YÚ\›ÈOH[‚‚BHÈ\ÈÜš]HÛÛZ[œÈH™X[ÜÙNˆ›Ý\›\È™XXÚHX™H[™›Ý‚BHÈ[™ÈÝ\›Ý™\ˆ]ˆ]™\žH[š[X[[™š[™ÈÛÛÜˆ\ÈHYXØ]Y\ÜÙ]‚‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›J[š[X]YØÙ[\‹Œ™XÝÜŒ‹“Ó‘H
+ˆœ™X]JB‚BY˜]×Ý^\™WÜ™XÝ
+[YÜ˜]YÚ\›Ë™XÝŠZ\›×ÜÚ^™H
+ˆK\›×ÜÚ^™JK˜[ÙJB‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚Y[ÙN‚‚BHÈ˜XÚÈ[ˆÙˆH[ÞHÚ]È™Z[™HÜœÛË‚‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›JØZ\ÝØÙ[\‹Œ™XÝÜŒŠKŒŒŠJB‚BY˜]×Ø\˜Ê™XÝÜŒ‹–‘T“Ëš[™×Ü˜Y]\ËKUKÌ‹š[™×ØÛÛÜ‹š[™×ÝÚYYJB‚BY˜]×Ø\˜Ê™XÝÜŒ‹–‘T“Ëš[™×Ü˜Y]\ËH
+ÈŒNH
+ÈŒLÛÛÜŠ™™™ÈŠKš[™×ÝÚYYJB‚BY˜]×Ø\˜Ê™XÝÜŒ‹–‘T“Ëš[™×Ü˜Y]\ËUHHŒUHHŒNLÛÛÜŠ™™™ÈŠKš[™×ÝÚYYJB‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚BZYˆ^Y\—Ø[š[X[H[™^Y\—Ø[š[X[[Ø›ÙWØ[š[X[Ý^\™\ËœÚ^™J
+H[™[Ø›ÙWØ[š[X[Ý^\™\ÖÜ^Y\—Ø[š[X[HOH[‚‚BBY˜]×ÜÙ]Ý˜[œÙ›Ü›J[š[X]YØÙ[\‹Œ™XÝÜŒ‹“Ó‘H
+ˆœ™X]JB‚BBY˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖÜ^Y\—Ø[š[X[K™XÝŠZ\›×ÜÚ^™H
+ˆK\›×ÜÚ^™JK˜[ÙJB‚BBY˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚BHÈœ›Û[ˆ\ÜÙ\È[ˆœ›ÛÙˆHØZ\ÝXZÚ[™È]ÛX\ˆH\›È\È[œÚYHH[ÞK‚‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›JØZ\ÝØÙ[\‹Œ™XÝÜŒŠKŒŒŠJB‚BY˜]×Ø\˜Ê™XÝÜŒ‹–‘T“Ëš[™×Ü˜Y]\ËŒKÌ‹š[™×ØÛÛÜ‹š[™×ÝÚYYJB‚BY˜]×Ø\˜Ê™XÝÜŒ‹–‘T“Ëš[™×Ü˜Y]\ËŒNŒLÛÛÜŠ™™™ÈŠKš[™×ÝÚYYJB‚BY˜]×Ø\˜Ê™XÝÜŒ‹–‘T“Ëš[™×Ü˜Y]\ËHHŒHHŒNLÛÛÜŠ™™™ÈŠKš[™×ÝÚYYJB‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚BHÈ˜[˜XÚÈÜš\X\šÜÈ›ÜˆÛÛXš[˜][ÛœÈ]È›ÝY]]™HHYXØ]YÜÙK‚‚BY›ÜˆÜš\ÜÚYH[ˆËLKŒKŒN‚‚BB]˜\ˆÜš\ØÙ[\ˆHØZ\ÝØÙ[\ˆ
+È™XÝÜŒŠÜš\ÜÚYH
+ˆš[™×Ü˜Y]\È
+ˆÌ‹\š[™×Ü˜Y]\È
+ˆŒN
+B‚BBY˜]×ÜÙ]Ý˜[œÙ›Ü›JÜš\ØÙ[\‹Üš\ÜÚYH
+ˆŒL™XÝÜŒŠŽ‹KŒMŠJB‚BBY˜]×ØÚ\˜ÛJ™XÝÜŒ‹–‘T“ËŒŒ
+ˆ[š]ÛÛÜŠŒNÌHŠJB‚BBY˜]×ØÚ\˜ÛJ™XÝÜŒ‹–‘T“ËMKH
+ˆ[š][™ØÛÛÜŠB‚BBY˜]×Ø\˜Ê™XÝÜŒŠŒ‹Œ
+ˆ[š]
+KŒ
+ˆ[š]ŒNHHŒNL‹[™ØÛÛÜ‹›YÚ[™Y
+Œ
+K‹
+ˆ[š]YJB‚BBY˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚HÈHÚ\˜XÝ\ˆ]Ù[ˆ™[XZ[œÈ\X›NÈHYÒTPÕT”È]Ûˆ\ÈB‚HÈ^XÚ][žHÚ[ÛÈ›ÈX™[\È[ÝÙYÈÛÝ™\ˆHÙ][H\ÛÜšË‚‚‚HÈÜQˆ^Y\ˆY[]HÛˆHYÝ\œ™[˜ÚY\È[™Ù][™ÜÈÛˆHšYÚ‚‚]˜\ˆÙ][™ÜÈHÛYWÜÙ][™Ü×Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒKŒM‹ŽLŠKNŒ
+KÙ][™ÜË™Ü›ÝÊŒ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŽHŠKM‹Œ
+KÙ][™ÜÊB‚Y˜]×ØÚ\˜ÛJÙ][™ÜË™Ù]ØÙ[\Š
+KNŒ
+ˆ[š]ÛÛÜŠ™Y™ˆŠK˜[ÙKËŒ
+ˆ[š]YJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÙ][™ÜËœÜÚ][Ûˆ
+È™XÝÜŒŠŒÍKŒ
+H
+ˆ[š]’HˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH‘Sˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ù][™ÜËœÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆÛÝ[™ÝÙÙÛHHÛYWÜÛÝ[™ÝÙÙÛWÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒKŒM‹ŽLŠKNŒ
+KÛÝ[™ÝÙÙÛK™Ü›ÝÊŒ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍXŽM™ˆŠHYˆÛÝ[™Ù[˜X›Y[ÙHÛÛÜŠXMÍHŠKM‹Œ
+KÛÝ[™ÝÙÙÛJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÝ[™ÝÙÙÛKœÜÚ][Ûˆ
+È™XÝÜŒŠŒÍKŒ
+H
+ˆ[š]¸¦jˆˆYˆÛÝ[™Ù[˜X›Y[ÙH°åÈ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÛÝ[™ÝÙÙÛKœÚ^™Kž[
+NŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆÛÚ[—Ü™XÝHÛYWØÛÚ[—Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒKŒM‹ŽLŠKNŒ
+KÛÚ[—Ü™XÝ™Ü›ÝÊŒ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLÙMÈŠKM‹Œ
+KÛÚ[—Ü™XÝ
+B‚Y˜]×ØÚ\˜ÛJÛÚ[—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŽKŒËŒ
+H
+ˆ[š]MKŒ
+ˆ[š]ÛÛÜŠ™™˜ÎÙŠJB‚Y˜]×ØÚ\˜ÛJÛÚ[—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŽKŒËŒ
+H
+ˆ[š]KŒ
+ˆ[š]ÛÛÜŠ™NNMÌXˆŠK˜[ÙKËŒ
+ˆ[š]YJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÚ[—Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠMŒÍKŒ
+H
+ˆ[š]ÝŠ^Y\—ØÛÚ[œÊKÔ’V“Ó•SÐSQÓ“QS•ÓQ•‹Œ
+ˆ[š][
+ŒŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆÙ[\ÈHÛYWÙÙ[\×Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒKŒM‹ŽLŠKNŒ
+KÙ[\Ë™Ü›ÝÊŒ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLÙMÈŠKM‹Œ
+KÙ[\ÊB‚]˜\ˆÙ[WØÙ[\ˆHÙ[\ËœÜÚ][Ûˆ
+È™XÝÜŒŠŽŒËŒ
+H
+ˆ[š]‚]˜\ˆÙ[WÜÚ\HHXÚÙY™XÝÜŒ\œ˜^JÙÙ[WØÙ[\ˆ
+È™XÝÜŒŠŒLMKŒ
+H
+ˆ[š]Ù[WØÙ[\ˆ
+È™XÝÜŒŠMŒLËŒ
+H
+ˆ[š]Ù[WØÙ[\ˆ
+È™XÝÜŒŠŒMŒ
+H
+ˆ[š]Ù[WØÙ[\ˆ
+È™XÝÜŒŠNŒMŒ
+H
+ˆ[š]Ù[WØÙ[\ˆ
+È™XÝÜŒŠLMŒLËŒ
+H
+ˆ[š]JB‚Y˜]×ØÛÛÜ™YÜÛYÛÛŠÙ[WÜÚ\KÛÛÜŠ™M™ˆŠJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÙ[\ËœÜÚ][Ûˆ
+È™XÝÜŒŠL‹ŒÍKŒ
+H
+ˆ[š]Œ‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•L‹Œ
+ˆ[š][
+ŒŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆ›Ùš[HHÛYWÜ›Ùš[WÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒKŒM‹ŽLŠKNKŒ
+K›Ùš[K™Ü›ÝÊŒ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÌŠKMËŒ
+K›Ùš[JB‚Y˜]×ØÚ\˜ÛJ›Ùš[KœÜÚ][Ûˆ
+È™XÝÜŒŠÌKŒŽKŒ
+H
+ˆ[š]Œ
+ˆ[š]ÛÛÜŠŽMYŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û›Ùš[KœÜÚ][Ûˆ
+È™XÝÜŒŠËŒÎŒ
+H
+ˆ[š]›Ùš[WÚ[š]X[
+
+KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Œ
+ˆ[š][
+KŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û›Ùš[KœÜÚ][Ûˆ
+È™XÝÜŒŠKŒËŒ
+H
+ˆ[š]›Ùš[WÛ˜[YKÔ’V“Ó•SÐSQÓ“QS•ÓQ•›Ùš[KœÚ^™KžHÍ‹Œ
+ˆ[š][
+NKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û›Ùš[KœÜÚ][Ûˆ
+È™XÝÜŒŠKŒËŒ
+H
+ˆ[š]^Y\—Û]™[ÛX™[
+
+KÔ’V“Ó•SÐSQÓ“QS•ÓQ•›Ùš[KœÚ^™KžHÍ‹Œ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜŠŽÙXÙ™ˆŠJB‚]˜\ˆ›ÙÜ™\Ü×Ø™ÈH™XÝŠ›Ùš[KœÜÚ][Ûˆ
+È™XÝÜŒŠKŒKŒ
+H
+ˆ[š]™XÝÜŒŠ›Ùš[KœÚ^™KžHŒ
+ˆ[š]‹Œ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒMŒ˜ÍHŠKËŒ
+ˆ[š]
+K›ÙÜ™\Ü×Ø™ÊB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠYÎ™ˆŠKËŒ
+ˆ[š]
+K™XÝŠ›ÙÜ™\Ü×Ø™ËœÜÚ][Û‹™XÝÜŒŠ›ÙÜ™\Ü×Ø™ËœÚ^™Kž
+ˆŒ‹›ÙÜ™\Ü×Ø™ËœÚ^™KžJJJB‚‚]˜\ˆ›ÝÛWØ˜\ˆH™XÝŠ^[Ý]˜Ù[\—ÛYHŒ
+ˆ[š]^[Ý]˜›ÝÛWÞHHŒ
+ˆ[š]^[Ý]˜Ù[\—ÝÈ
+ÈM‹Œ
+ˆ[š]^[Ý]˜›ÝÛWØ]Û—Ú
+ÈM‹Œ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŒKŒ‹ÌŠKŒ
+ˆ[š]
+K›ÝÛWØ˜\ŠB‚Y˜]×Ü™XÝ
+›ÝÛWØ˜\‹ÛÛÜŠŒÌ‹ŽËKŒŒŒŠK˜[ÙKKH
+ˆ[š]YJB‚‚HÈ›ÝÛH›ÝÎˆÛ›[™H\™[˜KœšY[™X]Ú[ˆœÈÛÛ\]\‹‚‚]˜\ˆ\™[˜WØ]ÛˆHÛYWÛ[ÙWÜ™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÙÛ\Ü×ØØ\™
+\™[˜WØ]Û‹ÛÛÜŠŽXMÌÙ™ˆŠK[š]˜[ÙJB‚Y˜]×Ü™XÝ
+™XÝŠ\™[˜WØ]Û‹œÜÚ][Û‹™XÝÜŒŠKŒ
+ˆ[š]\™[˜WØ]Û‹œÚ^™KžJJKÛÛÜŠŽXMÌÙ™ˆŠJB‚]˜\ˆ\™[˜WÚXÛÛˆH\™[˜WØ]Û‹œÜÚ][Ûˆ
+È™XÝÜŒŠ\™[˜WØ]Û‹œÚ^™Kž
+ˆK\™[˜WØ]Û‹œÚ^™KžH
+ˆŒÎ
+B‚Y˜]×ÚÛYWÛ[ÙWÚXÛÛŠ\™[˜WÚXÛÛ‹[š]
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û\™[˜WØ]Û‹œÜÚ][Ûˆ
+È™XÝÜŒŠ‹Œ\™[˜WØ]Û‹œÚ^™KžH
+ˆÌŠKZWÝ^
+˜\™[˜HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹\™[˜WØ]Û‹œÚ^™KžHL‹Œ
+ˆ[š][
+LËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚‚]˜\ˆœšY[™Ø]ÛˆHÛYWÛ[ÙWÜ™XÝ
+KšY]ÜÜÜÚ^™JB‚Y˜]×ÙÛ\Ü×ØØ\™
+œšY[™Ø]Û‹ÛÛÜŠXN™ˆŠK[š]˜[ÙJB‚Y˜]×Ü™XÝ
+™XÝŠœšY[™Ø]Û‹œÜÚ][Û‹™XÝÜŒŠKŒ
+ˆ[š]œšY[™Ø]Û‹œÚ^™KžJJKÛÛÜŠXN™ˆŠJB‚]˜\ˆœšY[™ÚXÛÛˆHœšY[™Ø]Û‹œÜÚ][Ûˆ
+È™XÝÜŒŠœšY[™Ø]Û‹œÚ^™Kž
+ˆKœšY[™Ø]Û‹œÚ^™KžH
+ˆŒÎ
+B‚Y˜]×ÚÛYWÛ[ÙWÚXÛÛŠKœšY[™ÚXÛÛ‹[š]
+B‚Y˜]×ÜÝš[™ÊZWÙ›ÛœšY[™Ø]Û‹œÜÚ][Ûˆ
+È™XÝÜŒŠ‹ŒœšY[™Ø]Û‹œÚ^™KžH
+ˆÌŠKZWÝ^
+™œšY[™ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹œšY[™Ø]Û‹œÚ^™KžHL‹Œ
+ˆ[š][
+LËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚‚]˜\ˆ^WÜ™XÝHÛYWÛ[ÙWÜ™XÝ
+‹šY]ÜÜÜÚ^™JB‚]˜\ˆ[ÙHH
+Ú[ŠY[WÙ[\ÙY
+ˆËŒ
+H
+ÈKŒ
+H
+ˆB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŽNŽŒMŒLˆ
+È[ÙH
+ˆŒ
+KKŒ
+K^WÜ™XÝ™Ü›ÝÊ
+‹Œ
+È[ÙH
+ˆŒ
+H
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™MLYˆŠKŒŒ
+K^WÜ™XÝ
+B‚Y˜]×Ü™XÝ
+™XÝŠ^WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠËŒ‹Œ
+H
+ˆ[š]™XÝÜŒŠ^WÜ™XÝœÚ^™KžHMŒ
+ˆ[š]ËŒ
+ˆ[š]
+JKÛÛÜŠKŒŽM‹Ì
+KYJB‚]˜\ˆ^WØÙ[\ˆH^WÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ^WÜ™XÝœÚ^™Kž
+ˆŒŒ‹^WÜ™XÝœÚ^™KžH
+ˆŠB‚Y˜]×ØÚ\˜ÛJ^WØÙ[\‹Œ
+ˆ[š]ÛÛÜŠ™ØŒLˆŠJB‚Y˜]×ÚÛYWÛ[ÙWÚXÛÛŠ‹^WØÙ[\‹[š]
+B‚]˜\ˆ^WÝ^ÞH^WÜ™XÝœÜÚ][Û‹ž
+È^WÜ™XÝœÚ^™Kž
+ˆ‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠ^WÝ^Þ^WÜ™XÝœÜÚ][Û‹žH
+È^WÜ™XÝœÚ^™KžH
+ˆ
+KµêuåõéÈˆYˆZWÛ[™ÝXYÙHOHšHˆ[ÙH”VH‹Ô’V“Ó•SÐSQÓ“QS•ÓQ•^WÜ™XÝœÚ^™Kž
+ˆM‹[
+Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠ^WÝ^Þ^WÜ™XÝœÜÚ][Û‹žH
+È^WÜ™XÝœÚ^™KžH
+ˆÌŠKZWÝ^
+˜ÛÛ\]\—ÜÝXˆŠKÔ’V“Ó•SÐSQÓ“QS•ÓQ•^WÜ™XÝœÚ^™Kž
+ˆM‹[
+KŒ
+ˆ[š]
+KÛÛÜŠ™™™ÙˆŠJB‚‚HÈÛÛXÝ[ÛˆÚÜÝ]ÈÝ^HÛÜÙHÈH\›ÈÚ\˜XÝ\‹‚‚]˜\ˆ˜]—ÛX™[ÈHÝZWÝ^
+œÚÜŠKZWÝ^
+œ™]Ø\™ÈŠWB‚]˜\ˆ˜]—ÜÝX]\ÈHÝZWÝ^
+œÚÜÜÝXˆŠKZWÝ^
+œ™]Ø\™×ÜÝXˆŠWB‚]˜\ˆ˜]—ØÛÛÜœÈHÐÛÛÜŠ™™ŽYŒŠKÛÛÜŠ™NMÎŠWB‚Y›ÜˆH[ˆŽ‚‚B]˜\ˆ˜]ˆHÛYWÛ˜]—Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒËŒL‹ŽŠKMËŒ
+K˜]‹™Ü›ÝÊŒ
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+˜]—ØÛÛÜœÖÚWKMKŒ
+K˜]ŠB‚B]˜\ˆ˜]—ÚXÛÛ—ØÙ[\ˆH˜]‹œÜÚ][Ûˆ
+È™XÝÜŒŠ˜]‹œÚ^™Kž
+ˆŒN˜]‹œÚ^™KžH
+ˆŠB‚BY˜]×ØÚ\˜ÛJ˜]—ÚXÛÛ—ØÙ[\‹ŒŒ
+ˆ[š]ÛÛÜŠKŒKŒKŒŒŒŠJB‚BY˜]×ÚÛYWÛ˜]—ÚXÛÛŠK˜]—ÚXÛÛ—ØÙ[\‹[š]
+B‚BY˜]×ÜÝš[™ÊZWÙ›Û˜]‹œÜÚ][Ûˆ
+È™XÝÜŒŠ˜]‹œÚ^™Kž
+ˆŒÍ˜]‹œÚ^™KžH
+ˆŒÎ
+K˜]—ÛX™[ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÓQ•˜]‹œÚ^™Kž
+ˆN[
+MËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BY˜]×ÜÝš[™ÊZWÙ›Û˜]‹œÜÚ][Ûˆ
+È™XÝÜŒŠ˜]‹œÚ^™Kž
+ˆŒÍ˜]‹œÚ^™KžH
+ˆÌŠK˜]—ÜÝX]\ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÓQ•˜]‹œÚ^™Kž
+ˆN[
+KŒ
+ˆ[š]
+KÛÛÜŠ™™™ŒÍÈŠJB‚Y˜]×ÚÛYWÜÛØÚX[Ü[™[
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[ÝÙÙÛHHÛYWÚ[Ü™XÝ
+šY]ÜÜÜÚ^™JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍXŽM™ˆŠHYˆ]ÜšX[ÛÜ[ˆ[ÙHÛÛÜŠŒŽN˜MˆŠKM‹Œ
+ˆ[š]
+K[ÝÙÙÛJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[ÝÙÙÛKœÜÚ][Ûˆ
+È™XÝÜŒŠŒÍKŒ
+H
+ˆ[š]È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[ÝÙÙÛKœÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÚÛYWÙœšY[™Ü›Ùš[JšY]ÜÜÜÚ^™JB‚Y˜]×Ý]ÜšX[ÛÝ™\›^JšY]ÜÜÜÚ^™JB‚™[˜È˜]×Û[Ù\›—ÚÛYWØ˜XÚÙ›Ü
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹^[Ý]ˆXÝ[Û˜\žJHOˆ›ÚY‚‚HÈ^Y\™Y˜]žHÜ˜YY[HÝXH\œÜXÝ]™HÜšY[™[š[X]Y™[ÛˆÜš^›Û‹‚‚Y›Üˆ˜[™[ˆL‚‚B]˜\ˆHHšY]ÜÜÜÚ^™KžH
+ˆ›Ø]
+˜[™
+HÈLŒ‚B]˜\ˆÚYHHÛÛÜŠŒLˆ
+È˜[™
+ˆŒMKŒÍH
+È˜[™
+ˆŒËŒH
+È˜[™
+ˆŒ‹ŒÍ
+B‚BY˜]×Ü™XÝ
+™XÝŠŒKšY]ÜÜÜÚ^™KžšY]ÜÜÜÚ^™KžHÈLŒ
+ÈKŒ
+KÚYJB‚]˜\ˆÜš^›Û—ÞHHšY]ÜÜÜÚ^™KžH
+ˆŽB‚Y›Üˆ›ÝÈ[ˆÎ‚‚B]˜\ˆH›Ø]
+›ÝÊHÈ‹Œ‚B]˜\ˆÜšYÞHH\œŠÜš^›Û—ÞKšY]ÜÜÜÚ^™KžK
+ˆ
+B‚BY˜]×Û[™J™XÝÜŒŠŒÜšYÞJK™XÝÜŒŠšY]ÜÜÜÚ^™KžÜšYÞJKÛÛÜŠŒŒ‹Ì‹KŒŒMJKKŒ
+B‚Y›ÜˆÛÛ[[ˆ[ˆLÎ‚‚B]˜\ˆHšY]ÜÜÜÚ^™Kž
+ˆ›Ø]
+ÛÛ[[ŠHÈL‹Œ‚BY˜]×Û[™J™XÝÜŒŠšY]ÜÜÜÚ^™Kž
+ˆKÜš^›Û—ÞJK™XÝÜŒŠšY]ÜÜÜÚ^™KžJKÛÛÜŠŒÍKKŒŒJKKŒ
+B‚]˜\ˆÝÙY\ÞH›[Ù
+Y[WÙ[\ÙY
+ˆLŒšY]ÜÜÜÚ^™Kž
+ÈŒ
+HHLŒŒ‚Y˜]×ØÛÛÜ™YÜÛYÛÛŠXÚÙY™XÝÜŒ\œ˜^JÕ™XÝÜŒŠÝÙY\ÞHLŒ^[Ý]šXY\—Ú
+K™XÝÜŒŠÝÙY\Þ^[Ý]šXY\—Ú
+K™XÝÜŒŠÝÙY\Þ
+ÈŒŒŒšY]ÜÜÜÚ^™KžJK™XÝÜŒŠÝÙY\Þ
+ÈŒšY]ÜÜÜÚ^™KžJWJKÛÛÜŠŒKŽKŒŒJJB‚™[˜È˜]×ÙÛ\Ü×ØØ\™
+™XÝˆ™XÝ‹XØÙ[ˆÛÛÜ‹[š]ˆ›Ø]Ù[XÝYØØ\™ˆ›ÛÛ
+HOˆ›ÚY‚‚]˜\ˆÛÝ×Ø[HHŒLÈYˆÙ[XÝYØØ\™[ÙHŒÂ‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠXØÙ[œ‹XØÙ[™ËXØÙ[˜‹ÛÝ×Ø[JKŒ‹Œ
+ˆ[š]
+K™XÝ™Ü›ÝÊŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒNŒMKŒL‹Ž
+KNŒ
+ˆ[š]
+K™XÝ
+B‚Y˜]×Ü™XÝ
+™XÝÛÛÜŠXØÙ[œ‹XØÙ[™ËXØÙ[˜‹ŒÍ
+K˜[ÙKKH
+ˆ[š]YJB‚Y˜]×Ü™XÝ
+™XÝŠ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLŒŒ
+H
+ˆ[š]™XÝÜŒŠ™XÝœÚ^™KžHŒŒ
+ˆ[š]‹Œ
+ˆ[š]
+JKÛÛÜŠKŒKŒKŒŒMJKYJB‚™[˜È˜]×ÚÛYWÛ[ÙWÚXÛÛŠÚ[™ˆ[Ù[\Žˆ™XÝÜŒ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚ZYˆÚ[™OH‚‚BHÈ\™[˜NˆHY™X[ÞHÚ]HÛX[Ú[›™\ˆÝ\‹‚‚BY˜]×ØÚ\˜ÛJÙ[\‹MKŒ
+ˆ[š]ÛÛÜ‹•ÒUK˜[ÙKKŒ
+ˆ[š]YJB‚BY˜]×ØÚ\˜ÛJÙ[\‹KŒ
+ˆ[š]ÛÛÜŠKŒKŒKŒŒJJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛÙ[\ˆ
+È™XÝÜŒŠLLŒLLŒ
+H
+ˆ[š]¸¦!H‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ŒŒ
+ˆ[š][
+L‹Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚Y[YˆÚ[™OHN‚‚BHÈš]˜]HœšY[™X]ÚˆÛÈÛX\›HY™™\™[^Y\œË‚‚BY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠNŒMËŒ
+H
+ˆ[š]ËŒ
+ˆ[š]ÛÛÜ‹•ÒUJB‚BY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠKŒMËŒ
+H
+ˆ[š]ËŒ
+ˆ[š]ÛÛÜŠ™Y™ˆŠJB‚BY˜]×Ø\˜ÊÙ[\ˆ
+È™XÝÜŒŠNŒL‹Œ
+H
+ˆ[š]LKŒ
+ˆ[š]KUKMÛÛÜ‹•ÒUKKŒ
+ˆ[š]YJB‚BY˜]×Ø\˜ÊÙ[\ˆ
+È™XÝÜŒŠKŒL‹Œ
+H
+ˆ[š]LKŒ
+ˆ[š]KUKMÛÛÜŠ™Y™ˆŠKKŒ
+ˆ[š]YJB‚Y[ÙN‚‚BHÈÚ[™ÛH^Y\ŽˆH^Y\ˆ˜XÙ\ÈH[Ûš]Ü‹ÐRK‚‚BY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠLL‹ŒMŒ
+H
+ˆ[š]ËŒ
+ˆ[š]ÛÛÜ‹•ÒUJB‚BY˜]×Ø\˜ÊÙ[\ˆ
+È™XÝÜŒŠLL‹ŒLËŒ
+H
+ˆ[š]LKŒ
+ˆ[š]KUKMÛÛÜ‹•ÒUKKŒ
+ˆ[š]YJB‚B]˜\ˆ[Ûš]ÜˆH™XÝŠÙ[\ˆ
+È™XÝÜŒŠ‹ŒLL‹Œ
+H
+ˆ[š]™XÝÜŒŠŒËŒNKŒ
+H
+ˆ[š]
+B‚BY˜]×Ü™XÝ
+[Ûš]Ü‹ÛÛÜŠŒMÌÌHŠKYJB‚BY˜]×Ü™XÝ
+[Ûš]Ü‹ÛÛÜ‹•ÒUK˜[ÙKËŒ
+ˆ[š]
+B‚BY˜]×Û[™JÙ[\ˆ
+È™XÝÜŒŠLËŒËŒ
+H
+ˆ[š]Ù[\ˆ
+È™XÝÜŒŠLËŒMKŒ
+H
+ˆ[š]ÛÛÜ‹•ÒUKËŒ
+ˆ[š]
+B‚™[˜È˜]×ÚÛYWÛ˜]—ÚXÛÛŠÚ[™ˆ[Ù[\Žˆ™XÝÜŒ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚ZYˆÚ[™OH‚‚B]˜\ˆ˜YÈH™XÝŠÙ[\ˆ
+È™XÝÜŒŠLL‹ŒNŒ
+H
+ˆ[š]™XÝÜŒŠŒŒ‹Œ
+H
+ˆ[š]
+B‚BY˜]×Ü™XÝ
+˜YËÛÛÜ‹•ÒUK˜[ÙKŒ
+ˆ[š]
+B‚BY˜]×Ø\˜ÊÙ[\ˆ
+È™XÝÜŒŠŒMËŒ
+H
+ˆ[š]ËŒ
+ˆ[š]KUKL‹ÛÛÜ‹•ÒUKËŒ
+ˆ[š]YJB‚Y[ÙN‚‚B]˜\ˆÚYH™XÝŠÙ[\ˆ
+È™XÝÜŒŠLLËŒNŒ
+H
+ˆ[š]™XÝÜŒŠ‹ŒŒ‹Œ
+H
+ˆ[š]
+B‚BY˜]×Ü™XÝ
+ÚYÛÛÜ‹•ÒUK˜[ÙKŒ
+ˆ[š]
+B‚BY˜]×Û[™JÙ[\ˆ
+È™XÝÜŒŠŒNŒ
+H
+ˆ[š]Ù[\ˆ
+È™XÝÜŒŠŒMŒ
+H
+ˆ[š]ÛÛÜ‹•ÒUKËŒ
+ˆ[š]
+B‚BY˜]×Û[™JÙ[\ˆ
+È™XÝÜŒŠLLËŒLKŒ
+H
+ˆ[š]Ù[\ˆ
+È™XÝÜŒŠLËŒLKŒ
+H
+ˆ[š]ÛÛÜ‹•ÒUKËŒ
+ˆ[š]
+B‚™[˜È˜]×ÝÛÛÙÜÙ][JÙ[\Žˆ™XÝÜŒ‹ØØ[Nˆ›Ø]ÚÝ×ÜÚYWÜÝ\Îˆ›ÛÛ
+HOˆ›ÚY‚‚ZYˆÛÛÙÜÙ][WÝ^\™HOH[‚‚B]˜\ˆÙ][WÜÚ^™HH™XÝÜŒŠŒŒLŒ
+H
+ˆØØ[HYˆÚÝ×ÜÚYWÜÝ\È[ÙH™XÝÜŒŠÍŒMKŒ
+H
+ˆØØ[B‚BHÈH\ØX›HÝ[™[™ÈÝ\™˜XÙH\ÈYÚ[ˆHÛÝ\˜ÙH\ÜÙ]ÛÈH[XYÙB‚BHÈ^[™È[ÜÝH™[ÝÈHÝ\YYÙ[\ˆÚ[‚‚B]˜\ˆÙ][WÜ™XÝH™XÝŠÙ[\ˆH™XÝÜŒŠÙ][WÜÚ^™Kž
+ˆKÙ][WÜÚ^™KžH
+ˆŒÍÊKÙ][WÜÚ^™JB‚BY˜]×Ý^\™WÜ™XÝ
+ÛÛÙÜÙ][WÝ^\™KÙ][WÜ™XÝ˜[ÙJB‚B\™]\›‚‚HÈZ[š[X[˜[˜XÚÈ\ÙYÛ›HYˆHÙ][H\ÜÙ]Y›Ý[\Ü‚‚]˜\ˆ˜[˜XÚÈH™XÝŠÙ[\ˆH™XÝÜŒŠLŒŒÌŒ
+H
+ˆØØ[K™XÝÜŒŠŒÌŒ
+H
+ˆØØ[JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŽXN˜ÈŠKL‹Œ
+ˆØØ[JK˜[˜XÚÊB‚Y˜]×ØÚ\˜ÛJÙ[\‹ŒKŒ
+ˆØØ[KÛÛÜŠ™ØÎMÈŠJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÙ[\ˆ
+È™XÝÜŒŠLMËŒŒ
+H
+ˆØØ[KŒH‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ÍŒ
+ˆØØ[K[
+Œ‹Œ
+ˆØØ[JKÛÛÜŠÍNŠJB‚™[˜È˜]×ÚÛYWØÚ\˜XÝ\Š[š[X[Ú[™^ˆ[Ù[\Žˆ™XÝÜŒ‹Ú^™Nˆ›Ø]\ÙNˆ›Ø]Ý]š]ØÛÛÜŽˆÛÛÜŠHOˆ›ÚY‚‚ZYˆ[š[X[Ú[™^Üˆ[š[X[Ú[™^H[š[X[Ý^\™\ËœÚ^™J
+HÜˆ[š[X[Ý^\™\ÖØ[š[X[Ú[™^HOH[‚‚B\™]\›‚‚]˜\ˆ›ØˆHÚ[ŠY[WÙ[\ÙY
+ˆ‹Œ
+È\ÙJH
+ˆŒ‚]˜\ˆ[HÚ[ŠY[WÙ[\ÙY
+ˆK
+È\ÙJH
+ˆŒMB‚]˜\ˆÜÚ][ÛˆHÙ[\ˆ
+È™XÝÜŒŠŒ›ØŠB‚Y˜]×ØÚ\˜ÛJÜÚ][Ûˆ
+È™XÝÜŒŠŒÚ^™H
+ˆŒLŠKÚ^™H
+ˆ‹ÛÛÜŠÝ]š]ØÛÛÜ‹ŒÌ
+JB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÜÚ][Û‹[™XÝÜŒ‹“Ó‘JB‚Y˜]×Ý^\™WÜ™XÝ
+[š[X[Ý^\™\ÖØ[š[X[Ú[™^K™XÝŠ™XÝÜŒ‹“Ó‘H
+ˆ\Ú^™H
+ˆK™XÝÜŒ‹“Ó‘H
+ˆÚ^™JK˜[ÙJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚™[˜È˜]×ÚÛYWÛXY\˜›Ø\™
+[™[ˆ™XÝŠHOˆ›ÚY‚‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒÍKŒLËŽLŠKŒ
+K[™[™Ü›ÝÊŒ
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™XYŽŒHŠKŒKŒ
+K[™[
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŽŒ
+KZWÝ^
+›XY\˜›Ø\™Ý]HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžM‹ÛÛÜŠŒMÌÌHŠJB‚]˜\ˆ[šY\ÈHÛØ˜[ÛXY\˜›Ø\™™\XØ]J
+B‚ZYˆ[šY\Ëš\×Ù[\J
+N‚‚BY[šY\ÈHÞÈœ˜[šÈŽˆK›˜[YHŽˆ›Ùš[WÛ˜[YKœ˜][™ÈŽˆ^Y\—Ü˜][™ËœX›XÒYŽˆš\™X˜\ÙWÜX›X×ÚYWB‚]˜\ˆÛÝ[HZ[šJ[šY\ËœÚ^™J
+JB‚Y›ÜˆH[ˆÛÝ[‚‚B]˜\ˆ[žNˆXÝ[Û˜\žHH[šY\ÖÚWB‚B]˜\ˆ›ÝÈH™XÝŠ[™[œÜÚ][Ûˆ
+È™XÝÜŒŠLŒÎŒ
+ÈH
+ˆŒ
+K™XÝÜŒŠ[™[œÚ^™KžHŒŒ‹Œ
+JB‚B]˜\ˆ\×ÛYHHÝŠ[žK™Ù]
+œX›XÒY‹ˆŠJHOHš\™X˜\ÙWÜX›X×ÚY‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™M˜NŠHYˆ\×ÛYH[ÙHÛÛÜŠŽMKŽNKŽMËŽMŠKLËŒ
+K›ÝÊB‚BY˜]×ÜÝš[™ÊZWÙ›Û›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠŒËŒ
+KˆÈˆ
+ÈÝŠ[žK™Ù]
+œ˜[šÈ‹H
+ÈJJKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ŽŒLËÛÛÜŠŒMÌÌHŠJB‚BY˜]×ÜÝš[™ÊZWÙ›Û›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠÎŒŒŒ
+KÝŠ[žK™Ù]
+›˜[YH‹ˆŠJKÔ’V“Ó•SÐSQÓ“QS•ÓQ•›ÝËœÚ^™KžHLŒL‹ÛÛÜŠŒMÌÌHŠJB‚BY˜]×ÜÝš[™ÊZWÙ›Û›ÝËœÜÚ][Ûˆ
+È™XÝÜŒŠÎŒÍKŒ
+KÝŠ[žK™Ù]
+œ˜][™È‹
+JH
+Èˆˆ
+ÈZWÝ^
+œ˜][™×ÛX™[ŠKÔ’V“Ó•SÐSQÓ“QS•ÓQ•›ÝËœÚ^™KžHLŒKÛÛÜŠLÌNŠJB‚™[˜È˜]×Ùœ›Û[™ÚXY\ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹]NˆÝš[™ËÝX]NˆÝš[™ÊHOˆ›ÚY‚‚]˜\ˆ˜XÚÈHœ›Û[™Ø˜XÚ×Ü™XÝ
+šY]ÜÜÜÚ^™JB‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ü™XÝ
+™XÝŠŒŒšY]ÜÜÜÚ^™KžMŒ
+ˆ[š]
+KÛÛÜŠŒKŒŒ‹ŒNŽL
+JB‚Y˜]×Ü™XÝ
+™XÝŠŒL‹Œ
+ˆ[š]šY]ÜÜÜÚ^™Kž‹Œ
+ˆ[š]
+KÛÛÜŠ™Ù™ˆ‹Œ
+JB‚Y˜]×ÙÛ\Ü×ØØ\™
+˜XÚËÛÛÜŠNY™™ˆŠK[š]˜[ÙJB‚Y˜]×ÜÝš[™ÊZWÙ›Û˜XÚËœÜÚ][Ûˆ
+È™XÝÜŒŠŒÌKŒ
+K¸ .Hˆ
+ÈZWÝ^
+˜˜XÚÈŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹˜XÚËœÚ^™KžMKÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠMÌŒ
+ˆ[š]KŒ
+ˆ[š]
+K]KÔ’V“Ó•SÐSQÓ“QS•ÓQ•šY]ÜÜÜÚ^™KžHÍŒ
+ˆ[š][
+ËŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠMÌŒ
+ˆ[š]Ì‹Œ
+ˆ[š]
+KÝX]KÔ’V“Ó•SÐSQÓ“QS•ÓQ•šY]ÜÜÜÚ^™KžHÍŒ
+ˆ[š][
+LËŒ
+ˆ[š]
+KÛÛÜŠÎY™ŠJB‚™[˜È˜]×Ü›Ùš[WÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ùœ›Û[™ÚXY\ŠšY]ÜÜÜÚ^™KZWÝ^
+˜ÚÛÜÙWØÚ\˜XÝ\ˆŠKZWÝ^
+˜ÚÛÜÙWØÚ\˜XÝ\—ÜÝXˆŠJB‚HÈœšYÚ\]XHÚÝÜ›ÛÛH[œÜ\™YžHHÙXHÝ\œ›Ý[™[™ÈH›ÛÜ[ÛÛHX›K‚‚Y˜]×Ü™XÝ
+™XÝŠŒL‹Œ
+ˆ[š]šY]ÜÜÜÚ^™KžšY]ÜÜÜÚ^™KžHHL‹Œ
+ˆ[š]
+KÛÛÜŠŒM‹Ì‹Ž‹ŒŒ
+JB‚]˜\ˆ\Ü^HH™XÝŠÌ‹Œ
+ˆ[š]L‹Œ
+ˆ[š]ÌŒ
+ˆ[š]MŒ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹ŒLŒMËÎ
+KŽŒ
+ˆ[š]
+K\Ü^K™Ü›ÝÊKŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ˜Ø™HŠKKŒ
+ˆ[š]
+K\Ü^JB‚HÈHÛX[ÛÛÙ[ˆÚ[›™\ˆÙ][HÜ›Ý[™ÈH[X›ÙH\›Ë‚‚]˜\ˆÙ][WØÙ[\ˆH\Ü^KœÜÚ][Ûˆ
+È™XÝÜŒŠ\Ü^KœÚ^™Kž
+ˆL\Ü^KœÚ^™KžH
+ˆŽÊB‚Y˜]×ÝÛÛÙÜÙ][JÙ][WØÙ[\‹[š]
+ˆÌ‹˜[ÙJB‚]˜\ˆ\›×ÜÚ^™HH™XÝÜŒŠÌŒÍLŒ
+H
+ˆ[š]‚]˜\ˆÜ›Ý[™ÛÙ™œÙ]ˆ›Ø]H\›×ÜÚ^™KžH
+ˆ›Ø]
+T“×ÑÔ“ÕS‘ÓÑ‘”ÑUÖØÛ[\J^Y\—Ø[š[X[T“×ÑÔ“ÕS‘ÓÑ‘”ÑUËœÚ^™J
+HHJWJB‚]˜\ˆ\›×ØÙ[\ˆH\Ü^KœÜÚ][Ûˆ
+È™XÝÜŒŠ\Ü^KœÚ^™Kž
+ˆL\Ü^KœÚ^™KžH
+ˆH
+ÈLŒ
+ˆ[š]
+ÈÜ›Ý[™ÛÙ™œÙ]
+ÈÚ[ŠY[WÙ[\ÙY
+ˆK
+H
+ˆH
+ˆ[š]
+B‚]˜\ˆ\›×Ý^\™Nˆ^\™L‘H[‚ZYˆ^Y\—Ø[š[X[Y™X[ÞWÚ\›×Ý^\™\ËœÚ^™J
+N‚‚B]˜\ˆÛÛÜœÎˆ\œ˜^HHY™X[ÞWÚ\›×Ý^\™\ÖÜ^Y\—Ø[š[X[B‚BZYˆ^Y\—Üš[™×ØÛÛÜˆÛÛÜœËœÚ^™J
+N‚‚BBZ\›×Ý^\™HHÛÛÜœÖÜ^Y\—Üš[™×ØÛÛÜ—H\È^\™L‘‚ZYˆ\›×Ý^\™HOH[‚‚BY˜]×Ý^\™WÜ™XÝ
+\›×Ý^\™K™XÝŠ\›×ØÙ[\ˆH\›×ÜÚ^™H
+ˆK\›×ÜÚ^™JK˜[ÙJB‚Y˜]×ÜÝš[™ÊZWÙ›Û\Ü^KœÜÚ][Ûˆ
+È™XÝÜŒŠŒ\Ü^KœÚ^™KžHHNŒ
+ˆ[š]
+KZWØ[š[X[Û˜[YJ^Y\—Ø[š[X[
+KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹\Ü^KœÚ^™Kž[
+Œ‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚‚]˜\ˆ[™›ÈH™XÝŠMÌŒ
+ˆ[š]LNŒ
+ˆ[š]ŒÎŒ
+ˆ[š]Ì‹Œ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒÍKŒMŽ
+KŒ
+ˆ[š]
+K[™›ÊB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™›ËœÜÚ][Ûˆ
+È™XÝÜŒŠŒËŒ
+H
+ˆ[š]ZWÝ^
+˜ÚÛÜÙWÜš[™ÈŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™›ËœÚ^™Kž[
+Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™›ËœÜÚ][Ûˆ
+È™XÝÜŒŠŒÍ‹Œ
+H
+ˆ[š]ZWÝ^
+˜ÚÛÜÙWÜš[™×ÜÝXˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™›ËœÚ^™Kž[
+L‹Œ
+ˆ[š]
+KÛÛÜŠ™Ù™™ˆŠJB‚Y›ÜˆH[ˆ’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+N‚‚B]˜\ˆš[™×Ø]ÛˆHÚ\˜XÝ\—Üš[™×Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚B]˜\ˆš[™×ÜÙ[XÝYHHOH^Y\—Üš[™×ØÛÛÜ‚‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠHYˆš[™×ÜÙ[XÝY[ÙHÛÛÜŠŒMÌØMMˆŠKMËŒ
+ˆ[š]
+Kš[™×Ø]Û‹™Ü›ÝÊ
+ŒYˆš[™×ÜÙ[XÝY[ÙH‹Œ
+H
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒŽXÌÈŠHYˆš[™×ÜÙ[XÝY[ÙHÛÛÜŠŒLŒÌÈŠKMŒ
+ˆ[š]
+Kš[™×Ø]ÛŠB‚B]˜\ˆš[™×ØÙ[\ˆHš[™×Ø]Û‹œÜÚ][Ûˆ
+È™XÝÜŒŠÍŒÎKŒ
+H
+ˆ[š]‚BY˜]×ØÚ\˜ÛJš[™×ØÙ[\‹ËŒ
+ˆ[š]’S‘×ÐÓÓÔ”ÖÚWJB‚BY˜]×ØÚ\˜ÛJš[™×ØÙ[\‹L‹Œ
+ˆ[š]ÛÛÜŠŒMÌÈŠJB‚BY˜]×Ø\˜Êš[™×ØÙ[\‹ËŒ
+ˆ[š]LÌŒMKLÛÛÜŠ™™™ÈŠKŒ
+ˆ[š]YJB‚BY˜]×Ø\˜Êš[™×ØÙ[\‹ËŒ
+ˆ[š]‹KËŒÌLÛÛÜŠ™™™ÈŠKŒ
+ˆ[š]YJB‚BY˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^Jš[™×Ø]Û‹KYK[š]
+B‚BY˜]×ÜÝš[™ÊZWÙ›Ûš[™×Ø]Û‹œÜÚ][Ûˆ
+È™XÝÜŒŠŒËŒËŒ
+H
+ˆ[š]ZWÜš[™×Û˜[YJJKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹š[™×Ø]Û‹œÚ^™KžHŽKŒ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BZYˆHOH^Y\—Üš[™×ØÛÛÜŽ‚‚BBY˜]×ØÚ\˜ÛJš[™×Ø]Û‹œÜÚ][Ûˆ
+È™XÝÜŒŠš[™×Ø]Û‹œÚ^™KžHMŒ
+ˆ[š]MŒ
+ˆ[š]
+KLËŒ
+ˆ[š]ÛÛÜŠ™™™LYŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›Ûš[™×Ø]Û‹œÜÚ][Ûˆ
+È™XÝÜŒŠš[™×Ø]Û‹œÚ^™KžHËŒ
+ˆ[š]ŒŒ
+ˆ[š]
+K¸§$È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹‹Œ
+ˆ[š][
+LËŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝÜŒŠŒšY]ÜÜÜÚ^™KžHHNMŒ
+ˆ[š]
+KZWÝ^
+˜ÚÛÜÙWØ[š[X[ŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹šY]ÜÜÜÚ^™Kž[
+M‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚Y›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚B]˜\ˆØ\™HÚ\˜XÝ\—ØØ\™Ü™XÝ
+KšY]ÜÜÜÚ^™JB‚B]˜\ˆÙ[XÝYØØ\™HHOH^Y\—Ø[š[X[‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠHYˆÙ[XÝYØØ\™[ÙHÛÛÜŠŒ‹ŒŒMŽL
+KNKŒ
+ˆ[š]
+KØ\™™Ü›ÝÊ
+KŒYˆÙ[XÝYØØ\™[ÙHËŒ
+H
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒÍX™˜ÎŠHYˆÙ[XÝYØØ\™[ÙHÛÛÜŠŒÈŠKM‹Œ
+ˆ[š]
+KØ\™
+B‚B]˜\ˆÜ˜Z]H[Ø›ÙWØ[š[X[Ý^\™\ÖÚWB‚BZYˆÜ˜Z]OH[‚‚BB]˜\ˆÜ˜Z]Ü™XÝH™XÝŠØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠÌŒ‹Œ
+H
+ˆ[š]™XÝÜŒŠNŒLM‹Œ
+H
+ˆ[š]
+B‚BBY˜]×Ý^\™WÜ™XÝ
+Ü˜Z]Ü˜Z]Ü™XÝ˜[ÙJB‚BY˜]×ØÛÛXÝ[Û—ÛØÚ×ÛÝ™\›^JØ\™K˜[ÙK[š]
+B‚BY˜]×Ü™XÝ
+™XÝŠØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒLMŒ
+H
+ˆ[š]™XÝÜŒŠØ\™œÚ^™KžÍ‹Œ
+ˆ[š]
+JKÛÛÜŠŒKŒKŒLŽ
+JB‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒLÎKŒ
+H
+ˆ[š]ZWØ[š[X[Û˜[YJJKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™Kž[
+L‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BZYˆÙ[XÝYØØ\™‚‚BBY˜]×ØÚ\˜ÛJØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠØ\™œÚ^™KžHMKŒ
+ˆ[š]MKŒ
+ˆ[š]
+KMŒ
+ˆ[š]ÛÛÜŠ™™™LYŠJB‚BBY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠØ\™œÚ^™KžHŽKŒ
+ˆ[š]ŒKŒ
+ˆ[š]
+K¸§$È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹ŽŒ
+ˆ[š][
+MŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚™[˜È›Ø\™Ý[YWÛ˜[YJ[™^ˆ[
+HOˆÝš[™Î‚‚]˜\ˆÙ^\ÈHÈ˜›Ø\™ØÛ\ÜÚXÈ‹˜›Ø\™ÚXÙH‹˜›Ø\™Ú[™ÛH‹˜›Ø\™Ý›ÛØ[›È‹˜›Ø\™ØØ[™H—B‚\™]\›ˆZWÝ^
+Ù^\ÖØÛ[\J[™^Ù^\ËœÚ^™J
+HHJWJB‚™[˜È›Ø\™Ý[YWÝ^\™J[™^ˆ[
+HOˆ^\™L‘‚‚ZYˆ›Ø\™Ý[YWÝ^\™\Ëš\×Ù[\J
+N‚‚B\™]\›ˆ›Ø\™Ý^\™B‚]˜\ˆ^\™HH›Ø\™Ý[YWÝ^\™\ÖØÛ[\J[™^›Ø\™Ý[YWÝ^\™\ËœÚ^™J
+HHJWB‚\™]\›ˆ^\™HYˆ^\™HOH[[ÙH›Ø\™Ý^\™B‚™[˜È›Ø\™Ý[YWØXØÙ[
+[™^ˆ[
+HOˆÛÛÜŽ‚‚]˜\ˆXØÙ[ÈHÐÛÛÜŠNÎYNŠKÛÛÜŠŽÙXÙ™ˆŠKÛÛÜŠ™™LNŠKÛÛÜŠ™™ØÈŠKÛÛÜŠ™™ÎÈŠWB‚\™]\›ˆXØÙ[ÖØÛ[\J[™^XØÙ[ËœÚ^™J
+HHJWB‚™[˜È›Ø\™Ý[YWÛ[Ù[]J[™^ˆ[
+HOˆÛÛÜŽ‚‚[X]ÚÛ[\J[™^“ÐT‘ÕSQWÐÓÕS•HJN‚‚BLN‚‚BB\™]\›ˆÛÛÜŠŽ‹ŽMKKŒ
+B‚BLŽ‚‚BB\™]\›ˆÛÛÜŠŽL‹KŒŽ
+B‚BLÎ‚‚BB\™]\›ˆÛÛÜŠKŒŽLŽŠB‚BWÎ‚‚BB\™]\›ˆÛÛÜ‹•ÒUB‚™[˜È˜]×Ø›Ø\™Ý[YWÛÝ™\›^J[YWÚ[™^ˆ[
+HOˆ›ÚY‚‚Y˜]×Ø›Ø\™Ý[YWÛÝ™\›^WÛÛ—Ü™XÝ
+[YWÚ[™^›Ø\™Ü™XÝ›Ø\™ÜØØ[JB‚™[˜È˜]×Ø›Ø\™Ý[YWØØ\™
+[YWÚ[™^ˆ[Ø\™ˆ™XÝ‹Ù[XÝYˆ›ÛÛ[š]ˆ›Ø]
+HOˆ›ÚY‚‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠHYˆÙ[XÝY[ÙHÛÛÜŠŒ‹Œ‹ŒL‹ŽL
+KMŒ
+ˆ[š]
+KØ\™™Ü›ÝÊ
+ŒYˆÙ[XÝY[ÙH‹Œ
+H
+ˆ[š]
+JB‚]˜\ˆ™]šY]ÈH™XÝŠØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠ‹Œ
+ˆ[š]‹Œ
+ˆ[š]
+K™XÝÜŒŠØ\™œÚ^™KžHL‹Œ
+ˆ[š]Ø\™œÚ^™KžHHŒ
+ˆ[š]
+JB‚Y˜]×ÜÚÜØ›Ø\™Ü™]šY]Ê[YWÚ[™^™]šY]Ë[š]
+B‚Y˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒØ\™œÚ^™KžHHL‹Œ
+ˆ[š]
+K›Ø\™Ý[YWÛ˜[YJ[YWÚ[™^
+KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™Kž[
+LŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚ZYˆÙ[XÝY‚‚BY˜]×ØÚ\˜ÛJØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠØ\™œÚ^™KžHL‹Œ
+ˆ[š]L‹Œ
+ˆ[š]
+KKŒ
+ˆ[š]ÛÛÜŠ™™™LYŠJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠØ\™œÚ^™KžHŒKŒ
+ˆ[š]M‹Œ
+ˆ[š]
+K¸§$È‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹NŒ
+ˆ[š][
+LKŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚™[˜ÈÚÜÝ[›ØÚÙYØÛÝ[
+\×Üš[™Îˆ›ÛÛ
+HOˆ[‚‚]˜\ˆÝ[H‚ZYˆ\×Üš[™Î‚‚BY›ÜˆH[ˆ’S‘×ÐÓÓÔ”ËœÚ^™J
+N‚‚BBZYˆ\×Üš[™×Ý[›ØÚÙY
+JN‚‚BBB]Ý[
+ÏHB‚Y[ÙN‚‚BY›ÜˆH[ˆS’SPSÓSQTËœÚ^™J
+N‚‚BBZYˆ\×Ø[š[X[Ý[›ØÚÙY
+JN‚‚BBB]Ý[
+ÏHB‚\™]\›ˆÝ[‚™[˜ÈÚÜÜYÙWÝ]J
+HOˆÝš[™Î‚‚[X]ÚÚÜÜYÙN‚‚BTÒÔÔQÑWÐS’SPSÎ‚‚BB\™]\›ˆZWÝ^
+˜Ú\˜XÝ\œÈŠB‚BTÒÔÔQÑWÔ’S‘ÔÎ‚‚BB\™]\›ˆZWÝ^
+œš[™ÜÈŠB‚BTÒÔÔQÑWÑQ‘‘PÕÎ‚‚BB\™]\›ˆZWÝ^
+™Y™™XÝÈŠB‚BWÎ‚‚BB\™]\›ˆZWÝ^
+œÚÜÝ]HŠB‚™[˜ÈÚÜÜYÙWÜÝX]J
+HOˆÝš[™Î‚‚[X]ÚÚÜÜYÙN‚‚BTÒÔÔQÑWÐS’SPSÎ‚‚BB\™]\›ˆZWÝ^
+˜Ú\˜XÝ\œ×ÜÝXˆŠB‚BTÒÔÔQÑWÔ’S‘ÔÎ‚‚BB\™]\›ˆZWÝ^
+œš[™Ü×ÜÝXˆŠB‚BTÒÔÔQÑWÑQ‘‘PÕÎ‚‚BB\™]\›ˆZWÝ^
+˜ÛÛXÝ[Û—Ú[™›ÈŠB‚BWÎ‚‚BB\™]\›ˆZWÝ^
+œÚÜÝ[›ØÚÜ×ÜÝXˆŠB‚™[˜ÈÚÜØØ]YÛÜžWÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆØ\HŒ‹Œ
+ˆ[š]‚]˜\ˆØ\™ÝÈHZ[™ŠÌŒ
+ˆ[š]
+šY]ÜÜÜÚ^™KžHLŒ
+ˆ[š]HØ\
+ˆ‹Œ
+HÈËŒ
+B‚]˜\ˆØ\™ÚHZ[™ŠÎŒ
+ˆ[š]šY]ÜÜÜÚ^™KžHHŒŒ
+ˆ[š]
+B‚]˜\ˆÝ[ÝÈHØ\™ÝÈ
+ˆËŒ
+ÈØ\
+ˆ‹Œ‚]˜\ˆÝ\ÞH
+šY]ÜÜÜÚ^™KžHÝ[ÝÊH
+ˆB‚]˜\ˆÝ\ÞHHX^ŠMLŒ
+ˆ[š]
+šY]ÜÜÜÚ^™KžHHØ\™Ú
+H
+ˆJB‚\™]\›ˆ™XÝŠ™XÝÜŒŠÝ\Þ
+È›Ø]
+[™^
+H
+ˆ
+Ø\™ÝÈ
+ÈØ\
+KÝ\ÞJK™XÝÜŒŠØ\™ÝËØ\™Ú
+JB‚™[˜ÈÚÜÙ]Z[ØÛÛ[[œÊ][WØÛÝ[ˆ[
+HOˆ[‚‚\™]\›ˆZ[šJX^J‹][WØÛÝ[
+JB‚™[˜ÈÚÜÙ]Z[ÙÜšYÜ™XÝ
+[™^ˆ[šY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹][WØÛÝ[ˆ[
+HOˆ™XÝŽ‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚]˜\ˆÛÛ[[œÈHÚÜÙ]Z[ØÛÛ[[œÊ][WØÛÝ[
+B‚]˜\ˆ›ÝÜÈH[
+ÙZ[
+›Ø]
+][WØÛÝ[
+HÈ›Ø]
+ÛÛ[[œÊJJB‚]˜\ˆØ\HM‹Œ
+ˆ[š]‚]˜\ˆÜHL‹Œ
+ˆ[š]‚]˜\ˆ›ÝÛWÛX\™Ú[ˆHŽŒ
+ˆ[š]‚]˜\ˆ]˜Z[X›WÚHšY]ÜÜÜÚ^™KžHHÜH›ÝÛWÛX\™Ú[‚‚]˜\ˆ]˜Z[X›WÝÈHšY]ÜÜÜÚ^™KžHÌ‹Œ
+ˆ[š]‚]˜\ˆØ\™ÝÈH
+]˜Z[X›WÝÈHØ\
+ˆ›Ø]
+ÛÛ[[œÈHJJHÈ›Ø]
+ÛÛ[[œÊB‚]˜\ˆØ\™ÚHZ[™ŠÍŒŒ
+ˆ[š]
+]˜Z[X›WÚHØ\
+ˆ›Ø]
+›ÝÜÈHJJHÈ›Ø]
+›ÝÜÊJB‚]˜\ˆÛÛH[™^	HÛÛ[[œÂ‚]˜\ˆ›ÝÈH[
+[™^ÈÛÛ[[œÊB‚]˜\ˆ][\×Ú[—Ü›ÝÈHZ[šJÛÛ[[œË][WØÛÝ[H›ÝÈ
+ˆÛÛ[[œÊB‚]˜\ˆ›Ý×ÝÚYHØ\™ÝÈ
+ˆ›Ø]
+][\×Ú[—Ü›ÝÊH
+ÈØ\
+ˆ›Ø]
+][\×Ú[—Ü›ÝÈHJB‚]˜\ˆÝ\ÞH
+šY]ÜÜÜÚ^™KžH›Ý×ÝÚY
+H
+ˆB‚\™]\›ˆ™XÝŠ™XÝÜŒŠÝ\Þ
+È›Ø]
+ÛÛ
+H
+ˆ
+Ø\™ÝÈ
+ÈØ\
+KÜ
+È›Ø]
+›ÝÊH
+ˆ
+Ø\™Ú
+ÈØ\
+JK™XÝÜŒŠØ\™ÝËØ\™Ú
+JB‚™[˜ÈÚÜÙ]Z[ÜšXÙWÛX™[
+[™^ˆ[\×Üš[™Îˆ›ÛÛ
+HOˆÝš[™Î‚‚]˜\ˆ[›ØÚÙYH\×Üš[™×Ý[›ØÚÙY
+[™^
+HYˆ\×Üš[™È[ÙH\×Ø[š[X[Ý[›ØÚÙY
+[™^
+B‚]˜\ˆÙ[XÝYH
+^Y\—Üš[™×ØÛÛÜˆOH[™^
+HYˆ\×Üš[™È[ÙH
+^Y\—Ø[š[X[OH[™^
+B‚ZYˆÙ[XÝY[™[›ØÚÙY‚‚B\™]\›ˆZWÝ^
+™\]Z\YÚ][HŠB‚ZYˆ[›ØÚÙY‚‚B\™]\›ˆZWÝ^
+›ÝÛ™YÚ][HŠB‚]˜\ˆšXÙHHš[™×Ý[›ØÚ×ÜšXÙJ[™^
+HYˆ\×Üš[™È[ÙH[š[X[Ý[›ØÚ×ÜšXÙJ[™^
+B‚ZYˆšXÙHH‚‚B\™]\›ˆZWÝ^
+™œ™YWÚ][HŠB‚\™]\›ˆÝŠšXÙJH
+ÈZWÝ^
+˜ÛÚ[œÈŠB‚™[˜È˜]×ÜÚÜØØ]YÛÜžWÚXÛÛŠÚ[™ˆ[Ù[\Žˆ™XÝÜŒ‹Ú^™Nˆ›Ø][š]ˆ›Ø]
+HOˆ›ÚY‚‚Y˜]×ØÚ\˜ÛJÙ[\‹Ú^™H
+ˆL‹ÛÛÜŠKŒKŒKŒŒL
+JB‚ZYˆÚ[™OH‚‚BZYˆ[Ø›ÙWØ[š[X[Ý^\™\ËœÚ^™J
+Hˆ[™[Ø›ÙWØ[š[X[Ý^\™\ÖÌHOH[‚‚BB]˜\ˆÜ˜Z]ÜÚ^™HH™XÝÜŒŠÚ^™H
+ˆŽMKÚ^™H
+ˆKŒMJB‚BBY˜]×Ý^\™WÜ™XÝ
+[Ø›ÙWØ[š[X[Ý^\™\ÖÌK™XÝŠÙ[\ˆHÜ˜Z]ÜÚ^™H
+ˆKÜ˜Z]ÜÚ^™JK˜[ÙJB‚BY[ÙN‚‚BBY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠŒ\Ú^™H
+ˆŒ
+KÚ^™H
+ˆŒŒ‹ÛÛÜŠ™Œ˜ÎXLŠJB‚BBY˜]×ØÚ\˜ÛJÙ[\ˆ
+È™XÝÜŒŠŒÚ^™H
+ˆŒN
+KÚ^™H
+ˆŒÌÛÛÜŠ™Œ˜ÎXLŠJB‚Y[YˆÚ[™OHN‚‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\‹Œ™XÝÜŒŠKŒMJJB‚BY˜]×Ø\˜Ê™XÝÜŒ‹–‘T“ËÚ^™H
+ˆ‹ŒUKÍ‹ÛÛÜŠ™™ØÈŠKÚ^™H
+ˆŒM‹YJB‚BY˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚BY˜]×ØÚ\˜ÛJÙ[\‹Ú^™H
+ˆŒMÛÛÜŠŒMÌÌHŠJB‚Y[YˆÚ[™OHŽ‚‚BY›ÜˆH[ˆŽ‚‚BB]˜\ˆ[™ÛHH›Ø]
+JH
+ˆUHÈ‹Œ
+ÈY[WÙ[\ÙY
+ˆ‚BB]˜\ˆÜ\šÈHÙ[\ˆ
+È™XÝÜŒŠÛÜÊ[™ÛJKÚ[Š[™ÛJJH
+ˆÚ^™H
+ˆŒÍ‚BBY˜]×ØÚ\˜ÛJÜ\šËÚ^™H
+ˆŒÛÛÜŠ™™™LY‹ŽJJB‚BY˜]×ØÚ\˜ÛJÙ[\‹Ú^™H
+ˆŒM‹ÛÛÜŠŽXMNÈ‹MJJB‚BY˜]×ØÚ\˜ÛJÙ[\‹Ú^™H
+ˆŒÛÛÜ‹•ÒUJB‚™[˜È˜]×ÜÚÜØ›Ø\™Ü™]šY]Ê[YWÚ[™^ˆ[™]šY]Îˆ™XÝ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ[YHHÛ[\J[YWÚ[™^“ÐT‘ÕSQWÐÓÕS•HJB‚]˜\ˆXØÙ[H›Ø\™Ý[YWØXØÙ[
+[YJB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹Œ‹ŒLKŽLŠKMŒ
+ˆ[š]
+K™]šY]Ë™Ü›ÝÊËŒ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+XØÙ[™\šÙ[™Y
+MJKL‹Œ
+ˆ[š]
+K™]šY]ÊB‚]˜\ˆ[›™\ˆH™]šY]Ë™Ü›ÝÊLLŒ
+ˆ[š]
+B‚Y˜]×Ü™XÝ
+[›™\‹ÛÛÜŠŒXLÌŠJB‚]˜\ˆ™]šY]×Ý^\™HH›Ø\™Ý[YWÝ^\™J[YJB‚ZYˆ™]šY]×Ý^\™HOH[‚‚BY˜]×Ý^\™WÜ™XÝ
+™]šY]×Ý^\™K[›™\‹˜[ÙJB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠXØÙ[œ‹XØÙ[™ËXØÙ[˜‹ŒÍJKLŒ
+ˆ[š]
+K™XÝŠ[›™\‹œÜÚ][Û‹™XÝÜŒŠ[›™\‹œÚ^™KžËŒ
+ˆ[š]
+JJB‚™[˜È˜]×ÜÚÜØÛÚ[—Ø›Þ
+šY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆÛÚ[—Ø›ÞH™XÝŠšY]ÜÜÜÚ^™KžHŒŒŒ
+ˆ[š]Œ
+ˆ[š]NŒ
+ˆ[š]MŒ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒLÙMÈŠKMŒ
+ˆ[š]
+KÛÚ[—Ø›Þ
+B‚Y˜]×ØÚ\˜ÛJÛÚ[—Ø›ÞœÜÚ][Ûˆ
+È™XÝÜŒŠŽŒËŒ
+H
+ˆ[š]MKŒ
+ˆ[š]ÛÛÜŠ™™˜ÎÙŠJB‚Y˜]×ÜÝš[™ÊZWÙ›ÛÛÚ[—Ø›ÞœÜÚ][Ûˆ
+È™XÝÜŒŠL‹ŒÍKŒ
+H
+ˆ[š]ÝŠ^Y\—ØÛÚ[œÊKÔ’V“Ó•SÐSQÓ“QS•ÓQ•LLŒ
+ˆ[š][
+ŒŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚™[˜È˜]×Ý^\™WÙš]
+^\™Nˆ^\™L‘™XÝˆ™XÝŠHOˆ›ÚY‚‚ZYˆ^\™HOH[‚‚B\™]\›‚‚]˜\ˆ^ÜÚ^™HH^\™K™Ù]ÜÚ^™J
+B‚ZYˆ^ÜÚ^™KžHŒÜˆ^ÜÚ^™KžHHŒ‚‚B\™]\›‚‚]˜\ˆØØ[HHZ[™Š™XÝœÚ^™KžÈ^ÜÚ^™Kž™XÝœÚ^™KžHÈ^ÜÚ^™KžJB‚]˜\ˆ˜]×ÜÚ^™HH^ÜÚ^™H
+ˆØØ[B‚]˜\ˆÜÈH™XÝœÜÚ][Ûˆ
+È
+™XÝœÚ^™HH˜]×ÜÚ^™JH
+ˆB‚Y˜]×Ý^\™WÜ™XÝ
+^\™K™XÝŠÜË˜]×ÜÚ^™JK˜[ÙJB‚™[˜È˜]×ÜÚÜÜš[™×Ü™]šY]Ê\Ü™XÝˆ™XÝ‹[™^ˆ[
+HOˆ›ÚY‚‚]˜\ˆ™]šY]×Ø[š[X[H‚ZYˆ™]šY]×Ø[š[X[Y™X[ÞWÚ\›×Ý^\™\ËœÚ^™J
+N‚‚B]˜\ˆÛÛÜœÎˆ\œ˜^HHY™X[ÞWÚ\›×Ý^\™\ÖÜ™]šY]×Ø[š[X[B‚BZYˆ[™^ÛÛÜœËœÚ^™J
+H[™ÛÛÜœÖÚ[™^HOH[‚‚BBY˜]×Ý^\™WÙš]
+ÛÛÜœÖÚ[™^H\È^\™L‘\Ü™XÝ
+B‚BB\™]\›‚‚]˜\ˆÙ[\ˆH\Ü™XÝ™Ù]ØÙ[\Š
+B‚]˜\ˆ˜Y]\ÈHZ[™Š\Ü™XÝœÚ^™Kž\Ü™XÝœÚ^™KžJH
+ˆŒÍ‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›JÙ[\‹Œ™XÝÜŒŠKŒLŠJB‚Y˜]×Ø\˜Ê™XÝÜŒ‹–‘T“Ë˜Y]\ËŒUK’S‘×ÐÓÓÔ”ÖÚ[™^K˜Y]\È
+ˆŒÌYJB‚Y˜]×ÜÙ]Ý˜[œÙ›Ü›J™XÝÜŒ‹–‘T“ËŒ™XÝÜŒ‹“Ó‘JB‚Y˜]×ØÚ\˜ÛJÙ[\‹˜Y]\È
+ˆŒÍÛÛÜŠŒ‹Œ‹ŒL‹Ž
+JB‚™[˜È˜]×ÜÚÜÙ]Z[ØØ\™
+[™^ˆ[™XÝˆ™XÝ‹\×Üš[™Îˆ›ÛÛ[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ[›ØÚÙYH\×Üš[™×Ý[›ØÚÙY
+[™^
+HYˆ\×Üš[™È[ÙH\×Ø[š[X[Ý[›ØÚÙY
+[™^
+B‚]˜\ˆÙ[XÝYH
+^Y\—Üš[™×ØÛÛÜˆOH[™^
+HYˆ\×Üš[™È[ÙH
+^Y\—Ø[š[X[OH[™^
+B‚]˜\ˆXØÙ[HÛÛÜŠØÙNŠHYˆ\×Üš[™È[ÙHÛÛÜŠŒŽHŠB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠHYˆÙ[XÝY[ÙHÛÛÜŠŒ‹Œ‹ŒL‹ŽL
+KM‹Œ
+ˆ[š]
+K™XÝ™Ü›ÝÊ
+KŒYˆÙ[XÝY[ÙH‹Œ
+H
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+XØÙ[™\šÙ[™Y
+N
+KMŒ
+ˆ[š]
+K™XÝ
+B‚]˜\ˆ\Ü™XÝH™XÝŠ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠLŒ
+ˆ[š]LŒ
+ˆ[š]
+K™XÝÜŒŠ™XÝœÚ^™KžHŒŒ
+ˆ[š]™XÝœÚ^™KžHHL‹Œ
+ˆ[š]
+JB‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒŒKÌŠKL‹Œ
+ˆ[š]
+K\Ü™XÝ
+B‚ZYˆ\×Üš[™Î‚‚BY˜]×ÜÚÜÜš[™×Ü™]šY]Ê\Ü™XÝ™Ü›ÝÊNŒ
+ˆ[š]
+K[™^
+B‚Y[ÙN‚‚BZYˆ[™^[Ø›ÙWØ[š[X[Ý^\™\ËœÚ^™J
+H[™[Ø›ÙWØ[š[X[Ý^\™\ÖÚ[™^HOH[‚‚BBY˜]×Ý^\™WÙš]
+[Ø›ÙWØ[š[X[Ý^\™\ÖÚ[™^K\Ü™XÝ™Ü›ÝÊM‹Œ
+ˆ[š]
+JB‚ZYˆ›Ý[›ØÚÙY‚‚BY˜]×Ü™XÝ
+\Ü™XÝÛÛÜŠŒKŒËŒŒŠJB‚BY˜]×ÜÝš[™ÊZWÙ›Û\Ü™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ\Ü™XÝœÚ^™KžH
+ˆ
+K¼'å$ˆ‹Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹\Ü™XÝœÚ^™Kž[
+Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚ZYˆÙ[XÝY[™[›ØÚÙY‚‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠ™™™LYŠKLŒ
+ˆ[š]
+K™XÝŠ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ
+ˆ[š]Œ
+ˆ[š]
+K™XÝÜŒŠ™XÝœÚ^™KžHM‹Œ
+ˆ[š]Œ‹Œ
+ˆ[š]
+JJB‚BY˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒŒ
+ˆ[š]
+KZWÝ^
+™\]Z\YÚ][HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™Kž[
+LŒ
+ˆ[š]
+KÛÛÜŠŒMÌÌHŠJB‚]˜\ˆX™[HZWÜš[™×Û˜[YJ[™^
+HYˆ\×Üš[™È[ÙHZWØ[š[X[Û˜[YJ[™^
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™XÝœÚ^™KžHHNŒ
+ˆ[š]
+KX™[Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™Kž[
+MŒ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚]˜\ˆšXÙWÝ^HÚÜÙ]Z[ÜšXÙWÛX™[
+[™^\×Üš[™ÊB‚Y˜]×ÜÝš[™ÊZWÙ›Û™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™XÝœÚ^™KžHHÌŒ
+ˆ[š]
+KšXÙWÝ^Ô’V“Ó•SÐSQÓ“QS•ÐÑS•T‹™XÝœÚ^™Kž[
+LËŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚™[˜È˜]×ÜÚÜÚXŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆØ]YÛÜšY\ÈHÝZWÝ^
+˜Ú\˜XÝ\œÈŠKZWÝ^
+œš[™ÜÈŠKZWÝ^
+™Y™™XÝÈŠWB‚]˜\ˆØ]YÛÜžWØÛÛÜœÈHÐÛÛÜŠŒŽHŠKÛÛÜŠØÙNŠKÛÛÜŠŽXMNÈŠWB‚]˜\ˆØ]YÛÜžWØÛÝ[ÈHÐS’SPSÓSQTËœÚ^™J
+K’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+KB‚Y›ÜˆH[ˆÎ‚‚B]˜\ˆØ\™HÚÜØØ]YÛÜžWÜ™XÝ
+KšY]ÜÜÜÚ^™JB‚B]˜\ˆXØÙ[ˆÛÛÜˆHØ]YÛÜžWØÛÛÜœÖÚWB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹Œ‹ŒL‹ŽM
+KŒ‹Œ
+ˆ[š]
+KØ\™™Ü›ÝÊŒ
+ˆ[š]
+JB‚BY˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+XØÙ[™\šÙ[™Y
+ŒŠKNŒ
+ˆ[š]
+KØ\™
+B‚BY˜]×Ü™XÝ
+™XÝŠØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠLŒ
+ˆ[š]LŒ
+ˆ[š]
+K™XÝÜŒŠØ\™œÚ^™KžHŒŒ
+ˆ[š]ËŒ
+ˆ[š]
+JKÛÛÜŠXØÙ[›YÚ[™Y
+ŒJKMJJB‚B]˜\ˆXÛÛ—ØÙ[\ˆHØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠØ\™œÚ^™Kž
+ˆKØ\™œÚ^™KžH
+ˆŒÍ
+B‚BY˜]×ÜÚÜØØ]YÛÜžWÚXÛÛŠKXÛÛ—ØÙ[\‹Ì‹Œ
+ˆ[š][š]
+B‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒØ\™œÚ^™KžH
+ˆN
+KØ]YÛÜšY\ÖÚWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™Kž[
+‹Œ
+ˆ[š]
+KÛÛÜ‹•ÒUJB‚BZYˆHŽ‚‚BB]˜\ˆÛÛXÝYHÚÜÝ[›ØÚÙYØÛÝ[
+HOHJB‚BBY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒØ\™œÚ^™KžH
+ˆÌ
+KZWÝ^
+œÚÜØÛÛXÝYŠH	HØÛÛXÝYØ]YÛÜžWØÛÝ[ÖÚWWKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™Kž[
+LËŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚BY[ÙN‚‚BBY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒØ\™œÚ^™KžH
+ˆÌ
+KZWÝ^
+˜ÛÛZ[™×ÜÛÛÛˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™Kž[
+LËŒ
+ˆ[š]
+KÛÛÜŠ™Ù™™ˆŠJB‚BY˜]×ÜÝš[™ÊZWÙ›ÛØ\™œÜÚ][Ûˆ
+È™XÝÜŒŠŒØ\™œÚ^™KžH
+ˆŽŠKZWÝ^
+œÚÜÛÜ[—ØØ]YÛÜžHŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹Ø\™œÚ^™Kž[
+L‹Œ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚™[˜È˜]×ÜÚÜÙ]Z[ÜYÙJšY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹][WØÛÝ[ˆ[\×Üš[™Îˆ›ÛÛ[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ[™[H™XÝŠŒ
+ˆ[š]LŒ
+ˆ[š]šY]ÜÜÜÚ^™KžHŒ
+ˆ[š]šY]ÜÜÜÚ^™KžHHLÌ‹Œ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒKŒŒLŽŠKŒŒ
+ˆ[š]
+K[™[
+B‚]˜\ˆÛÛXÝYHÚÜÝ[›ØÚÙYØÛÝ[
+\×Üš[™ÊB‚]˜\ˆÝ[H’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+HYˆ\×Üš[™È[ÙHS’SPSÓSQTËœÚ^™J
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŽŒ
+ˆ[š]
+KZWÝ^
+œÚÜØÛÛXÝYŠH	HØÛÛXÝYÝ[KÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+MKŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚Y›ÜˆH[ˆ][WØÛÝ[‚‚BY˜]×ÜÚÜÙ]Z[ØØ\™
+KÚÜÙ]Z[ÙÜšYÜ™XÝ
+KšY]ÜÜÜÚ^™K][WØÛÝ[
+K\×Üš[™Ë[š]
+B‚™[˜È˜]×ÜÚÜØ[š[X[×ÜYÙJšY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚Y˜]×ÜÚÜÙ]Z[ÜYÙJšY]ÜÜÜÚ^™KS’SPSÓSQTËœÚ^™J
+K˜[ÙK[š]
+B‚™[˜È˜]×ÜÚÜÜš[™Ü×ÜYÙJšY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚Y˜]×ÜÚÜÙ]Z[ÜYÙJšY]ÜÜÜÚ^™K’S‘×ÐÓÓÔ—ÓSQTËœÚ^™J
+KYK[š]
+B‚™[˜È˜]×ÜÚÜÙY™™XÝ×ÜYÙJšY]ÜÜÜÚ^™Nˆ™XÝÜŒ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ[™[H™XÝŠ
+šY]ÜÜÜÚ^™KžHÍŒŒ
+ˆ[š]
+H
+ˆKNŒ
+ˆ[š]ÍŒŒ
+ˆ[š]ÍŒŒ
+ˆ[š]
+B‚Y˜]×ÜÝ[WØ›Þ
+XZÙWØ›Þ
+ÛÛÜŠŒ‹Œ‹ŒL‹ŽM
+KŒ
+ˆ[š]
+K[™[
+B‚Y˜]×ÜÚÜØØ]YÛÜžWÚXÛÛŠ‹[™[œÜÚ][Ûˆ
+È™XÝÜŒŠ[™[œÚ^™Kž
+ˆKLŒŒ
+ˆ[š]
+KÌ‹Œ
+ˆ[š][š]
+B‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒŒLŒ
+H
+ˆ[š]ZWÝ^
+˜ÛÛZ[™×ÜÛÛÛˆŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™Kž[
+ŽŒ
+ˆ[š]
+KÛÛÜŠ™™™LYŠJB‚Y˜]×ÜÝš[™ÊZWÙ›Û[™[œÜÚ][Ûˆ
+È™XÝÜŒŠŒ
+ˆ[š]ŒŒ
+H
+ˆ[š]ZWÝ^
+œÚÜÙY™™XÝ×Ù[\HŠKÔ’V“Ó•SÐSQÓ“QS•ÐÑS•T‹[™[œÚ^™KžHŒ
+ˆ[š][
+MKŒ
+ˆ[š]
+KÛÛÜŠ™Ù™™ˆŠJB‚™[˜È˜]×ÜÚÜÜØÜ™Y[ŠšY]ÜÜÜÚ^™Nˆ™XÝÜŒŠHOˆ›ÚY‚‚]˜\ˆ[š]HZ[™ŠšY]ÜÜÜÚ^™KžÈLŽŒšY]ÜÜÜÚ^™KžHÈÌŒŒ
+B‚Y˜]×Ü™XÝ
+™XÝŠ™XÝÜŒ‹–‘T“ËšY]ÜÜÜÚ^™JKÛÛÜŠŒKŒŒKÌˆYˆÚÜÜYÙHOHÒÔÔQÑWÒPˆ[ÙHŽŠJB‚Y˜]×Ùœ›Û[™ÚXY\ŠšY]ÜÜÜÚ^™KÚÜÜYÙWÝ]J
+KÚÜÜYÙWÜÝX]J
+JB‚Y˜]×ÜÚÜØÛÚ[—Ø›Þ
+šY]ÜÜÜÚ^™K[š]
+B‚[X]ÚÚÜÜYÙN‚‚BTÒÔÔQÑWÐS’SPSÎ‚‚BBY˜]×ÜÚÜØ[š[X[×ÜYÙJšY]ÜÜÜÚ^™K[š]
+B‚BTÒÔÔQÑWÔ’S‘ÔÎ‚‚BBY˜]×ÜÚÜÜš[™Ü×ÜYÙJšY]ÜÜÜÚ^™K[š]
+B‚BTÒÔÔQÑWÑQ‘‘PÕÎ‚‚BBY˜]×ÜÚÜÙY™™XÝ×ÜYÙJšY]ÜÜÜÚ^™K[š]
+B‚BWÎ‚‚BBY˜]×ÜÚÜÚXŠšY]ÜÜÜÚ^™K[š]
+B‚™[˜È˜]×Ø›Ø\™Ý[YWÛÝ™\›^WÛÛ—Ü™XÝ
+[YWÚ[™^ˆ[™XÝˆ™XÝ‹[š]ˆ›Ø]
+HOˆ›ÚY‚‚]˜\ˆ[YHHÛ[\J[YWÚ[™^“ÐT‘ÕSQWÐÓÕS•HJB‚ZYˆ[YHOH‚‚BY˜]×Ü™XÝ
+™XÝÛÛÜŠNÎYN‹Œ
+JB‚B\™]\›‚‚ZYˆ[YHOHN‚‚BY˜]×Ü™XÝ
+™XÝÛÛÜŠŽÙXÙ™ˆ‹ŒN
+JB‚BY›ÜˆH[ˆ‚‚BBY˜]×ØÚ\˜ÛJ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ™XÝœÚ^™Kž
+ˆ
+ŒH
+È›Ø]
+H	H
+H
+ˆŒŒŠK™XÝœÚ^™KžH
+ˆ
+ŒM
+È›Ø]
+HÈ
+H
+ˆŒŽ
+JK
+Œ
+È›Ø]
+H	HÊH
+ˆ‹JH
+ˆ[š]ÛÛÜŠKŒKŒKŒŒÎ
+JB‚BY›ÜˆH[ˆN‚‚BB]˜\ˆÜž\Ý[H™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ™XÝœÚ^™Kž
+ˆ
+ŒLˆ
+È›Ø]
+JH
+ˆŒMÊK™XÝœÚ^™KžH
+ˆ
+Œˆ
+È›Ø]
+H	HŠH
+ˆŒMŠJB‚BBY˜]×ØÛÛÜ™YÜÛYÛÛŠXÚÙY™XÝÜŒ\œ˜^JØÜž\Ý[
+È™XÝÜŒŠŒLL‹Œ
+H
+ˆ[š]Üž\Ý[
+È™XÝÜŒŠLŒŒ
+H
+ˆ[š]Üž\Ý[
+È™XÝÜŒŠŒMŒ
+H
+ˆ[š]Üž\Ý[
+È™XÝÜŒŠLLŒŒ
+H
+ˆ[š]JKÛÛÜŠ™Ž™ˆ‹ŽŠJB‚BY˜]×Ü™XÝ
+™XÝ™Ü›ÝÊLËŒ
+ˆ[š]
+KÛÛÜŠŽÙXÙ™ˆ‹ŒM
+K˜[ÙKX^Š‹ŒËŒ
+ˆ[š]
+JB‚Y[Yˆ[YHOHŽ‚‚BY˜]×Ü™XÝ
+™XÝÛÛÜŠ™™LN‹ŒMŠJB‚BY›ÜˆH[ˆŽ‚‚BB]˜\ˆH™XÝœÜÚ][Û‹ž
+È™XÝœÚ^™Kž
+ˆ
+Œ
+È›Ø]
+JH
+ˆŒMJB‚BBY˜]×Û[™J™XÝÜŒŠ™XÝœÜÚ][Û‹žHHŒ
+ˆ[š]
+K™XÝÜŒŠ
+ÈLŒ
+ˆ[š]™XÝ™[™žH
+ÈŒ
+ˆ[š]
+KÛÛÜŠŒÙŽŒØH‹ŒŠKH
+ˆ[š]YJB‚BY›ÜˆH[ˆ‚‚BBY˜]×ØÚ\˜ÛJ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ™XÝœÚ^™Kž
+ˆ
+ŒN
+È›Ø]
+JH
+ˆŒŠK™XÝœÚ^™KžH
+ˆŒŒŠKKŒ
+ˆ[š]ÛÛÜŠ˜Ž™ØH‹MJJB‚Y[ÙN‚‚BY˜]×Ü™XÝ
+™XÝÛÛÜŠ™™XŒ™‹ŒN
+JB‚B]˜\ˆ]˜HHXÚÙY™XÝÜŒ\œ˜^JÜ™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠŒ™XÝœÚ^™KžJK™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ™XÝœÚ^™Kž
+ˆ‹™XÝœÚ^™KžH
+ˆŒŽ
+K™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ™XÝœÚ^™Kž
+ˆÌ‹™XÝœÚ^™KžH
+ˆMJK™XÝ™[™JB‚BY˜]×ØÛÛÜ™YÜÛYÛÛŠ]˜KÛÛÜŠ™™XŒ™‹ŒÍ
+JB‚BY›ÜˆH[ˆL‚‚BB]˜\ˆ[X™\ˆH™XÝœÜÚ][Ûˆ
+È™XÝÜŒŠ™XÝœÚ^™Kž
+ˆ
+Œ
+È›Ø]
+JH
+ˆŒJK™XÝœÚ^™KžH
+ˆ
+ŒLˆ
+È›Ø]
+H	HJH
+ˆŒMJJB‚BBY˜]×ØÚ\˜ÛJ[X™\‹
+ËŒ
+È›Ø]
+H	HÊH
+ˆ‹Œ
+H
+ˆ[š]ÛÛÜŠ™™˜ŒL˜ˆ‹ŒÍH
+ÈÚ[ŠY[WÙ[\ÙY
+ˆŒ
+È›Ø]
+JJH
+ˆŒMJJB‚™[˜ÈXZÙWØ›Þ
+ÛÛÜŽˆÛÛÜ‹˜Y]\Îˆ›Ø]
+HOˆÝ[P›Þ›]‚‚]˜\ˆ›ÞHÝ[P›Þ›]›™]Ê
+B‚X›Þ˜™×ØÛÛÜˆHÛÛÜ‚‚X›Þ˜ÛÜ›™\—Ü˜Y]\×ÝÜÛYH[
+˜Y]\ÊB‚X›Þ˜ÛÜ›™\—Ü˜Y]\×ÝÜÜšYÚH[
+˜Y]\ÊB‚X›Þ˜ÛÜ›™\—Ü˜Y]\×Ø›ÝÛWÛYH[
+˜Y]\ÊB‚X›Þ˜ÛÜ›™\—Ü˜Y]\×Ø›ÝÛWÜšYÚH[
+˜Y]\ÊB‚\™]\›ˆ›Þ
