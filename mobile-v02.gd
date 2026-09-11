@@ -232,6 +232,7 @@ var board_texture: Texture2D
 var board_theme_textures: Array[Texture2D] = []
 var ui_font: Font
 var lobby_background_texture: Texture2D
+var battle_background_texture: Texture2D
 var battle_gates_home_texture: Texture2D
 var loading_team_texture: Texture2D
 var zoopaloola_logo_texture: Texture2D
@@ -788,7 +789,7 @@ func _ready() -> void:
 	friend_lookup_request = HTTPRequest.new()
 	friend_lookup_request.request_completed.connect(_on_friend_lookup_completed)
 	add_child(friend_lookup_request)
-	board_texture = load("res://assets/board-clean-modular.webp") as Texture2D
+	board_texture = load("res://assets/boards/board-purple-v1.webp") as Texture2D
 	board_theme_textures = [
 		board_texture,
 		load("res://assets/boards/board-ice.webp") as Texture2D,
@@ -797,6 +798,7 @@ func _ready() -> void:
 		load("res://assets/boards/board-candy.webp") as Texture2D,
 	]
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
+	battle_background_texture = load("res://assets/ui/battle-sky-bg-v1.webp") as Texture2D
 	battle_gates_home_texture = load("res://assets/ui/battle-gates-home-v1.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
@@ -1650,6 +1652,10 @@ func _draw() -> void:
 	if app_screen != APP_GAME:
 		draw_frontend(viewport_size)
 		return
+	# Preserve the original match geometry while presenting the table above the
+	# new floating-islands battle world.
+	if battle_background_texture != null:
+		draw_texture_rect(battle_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 	# Floating animals stay behind the elevated table and only remain visible on
 	# the surrounding water.
 	draw_water_floaters(viewport_size)
