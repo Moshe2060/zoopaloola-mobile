@@ -3552,12 +3552,13 @@ func home_stats_rect(viewport_size: Vector2) -> Rect2:
 
 func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	if battle_gates_home_texture != null:
+		# The entire portal island is a button, not only its caption plaque.
 		if index == 0:
-			return Rect2(viewport_size.x * 0.735, viewport_size.y * 0.600, viewport_size.x * 0.210, viewport_size.y * 0.092)
+			return Rect2(viewport_size.x * 0.675, viewport_size.y * 0.145, viewport_size.x * 0.300, viewport_size.y * 0.575)
 		if index == 1:
-			return Rect2(viewport_size.x * 0.065, viewport_size.y * 0.600, viewport_size.x * 0.205, viewport_size.y * 0.092)
+			return Rect2(viewport_size.x * 0.025, viewport_size.y * 0.145, viewport_size.x * 0.300, viewport_size.y * 0.575)
 		if index == 2:
-			return Rect2(viewport_size.x * 0.355, viewport_size.y * 0.645, viewport_size.x * 0.292, viewport_size.y * 0.112)
+			return Rect2(viewport_size.x * 0.325, viewport_size.y * 0.145, viewport_size.x * 0.350, viewport_size.y * 0.640)
 		return Rect2()
 	var layout := home_layout(viewport_size)
 	if index == 0:
@@ -6138,6 +6139,9 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					return
 
 func draw_menu_background(viewport_size: Vector2) -> void:
+	if battle_gates_home_texture != null:
+		draw_battle_gates_secondary_background(viewport_size)
+		return
 	var overlay := Color(0.015, 0.055, 0.11, 0.62)
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), overlay)
 	for i in 18:
@@ -6148,6 +6152,16 @@ func draw_menu_background(viewport_size: Vector2) -> void:
 		draw_circle(Vector2(x, y), radius, Color(0.65, 0.94, 1.0, 0.16), false, 2.0, true)
 	var horizon := Rect2(0.0, viewport_size.y * 0.76, viewport_size.x, viewport_size.y * 0.24)
 	draw_rect(horizon, Color(0.0, 0.20, 0.31, 0.35))
+
+func draw_battle_gates_secondary_background(viewport_size: Vector2) -> void:
+	draw_texture_rect(battle_gates_home_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	# Secondary screens retain the portal world without letting the detailed
+	# background compete with controls and text.
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.012, 0.035, 0.10, 0.76))
+	var glow := 0.045 + sin(menu_elapsed * 1.6) * 0.012
+	draw_circle(Vector2(viewport_size.x * 0.50, viewport_size.y * 0.47), viewport_size.y * 0.43, Color(0.16, 0.76, 1.0, glow))
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, viewport_size.y * 0.125), Color(0.015, 0.055, 0.14, 0.94))
+	draw_rect(Rect2(0.0, viewport_size.y * 0.118, viewport_size.x, maxf(3.0, viewport_size.y * 0.006)), Color("53d8ff", 0.80))
 
 func draw_zoopaloola_logo(center: Vector2, scale: float, reveal: float = 1.0) -> void:
 	var bob := sin(menu_elapsed * 2.5) * 5.0 * scale
@@ -6193,7 +6207,9 @@ func draw_splash_screen(viewport_size: Vector2) -> void:
 
 func draw_frontend(viewport_size: Vector2) -> void:
 	if app_screen == APP_AUTH:
-		if lobby_background_texture != null:
+		if battle_gates_home_texture != null:
+			draw_battle_gates_secondary_background(viewport_size)
+		elif lobby_background_texture != null:
 			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
 		draw_auth_screen(viewport_size)
 	elif app_screen == APP_HOME:
@@ -6206,24 +6222,19 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		draw_menu_background(viewport_size)
 		draw_profile_screen(viewport_size)
 	elif app_screen == APP_SHOP:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_menu_background(viewport_size)
 		draw_shop_screen(viewport_size)
 	elif app_screen == APP_ARENA:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_menu_background(viewport_size)
 		draw_arena_screen(viewport_size)
 	elif app_screen == APP_PLAYER_PROFILE:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_menu_background(viewport_size)
 		draw_player_profile_screen(viewport_size)
 	elif app_screen == APP_FRIEND:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_menu_background(viewport_size)
 		draw_friend_screen(viewport_size)
 	elif app_screen == APP_REWARDS:
-		if lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_menu_background(viewport_size)
 		draw_rewards_screen(viewport_size)
 	draw_pending_invite_banner(viewport_size)
 	if menu_notice_time > 0.0:
@@ -7092,9 +7103,14 @@ func draw_home_leaderboard(panel: Rect2) -> void:
 
 func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: String) -> void:
 	var back := frontend_back_rect(viewport_size)
-	draw_style_box(make_box(Color("1b314a"), 14.0), back)
+	draw_style_box(make_box(Color(0.02, 0.06, 0.16, 0.95), 15.0), back.grow(3.0))
+	draw_style_box(make_box(Color("244d78"), 13.0), back)
+	draw_line(back.position + Vector2(10.0, back.size.y - 3.0), back.end - Vector2(10.0, 3.0), Color("58dcff"), 2.0, true)
 	draw_string(ui_font, back.position + Vector2(0.0, 31.0), ui_text("back"), HORIZONTAL_ALIGNMENT_CENTER, back.size.x, 16, Color.WHITE)
-	draw_string(ui_font, Vector2(0.0, 52.0), title, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 30, Color("f6d365"))
+	var title_plaque := Rect2(viewport_size.x * 0.30, 10.0, viewport_size.x * 0.40, 76.0)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.18, 0.94), 20.0), title_plaque)
+	draw_line(title_plaque.position + Vector2(22.0, title_plaque.size.y - 3.0), title_plaque.end - Vector2(22.0, 3.0), Color("58dcff"), 3.0, true)
+	draw_string(ui_font, Vector2(0.0, 46.0), title, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 28, Color.WHITE)
 	draw_string(ui_font, Vector2(0.0, 78.0), subtitle, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, 14, Color(0.78, 0.91, 0.98))
 
 func draw_profile_screen(viewport_size: Vector2) -> void:
