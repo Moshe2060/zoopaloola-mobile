@@ -3633,11 +3633,11 @@ func player_id_copy_rect(viewport_size: Vector2) -> Rect2:
 	if battle_gates_home_texture != null and app_screen == APP_HOME:
 		return Rect2(viewport_size.x * 0.220, viewport_size.y * 0.078, viewport_size.x * 0.112, viewport_size.y * 0.047)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(1060.0, 620.0) * unit, Vector2(150.0, 42.0) * unit)
+	return Rect2(Vector2(1050.0, 620.0) * unit, Vector2(168.0, 42.0) * unit)
 
 func player_google_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(870.0, 620.0) * unit, Vector2(175.0, 42.0) * unit)
+	return Rect2(Vector2(842.0, 620.0) * unit, Vector2(192.0, 42.0) * unit)
 
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	if battle_gates_home_texture != null:
@@ -5336,8 +5336,8 @@ func update_profile_name_input() -> void:
 	if should_show:
 		var viewport_size := get_viewport_rect().size
 		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-		profile_name_input.position = Vector2(602.0, 139.0) * unit
-		profile_name_input.size = Vector2(350.0, 50.0) * unit
+		profile_name_input.position = Vector2(654.0, 137.0) * unit
+		profile_name_input.size = Vector2(350.0, 46.0) * unit
 
 func update_auth_inputs() -> void:
 	if auth_email_input == null or auth_password_input == null:
@@ -6111,16 +6111,6 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					DisplayServer.clipboard_set(firebase_public_id)
 					show_menu_notice("המזהה הועתק" if ui_language == "he" else "PLAYER ID COPIED")
 				return
-			for i in ANIMAL_NAMES.size():
-				if player_profile_animal_rect(i, viewport_size).has_point(screen_pos):
-					try_select_animal(i)
-					queue_redraw()
-					return
-			for i in RING_COLOR_NAMES.size():
-				if player_profile_color_rect(i, viewport_size).has_point(screen_pos):
-					try_select_ring(i)
-					queue_redraw()
-					return
 		elif app_screen == APP_FRIEND:
 			if friend_room_chat_open:
 				if chat_close_rect(viewport_size).has_point(screen_pos):
@@ -6694,95 +6684,100 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 		draw_string(ui_font, Vector2(0.0, play.position.y - 28.0 * unit), ui_text("searching"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
 
 func draw_profile_stat_card(rect: Rect2, label: String, value: String, accent: Color, unit: float) -> void:
-	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.78), 17.0 * unit), rect.grow(3.0 * unit))
-	draw_style_box(make_box(Color(0.035, 0.10, 0.21, 0.96), 15.0 * unit), rect)
-	draw_circle(rect.position + Vector2(28.0 * unit, rect.size.y * 0.50), 14.0 * unit, accent)
-	draw_string(ui_font, rect.position + Vector2(53.0, 30.0) * unit, label, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 65.0 * unit, int(12.0 * unit), Color("a9cde2"))
-	draw_string(ui_font, rect.position + Vector2(53.0, 62.0) * unit, value, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 65.0 * unit, int(24.0 * unit), Color.WHITE)
+	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.82), 15.0 * unit), rect.grow(3.0 * unit))
+	draw_style_box(make_box(Color(0.018, 0.075, 0.17, 0.98), 13.0 * unit), rect)
+	var icon_center := rect.position + Vector2(rect.size.x * 0.50, 29.0 * unit)
+	draw_circle(icon_center, 17.0 * unit, Color(accent.r, accent.g, accent.b, 0.18))
+	draw_colored_polygon(PackedVector2Array([icon_center + Vector2(0.0, -11.0) * unit, icon_center + Vector2(10.0, 0.0) * unit, icon_center + Vector2(0.0, 11.0) * unit, icon_center + Vector2(-10.0, 0.0) * unit]), accent)
+	draw_string(ui_font, rect.position + Vector2(0.0, 67.0) * unit, label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(13.0 * unit), Color("bfeaff"))
+	draw_string(ui_font, rect.position + Vector2(0.0, 104.0) * unit, value, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(28.0 * unit), Color.WHITE)
 
 func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.06))
-	draw_frontend_header(viewport_size, ui_text("profile_title"), ui_text("profile_sub"))
-	var hero_panel := Rect2(Vector2(38.0, 102.0) * unit, Vector2(410.0, 570.0) * unit)
-	draw_gate_panel(hero_panel, Color("58dcff"), unit, 0.54)
-	var glow_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 178.0 * unit)
-	draw_circle(glow_center, 145.0 * unit, Color(0.82, 0.98, 1.0, 0.28))
-	var podium_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 328.0 * unit)
-	draw_wood_podium(podium_center, unit * 0.66, false)
-	var hero_texture: Texture2D = null
-	if player_animal < lifebuoy_hero_textures.size():
-		var hero_colors: Array = lifebuoy_hero_textures[player_animal]
-		if player_ring_color < hero_colors.size():
-			hero_texture = hero_colors[player_ring_color] as Texture2D
-	if hero_texture != null:
-		var hero_size := Vector2(220.0, 286.0) * unit
-		var ground_offset: float = hero_size.y * float(HERO_GROUND_OFFSETS[clampi(player_animal, 0, HERO_GROUND_OFFSETS.size() - 1)])
-		var hero_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 186.0 * unit + ground_offset)
-		draw_texture_rect(hero_texture, Rect2(hero_center - hero_size * 0.5, hero_size), false)
-	draw_string(ui_font, hero_panel.position + Vector2(0.0, 382.0) * unit, ui_text("main_character"), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x, int(12.0 * unit), Color("d8f8ff"))
-	draw_string(ui_font, hero_panel.position + Vector2(0.0, 411.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x, int(22.0 * unit), Color.WHITE)
-	draw_string(ui_font, hero_panel.position + Vector2(22.0, 451.0) * unit, ui_text("choose_main"), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x - 44.0 * unit, int(12.0 * unit), Color("173249"))
-	for i in ANIMAL_NAMES.size():
-		var animal_rect := player_profile_animal_rect(i, viewport_size)
-		var animal_selected := i == player_animal
-		draw_style_box(make_box(Color("ffe25d") if animal_selected else Color("244d70"), 13.0 * unit), animal_rect.grow((4.0 if animal_selected else 2.0) * unit))
-		draw_style_box(make_box(Color("e9f9f4"), 11.0 * unit), animal_rect)
-		if i < full_body_animal_textures.size() and full_body_animal_textures[i] != null:
-			draw_texture_rect(full_body_animal_textures[i], animal_rect.grow(-5.0 * unit), false)
-		draw_collection_lock_overlay(animal_rect, i, false, unit)
-	draw_string(ui_font, hero_panel.position + Vector2(22.0, 506.0) * unit, ui_text("favorite_color"), HORIZONTAL_ALIGNMENT_CENTER, hero_panel.size.x - 44.0 * unit, int(12.0 * unit), Color("173249"))
-	for i in RING_COLORS.size():
-		var color_rect := player_profile_color_rect(i, viewport_size)
-		var color_center := color_rect.get_center()
-		if i == player_ring_color:
-			draw_circle(color_center, 25.0 * unit, Color.WHITE)
-			draw_circle(color_center, 21.0 * unit, Color("ffe25d"))
-		draw_circle(color_center, 17.0 * unit, RING_COLORS[i])
-		draw_collection_lock_overlay(color_rect, i, true, unit)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.12))
+	draw_frontend_header(viewport_size, "פרופיל שחקן" if ui_language == "he" else "PLAYER PROFILE", "המסע וההישגים שלכם" if ui_language == "he" else "YOUR JOURNEY AND ACHIEVEMENTS")
+
+	# Large selected pilot with the same live energy color as character selection.
+	var hover: float = sin(menu_elapsed * 1.7) * 5.0 * unit
+	var hero_rect := Rect2(Vector2(18.0, 126.0) * unit + Vector2(0.0, hover), Vector2(448.0, 448.0) * unit)
+	if player_animal < character_ship_textures.size() and character_ship_textures[player_animal] != null:
+		draw_texture_rect(character_ship_textures[player_animal], hero_rect, false)
+		if player_animal < character_ship_light_masks.size() and character_ship_light_masks[player_animal] != null:
+			var hero_energy: Color = RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)].lightened(0.12)
+			draw_texture_rect(character_ship_light_masks[player_animal], hero_rect, false, hero_energy)
+	var platform_center := Vector2(242.0, 566.0) * unit
+	draw_set_transform(platform_center, 0.0, Vector2(1.0, 0.30))
+	draw_circle(Vector2.ZERO, 166.0 * unit, Color(0.05, 0.14, 0.25, 0.82))
+	draw_arc(Vector2.ZERO, 158.0 * unit, 0.0, TAU, 72, Color("58dcff"), 7.0 * unit, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var name_plaque := Rect2(Vector2(88.0, 584.0) * unit, Vector2(310.0, 75.0) * unit)
+	draw_gate_panel(name_plaque, league_color(player_league_tier), unit, 0.92)
+	draw_string(ui_font, name_plaque.position + Vector2(0.0, 34.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_CENTER, name_plaque.size.x, int(23.0 * unit), Color.WHITE)
+	draw_string(ui_font, name_plaque.position + Vector2(0.0, 61.0) * unit, league_name(player_league_tier) + "  •  " + ("רמה " if ui_language == "he" else "LEVEL ") + str(player_level), HORIZONTAL_ALIGNMENT_CENTER, name_plaque.size.x, int(14.0 * unit), Color("ffe25d"))
 
 	var info_panel := Rect2(Vector2(474.0, 102.0) * unit, Vector2(768.0, 570.0) * unit)
-	draw_gate_panel(info_panel, Color("a868ff"), unit, 0.96)
-	draw_circle(info_panel.position + Vector2(66.0, 69.0) * unit, 45.0 * unit, Color("6965d8"))
-	draw_string(ui_font, info_panel.position + Vector2(21.0, 84.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(42.0 * unit), Color.WHITE)
-	draw_string(ui_font, info_panel.position + Vector2(130.0, 32.0) * unit, "שם השחקן" if ui_language == "he" else "PLAYER NAME", HORIZONTAL_ALIGNMENT_LEFT, 350.0 * unit, int(13.0 * unit), Color("8cecff"))
-	var coin_box := Rect2(info_panel.position + Vector2(558.0, 27.0) * unit, Vector2(176.0, 74.0) * unit)
-	draw_style_box(make_box(Color("253e67"), 17.0 * unit), coin_box)
-	draw_circle(coin_box.position + Vector2(35.0, 37.0) * unit, 17.0 * unit, Color("ffc83d"))
-	draw_string(ui_font, coin_box.position + Vector2(65.0, 47.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 95.0 * unit, int(22.0 * unit), Color.WHITE)
-	var xp_rect := Rect2(info_panel.position + Vector2(130.0, 104.0) * unit, Vector2(400.0, 20.0) * unit)
-	draw_style_box(make_box(Color("cadbd5"), 9.0 * unit), xp_rect)
+	draw_gate_panel(info_panel, Color("58dcff"), unit, 0.96)
+	draw_circle(info_panel.position + Vector2(66.0, 70.0) * unit, 47.0 * unit, Color("d6a62f"))
+	draw_circle(info_panel.position + Vector2(66.0, 70.0) * unit, 40.0 * unit, Color("092657"))
+	var avatar_texture: Texture2D = character_portrait_textures[player_animal] if player_animal < character_portrait_textures.size() else null
+	if avatar_texture != null:
+		draw_texture_rect(avatar_texture, Rect2(info_panel.position + Vector2(31.0, 35.0) * unit, Vector2(70.0, 70.0) * unit), false)
+	draw_string(ui_font, info_panel.position + Vector2(180.0, 28.0) * unit, "שם השחקן" if ui_language == "he" else "PLAYER NAME", HORIZONTAL_ALIGNMENT_LEFT, 350.0 * unit, int(12.0 * unit), Color("8cecff"))
+	var pending_id := "מתחבר..." if ui_language == "he" else "CONNECTING..."
+	var public_id_text := firebase_public_id if not firebase_public_id.is_empty() else pending_id
+	draw_string(ui_font, info_panel.position + Vector2(180.0, 99.0) * unit, public_id_text, HORIZONTAL_ALIGNMENT_LEFT, 380.0 * unit, int(14.0 * unit), Color("bfeaff"))
+	var coin_box := Rect2(info_panel.position + Vector2(590.0, 34.0) * unit, Vector2(142.0, 60.0) * unit)
+	draw_style_box(make_box(Color("172f59"), 16.0 * unit), coin_box)
+	draw_circle(coin_box.position + Vector2(30.0, 30.0) * unit, 16.0 * unit, Color("ffc83d"))
+	draw_string(ui_font, coin_box.position + Vector2(55.0, 39.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, 76.0 * unit, int(20.0 * unit), Color.WHITE)
+	var xp_rect := Rect2(info_panel.position + Vector2(180.0, 116.0) * unit, Vector2(500.0, 18.0) * unit)
+	draw_style_box(make_box(Color("14294c"), 9.0 * unit), xp_rect.grow(3.0 * unit))
 	var xp_ratio := clampf(float(player_xp) / float(maxi(1, player_next_level_xp)), 0.0, 1.0)
-	draw_style_box(make_box(Color("49c984"), 9.0 * unit), Rect2(xp_rect.position, Vector2(xp_rect.size.x * xp_ratio, xp_rect.size.y)))
-	draw_string(ui_font, info_panel.position + Vector2(545.0, 121.0) * unit, str(player_xp) + " / " + str(player_next_level_xp) + " XP", HORIZONTAL_ALIGNMENT_LEFT, 170.0 * unit, int(11.0 * unit), Color("526b72"))
-	var account_type := ("Google: " + firebase_email) if firebase_provider == "google" else ("חשבון אורח" if ui_language == "he" else "GUEST ACCOUNT")
-	draw_string(ui_font, info_panel.position + Vector2(130.0, 148.0) * unit, account_type + " • " + firebase_status + " • " + CLIENT_VERSION, HORIZONTAL_ALIGNMENT_LEFT, 585.0 * unit, int(14.0 * unit), Color("2982a6"))
-	draw_string(ui_font, info_panel.position + Vector2(30.0, 165.0) * unit, ui_text("career"), HORIZONTAL_ALIGNMENT_CENTER, info_panel.size.x - 60.0 * unit, int(20.0 * unit), Color.WHITE)
+	draw_style_box(make_box(Color("38dfff"), 9.0 * unit), Rect2(xp_rect.position, Vector2(xp_rect.size.x * xp_ratio, xp_rect.size.y)))
+	draw_string(ui_font, info_panel.position + Vector2(180.0, 158.0) * unit, ("רמה " if ui_language == "he" else "LEVEL ") + str(player_level), HORIZONTAL_ALIGNMENT_LEFT, 180.0 * unit, int(13.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, info_panel.position + Vector2(490.0, 158.0) * unit, str(player_xp) + " / " + str(player_next_level_xp) + " XP", HORIZONTAL_ALIGNMENT_RIGHT, 190.0 * unit, int(12.0 * unit), Color("bfeaff"))
+
 	var total_matches := player_wins + player_losses
 	var win_rate := 0
 	if total_matches > 0:
 		win_rate = int(round(float(player_wins) * 100.0 / float(total_matches)))
-	var labels := [ui_text("matches"), ui_text("wins"), ui_text("losses"), ui_text("win_rate"), ui_text("best_streak"), ui_text("world_rank")]
-	var rank_value := ("—" if player_world_rank <= 0 else "#" + str(player_world_rank)) if player_wins + player_losses > 0 else str(player_rating)
-	var values := [str(total_matches), str(player_wins), str(player_losses), str(win_rate) + "%", str(player_best_streak), rank_value]
-	var accents := [Color("42b8e8"), Color("49c984"), Color("ef6b65"), Color("ffc83d"), Color("9d59e8"), Color("ff8b3d")]
-	for i in 6:
-		var column := i % 2
-		var row := i / 2
-		var stat_rect := Rect2(info_panel.position + Vector2(30.0 + float(column) * 354.0, 190.0 + float(row) * 112.0) * unit, Vector2(330.0, 88.0) * unit)
+	var labels := [ui_text("matches"), ui_text("wins"), ui_text("win_rate"), ui_text("rating_label")]
+	var values := [str(total_matches), str(player_wins), str(win_rate) + "%", str(player_rating)]
+	var accents := [Color("58dcff"), Color("ffc83d"), Color("5fe3c0"), Color("ffd45c")]
+	for i in 4:
+		var stat_rect := Rect2(info_panel.position + Vector2(30.0 + float(i) * 178.0, 184.0) * unit, Vector2(164.0, 116.0) * unit)
 		draw_profile_stat_card(stat_rect, labels[i], values[i], accents[i], unit)
-	var id_box := Rect2(info_panel.position + Vector2(30.0, 518.0) * unit, Vector2(350.0, 42.0) * unit)
-	draw_style_box(make_box(Color("d8eee8"), 12.0 * unit), id_box)
-	var pending_id := "מתחבר..." if ui_language == "he" else "CONNECTING..."
-	var account_id_text := ("מזהה אישי: " if ui_language == "he" else "PLAYER ID: ") + (firebase_public_id if not firebase_public_id.is_empty() else pending_id)
-	draw_string(ui_font, id_box.position + Vector2(16.0, 29.0) * unit, account_id_text, HORIZONTAL_ALIGNMENT_LEFT, id_box.size.x - 32.0 * unit, int(18.0 * unit), Color("173249"))
+
+	var league_card := Rect2(info_panel.position + Vector2(30.0, 322.0) * unit, Vector2(330.0, 174.0) * unit)
+	var achievement_card := Rect2(info_panel.position + Vector2(378.0, 322.0) * unit, Vector2(360.0, 174.0) * unit)
+	for card in [league_card, achievement_card]:
+		draw_style_box(make_box(Color("234b80"), 16.0 * unit), card.grow(3.0 * unit))
+		draw_style_box(make_box(Color("061b3e"), 14.0 * unit), card)
+	draw_string(ui_font, league_card.position + Vector2(0.0, 34.0) * unit, "הליגה שלי" if ui_language == "he" else "MY LEAGUE", HORIZONTAL_ALIGNMENT_CENTER, league_card.size.x, int(19.0 * unit), Color.WHITE)
+	var badge_center := league_card.position + Vector2(165.0, 92.0) * unit
+	draw_colored_polygon(PackedVector2Array([badge_center + Vector2(0.0, -42.0) * unit, badge_center + Vector2(42.0, -12.0) * unit, badge_center + Vector2(30.0, 36.0) * unit, badge_center, badge_center + Vector2(-30.0, 36.0) * unit, badge_center + Vector2(-42.0, -12.0) * unit]), league_color(player_league_tier))
+	draw_colored_polygon(PackedVector2Array([badge_center + Vector2(0.0, -25.0) * unit, badge_center + Vector2(20.0, 0.0) * unit, badge_center + Vector2(0.0, 26.0) * unit, badge_center + Vector2(-20.0, 0.0) * unit]), Color("fff0a0"))
+	draw_string(ui_font, league_card.position + Vector2(0.0, 158.0) * unit, league_name(player_league_tier) + "  •  " + str(player_rating), HORIZONTAL_ALIGNMENT_CENTER, league_card.size.x, int(16.0 * unit), Color("ffe25d"))
+
+	draw_string(ui_font, achievement_card.position + Vector2(0.0, 34.0) * unit, "הישגים" if ui_language == "he" else "ACHIEVEMENTS", HORIZONTAL_ALIGNMENT_CENTER, achievement_card.size.x, int(19.0 * unit), Color.WHITE)
+	for medal in 3:
+		var medal_center := achievement_card.position + Vector2(92.0 + float(medal) * 88.0, 92.0) * unit
+		var medal_color: Color = [Color("d68a47"), Color("c7d8f0"), Color("4e668d")][medal]
+		draw_circle(medal_center, 30.0 * unit, Color("102b57"))
+		draw_circle(medal_center, 24.0 * unit, medal_color)
+		draw_colored_polygon(PackedVector2Array([medal_center + Vector2(0.0, -13.0) * unit, medal_center + Vector2(12.0, -4.0) * unit, medal_center + Vector2(8.0, 12.0) * unit, medal_center, medal_center + Vector2(-8.0, 12.0) * unit, medal_center + Vector2(-12.0, -4.0) * unit]), Color("fff2b0") if medal < 2 else Color("71839b"))
+	var achievement_bar := Rect2(achievement_card.position + Vector2(28.0, 137.0) * unit, Vector2(304.0, 16.0) * unit)
+	draw_style_box(make_box(Color("162c50"), 8.0 * unit), achievement_bar)
+	draw_style_box(make_box(Color("33dfff"), 8.0 * unit), Rect2(achievement_bar.position, Vector2(achievement_bar.size.x * 0.45, achievement_bar.size.y)))
+	draw_string(ui_font, achievement_card.position + Vector2(250.0, 158.0) * unit, "18 / 40", HORIZONTAL_ALIGNMENT_RIGHT, 82.0 * unit, int(12.0 * unit), Color.WHITE)
+
 	var google_rect := player_google_rect(viewport_size)
 	var google_connected := firebase_provider == "google"
-	draw_style_box(make_box(Color("4c9a68") if google_connected else Color("4285f4"), 12.0 * unit), google_rect)
+	draw_style_box(make_box(Color("3c9a73") if google_connected else Color("3275d8"), 12.0 * unit), google_rect)
 	var google_label := ("Google מחובר" if ui_language == "he" else "GOOGLE LINKED") if google_connected else ("חיבור Google" if ui_language == "he" else "CONNECT GOOGLE")
 	draw_string(ui_font, google_rect.position + Vector2(0.0, 29.0) * unit, google_label, HORIZONTAL_ALIGNMENT_CENTER, google_rect.size.x, int(15.0 * unit), Color.WHITE)
 	var copy_rect := player_id_copy_rect(viewport_size)
-	draw_style_box(make_box(Color("2982a6") if not firebase_public_id.is_empty() else Color("70858d"), 12.0 * unit), copy_rect)
+	draw_style_box(make_box(Color("d89a1d") if not firebase_public_id.is_empty() else Color("70858d"), 12.0 * unit), copy_rect)
 	draw_string(ui_font, copy_rect.position + Vector2(0.0, 29.0) * unit, "העתקה" if ui_language == "he" else "COPY ID", HORIZONTAL_ALIGNMENT_CENTER, copy_rect.size.x, int(16.0 * unit), Color.WHITE)
 
 func draw_home_social_panel(viewport_size: Vector2) -> void:
