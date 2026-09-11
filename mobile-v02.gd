@@ -232,6 +232,7 @@ var board_texture: Texture2D
 var board_theme_textures: Array[Texture2D] = []
 var ui_font: Font
 var lobby_background_texture: Texture2D
+var floating_portals_home_texture: Texture2D
 var loading_team_texture: Texture2D
 var zoopaloola_logo_texture: Texture2D
 var wood_podium_texture: Texture2D
@@ -801,6 +802,7 @@ func _ready() -> void:
 		load("res://assets/boards/board-candy.webp") as Texture2D,
 	]
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
+	floating_portals_home_texture = load("res://assets/ui/world/floating-portals-home-v1.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
 	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
@@ -3649,13 +3651,13 @@ func home_stats_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(layout.left_x, layout.content_top, layout.left_w, layout.stats_h)
 
 func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var layout := home_layout(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	if index == 0:
-		return Rect2(layout.arena_x, layout.bottom_y, layout.arena_w, layout.bottom_button_h)
+		return Rect2(Vector2(936.0, 490.0) * unit, Vector2(286.0, 72.0) * unit)
 	if index == 1:
-		return Rect2(layout.friend_x, layout.bottom_y, layout.friend_w, layout.bottom_button_h)
+		return Rect2(Vector2(58.0, 490.0) * unit, Vector2(286.0, 72.0) * unit)
 	if index == 2:
-		return Rect2(layout.play_x, layout.bottom_y, layout.play_w, layout.bottom_button_h)
+		return Rect2(Vector2(428.0, 510.0) * unit, Vector2(424.0, 86.0) * unit)
 	return Rect2()
 
 func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
@@ -3896,22 +3898,12 @@ func draw_tutorial_overlay(viewport_size: Vector2) -> void:
 	draw_string(ui_font, tutorial_skip_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, "×", HORIZONTAL_ALIGNMENT_CENTER, tutorial_skip_rect(viewport_size).size.x, int(22.0 * unit), Color("607080"))
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var layout := home_layout(viewport_size)
-	var y: float = layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index)
-	return Rect2(layout.left_x, y, layout.left_w, layout.rail_button_h)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(458.0 + float(index) * 190.0, 642.0) * unit, Vector2(176.0, 62.0) * unit)
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
-	var layout := home_layout(viewport_size)
-	var unit: float = layout.unit
-	var center_left: float = layout.center_left
-	var center_w: float = layout.center_w
-	var content_top: float = layout.content_top
-	var content_bottom: float = layout.content_bottom
-	var char_w: float = minf(300.0 * unit, center_w * 0.88)
-	var char_h: float = minf(390.0 * unit, (content_bottom - content_top) * 0.72)
-	var char_x: float = center_left + (center_w - char_w) * 0.5
-	var char_y: float = content_top + 6.0 * unit
-	return Rect2(char_x, char_y, char_w, char_h)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(356.0, 292.0) * unit, Vector2(210.0, 230.0) * unit)
 
 func draw_home_ambient_effects(viewport_size: Vector2) -> void:
 	init_home_ambient_particles()
@@ -6916,7 +6908,77 @@ func draw_home_friend_profile(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color("e94f78"), 12.0 * unit), home_friend_profile_remove_rect(viewport_size))
 	draw_string(ui_font, home_friend_profile_remove_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, ui_text("remove_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_friend_profile_remove_rect(viewport_size).size.x, int(14.0 * unit), Color.WHITE)
 
+func draw_portal_world_home(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_texture_rect(floating_portals_home_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	# Depth and motion are rendered separately from the artwork so the world
+	# remains alive even though the environment itself is a single optimized image.
+	var sky_tint := 0.025 + sin(menu_elapsed * 0.65) * 0.012
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.08, 0.22, sky_tint))
+	for spark in 18:
+		var phase := menu_elapsed * (0.32 + float(spark % 4) * 0.07) + float(spark) * 1.71
+		var spark_pos := Vector2(fmod(phase * 83.0, viewport_size.x), 105.0 * unit + fmod(float(spark * 67), 420.0) * unit)
+		draw_circle(spark_pos, (1.5 + float(spark % 3)) * unit, Color(0.72, 0.94, 1.0, 0.28 + sin(phase * 2.0) * 0.12))
+
+	# Top-left identity and top-right economy remain readable without covering portals.
+	var profile := home_profile_rect(viewport_size)
+	draw_style_box(make_box(Color(0.015, 0.045, 0.12, 0.91), 20.0 * unit), profile)
+	draw_rect(profile, Color(0.38, 0.80, 1.0, 0.55), false, 2.0 * unit, true)
+	draw_circle(profile.position + Vector2(31.0, 29.0) * unit, 24.0 * unit, Color("496ce7"))
+	draw_string(ui_font, profile.position + Vector2(7.0, 38.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(24.0 * unit), Color.WHITE)
+	draw_string(ui_font, profile.position + Vector2(65.0, 27.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(18.0 * unit), Color.WHITE)
+	draw_string(ui_font, profile.position + Vector2(65.0, 47.0) * unit, player_level_label(), HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 76.0 * unit, int(11.0 * unit), Color("79e6ff"))
+
+	var coin := home_coin_rect(viewport_size)
+	var gems := home_gems_rect(viewport_size)
+	for resource_rect in [coin, gems]:
+		draw_style_box(make_box(Color(0.012, 0.04, 0.105, 0.92), 18.0 * unit), resource_rect)
+		draw_rect(resource_rect, Color(0.50, 0.72, 1.0, 0.34), false, 1.5 * unit, true)
+	draw_circle(coin.position + Vector2(28.0, 27.0) * unit, 15.0 * unit, Color("ffd34e"))
+	draw_string(ui_font, coin.position + Vector2(52.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, coin.size.x - 58.0 * unit, int(19.0 * unit), Color.WHITE)
+	var gem_center := gems.position + Vector2(27.0, 27.0) * unit
+	draw_colored_polygon(PackedVector2Array([gem_center + Vector2(0,-15)*unit, gem_center + Vector2(13,-3)*unit, gem_center + Vector2(8,14)*unit, gem_center + Vector2(-8,14)*unit, gem_center + Vector2(-13,-3)*unit]), Color("58e8ff"))
+	draw_string(ui_font, gems.position + Vector2(50.0, 35.0) * unit, "0", HORIZONTAL_ALIGNMENT_LEFT, gems.size.x - 54.0 * unit, int(19.0 * unit), Color.WHITE)
+	for control_data in [[home_settings_rect(viewport_size), "⚙"], [home_help_rect(viewport_size), "?"], [home_sound_toggle_rect(viewport_size), "♪"]]:
+		var control_rect: Rect2 = control_data[0]
+		draw_style_box(make_box(Color(0.015, 0.045, 0.12, 0.92), 17.0 * unit), control_rect)
+		draw_string(ui_font, control_rect.position + Vector2(0.0, 36.0) * unit, control_data[1], HORIZONTAL_ALIGNMENT_CENTER, control_rect.size.x, int(19.0 * unit), Color.WHITE)
+
+	# The selected animal physically inhabits the portal world.
+	var hero_rect := home_character_rect(viewport_size)
+	var hero_texture: Texture2D = null
+	if player_animal < lifebuoy_hero_textures.size() and player_ring_color < lifebuoy_hero_textures[player_animal].size():
+		hero_texture = lifebuoy_hero_textures[player_animal][player_ring_color] as Texture2D
+	if hero_texture != null:
+		var float_y := sin(menu_elapsed * 1.8) * 2.0 * unit
+		draw_circle(hero_rect.position + Vector2(hero_rect.size.x * 0.5, hero_rect.size.y * 0.89), 54.0 * unit, Color(0.15, 0.72, 1.0, 0.22))
+		draw_texture_rect(hero_texture, Rect2(hero_rect.position + Vector2(0.0, float_y), hero_rect.size), false)
+
+	var portal_titles := ["זירה תחרותית", "קרב עם חבר", "קרב מהיר"] if ui_language == "he" else ["RANKED ARENA", "FRIEND BATTLE", "QUICK BATTLE"]
+	var accents := [Color("ffbf42"), Color("a879ff"), Color("47dcff")]
+	for mode in 3:
+		var mode_rect := home_mode_rect(mode, viewport_size)
+		var pulse := (sin(menu_elapsed * 3.2 + float(mode)) + 1.0) * 0.5
+		draw_style_box(make_box(Color(accents[mode].r, accents[mode].g, accents[mode].b, 0.15 + pulse * 0.08), 23.0 * unit), mode_rect.grow((5.0 + pulse * 3.0) * unit))
+		draw_style_box(make_box(Color(0.018, 0.055, 0.14, 0.94), 19.0 * unit), mode_rect)
+		draw_rect(mode_rect, Color(accents[mode].r, accents[mode].g, accents[mode].b, 0.82), false, 3.0 * unit, true)
+		draw_string(ui_font, mode_rect.position + Vector2(0.0, mode_rect.size.y * 0.62), portal_titles[mode], HORIZONTAL_ALIGNMENT_CENTER, mode_rect.size.x, int((25.0 if mode == 2 else 20.0) * unit), Color.WHITE)
+
+	var dock := Rect2(Vector2(330.0, 625.0) * unit, Vector2(620.0, 86.0) * unit)
+	draw_style_box(make_box(Color(0.008, 0.028, 0.075, 0.94), 31.0 * unit), dock)
+	draw_rect(dock, Color(0.37, 0.66, 1.0, 0.35), false, 2.0 * unit, true)
+	var nav_labels := [ui_text("shop"), ui_text("rewards")]
+	for i in 2:
+		var nav := home_nav_rect(i, viewport_size)
+		draw_home_nav_icon(i, nav.position + Vector2(30.0, 31.0) * unit, unit)
+		draw_string(ui_font, nav.position + Vector2(52.0, 39.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_LEFT, nav.size.x - 58.0 * unit, int(16.0 * unit), Color.WHITE)
+	draw_pending_invite_banner(viewport_size)
+	draw_tutorial_overlay(viewport_size)
+
 func draw_home_screen(viewport_size: Vector2) -> void:
+	if floating_portals_home_texture != null:
+		draw_portal_world_home(viewport_size)
+		return
 	var layout := home_layout(viewport_size)
 	var unit: float = layout.unit
 	draw_home_ambient_effects(viewport_size)

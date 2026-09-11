@@ -51,7 +51,9 @@ cp "$ROOT"/assets/hammer_trap/remastered/*.png "$PROJECT/assets/hammer_trap/rema
 
 mkdir -p "$PROJECT/assets/ui/fonts"
 mkdir -p "$PROJECT/assets/ui/full_body/lifebuoy"
+mkdir -p "$PROJECT/assets/ui/world"
 cp "$ROOT"/assets/ui/fonts/*.ttf "$PROJECT/assets/ui/fonts/"
+cp "$ROOT"/assets/ui/world/*.webp "$PROJECT/assets/ui/world/"
 cp "$ROOT/assets/ui/zoopaloola-splash.svg" "$PROJECT/assets/ui/zoopaloola-splash.svg"
 cp "$ROOT/assets/ui/zoopaloola-home-bg-v3.webp" "$PROJECT/assets/ui/zoopaloola-home-bg-v3.webp"
 cp "$ROOT/assets/ui/zoopaloola-loading-team-v1.webp" "$PROJECT/assets/ui/zoopaloola-loading-team-v1.webp"
