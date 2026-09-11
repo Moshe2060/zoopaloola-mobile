@@ -239,6 +239,9 @@ var character_gates_background_texture: Texture2D
 var friend_gates_background_texture: Texture2D
 var arena_gates_background_texture: Texture2D
 var shop_gates_background_texture: Texture2D
+var player_profile_gates_background_texture: Texture2D
+var leagues_gates_background_texture: Texture2D
+var rewards_gates_background_texture: Texture2D
 var loading_team_texture: Texture2D
 var zoopaloola_logo_texture: Texture2D
 var wood_podium_texture: Texture2D
@@ -810,6 +813,9 @@ func _ready() -> void:
 	friend_gates_background_texture = load("res://assets/ui/screens/friend-gates-bg-v1.webp") as Texture2D
 	arena_gates_background_texture = load("res://assets/ui/screens/arena-gates-bg-v1.webp") as Texture2D
 	shop_gates_background_texture = load("res://assets/ui/screens/shop-gates-bg-v1.webp") as Texture2D
+	player_profile_gates_background_texture = load("res://assets/ui/screens/player-profile-gates-bg-v1.webp") as Texture2D
+	leagues_gates_background_texture = load("res://assets/ui/screens/leagues-gates-bg-v1.webp") as Texture2D
+	rewards_gates_background_texture = load("res://assets/ui/screens/rewards-gates-bg-v1.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
 	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
@@ -5822,10 +5828,10 @@ func daily_claim_rect(viewport_size: Vector2) -> Rect2:
 
 func draw_rewards_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.48))
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.06))
 	draw_frontend_header(viewport_size, ui_text("daily_title"), ui_text("daily_sub"))
 	var card := Rect2(Vector2((viewport_size.x - 640.0 * unit) * 0.5, 160.0 * unit), Vector2(640.0, 420.0) * unit)
-	draw_gate_panel(card, Color("f6d365"), unit, 0.96)
+	draw_gate_panel(card, Color("f6d365"), unit, 0.58)
 	draw_circle(card.position + Vector2(card.size.x * 0.5, 140.0 * unit), 58.0 * unit, Color("ffc83d"))
 	draw_circle(card.position + Vector2(card.size.x * 0.5, 140.0 * unit), 36.0 * unit, Color("e9971b"), false, 8.0 * unit, true)
 	draw_string(ui_font, card.position + Vector2(30.0, 250.0) * unit, "+" + str(DAILY_REWARD_COINS) + ui_text("coins"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 60.0 * unit, int(28.0 * unit), Color.WHITE)
@@ -6261,13 +6267,13 @@ func draw_frontend(viewport_size: Vector2) -> void:
 		draw_screen_background(arena_gates_background_texture, viewport_size, 0.10)
 		draw_arena_screen(viewport_size)
 	elif app_screen == APP_PLAYER_PROFILE:
-		draw_menu_background(viewport_size)
+		draw_screen_background(player_profile_gates_background_texture, viewport_size, 0.12)
 		draw_player_profile_screen(viewport_size)
 	elif app_screen == APP_FRIEND:
 		draw_screen_background(friend_gates_background_texture, viewport_size, 0.14)
 		draw_friend_screen(viewport_size)
 	elif app_screen == APP_REWARDS:
-		draw_menu_background(viewport_size)
+		draw_screen_background(rewards_gates_background_texture, viewport_size, 0.08)
 		draw_rewards_screen(viewport_size)
 	draw_pending_invite_banner(viewport_size)
 	if menu_notice_time > 0.0:
@@ -6279,7 +6285,7 @@ func draw_auth_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.16))
 	var panel := Rect2(Vector2(350.0, 72.0) * unit, Vector2(580.0, 580.0) * unit)
-	draw_gate_panel(panel, Color("58dcff"), unit, 0.97)
+	draw_gate_panel(panel, Color("58dcff"), unit, 0.60)
 	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 70.0 * unit), "ברוכים הבאים לשערי הקרב" if ui_language == "he" else "WELCOME TO BATTLE GATES", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(30.0 * unit), Color("ffd83d"))
 	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 110.0 * unit), ("בחרו איך להיכנס למשחק" if auth_email_mode.is_empty() else ("הרשמה חדשה" if auth_email_mode == "register" else "כניסה עם מייל")) if ui_language == "he" else ("CHOOSE HOW TO SIGN IN" if auth_email_mode.is_empty() else ("CREATE ACCOUNT" if auth_email_mode == "register" else "EMAIL SIGN IN")), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(20.0 * unit), Color.WHITE)
 	if session_restore_pending and auth_email_mode.is_empty():
@@ -6675,10 +6681,10 @@ func draw_profile_stat_card(rect: Rect2, label: String, value: String, accent: C
 
 func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.48))
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.06))
 	draw_frontend_header(viewport_size, ui_text("profile_title"), ui_text("profile_sub"))
 	var hero_panel := Rect2(Vector2(38.0, 102.0) * unit, Vector2(410.0, 570.0) * unit)
-	draw_gate_panel(hero_panel, Color("58dcff"), unit, 0.90)
+	draw_gate_panel(hero_panel, Color("58dcff"), unit, 0.54)
 	var glow_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 178.0 * unit)
 	draw_circle(glow_center, 145.0 * unit, Color(0.82, 0.98, 1.0, 0.28))
 	var podium_center := hero_panel.position + Vector2(hero_panel.size.x * 0.50, 328.0 * unit)
@@ -7043,19 +7049,38 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	draw_tutorial_overlay(viewport_size)
 
 func draw_battle_gates_home_screen(viewport_size: Vector2) -> void:
+	if battle_gates_league_open:
+		draw_battle_gates_league_screen(viewport_size)
+		return
 	draw_texture_rect(battle_gates_home_texture, Rect2(Vector2.ZERO, viewport_size), false)
 	var id_rect := player_id_copy_rect(viewport_size)
 	var id_text := firebase_public_id if not firebase_public_id.is_empty() else "ZP-XXXXXXXX"
 	draw_style_box(make_box(Color(0.035, 0.10, 0.22, 0.96), 10.0), id_rect)
 	draw_string(ui_font, id_rect.position + Vector2(8.0, id_rect.size.y * 0.67), id_text, HORIZONTAL_ALIGNMENT_LEFT, id_rect.size.x - 36.0, maxi(10, int(viewport_size.y * 0.018)), Color("dff6ff"))
 	draw_string(ui_font, id_rect.position + Vector2(id_rect.size.x - 30.0, id_rect.size.y * 0.68), "▣", HORIZONTAL_ALIGNMENT_CENTER, 24.0, maxi(11, int(viewport_size.y * 0.020)), Color("8cecff"))
-	if battle_gates_league_open:
-		draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.09, 0.74))
-		var panel := Rect2(viewport_size.x * 0.31, viewport_size.y * 0.18, viewport_size.x * 0.38, viewport_size.y * 0.62)
-		draw_home_leaderboard(panel)
-		draw_string(ui_font, panel.position + Vector2(panel.size.x - 44.0, 34.0), "×", HORIZONTAL_ALIGNMENT_CENTER, 34.0, maxi(20, int(viewport_size.y * 0.030)), Color("173249"))
 	draw_home_friend_profile(viewport_size)
 	draw_tutorial_overlay(viewport_size)
+
+func draw_battle_gates_league_screen(viewport_size: Vector2) -> void:
+	draw_screen_background(leagues_gates_background_texture, viewport_size, 0.05)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_frontend_header(viewport_size, ui_text("leaderboard_title"), league_name(player_league_tier))
+	var rating_box := Rect2(Vector2(105.0, 430.0) * unit, Vector2(300.0, 92.0) * unit)
+	draw_style_box(make_box(Color(0.015, 0.06, 0.15, 0.72), 20.0 * unit), rating_box)
+	draw_string(ui_font, rating_box.position + Vector2(0.0, 35.0) * unit, league_name(player_league_tier), HORIZONTAL_ALIGNMENT_CENTER, rating_box.size.x, int(20.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, rating_box.position + Vector2(0.0, 70.0) * unit, ui_text("rating_label") + ": " + str(player_rating), HORIZONTAL_ALIGNMENT_CENTER, rating_box.size.x, int(17.0 * unit), Color.WHITE)
+	var entries := global_leaderboard.duplicate()
+	if entries.is_empty():
+		entries = [{"rank": 1, "name": profile_name, "rating": player_rating, "publicId": firebase_public_id}]
+	var count := mini(6, entries.size())
+	for i in count:
+		var entry: Dictionary = entries[i]
+		var row := Rect2(Vector2(510.0, 250.0 + float(i) * 56.0) * unit, Vector2(660.0, 48.0) * unit)
+		var is_me := str(entry.get("publicId", "")) == firebase_public_id
+		draw_style_box(make_box(Color(0.45, 0.25, 0.08, 0.82) if is_me else Color(0.015, 0.07, 0.17, 0.62), 13.0 * unit), row)
+		draw_string(ui_font, row.position + Vector2(14.0, 31.0) * unit, "#" + str(entry.get("rank", i + 1)), HORIZONTAL_ALIGNMENT_LEFT, 60.0 * unit, int(16.0 * unit), Color("ffe25d"))
+		draw_string(ui_font, row.position + Vector2(80.0, 31.0) * unit, str(entry.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, 390.0 * unit, int(17.0 * unit), Color.WHITE)
+		draw_string(ui_font, row.position + Vector2(510.0, 31.0) * unit, str(entry.get("rating", 0)), HORIZONTAL_ALIGNMENT_CENTER, 120.0 * unit, int(17.0 * unit), Color("8cecff"))
 
 func draw_home_mode_icon(kind: int, center: Vector2, unit: float) -> void:
 	if kind == 0:
@@ -7149,7 +7174,7 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	# Bright aqua showroom inspired by the sea surrounding the Zoopaloola table.
 	draw_rect(Rect2(0.0, 92.0 * unit, viewport_size.x, viewport_size.y - 92.0 * unit), Color(0.16, 0.72, 0.86, 0.20))
 	var display := Rect2(72.0 * unit, 106.0 * unit, 470.0 * unit, 414.0 * unit)
-	draw_gate_panel(display, Color("58dcff"), unit, 0.90)
+	draw_gate_panel(display, Color("58dcff"), unit, 0.56)
 	# A small wooden winner podium grounds the full-body hero.
 	var podium_center := display.position + Vector2(display.size.x * 0.50, display.size.y * 0.83)
 	draw_wood_podium(podium_center, unit * 0.72, false)
@@ -7166,7 +7191,7 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	draw_string(ui_font, display.position + Vector2(0.0, display.size.y - 18.0 * unit), ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, display.size.x, int(22.0 * unit), Color.WHITE)
 
 	var info := Rect2(570.0 * unit, 118.0 * unit, 638.0 * unit, 326.0 * unit)
-	draw_gate_panel(info, Color("a868ff"), unit, 0.94)
+	draw_gate_panel(info, Color("a868ff"), unit, 0.62)
 	draw_string(ui_font, info.position + Vector2(0.0, 47.0) * unit, ui_text("choose_ring"), HORIZONTAL_ALIGNMENT_CENTER, info.size.x, int(24.0 * unit), Color("ffe25d"))
 	draw_string(ui_font, info.position + Vector2(0.0, 76.0) * unit, ui_text("choose_ring_sub"), HORIZONTAL_ALIGNMENT_CENTER, info.size.x, int(12.0 * unit), Color("d7f6ff"))
 	for i in RING_COLOR_NAMES.size():
@@ -7411,7 +7436,7 @@ func draw_shop_hub(viewport_size: Vector2, unit: float) -> void:
 	for i in 3:
 		var card := shop_category_rect(i, viewport_size)
 		var accent: Color = category_colors[i]
-		draw_gate_panel(card, accent, unit, 0.95)
+		draw_gate_panel(card, accent, unit, 0.58)
 		draw_rect(Rect2(card.position + Vector2(10.0 * unit, 10.0 * unit), Vector2(card.size.x - 20.0 * unit, 3.0 * unit)), Color(accent.lightened(0.25), 0.55))
 		var icon_center := card.position + Vector2(card.size.x * 0.5, card.size.y * 0.34)
 		draw_shop_category_icon(i, icon_center, 72.0 * unit, unit)
