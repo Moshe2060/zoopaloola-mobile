@@ -90,17 +90,19 @@ jobs:
           cp -R /root/.local/share/godot/export_templates/4.4.stable/. "$HOME/.local/share/godot/export_templates/4.4.stable/"
 
       - name: Validate and export Modern Edition
+        timeout-minutes: 8
         working-directory: zoopaloola_godot_mobile
         run: |
           for attempt in 1 2; do
-            if godot --headless --editor --path . --quit-after 30 > /tmp/modern-import.log 2>&1; then
+            if timeout 90s godot --headless --editor --path . --quit-after 30 > /tmp/modern-import.log 2>&1; then
               break
             fi
-            cat /tmp/modern-import.log
+            tail -n 160 /tmp/modern-import.log
             if [ "$attempt" = "2" ]; then exit 1; fi
             rm -rf .godot/imported
+            : > /tmp/modern-import.log
           done
-          cat /tmp/modern-import.log
+          tail -n 160 /tmp/modern-import.log
           ! grep -Eq 'SCRIPT ERROR|Parse Error|Error loading image|Error importing|Failed loading resource|could not be loaded' /tmp/modern-import.log
           mkdir -p build/modern-preview
           EXPORT_NAME="modern-${GITHUB_SHA}"
