@@ -232,6 +232,7 @@ var board_texture: Texture2D
 var board_theme_textures: Array[Texture2D] = []
 var ui_font: Font
 var lobby_background_texture: Texture2D
+var battle_gates_home_texture: Texture2D
 var loading_team_texture: Texture2D
 var zoopaloola_logo_texture: Texture2D
 var wood_podium_texture: Texture2D
@@ -393,6 +394,7 @@ var incoming_friend_requests: Array = []
 var outgoing_friend_requests: Array = []
 var home_social_tab := 0
 var home_friend_profile_index := -1
+var battle_gates_league_open := false
 var lobby_chat_messages: Array = []
 var friend_id_input: LineEdit
 var lobby_chat_input: LineEdit
@@ -795,6 +797,7 @@ func _ready() -> void:
 		load("res://assets/boards/board-candy.webp") as Texture2D,
 	]
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
+	battle_gates_home_texture = load("res://assets/ui/battle-gates-home-v1.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
 	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
@@ -3548,6 +3551,14 @@ func home_stats_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(layout.left_x, layout.content_top, layout.left_w, layout.stats_h)
 
 func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		if index == 0:
+			return Rect2(viewport_size.x * 0.735, viewport_size.y * 0.600, viewport_size.x * 0.210, viewport_size.y * 0.092)
+		if index == 1:
+			return Rect2(viewport_size.x * 0.065, viewport_size.y * 0.600, viewport_size.x * 0.205, viewport_size.y * 0.092)
+		if index == 2:
+			return Rect2(viewport_size.x * 0.355, viewport_size.y * 0.645, viewport_size.x * 0.292, viewport_size.y * 0.112)
+		return Rect2()
 	var layout := home_layout(viewport_size)
 	if index == 0:
 		return Rect2(layout.arena_x, layout.bottom_y, layout.arena_w, layout.bottom_button_h)
@@ -3585,6 +3596,8 @@ func player_profile_color_rect(index: int, viewport_size: Vector2) -> Rect2:
 	return Rect2(Vector2((70.0 + float(index) * 60.0) * unit, 614.0 * unit), Vector2(44.0, 44.0) * unit)
 
 func player_id_copy_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null and app_screen == APP_HOME:
+		return Rect2(viewport_size.x * 0.220, viewport_size.y * 0.078, viewport_size.x * 0.112, viewport_size.y * 0.047)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2(1060.0, 620.0) * unit, Vector2(150.0, 42.0) * unit)
 
@@ -3593,6 +3606,8 @@ func player_google_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(Vector2(870.0, 620.0) * unit, Vector2(175.0, 42.0) * unit)
 
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(viewport_size.x * 0.025, viewport_size.y * 0.030, viewport_size.x * 0.320, viewport_size.y * 0.120)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
 
@@ -3623,12 +3638,18 @@ func home_coin_rect(viewport_size: Vector2) -> Rect2:
 	return home_top_control_rects(viewport_size).coin
 
 func home_settings_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(viewport_size.x * 0.925, viewport_size.y * 0.030, viewport_size.x * 0.050, viewport_size.y * 0.078)
 	return home_top_control_rects(viewport_size).settings
 
 func home_help_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(-1000.0, -1000.0, 1.0, 1.0)
 	return home_top_control_rects(viewport_size).help
 
 func home_sound_toggle_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(-1000.0, -1000.0, 1.0, 1.0)
 	return home_top_control_rects(viewport_size).sound
 
 func home_gems_rect(viewport_size: Vector2) -> Rect2:
@@ -3795,11 +3816,17 @@ func draw_tutorial_overlay(viewport_size: Vector2) -> void:
 	draw_string(ui_font, tutorial_skip_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, "×", HORIZONTAL_ALIGNMENT_CENTER, tutorial_skip_rect(viewport_size).size.x, int(22.0 * unit), Color("607080"))
 
 func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		var nav_width := viewport_size.x * 0.135
+		var start_x := viewport_size.x * 0.245
+		return Rect2(start_x + float(index) * nav_width, viewport_size.y * 0.858, nav_width, viewport_size.y * 0.132)
 	var layout := home_layout(viewport_size)
 	var y: float = layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index)
 	return Rect2(layout.left_x, y, layout.left_w, layout.rail_button_h)
 
 func home_character_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return home_nav_rect(0, viewport_size)
 	var layout := home_layout(viewport_size)
 	var unit: float = layout.unit
 	var center_left: float = layout.center_left
@@ -3966,7 +3993,7 @@ func update_home_social_inputs() -> void:
 	var viewport_size := get_viewport_rect().size
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var panel := home_social_panel_rect(viewport_size)
-	var show_social_inputs := app_screen == APP_HOME and not tutorial_open and not customizer_open and not friend_customizer_open
+	var show_social_inputs := app_screen == APP_HOME and battle_gates_home_texture == null and not tutorial_open and not customizer_open and not friend_customizer_open
 	if friend_id_input != null:
 		var show_friend_input := show_social_inputs and home_social_tab == 0
 		if show_friend_input:
@@ -5844,6 +5871,11 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		if tutorial_open:
 			handle_tutorial_touch(screen_pos, viewport_size)
 			return
+		if battle_gates_league_open:
+			battle_gates_league_open = false
+			play_sound("ui")
+			queue_redraw()
+			return
 		if home_friend_profile_index >= 0:
 			if home_friend_profile_close_rect(viewport_size).has_point(screen_pos):
 				home_friend_profile_index = -1
@@ -5925,6 +5957,11 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		if home_character_rect(viewport_size).has_point(screen_pos):
 			app_screen = APP_PROFILE
 			return
+		if battle_gates_home_texture != null and player_id_copy_rect(viewport_size).has_point(screen_pos):
+			if not firebase_public_id.is_empty():
+				DisplayServer.clipboard_set(firebase_public_id)
+				show_menu_notice("המזהה הועתק" if ui_language == "he" else "PLAYER ID COPIED")
+			return
 		if home_profile_rect(viewport_size).has_point(screen_pos):
 			app_screen = APP_PLAYER_PROFILE
 			return
@@ -5933,14 +5970,21 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			save_player_profile()
 			show_menu_notice("English interface" if ui_language == "en" else "הממשק הוחלף לעברית")
 			return
-		for i in 2:
+		for i in (4 if battle_gates_home_texture != null else 2):
 			if not home_nav_rect(i, viewport_size).has_point(screen_pos):
 				continue
-			if i == 0:
+			if battle_gates_home_texture != null and i == 0:
+				app_screen = APP_PROFILE
+			elif battle_gates_home_texture != null and i == 1:
+				battle_gates_league_open = true
+				send_multiplayer({"type": "get_leaderboard"})
+			elif (battle_gates_home_texture != null and i == 2) or (battle_gates_home_texture == null and i == 0):
 				app_screen = APP_SHOP
 				shop_page = SHOP_PAGE_HUB
 			else:
 				app_screen = APP_REWARDS
+			play_sound("ui")
+			queue_redraw()
 			return
 		if home_mode_rect(0, viewport_size).has_point(screen_pos):
 			app_screen = APP_ARENA
@@ -6799,6 +6843,9 @@ func draw_home_friend_profile(viewport_size: Vector2) -> void:
 	draw_string(ui_font, home_friend_profile_remove_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, ui_text("remove_friend"), HORIZONTAL_ALIGNMENT_CENTER, home_friend_profile_remove_rect(viewport_size).size.x, int(14.0 * unit), Color.WHITE)
 
 func draw_home_screen(viewport_size: Vector2) -> void:
+	if battle_gates_home_texture != null:
+		draw_battle_gates_home_screen(viewport_size)
+		return
 	var layout := home_layout(viewport_size)
 	var unit: float = layout.unit
 	draw_home_ambient_effects(viewport_size)
@@ -6951,6 +6998,21 @@ func draw_home_screen(viewport_size: Vector2) -> void:
 	var help_toggle := home_help_rect(viewport_size)
 	draw_style_box(make_box(Color("35b96f") if tutorial_open else Color("2982a6"), 16.0 * unit), help_toggle)
 	draw_string(ui_font, help_toggle.position + Vector2(0.0, 35.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, help_toggle.size.x, int(22.0 * unit), Color.WHITE)
+	draw_home_friend_profile(viewport_size)
+	draw_tutorial_overlay(viewport_size)
+
+func draw_battle_gates_home_screen(viewport_size: Vector2) -> void:
+	draw_texture_rect(battle_gates_home_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	var id_rect := player_id_copy_rect(viewport_size)
+	var id_text := firebase_public_id if not firebase_public_id.is_empty() else "ZP-XXXXXXXX"
+	draw_style_box(make_box(Color(0.035, 0.10, 0.22, 0.96), 10.0), id_rect)
+	draw_string(ui_font, id_rect.position + Vector2(8.0, id_rect.size.y * 0.67), id_text, HORIZONTAL_ALIGNMENT_LEFT, id_rect.size.x - 36.0, maxi(10, int(viewport_size.y * 0.018)), Color("dff6ff"))
+	draw_string(ui_font, id_rect.position + Vector2(id_rect.size.x - 30.0, id_rect.size.y * 0.68), "▣", HORIZONTAL_ALIGNMENT_CENTER, 24.0, maxi(11, int(viewport_size.y * 0.020)), Color("8cecff"))
+	if battle_gates_league_open:
+		draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.09, 0.74))
+		var panel := Rect2(viewport_size.x * 0.31, viewport_size.y * 0.18, viewport_size.x * 0.38, viewport_size.y * 0.62)
+		draw_home_leaderboard(panel)
+		draw_string(ui_font, panel.position + Vector2(panel.size.x - 44.0, 34.0), "×", HORIZONTAL_ALIGNMENT_CENTER, 34.0, maxi(20, int(viewport_size.y * 0.030)), Color("173249"))
 	draw_home_friend_profile(viewport_size)
 	draw_tutorial_overlay(viewport_size)
 
