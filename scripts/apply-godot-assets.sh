@@ -53,6 +53,7 @@ cp "$ROOT"/assets/hammer_trap/remastered/*.png "$PROJECT/assets/hammer_trap/rema
 mkdir -p "$PROJECT/assets/ui/fonts"
 mkdir -p "$PROJECT/assets/ui/full_body/lifebuoy"
 mkdir -p "$PROJECT/assets/ui/screens"
+mkdir -p "$PROJECT/assets/ui/character_portraits"
 cp "$ROOT"/assets/ui/fonts/*.ttf "$PROJECT/assets/ui/fonts/"
 cp "$ROOT/assets/ui/zoopaloola-splash.svg" "$PROJECT/assets/ui/zoopaloola-splash.svg"
 cp "$ROOT/assets/ui/zoopaloola-home-bg-v3.webp" "$PROJECT/assets/ui/zoopaloola-home-bg-v3.webp"
@@ -63,6 +64,7 @@ cp "$ROOT/assets/ui/zoopaloola-logo-v1.webp" "$PROJECT/assets/ui/zoopaloola-logo
 cp "$ROOT/assets/ui/zoopaloola-boot-splash-v2.png" "$PROJECT/assets/ui/zoopaloola-boot-splash-v2.png"
 cp "$ROOT/assets/ui/zoopaloola-app-icon-v2.jpg" "$PROJECT/assets/ui/zoopaloola-app-icon-v2.jpg"
 cp "$ROOT"/assets/ui/screens/*.webp "$PROJECT/assets/ui/screens/"
+cp "$ROOT"/assets/ui/character_portraits/*.png "$PROJECT/assets/ui/character_portraits/"
 cp "$ROOT"/assets/ui/full_body/*.webp "$PROJECT/assets/ui/full_body/"
 cp "$ROOT"/assets/ui/full_body/lifebuoy/*.png "$PROJECT/assets/ui/full_body/lifebuoy/"
 

@@ -247,6 +247,7 @@ var zoopaloola_logo_texture: Texture2D
 var wood_podium_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
+var character_portrait_textures: Array[Texture2D] = []
 var full_body_animal_textures: Array[Texture2D] = []
 var lifebuoy_hero_textures: Array = []
 var animal_ring_masks: Array[Texture2D] = []
@@ -829,6 +830,8 @@ func _ready() -> void:
 	for animal_file in ANIMAL_FILES:
 		animal_textures.append(load("res://assets/animal_pieces/%s.png" % animal_file))
 		animal_ring_masks.append(load("res://assets/animal_pieces/%s-ring-mask.png" % animal_file))
+	for portrait_file in ["elephant-v1.png", "zebra-v1.png", "monkey-v1.png", "hippo-v1.png", "rhino-v1.png", "giraffe-v1.png", "tiger-v1.png"]:
+		character_portrait_textures.append(load("res://assets/ui/character_portraits/" + portrait_file))
 		full_body_animal_textures.append(load("res://assets/ui/full_body/%s.webp" % animal_file))
 		var hero_colors: Array[Texture2D] = []
 		for ring_name in RING_COLOR_NAMES:
@@ -4713,10 +4716,17 @@ func draw_collection_lock_overlay(rect: Rect2, index: int, is_ring: bool, unit: 
 	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
 	if unlocked:
 		return
-	draw_rect(rect, Color(0.01, 0.03, 0.08, 0.58))
-	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y * 0.42), "🔒", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(20.0 * unit), Color.WHITE)
+	var center := rect.get_center()
+	var radius := minf(rect.size.x, rect.size.y) * 0.47
+	draw_circle(center, radius, Color(0.01, 0.025, 0.07, 0.54))
+	# Draw the lock geometrically: emoji glyphs are not supported by every
+	# Godot font and previously appeared as destructive black squares.
+	var lock_body := Rect2(center - Vector2(13.0, 3.0) * unit, Vector2(26.0, 22.0) * unit)
+	draw_arc(center + Vector2(0.0, -4.0) * unit, 10.0 * unit, PI, TAU, 18, Color("fff1a8"), 4.0 * unit, true)
+	draw_style_box(make_box(Color("d99b24"), 5.0 * unit), lock_body)
+	draw_circle(center + Vector2(0.0, 7.0) * unit, 3.0 * unit, Color("70420b"))
 	var price_text := collection_item_price_label(index, is_ring)
-	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y * 0.68), price_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(11.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y + 16.0 * unit), price_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(10.0 * unit), Color("ffe25d"))
 
 func load_player_profile() -> void:
 	var config := ConfigFile.new()
@@ -7207,7 +7217,7 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		var center := card.get_center()
 		draw_circle(center, 48.0 * unit, Color("ffe25d") if selected else Color("6e8ca7"))
 		draw_circle(center, 42.0 * unit, Color("08234b"))
-		var portrait := animal_textures[i]
+		var portrait: Texture2D = character_portrait_textures[i] if i < character_portrait_textures.size() else animal_textures[i]
 		if portrait != null:
 			draw_texture_rect(portrait, Rect2(center - Vector2(37.0, 37.0) * unit, Vector2(74.0, 74.0) * unit), false)
 		draw_collection_lock_overlay(card, i, false, unit)
@@ -7220,11 +7230,15 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		var ring_button := character_ring_rect(i, viewport_size)
 		var selected := i == player_ring_color
 		var center := ring_button.get_center()
-		draw_circle(center, 47.0 * unit, Color("ffe25d") if selected else Color("335d91"))
-		draw_circle(center, 39.0 * unit, RING_COLORS[i])
-		draw_circle(center, 20.0 * unit, Color("08234b"))
-		draw_arc(center, 39.0 * unit, -0.75, 0.08, 12, Color("fff4dc"), 12.0 * unit, true)
-		draw_arc(center, 39.0 * unit, 2.40, 3.22, 12, Color("fff4dc"), 12.0 * unit, true)
+		draw_circle(center + Vector2(0.0, 4.0) * unit, 48.0 * unit, Color(0.0, 0.0, 0.0, 0.38))
+		draw_circle(center, 48.0 * unit, Color("ffe25d") if selected else Color("335d91"))
+		draw_circle(center, 41.0 * unit, RING_COLORS[i].darkened(0.20))
+		draw_arc(center, 38.0 * unit, 0.0, TAU, 48, RING_COLORS[i].lightened(0.12), 18.0 * unit, true)
+		draw_circle(center, 19.0 * unit, Color("08234b"))
+		for segment in 4:
+			var start_angle := float(segment) * PI * 0.5 - 0.18
+			draw_arc(center, 38.0 * unit, start_angle, start_angle + 0.36, 8, Color("fff4dc"), 18.0 * unit, true)
+		draw_arc(center, 40.0 * unit, -2.55, -0.70, 18, Color(1.0, 1.0, 1.0, 0.48), 4.0 * unit, true)
 		draw_collection_lock_overlay(ring_button, i, true, unit)
 		if selected:
 			draw_colored_polygon(PackedVector2Array([center + Vector2(0.0, -58.0) * unit, center + Vector2(9.0, -47.0) * unit, center + Vector2(0.0, -38.0) * unit, center + Vector2(-9.0, -47.0) * unit]), Color("58dcff"))
