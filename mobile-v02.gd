@@ -249,6 +249,7 @@ var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var character_portrait_textures: Array[Texture2D] = []
 var character_ship_textures: Array[Texture2D] = []
+var character_ship_light_masks: Array[Texture2D] = []
 var hero_saucer_texture: Texture2D
 var full_body_animal_textures: Array[Texture2D] = []
 var lifebuoy_hero_textures: Array = []
@@ -842,6 +843,8 @@ func _ready() -> void:
 		character_portrait_textures.append(load("res://assets/ui/character_portraits/" + portrait_file))
 	for ship_file in ["elephant-pilot-v2.png", "zebra-pilot-v2.png", "monkey-pilot-v3.png", "hippo-pilot-v2.png", "rhino-pilot-v2.png", "giraffe-pilot-v2.png", "tiger-pilot-v2.png"]:
 		character_ship_textures.append(load("res://assets/ui/character_ships/" + ship_file))
+	for light_file in ["elephant-pilot-v2-lights.png", "zebra-pilot-v2-lights.png", "monkey-pilot-v3-lights.png", "hippo-pilot-v2-lights.png", "rhino-pilot-v2-lights.png", "giraffe-pilot-v2-lights.png", "tiger-pilot-v2-lights.png"]:
+		character_ship_light_masks.append(load("res://assets/ui/character_ships/light_masks/" + light_file))
 	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
@@ -7209,6 +7212,11 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	if ship_hero != null:
 		var hero_rect := Rect2(Vector2(25.0, 135.0) * unit + Vector2(0.0, hover), Vector2(440.0, 440.0) * unit)
 		draw_texture_rect(ship_hero, hero_rect, false)
+		if player_animal < character_ship_light_masks.size():
+			var light_mask: Texture2D = character_ship_light_masks[player_animal]
+			if light_mask != null:
+				var energy_color := RING_COLORS[clampi(player_ring_color, 0, RING_COLORS.size() - 1)].lightened(0.12)
+				draw_texture_rect(light_mask, hero_rect, false, energy_color)
 	draw_string(ui_font, Vector2(70.0, 635.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(23.0 * unit), Color.WHITE)
 
 	for i in ANIMAL_NAMES.size():
