@@ -234,6 +234,11 @@ var ui_font: Font
 var lobby_background_texture: Texture2D
 var battle_background_texture: Texture2D
 var battle_gates_home_texture: Texture2D
+var auth_gates_background_texture: Texture2D
+var character_gates_background_texture: Texture2D
+var friend_gates_background_texture: Texture2D
+var arena_gates_background_texture: Texture2D
+var shop_gates_background_texture: Texture2D
 var loading_team_texture: Texture2D
 var zoopaloola_logo_texture: Texture2D
 var wood_podium_texture: Texture2D
@@ -800,6 +805,11 @@ func _ready() -> void:
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	battle_background_texture = load("res://assets/ui/battle-sky-bg-v1.webp") as Texture2D
 	battle_gates_home_texture = load("res://assets/ui/battle-gates-home-v1.webp") as Texture2D
+	auth_gates_background_texture = load("res://assets/ui/screens/auth-gates-bg-v1.webp") as Texture2D
+	character_gates_background_texture = load("res://assets/ui/screens/character-gates-bg-v1.webp") as Texture2D
+	friend_gates_background_texture = load("res://assets/ui/screens/friend-gates-bg-v1.webp") as Texture2D
+	arena_gates_background_texture = load("res://assets/ui/screens/arena-gates-bg-v1.webp") as Texture2D
+	shop_gates_background_texture = load("res://assets/ui/screens/shop-gates-bg-v1.webp") as Texture2D
 	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
 	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
 	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
@@ -6169,6 +6179,16 @@ func draw_battle_gates_secondary_background(viewport_size: Vector2) -> void:
 	draw_rect(Rect2(0.0, 0.0, viewport_size.x, viewport_size.y * 0.125), Color(0.015, 0.055, 0.14, 0.76))
 	draw_rect(Rect2(0.0, viewport_size.y * 0.118, viewport_size.x, maxf(3.0, viewport_size.y * 0.006)), Color("53d8ff", 0.72))
 
+func draw_screen_background(texture: Texture2D, viewport_size: Vector2, shade: float = 0.22) -> void:
+	if texture != null:
+		draw_texture_rect(texture, Rect2(Vector2.ZERO, viewport_size), false)
+	else:
+		draw_battle_gates_secondary_background(viewport_size)
+	if shade > 0.0:
+		draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.005, 0.018, 0.06, shade))
+	# A restrained top veil keeps live account data legible without hiding the artwork.
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, viewport_size.y * 0.12), Color(0.005, 0.025, 0.08, 0.48))
+
 func draw_gate_panel(rect: Rect2, accent: Color, unit: float, fill_alpha: float = 0.94) -> void:
 	var pulse := 0.82 + sin(menu_elapsed * 2.2) * 0.08
 	draw_style_box(make_box(Color(0.01, 0.025, 0.075, 0.88), 30.0 * unit), rect.grow(10.0 * unit))
@@ -6223,10 +6243,7 @@ func draw_splash_screen(viewport_size: Vector2) -> void:
 
 func draw_frontend(viewport_size: Vector2) -> void:
 	if app_screen == APP_AUTH:
-		if battle_gates_home_texture != null:
-			draw_battle_gates_secondary_background(viewport_size)
-		elif lobby_background_texture != null:
-			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		draw_screen_background(auth_gates_background_texture, viewport_size, 0.12)
 		draw_auth_screen(viewport_size)
 	elif app_screen == APP_HOME:
 		if lobby_background_texture != null:
@@ -6235,19 +6252,19 @@ func draw_frontend(viewport_size: Vector2) -> void:
 			draw_menu_background(viewport_size)
 		draw_home_screen(viewport_size)
 	elif app_screen == APP_PROFILE:
-		draw_menu_background(viewport_size)
+		draw_screen_background(character_gates_background_texture, viewport_size, 0.16)
 		draw_profile_screen(viewport_size)
 	elif app_screen == APP_SHOP:
-		draw_menu_background(viewport_size)
+		draw_screen_background(shop_gates_background_texture, viewport_size, 0.16)
 		draw_shop_screen(viewport_size)
 	elif app_screen == APP_ARENA:
-		draw_menu_background(viewport_size)
+		draw_screen_background(arena_gates_background_texture, viewport_size, 0.10)
 		draw_arena_screen(viewport_size)
 	elif app_screen == APP_PLAYER_PROFILE:
 		draw_menu_background(viewport_size)
 		draw_player_profile_screen(viewport_size)
 	elif app_screen == APP_FRIEND:
-		draw_menu_background(viewport_size)
+		draw_screen_background(friend_gates_background_texture, viewport_size, 0.14)
 		draw_friend_screen(viewport_size)
 	elif app_screen == APP_REWARDS:
 		draw_menu_background(viewport_size)
@@ -6260,7 +6277,7 @@ func draw_frontend(viewport_size: Vector2) -> void:
 
 func draw_auth_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.70))
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.16))
 	var panel := Rect2(Vector2(350.0, 72.0) * unit, Vector2(580.0, 580.0) * unit)
 	draw_gate_panel(panel, Color("58dcff"), unit, 0.97)
 	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 70.0 * unit), "ברוכים הבאים לשערי הקרב" if ui_language == "he" else "WELCOME TO BATTLE GATES", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(30.0 * unit), Color("ffd83d"))
@@ -6291,10 +6308,10 @@ func draw_auth_screen(viewport_size: Vector2) -> void:
 
 func draw_friend_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.05, 0.10, 0.66))
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.05, 0.10, 0.12))
 	draw_frontend_header(viewport_size, "משחק מול חבר" if ui_language == "he" else "PLAY A FRIEND", "צרו חדר או הצטרפו באמצעות קוד" if ui_language == "he" else "Create a room or join with a code")
 	var panel := Rect2(Vector2(175.0, 125.0) * unit, Vector2(930.0, 535.0) * unit)
-	draw_gate_panel(panel, Color("a868ff"), unit, 0.96)
+	draw_gate_panel(panel, Color("a868ff"), unit, 0.72)
 	var connection_text := "מחובר לשרת" if multiplayer_state == "connected" else ("מתחבר לשרת..." if multiplayer_state == "connecting" else "השרת לא מחובר")
 	if ui_language != "he":
 		connection_text = "Connected" if multiplayer_state == "connected" else ("Connecting..." if multiplayer_state == "connecting" else "Disconnected")
@@ -6615,7 +6632,7 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 	if matchmaking_searching or arena_fx_phase == "found":
 		draw_arena_search_screen(viewport_size)
 		return
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.42))
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.06))
 	draw_frontend_header(viewport_size, ui_text("arena_title"), ui_text("arena_title_sub"))
 	var names := [ui_text("sakura"), ui_text("bamboo"), ui_text("volcano")]
 	var entries := [0, 100, 500]
@@ -6626,14 +6643,15 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 		var selected := i == selected_arena
 		var pulse := sin(menu_elapsed * 4.2 + float(i) * 0.8) * 3.0 if selected else 0.0
 		var border: Color = Color("ffe25d") if selected else card_colors[i].lightened(0.18)
-		draw_gate_panel(card, border, unit, 0.95)
+		# The whole portal remains the touch target; only a light selection frame is
+		# painted so the portal artwork itself is the arena card.
+		draw_style_box(make_box(Color(border.r, border.g, border.b, 0.58), 26.0 * unit), card.grow(4.0 * unit))
+		draw_style_box(make_box(Color(0.01, 0.03, 0.08, 0.08), 23.0 * unit), card)
 		if selected:
 			draw_style_box(make_box(Color("ffe25d", 0.18 + sin(menu_elapsed * 5.0) * 0.08), 24.0 * unit), card.grow(10.0 * unit))
-		var preview := Rect2(card.position + Vector2(15.0, 15.0) * unit, Vector2(card.size.x - 30.0 * unit, 205.0 * unit))
-		draw_style_box(make_box(card_colors[i], 17.0 * unit), preview.grow(3.0 * unit))
-		draw_arena_preview(preview, i, unit)
-		var title_rect := Rect2(card.position + Vector2(15.0, 232.0) * unit, Vector2(card.size.x - 30.0 * unit, 54.0 * unit))
-		draw_style_box(make_box(Color("314f22"), 13.0 * unit), title_rect)
+		var title_rect := Rect2(card.position + Vector2(15.0, 244.0) * unit, Vector2(card.size.x - 30.0 * unit, 58.0 * unit))
+		draw_style_box(make_box(Color(0.015, 0.055, 0.13, 0.92), 15.0 * unit), title_rect.grow(4.0 * unit))
+		draw_style_box(make_box(Color(card_colors[i].r, card_colors[i].g, card_colors[i].b, 0.88), 13.0 * unit), title_rect)
 		draw_string(ui_font, title_rect.position + Vector2(0.0, 36.0) * unit, names[i], HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, int(21.0 * unit), Color.WHITE)
 		var entry_text := ui_text("entry_free") if entries[i] == 0 else ui_text("entry") + str(entries[i]) + ui_text("coins")
 		draw_string(ui_font, card.position + Vector2(22.0, 325.0) * unit, entry_text, HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(15.0 * unit), Color("d7f6ff"))
@@ -7429,7 +7447,7 @@ func draw_shop_effects_page(viewport_size: Vector2, unit: float) -> void:
 
 func draw_shop_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.72 if shop_page == SHOP_PAGE_HUB else 0.82))
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.08 if shop_page == SHOP_PAGE_HUB else 0.62))
 	draw_frontend_header(viewport_size, shop_page_title(), shop_page_subtitle())
 	draw_shop_coin_box(viewport_size, unit)
 	match shop_page:
