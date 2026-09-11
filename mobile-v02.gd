@@ -248,6 +248,7 @@ var wood_podium_texture: Texture2D
 var piece_textures: Array[Texture2D] = []
 var animal_textures: Array[Texture2D] = []
 var character_portrait_textures: Array[Texture2D] = []
+var character_ship_textures: Array[Texture2D] = []
 var hero_saucer_texture: Texture2D
 var full_body_animal_textures: Array[Texture2D] = []
 var lifebuoy_hero_textures: Array = []
@@ -839,6 +840,8 @@ func _ready() -> void:
 		lifebuoy_hero_textures.append(hero_colors)
 	for portrait_file in ["elephant-v1.png", "zebra-v1.png", "monkey-v1.png", "hippo-v1.png", "rhino-v1.png", "giraffe-v1.png", "tiger-v1.png"]:
 		character_portrait_textures.append(load("res://assets/ui/character_portraits/" + portrait_file))
+	for ship_file in ["elephant-pilot-v2.png", "zebra-pilot-v2.png", "monkey-pilot-v2.png", "hippo-pilot-v2.png", "rhino-pilot-v2.png", "giraffe-pilot-v2.png", "tiger-pilot-v2.png"]:
+		character_ship_textures.append(load("res://assets/ui/character_ships/" + ship_file))
 	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
@@ -7199,22 +7202,13 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 	draw_string(ui_font, board.position + Vector2(0.0, 132.0) * unit, ui_text("choose_animal"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(21.0 * unit), Color.WHITE)
 	draw_line(board.position + Vector2(36.0, 145.0) * unit, board.position + Vector2(board.size.x - 36.0 * unit, 145.0 * unit), Color("32bfff", 0.62), 2.0 * unit, true)
 
-	# The selected animal is now a pilot.  Keeping the pilot and vehicle as
-	# separate layers lets every animal use every ship color cleanly.
+	# Each hero is a complete, production-quality pilot asset.  The animal's
+	# torso, hands and cockpit contact are baked together to match the concept.
 	var hover: float = sin(menu_elapsed * 1.7) * 5.0 * unit
-	var saucer_center := Vector2(250.0, 450.0) * unit + Vector2(0.0, hover)
-	var pilot: Texture2D = character_portrait_textures[player_animal] if player_animal < character_portrait_textures.size() else animal_textures[player_animal]
-	draw_circle(saucer_center + Vector2(0.0, 96.0) * unit, 125.0 * unit, Color(0.10, 0.77, 1.0, 0.12))
-	if pilot != null:
-		var pilot_size := Vector2(235.0, 235.0) * unit
-		var pilot_center := saucer_center + Vector2(0.0, -105.0) * unit
-		draw_texture_rect(pilot, Rect2(pilot_center - pilot_size * 0.5, pilot_size), false)
-	if hero_saucer_texture != null:
-		var saucer_size := Vector2(430.0, 322.5) * unit
-		draw_texture_rect(hero_saucer_texture, Rect2(saucer_center - saucer_size * 0.5, saucer_size), false)
-	# Accent light changes with the selected vehicle color while the premium
-	# navy-and-gold hull stays consistent across the collection.
-	draw_arc(saucer_center + Vector2(0.0, 13.0) * unit, 136.0 * unit, 0.16, PI - 0.16, 36, RING_COLORS[player_ring_color].lightened(0.28), 6.0 * unit, true)
+	var ship_hero: Texture2D = character_ship_textures[player_animal] if player_animal < character_ship_textures.size() else null
+	if ship_hero != null:
+		var hero_rect := Rect2(Vector2(25.0, 135.0) * unit + Vector2(0.0, hover), Vector2(440.0, 440.0) * unit)
+		draw_texture_rect(ship_hero, hero_rect, false)
 	draw_string(ui_font, Vector2(70.0, 635.0) * unit, ui_animal_name(player_animal), HORIZONTAL_ALIGNMENT_CENTER, 360.0 * unit, int(23.0 * unit), Color.WHITE)
 
 	for i in ANIMAL_NAMES.size():
