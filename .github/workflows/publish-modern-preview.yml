@@ -92,7 +92,14 @@ jobs:
       - name: Validate and export Modern Edition
         working-directory: zoopaloola_godot_mobile
         run: |
-          godot --headless --editor --path . --quit-after 30 > /tmp/modern-import.log 2>&1
+          for attempt in 1 2; do
+            if godot --headless --editor --path . --quit-after 30 > /tmp/modern-import.log 2>&1; then
+              break
+            fi
+            cat /tmp/modern-import.log
+            if [ "$attempt" = "2" ]; then exit 1; fi
+            rm -rf .godot/imported
+          done
           cat /tmp/modern-import.log
           ! grep -Eq 'SCRIPT ERROR|Parse Error|Error loading image|Error importing|Failed loading resource|could not be loaded' /tmp/modern-import.log
           mkdir -p build/modern-preview
