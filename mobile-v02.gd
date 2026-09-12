@@ -240,6 +240,8 @@ var auth_gates_background_texture: Texture2D
 var character_gates_background_texture: Texture2D
 var friend_gates_background_texture: Texture2D
 var arena_gates_background_texture: Texture2D
+var arena_search_concept_texture: Texture2D
+var arena_found_concept_texture: Texture2D
 var shop_gates_background_texture: Texture2D
 var player_profile_gates_background_texture: Texture2D
 var leagues_gates_background_texture: Texture2D
@@ -867,6 +869,8 @@ func _ready() -> void:
 	character_gates_background_texture = load("res://assets/ui/screens/character-gates-bg-v1.webp") as Texture2D
 	friend_gates_background_texture = load("res://assets/ui/screens/friend-gates-bg-v1.webp") as Texture2D
 	arena_gates_background_texture = load("res://assets/ui/screens/arena-gates-bg-v1.webp") as Texture2D
+	arena_search_concept_texture = load("res://assets/ui/screens/arena-search-concept-v1.webp") as Texture2D
+	arena_found_concept_texture = load("res://assets/ui/screens/arena-found-concept-v1.webp") as Texture2D
 	shop_gates_background_texture = load("res://assets/ui/screens/shop-gates-bg-v1.webp") as Texture2D
 	player_profile_gates_background_texture = load("res://assets/ui/screens/player-profile-gates-bg-v1.webp") as Texture2D
 	leagues_gates_background_texture = load("res://assets/ui/screens/leagues-gates-bg-v1.webp") as Texture2D
@@ -6779,7 +6783,64 @@ func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float, oppo
 		badge_value = str(int(opponent.get("level", 1)))
 	draw_string(ui_font, badge_center + Vector2(-18.0, 7.0) * unit, badge_value, HORIZONTAL_ALIGNMENT_CENTER, 36.0 * unit, int(17.0 * unit), Color("173249"))
 
+func matchmaking_hero_texture(animal: int, ring_color: int) -> Texture2D:
+	var safe_animal := clampi(animal, 0, ANIMAL_NAMES.size() - 1)
+	var safe_ring := clampi(ring_color, 0, RING_COLORS.size() - 1)
+	if safe_animal < lifebuoy_hero_textures.size():
+		var colors: Array = lifebuoy_hero_textures[safe_animal]
+		if safe_ring < colors.size() and colors[safe_ring] != null:
+			return colors[safe_ring] as Texture2D
+	if safe_animal < full_body_animal_textures.size():
+		return full_body_animal_textures[safe_animal]
+	return null
+
+func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
+	var found: bool = arena_fx_phase == "found"
+	var background: Texture2D = arena_found_concept_texture if found else arena_search_concept_texture
+	if background == null:
+		return false
+	draw_texture_rect(background, Rect2(Vector2.ZERO, viewport_size), false)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var opponent: Dictionary = arena_matched_opponent if found else {}
+	var local_hero := matchmaking_hero_texture(player_animal, player_ring_color)
+	if found:
+		if local_hero != null:
+			draw_texture_rect(local_hero, Rect2(viewport_size.x * 0.105, 116.0 * unit, 285.0 * unit, 370.0 * unit), false)
+		var opponent_animal := clampi(int(opponent.get("animal", 0)), 0, ANIMAL_NAMES.size() - 1)
+		var opponent_ring := clampi(int(opponent.get("ringColor", 2)), 0, RING_COLORS.size() - 1)
+		var opponent_hero := matchmaking_hero_texture(opponent_animal, opponent_ring)
+		if opponent_hero != null:
+			draw_texture_rect(opponent_hero, Rect2(viewport_size.x * 0.675, 116.0 * unit, 285.0 * unit, 370.0 * unit), false)
+		draw_string(ui_font, Vector2(0.0, 82.0 * unit), ui_text("match_found"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(42.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.030, 455.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(26.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.610, 455.0 * unit), str(opponent.get("name", "יריב")), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(26.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.030, 492.0 * unit), ("רמה %d  •  דירוג %d" if ui_language == "he" else "LEVEL %d  •  RATING %d") % [player_level, player_rating], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(16.0 * unit), Color("cdefff"))
+		draw_string(ui_font, Vector2(viewport_size.x * 0.610, 492.0 * unit), ("רמה %d  •  דירוג %d" if ui_language == "he" else "LEVEL %d  •  RATING %d") % [int(opponent.get("level", 1)), int(opponent.get("rating", 1000))], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(16.0 * unit), Color("f2d7ff"))
+		draw_string(ui_font, Vector2(0.0, 370.0 * unit), "VS", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(78.0 * unit), Color("ffe25d"))
+		var countdown := maxi(1, int(ceil(ARENA_MATCH_FOUND_DURATION - arena_fx_elapsed)))
+		draw_string(ui_font, Vector2(0.0, 614.0 * unit), str(countdown), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(35.0 * unit), Color.WHITE)
+	else:
+		if local_hero != null:
+			draw_texture_rect(local_hero, Rect2(viewport_size.x * 0.070, 148.0 * unit, 250.0 * unit, 300.0 * unit), false)
+		var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
+		var mystery := matchmaking_hero_texture(preview_animal, 2)
+		if mystery != null:
+			draw_texture_rect(mystery, Rect2(viewport_size.x * 0.735, 148.0 * unit, 250.0 * unit, 300.0 * unit), false, Color(0.015, 0.025, 0.08, 0.82))
+		draw_string(ui_font, Vector2(0.0, 77.0 * unit), "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(40.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.035, 365.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.30, int(24.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.665, 365.0 * unit), "מחפשים..." if ui_language == "he" else "SEARCHING...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.30, int(24.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.785, 285.0 * unit), "?", HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(68.0 * unit), Color.WHITE)
+	var arena_names: Array[String] = ["שער הירח", "ממלכת השמיים", "מבצר הכתר"]
+	var arena_name := arena_names[clampi(selected_arena, 0, 2)]
+	draw_string(ui_font, Vector2(0.0, 548.0 * unit), arena_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(23.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(0.0, 578.0 * unit), ("פרס הקרב %d" if ui_language == "he" else "BATTLE PRIZE %d") % int(ARENA_WIN_PRIZES[clampi(selected_arena, 0, 2)]), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(15.0 * unit), Color("ffe25d"))
+	if not found:
+		draw_string(ui_font, Vector2(0.0, 667.0 * unit), ui_text("cancel_search"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(23.0 * unit), Color.WHITE)
+	return true
+
 func draw_arena_search_screen(viewport_size: Vector2) -> void:
+	if draw_concept_matchmaking_screen(viewport_size):
+		return
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	# Matchmaking is its own cinematic scene: one active gate replaces the
 	# three-gate selection view, matching the approved search concept.
