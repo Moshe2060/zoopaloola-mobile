@@ -7171,7 +7171,9 @@ func draw_league_badge(center: Vector2, tier: int, radius: float, active: bool, 
 		draw_colored_polygon(PackedVector2Array([center + Vector2(-radius * 0.48, -radius * 0.88), center + Vector2(-radius * 0.18, -radius * 1.20), center, center + Vector2(radius * 0.18, -radius * 1.20), center + Vector2(radius * 0.48, -radius * 0.88)]), Color("ffd85a"))
 
 func draw_battle_gates_league_screen(viewport_size: Vector2) -> void:
-	draw_screen_background(leagues_gates_background_texture, viewport_size, 0.08)
+	# The old leagues artwork contains its previous panels baked into the image.
+	# Use the clean floating-islands scene so only the new live UI is visible.
+	draw_screen_background(battle_background_texture, viewport_size, 0.12)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	draw_frontend_header(viewport_size, "ליגות ודירוג" if ui_language == "he" else "LEAGUES & RANKING", "הדרך שלכם לפסגה" if ui_language == "he" else "YOUR ROAD TO THE TOP")
 	var hero_rect := Rect2(Vector2(16.0, 126.0) * unit, Vector2(430.0, 430.0) * unit)
