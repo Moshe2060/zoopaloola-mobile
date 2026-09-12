@@ -109,6 +109,17 @@ jobs:
           if grep -Eq 'Error loading image|Error importing|Failed loading resource' /tmp/godot-import.log; then
             exit 1
           fi
+          # Godot defaults 2D textures to lossless CTEX. For photographic
+          # backgrounds that expands a ~200 KB WebP to ~2.5 MB in the PCK.
+          # Switch the generated texture imports to high-quality lossy CTEX,
+          # clear only generated imports, then rebuild them for the Web bundle.
+          find assets -type f -name '*.import' -exec sed -i 's/^compress\/mode=0$/compress\/mode=1/' {} +
+          rm -rf .godot/imported
+          godot --headless --editor --path . --quit-after 40 > /tmp/godot-web-import.log 2>&1
+          cat /tmp/godot-web-import.log
+          if grep -Eq 'Error loading image|Error importing|Failed loading resource' /tmp/godot-web-import.log; then
+            exit 1
+          fi
           godot --headless --path . --quit-after 3 > /tmp/godot-validation.log 2>&1
           cat /tmp/godot-validation.log
           if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource|could not be loaded' /tmp/godot-validation.log; then
