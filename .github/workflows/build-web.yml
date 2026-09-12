@@ -118,6 +118,14 @@ jobs:
           # Keep the public entry point stable while giving every Godot bundle
           # a unique filename, so mobile browsers cannot reuse an older game.
           mv "build/web/${EXPORT_NAME}.html" build/web/index.html
+          # Godot refuses to replace an existing service worker registration.
+          # Add a tiny build-aware bootstrap that removes the previous PWA cache
+          # once per release before the new engine bundle starts.
+          cp "$GITHUB_WORKSPACE/web-cache-reset.js" build/web/web-cache-reset.js
+          sed -i "s#<html lang=\"en\">#<html lang=\"en\" data-build=\"${GITHUB_SHA}\">#" build/web/index.html
+          sed -i 's#<script src="game-#<script src="web-cache-reset.js"></script>\n\t\t<script src="game-#' build/web/index.html
+          grep -q 'data-build=' build/web/index.html
+          grep -q 'web-cache-reset.js' build/web/index.html
           # Godot writes an absolute-root PWA start URL, which opens the domain
           # root on GitHub project Pages and produces a 404. Keep all install
           # metadata relative to this manifest's /zoopaloola-mobile/ folder.
