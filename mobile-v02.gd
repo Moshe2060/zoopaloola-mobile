@@ -6686,7 +6686,9 @@ func draw_friend_lobby_concept_overlay(viewport_size: Vector2, unit: float) -> v
 			var is_ready := bool(player_data.get("ready", false))
 			draw_centered_ui_text(Vector2(info_x, 518.0) * unit, ("מוכן" if ui_language == "he" else "READY") if is_ready else ("לא מוכן" if ui_language == "he" else "NOT READY"), 340.0 * unit, int(15.0 * unit), Color("65ef9d") if is_ready else Color("ffd05a"))
 		else:
-			draw_mystery_matchmaking_ship(portal_center, unit, int(floor(menu_elapsed * 2.0)) % ANIMAL_NAMES.size())
+			# A private room reserves this portal for the invited friend. Keep one
+			# calm placeholder instead of cycling silhouettes like matchmaking.
+			draw_mystery_matchmaking_ship(portal_center, unit, 0)
 			draw_string(ui_font, portal_center + Vector2(-30.0, 17.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, 60.0 * unit, int(48.0 * unit), Color.WHITE)
 			draw_centered_ui_text(Vector2(info_x, 486.0) * unit, "ממתינים לחבר..." if ui_language == "he" else "WAITING FOR A FRIEND...", 340.0 * unit, int(23.0 * unit), Color.WHITE)
 
