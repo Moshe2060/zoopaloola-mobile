@@ -6841,9 +6841,9 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 		draw_string(ui_font, Vector2(0.0, 614.0 * unit), str(countdown), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(35.0 * unit), Color.WHITE)
 	else:
 		var search_ship_size := 250.0 * unit
-		draw_matchmaking_ship(Rect2(viewport_size.x * 0.160 - search_ship_size * 0.5, 110.0 * unit, search_ship_size, search_ship_size), player_animal, player_ring_color)
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.160 - search_ship_size * 0.5, 120.0 * unit, search_ship_size, search_ship_size), player_animal, player_ring_color)
 		var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
-		draw_mystery_matchmaking_ship(Vector2(viewport_size.x * 0.805, 226.0 * unit), unit, preview_animal)
+		draw_mystery_matchmaking_ship(Vector2(viewport_size.x * 0.817, 236.0 * unit), unit, preview_animal)
 		draw_string(ui_font, Vector2(0.0, 77.0 * unit), "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(40.0 * unit), Color.WHITE)
 		draw_string(ui_font, Vector2(viewport_size.x * 0.055, 353.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.28, int(22.0 * unit), Color.WHITE)
 		draw_string(ui_font, Vector2(viewport_size.x * 0.665, 353.0 * unit), "מחפשים..." if ui_language == "he" else "SEARCHING...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.28, int(22.0 * unit), Color.WHITE)
