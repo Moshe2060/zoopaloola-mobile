@@ -35,7 +35,12 @@ jobs:
         run: unzip -q Zoopaloola-Godot-Mobile.zip
 
       - name: Apply current landscape game files
-        run: bash scripts/apply-godot-assets.sh
+        run: |
+          bash scripts/apply-godot-assets.sh
+          # Web players must download the full PCK before the first frame.
+          # Disable desktop/mobile VRAM variants before the initial import so
+          # large WebP menu backgrounds stay compact inside that download.
+          sed -i '/^\[rendering\]$/a textures/vram_compression/import_s3tc_bptc=false\ntextures/vram_compression/import_etc2_astc=false' zoopaloola_godot_mobile/project.godot
 
       - name: Add Web export preset
         working-directory: zoopaloola_godot_mobile
