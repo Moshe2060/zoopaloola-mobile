@@ -878,7 +878,7 @@ func _ready() -> void:
 	player_profile_gates_background_texture = load("res://assets/ui/screens/player-profile-gates-bg-v1.webp") as Texture2D
 	leagues_gates_background_texture = load("res://assets/ui/screens/leagues-gates-bg-v1.webp") as Texture2D
 	rewards_gates_background_texture = load("res://assets/ui/screens/rewards-gates-bg-v1.webp") as Texture2D
-	loading_team_texture = load("res://assets/ui/zoovortex-loading-v1.webp") as Texture2D
+	loading_team_texture = load("res://assets/ui/zoovortex-loading-v2.webp") as Texture2D
 	# The new splash artwork already contains the approved ZOOVORTEX wordmark.
 	zoopaloola_logo_texture = null
 	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
