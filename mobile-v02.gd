@@ -198,6 +198,7 @@ const FREE_UNLOCK_COUNT := 3
 const SHOP_PAGE_HUB := "hub"
 const SHOP_PAGE_ANIMALS := "animals"
 const SHOP_PAGE_RINGS := "rings"
+const SHOP_PAGE_BOARDS := "boards"
 const SHOP_PAGE_EFFECTS := "effects"
 const ECONOMY_VERSION := 2
 const ANIMAL_UNLOCK_PRICES := [0, 0, 0, 550, 750, 950, 0]
@@ -6035,11 +6036,8 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			return
 	else:
 		if frontend_back_rect(viewport_size).has_point(screen_pos):
-			if app_screen == APP_SHOP and shop_page != SHOP_PAGE_HUB:
-				shop_page = SHOP_PAGE_HUB
-				play_sound("ui")
-				queue_redraw()
-				return
+			if app_screen == APP_SHOP:
+				shop_page = SHOP_PAGE_ANIMALS
 			if app_screen == APP_PLAYER_PROFILE:
 				commit_profile_name()
 			if app_screen == APP_FRIEND:
@@ -6067,14 +6065,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					queue_redraw()
 					return
 		elif app_screen == APP_SHOP:
-			if shop_page == SHOP_PAGE_HUB:
-				for i in 3:
-					if shop_category_rect(i, viewport_size).has_point(screen_pos):
-						shop_page = [SHOP_PAGE_ANIMALS, SHOP_PAGE_RINGS, SHOP_PAGE_EFFECTS][i]
-						play_sound("ui")
-						queue_redraw()
-						return
-			elif shop_page == SHOP_PAGE_ANIMALS:
+			for i in 4:
+				if shop_category_rect(i, viewport_size).has_point(screen_pos):
+					shop_page = [SHOP_PAGE_ANIMALS, SHOP_PAGE_RINGS, SHOP_PAGE_BOARDS, SHOP_PAGE_EFFECTS][i]
+					play_sound("ui")
+					queue_redraw()
+					return
+			if shop_page == SHOP_PAGE_ANIMALS:
 				for i in ANIMAL_NAMES.size():
 					if shop_detail_grid_rect(i, viewport_size, ANIMAL_NAMES.size()).has_point(screen_pos):
 						try_purchase_animal(i)
@@ -6084,6 +6081,17 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				for i in RING_COLOR_NAMES.size():
 					if shop_detail_grid_rect(i, viewport_size, RING_COLOR_NAMES.size()).has_point(screen_pos):
 						try_purchase_ring(i)
+						queue_redraw()
+						return
+			elif shop_page == SHOP_PAGE_BOARDS:
+				for i in BOARD_THEME_COUNT:
+					if shop_detail_grid_rect(i, viewport_size, BOARD_THEME_COUNT).has_point(screen_pos):
+						selected_board_theme = i
+						room_board_theme = i
+						match_board_theme = i
+						save_player_profile()
+						play_sound("ui")
+						show_menu_notice("השולחן נבחר" if ui_language == "he" else "TABLE EQUIPPED")
 						queue_redraw()
 						return
 		elif app_screen == APP_ARENA:
@@ -7320,6 +7328,8 @@ func shop_page_title() -> String:
 			return ui_text("characters")
 		SHOP_PAGE_RINGS:
 			return ui_text("rings")
+		SHOP_PAGE_BOARDS:
+			return "שולחנות" if ui_language == "he" else "TABLES"
 		SHOP_PAGE_EFFECTS:
 			return ui_text("effects")
 		_:
@@ -7331,6 +7341,8 @@ func shop_page_subtitle() -> String:
 			return ui_text("characters_sub")
 		SHOP_PAGE_RINGS:
 			return ui_text("rings_sub")
+		SHOP_PAGE_BOARDS:
+			return "בחרו את עולם המשחק שלכם" if ui_language == "he" else "CHOOSE YOUR GAME WORLD"
 		SHOP_PAGE_EFFECTS:
 			return ui_text("collection_info")
 		_:
@@ -7338,33 +7350,30 @@ func shop_page_subtitle() -> String:
 
 func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var gap := 22.0 * unit
-	var card_w := minf(300.0 * unit, (viewport_size.x - 100.0 * unit - gap * 2.0) / 3.0)
-	var card_h := minf(380.0 * unit, viewport_size.y - 200.0 * unit)
-	var total_w := card_w * 3.0 + gap * 2.0
-	var start_x := (viewport_size.x - total_w) * 0.5
-	var start_y := maxf(150.0 * unit, (viewport_size.y - card_h) * 0.5)
-	return Rect2(Vector2(start_x + float(index) * (card_w + gap), start_y), Vector2(card_w, card_h))
+	var gap := 10.0 * unit
+	var card_w := 174.0 * unit
+	var total_w := card_w * 4.0 + gap * 3.0
+	return Rect2(Vector2((viewport_size.x - total_w) * 0.5 + float(index) * (card_w + gap), 92.0 * unit), Vector2(card_w, 54.0 * unit))
 
 func shop_detail_columns(item_count: int) -> int:
-	return mini(4, maxi(2, item_count))
+	return 4 if item_count > 6 else 3
 
 func shop_detail_grid_rect(index: int, viewport_size: Vector2, item_count: int) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var columns := shop_detail_columns(item_count)
 	var rows := int(ceil(float(item_count) / float(columns)))
 	var gap := 16.0 * unit
-	var top := 126.0 * unit
+	var top := 190.0 * unit
 	var bottom_margin := 28.0 * unit
 	var available_h := viewport_size.y - top - bottom_margin
-	var available_w := viewport_size.x - 72.0 * unit
+	var available_w := viewport_size.x - 510.0 * unit
 	var card_w := (available_w - gap * float(columns - 1)) / float(columns)
 	var card_h := minf(360.0 * unit, (available_h - gap * float(rows - 1)) / float(rows))
 	var col := index % columns
 	var row := int(index / columns)
 	var items_in_row := mini(columns, item_count - row * columns)
 	var row_width := card_w * float(items_in_row) + gap * float(items_in_row - 1)
-	var start_x := (viewport_size.x - row_width) * 0.5
+	var start_x := 470.0 * unit + (available_w - row_width) * 0.5
 	return Rect2(Vector2(start_x + float(col) * (card_w + gap), top + float(row) * (card_h + gap)), Vector2(card_w, card_h))
 
 func shop_detail_price_label(index: int, is_ring: bool) -> String:
@@ -7468,26 +7477,45 @@ func draw_shop_detail_card(index: int, rect: Rect2, is_ring: bool, unit: float) 
 	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y - 30.0 * unit), price_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(13.0 * unit), Color("ffe25d"))
 
 func draw_shop_hub(viewport_size: Vector2, unit: float) -> void:
-	var categories := [ui_text("characters"), ui_text("rings"), ui_text("effects")]
-	var category_colors := [Color("24b889"), Color("467ce8"), Color("9a58dc")]
-	var category_counts := [ANIMAL_NAMES.size(), RING_COLOR_NAMES.size(), 0]
-	for i in 3:
+	var categories := [ui_text("characters"), "חלליות" if ui_language == "he" else "HOVERCRAFTS", "שולחנות" if ui_language == "he" else "TABLES", ui_text("effects")]
+	var category_colors := [Color("24b889"), Color("467ce8"), Color("f0a51e"), Color("9a58dc")]
+	for i in 4:
 		var card := shop_category_rect(i, viewport_size)
 		var accent: Color = category_colors[i]
-		draw_gate_panel(card, accent, unit, 0.58)
-		draw_rect(Rect2(card.position + Vector2(10.0 * unit, 10.0 * unit), Vector2(card.size.x - 20.0 * unit, 3.0 * unit)), Color(accent.lightened(0.25), 0.55))
-		var icon_center := card.position + Vector2(card.size.x * 0.5, card.size.y * 0.34)
-		draw_shop_category_icon(i, icon_center, 72.0 * unit, unit)
-		draw_string(ui_font, card.position + Vector2(0.0, card.size.y * 0.58), categories[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(26.0 * unit), Color.WHITE)
-		if i < 2:
-			var collected := shop_unlocked_count(i == 1)
-			draw_string(ui_font, card.position + Vector2(0.0, card.size.y * 0.70), ui_text("shop_collected") % [collected, category_counts[i]], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(13.0 * unit), Color("ffe25d"))
-		else:
-			draw_string(ui_font, card.position + Vector2(0.0, card.size.y * 0.70), ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(13.0 * unit), Color("d7f6ff"))
-		draw_string(ui_font, card.position + Vector2(0.0, card.size.y * 0.86), ui_text("shop_open_category"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(12.0 * unit), Color("ffe25d"))
+		var active: bool = shop_page == [SHOP_PAGE_ANIMALS, SHOP_PAGE_RINGS, SHOP_PAGE_BOARDS, SHOP_PAGE_EFFECTS][i]
+		draw_gate_panel(card, Color("ffe25d") if active else accent, unit, 0.92)
+		draw_string(ui_font, card.position + Vector2(0.0, 35.0 * unit), categories[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(18.0 * unit), Color("ffe25d") if active else Color.WHITE)
+
+func draw_shop_feature(viewport_size: Vector2, unit: float) -> void:
+	var panel := Rect2(32.0 * unit, 166.0 * unit, 402.0 * unit, viewport_size.y - 194.0 * unit)
+	draw_gate_panel(panel, Color("58dcff"), unit, 0.80)
+	var art := Rect2(panel.position + Vector2(18.0, 18.0) * unit, Vector2(panel.size.x - 36.0 * unit, panel.size.y - 92.0 * unit))
+	if shop_page == SHOP_PAGE_ANIMALS or shop_page == SHOP_PAGE_RINGS:
+		if player_animal < character_ship_textures.size():
+			draw_texture_fit(character_ship_textures[player_animal], art)
+		if player_animal < character_ship_light_masks.size() and character_ship_light_masks[player_animal] != null:
+			var mask: Texture2D = character_ship_light_masks[player_animal]
+			var mask_size := mask.get_size()
+			var mask_scale := minf(art.size.x / mask_size.x, art.size.y / mask_size.y)
+			var draw_size := mask_size * mask_scale
+			draw_texture_rect(mask, Rect2(art.position + (art.size - draw_size) * 0.5, draw_size), false, RING_COLORS[player_ring_color])
+	elif shop_page == SHOP_PAGE_BOARDS:
+		draw_shop_board_preview(selected_board_theme, art.grow(-16.0 * unit), unit)
+	else:
+		draw_shop_category_icon(2, art.get_center(), 110.0 * unit, unit)
+	var title := ui_animal_name(player_animal)
+	if shop_page == SHOP_PAGE_RINGS:
+		title = ui_ring_name(player_ring_color)
+	elif shop_page == SHOP_PAGE_BOARDS:
+		title = board_theme_name(selected_board_theme)
+	elif shop_page == SHOP_PAGE_EFFECTS:
+		title = ui_text("coming_soon")
+	var title_box := Rect2(panel.position + Vector2(28.0 * unit, panel.size.y - 70.0 * unit), Vector2(panel.size.x - 56.0 * unit, 52.0 * unit))
+	draw_style_box(make_box(Color(0.02, 0.07, 0.14, 0.96), 14.0 * unit), title_box)
+	draw_string(ui_font, title_box.position + Vector2(0.0, 34.0 * unit), title, HORIZONTAL_ALIGNMENT_CENTER, title_box.size.x, int(20.0 * unit), Color.WHITE)
 
 func draw_shop_detail_page(viewport_size: Vector2, item_count: int, is_ring: bool, unit: float) -> void:
-	var panel := Rect2(24.0 * unit, 108.0 * unit, viewport_size.x - 48.0 * unit, viewport_size.y - 132.0 * unit)
+	var panel := Rect2(450.0 * unit, 166.0 * unit, viewport_size.x - 474.0 * unit, viewport_size.y - 194.0 * unit)
 	draw_gate_panel(panel, Color("58dcff"), unit, 0.88)
 	var collected := shop_unlocked_count(is_ring)
 	var total := RING_COLOR_NAMES.size() if is_ring else ANIMAL_NAMES.size()
@@ -7501,8 +7529,17 @@ func draw_shop_animals_page(viewport_size: Vector2, unit: float) -> void:
 func draw_shop_rings_page(viewport_size: Vector2, unit: float) -> void:
 	draw_shop_detail_page(viewport_size, RING_COLOR_NAMES.size(), true, unit)
 
+func draw_shop_boards_page(viewport_size: Vector2, unit: float) -> void:
+	var panel := Rect2(450.0 * unit, 166.0 * unit, viewport_size.x - 474.0 * unit, viewport_size.y - 194.0 * unit)
+	draw_gate_panel(panel, Color("58dcff"), unit, 0.88)
+	for i in BOARD_THEME_COUNT:
+		var card := shop_detail_grid_rect(i, viewport_size, BOARD_THEME_COUNT)
+		draw_gate_panel(card, Color("ffe25d") if i == selected_board_theme else board_theme_accent(i), unit, 0.96)
+		draw_shop_board_preview(i, card.grow(-12.0 * unit), unit)
+		draw_string(ui_font, card.position + Vector2(0.0, card.size.y - 15.0 * unit), board_theme_name(i), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(13.0 * unit), Color.WHITE)
+
 func draw_shop_effects_page(viewport_size: Vector2, unit: float) -> void:
-	var panel := Rect2((viewport_size.x - 760.0 * unit) * 0.5, 180.0 * unit, 760.0 * unit, 360.0 * unit)
+	var panel := Rect2(450.0 * unit, 166.0 * unit, viewport_size.x - 474.0 * unit, viewport_size.y - 194.0 * unit)
 	draw_style_box(make_box(Color(0.02, 0.06, 0.12, 0.94), 24.0 * unit), panel)
 	draw_shop_category_icon(2, panel.position + Vector2(panel.size.x * 0.5, 120.0 * unit), 72.0 * unit, unit)
 	draw_string(ui_font, panel.position + Vector2(0.0, 210.0) * unit, ui_text("coming_soon"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(28.0 * unit), Color("ffe25d"))
@@ -7510,14 +7547,20 @@ func draw_shop_effects_page(viewport_size: Vector2, unit: float) -> void:
 
 func draw_shop_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.08 if shop_page == SHOP_PAGE_HUB else 0.62))
+	if shop_page == SHOP_PAGE_HUB:
+		shop_page = SHOP_PAGE_ANIMALS
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.44))
 	draw_frontend_header(viewport_size, shop_page_title(), shop_page_subtitle())
 	draw_shop_coin_box(viewport_size, unit)
+	draw_shop_hub(viewport_size, unit)
+	draw_shop_feature(viewport_size, unit)
 	match shop_page:
 		SHOP_PAGE_ANIMALS:
 			draw_shop_animals_page(viewport_size, unit)
 		SHOP_PAGE_RINGS:
 			draw_shop_rings_page(viewport_size, unit)
+		SHOP_PAGE_BOARDS:
+			draw_shop_boards_page(viewport_size, unit)
 		SHOP_PAGE_EFFECTS:
 			draw_shop_effects_page(viewport_size, unit)
 		_:
