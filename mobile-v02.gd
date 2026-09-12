@@ -5927,7 +5927,7 @@ func draw_rewards_screen(viewport_size: Vector2) -> void:
 			draw_circle(tile.position + Vector2(82.0, 20.0) * unit, 12.0 * unit, Color("20c982"))
 			draw_string(ui_font, tile.position + Vector2(70.0, 26.0) * unit, "✓", HORIZONTAL_ALIGNMENT_CENTER, 24.0 * unit, int(14.0 * unit), Color.WHITE)
 	draw_string(ui_font, panel.position + Vector2(0.0, 276.0) * unit, "מסלול העונה" if ui_language == "he" else "SEASON PATH", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(24.0 * unit), Color.WHITE)
-	var milestones := [5, 10, 20, 30]
+	var milestones: Array[int] = [5, 10, 20, 30]
 	var path_start := panel.position + Vector2(105.0, 355.0) * unit
 	var path_end := panel.position + Vector2(753.0, 355.0) * unit
 	draw_line(path_start, path_end, Color("3978bd"), 10.0 * unit, true)
@@ -5935,7 +5935,7 @@ func draw_rewards_screen(viewport_size: Vector2) -> void:
 	draw_line(path_start, path_start.lerp(path_end, season_progress), Color("ffe25d"), 10.0 * unit, true)
 	for i in 4:
 		var node := path_start.lerp(path_end, float(i) / 3.0)
-		var reached := player_wins >= milestones[i]
+		var reached: bool = player_wins >= milestones[i]
 		draw_circle(node, 31.0 * unit, Color("ffe25d") if reached else Color("173d72"))
 		draw_circle(node, 24.0 * unit, Color("70420b") if reached else Color("081b3c"))
 		draw_string(ui_font, node + Vector2(-24.0, 8.0) * unit, str(milestones[i]), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(18.0 * unit), Color.WHITE)
