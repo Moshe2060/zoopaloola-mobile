@@ -3619,14 +3619,14 @@ func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 
 func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	var card_size := Vector2(350.0, 430.0) * unit
+	var card_size := Vector2(350.0, 450.0) * unit
 	var gap := 24.0 * unit
 	var total_width := card_size.x * 3.0 + gap * 2.0
-	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + float(index) * (card_size.x + gap), 142.0 * unit), card_size)
+	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + float(index) * (card_size.x + gap), 128.0 * unit), card_size)
 
 func arena_play_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((viewport_size.x - 290.0 * unit) * 0.5, viewport_size.y - 78.0 * unit), Vector2(290.0, 58.0) * unit)
+	return Rect2(Vector2((viewport_size.x - 430.0 * unit) * 0.5, viewport_size.y - 82.0 * unit), Vector2(430.0, 64.0) * unit)
 
 func arena_board_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -6773,39 +6773,59 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 	if matchmaking_searching or arena_fx_phase == "found":
 		draw_arena_search_screen(viewport_size)
 		return
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.06))
-	draw_frontend_header(viewport_size, ui_text("arena_title"), ui_text("arena_title_sub"))
-	var names := [ui_text("sakura"), ui_text("bamboo"), ui_text("volcano")]
-	var entries := [0, 100, 500]
-	var prizes := [100, 250, 1200]
-	var card_colors := [Color("f08aac"), Color("62b55d"), Color("e65b36")]
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.035, 0.08, 0.05))
+	draw_frontend_header(viewport_size, "זירה תחרותית" if ui_language == "he" else "COMPETITIVE ARENA", "בחרו זירה והילחמו על הדירוג" if ui_language == "he" else "CHOOSE AN ARENA AND FIGHT FOR RANK")
+	draw_shop_coin_box(viewport_size, unit)
+	var names: Array[String] = ["שער הירח", "ממלכת השמיים", "מבצר הכתר"] if ui_language == "he" else ["MOON GATE", "SKY KINGDOM", "CROWN FORTRESS"]
+	var entries: Array[int] = [int(ARENA_ENTRY_COSTS[0]), int(ARENA_ENTRY_COSTS[1]), int(ARENA_ENTRY_COSTS[2])]
+	var prizes: Array[int] = [int(ARENA_WIN_PRIZES[0]), int(ARENA_WIN_PRIZES[1]), int(ARENA_WIN_PRIZES[2])]
+	var rating_requirements: Array[int] = [0, 1000, 1300]
+	var card_colors: Array[Color] = [Color("9a4ff1"), Color("21c8ff"), Color("ffad24")]
 	for i in 3:
 		var card := arena_card_rect(i, viewport_size)
-		var selected := i == selected_arena
-		var pulse := sin(menu_elapsed * 4.2 + float(i) * 0.8) * 3.0 if selected else 0.0
+		var selected: bool = i == selected_arena
+		var pulse: float = (sin(menu_elapsed * 4.2) + 1.0) * 0.5 if selected else 0.0
 		var border: Color = Color("ffe25d") if selected else card_colors[i].lightened(0.18)
-		# The whole portal remains the touch target; only a light selection frame is
-		# painted so the portal artwork itself is the arena card.
-		draw_style_box(make_box(Color(border.r, border.g, border.b, 0.58), 26.0 * unit), card.grow(4.0 * unit))
-		draw_style_box(make_box(Color(0.01, 0.03, 0.08, 0.08), 23.0 * unit), card)
+		# The portals live in the background art. These outlines and plaques turn
+		# each one into a large, tactile gate without covering the illustration.
 		if selected:
-			draw_style_box(make_box(Color("ffe25d", 0.18 + sin(menu_elapsed * 5.0) * 0.08), 24.0 * unit), card.grow(10.0 * unit))
-		var title_rect := Rect2(card.position + Vector2(15.0, 244.0) * unit, Vector2(card.size.x - 30.0 * unit, 58.0 * unit))
-		draw_style_box(make_box(Color(0.015, 0.055, 0.13, 0.92), 15.0 * unit), title_rect.grow(4.0 * unit))
-		draw_style_box(make_box(Color(card_colors[i].r, card_colors[i].g, card_colors[i].b, 0.88), 13.0 * unit), title_rect)
-		draw_string(ui_font, title_rect.position + Vector2(0.0, 36.0) * unit, names[i], HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, int(21.0 * unit), Color.WHITE)
-		var entry_text := ui_text("entry_free") if entries[i] == 0 else ui_text("entry") + str(entries[i]) + ui_text("coins")
-		draw_string(ui_font, card.position + Vector2(22.0, 325.0) * unit, entry_text, HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(15.0 * unit), Color("d7f6ff"))
-		draw_string(ui_font, card.position + Vector2(22.0, 363.0) * unit, ui_text("prize") + str(prizes[i]) + ui_text("coins"), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(17.0 * unit), Color("ffe25d"))
-		draw_string(ui_font, card.position + Vector2(22.0, 392.0) * unit, ui_text("arena_board_fixed") + ": " + board_theme_name(arena_board_theme_for_level(i)), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 44.0 * unit, int(13.0 * unit), Color("8cecff"))
+			draw_style_box(make_box(Color("ffe25d", 0.20 + pulse * 0.12), 28.0 * unit), card.grow((7.0 + pulse * 3.0) * unit))
+			draw_rect(card.grow(4.0 * unit), Color("ffe25d"), false, 4.0 * unit)
+		var title_rect := Rect2(card.position + Vector2(12.0, 250.0) * unit, Vector2(card.size.x - 24.0 * unit, 58.0 * unit))
+		draw_style_box(make_box(Color(0.015, 0.045, 0.11, 0.96), 13.0 * unit), title_rect.grow(5.0 * unit))
+		draw_style_box(make_box(Color(card_colors[i].r, card_colors[i].g, card_colors[i].b, 0.90), 11.0 * unit), title_rect)
+		draw_rect(title_rect, border, false, (4.0 if selected else 2.0) * unit)
+		draw_string(ui_font, title_rect.position + Vector2(0.0, 38.0 * unit), names[i], HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, int(22.0 * unit), Color.WHITE)
+
+		var info_rect := Rect2(card.position + Vector2(7.0, 316.0) * unit, Vector2(card.size.x - 14.0 * unit, 119.0 * unit))
+		draw_style_box(make_box(Color(0.012, 0.045, 0.105, 0.96), 15.0 * unit), info_rect.grow(4.0 * unit))
+		draw_style_box(make_box(Color(0.025, 0.085, 0.18, 0.96), 13.0 * unit), info_rect)
+		draw_rect(info_rect, Color(border.r, border.g, border.b, 0.88), false, (3.0 if selected else 2.0) * unit)
+		var column_width: float = info_rect.size.x / 3.0
+		for divider in [1, 2]:
+			var divider_x: float = info_rect.position.x + column_width * float(divider)
+			draw_line(Vector2(divider_x, info_rect.position.y + 14.0 * unit), Vector2(divider_x, info_rect.end.y - 14.0 * unit), Color("47769e", 0.65), 2.0 * unit)
+		var labels: Array[String] = ["כניסה", "פרס ניצחון", "דירוג נדרש"] if ui_language == "he" else ["ENTRY", "WIN PRIZE", "RATING"]
+		var entry_value: String = "חינם" if entries[i] == 0 and ui_language == "he" else ("FREE" if entries[i] == 0 else str(entries[i]))
+		var rating_value: String = "—" if rating_requirements[i] == 0 else str(rating_requirements[i])
+		var values: Array[String] = [entry_value, str(prizes[i]), rating_value]
+		for column in 3:
+			var column_x: float = info_rect.position.x + column_width * float(column)
+			draw_string(ui_font, Vector2(column_x, info_rect.position.y + 31.0 * unit), labels[column], HORIZONTAL_ALIGNMENT_CENTER, column_width, int(12.0 * unit), Color("c9edf7"))
+			if column < 2 and not (column == 0 and entries[i] == 0):
+				draw_circle(Vector2(column_x + column_width * 0.50, info_rect.position.y + 63.0 * unit), 12.0 * unit, Color("ffc83d"))
+				draw_string(ui_font, Vector2(column_x, info_rect.position.y + 101.0 * unit), values[column], HORIZONTAL_ALIGNMENT_CENTER, column_width, int(18.0 * unit), Color("ffe25d"))
+			else:
+				draw_string(ui_font, Vector2(column_x, info_rect.position.y + 78.0 * unit), values[column], HORIZONTAL_ALIGNMENT_CENTER, column_width, int(20.0 * unit), Color("65efa9") if entries[i] == 0 else Color("ffe25d"))
 		if selected:
-			draw_string(ui_font, card.position + Vector2(0.0, 408.0) * unit, ui_text("selected"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(15.0 * unit), Color("16845b"))
+			var pointer := Vector2(card.get_center().x, info_rect.end.y + 8.0 * unit)
+			draw_colored_polygon(PackedVector2Array([pointer + Vector2(-14.0, 0.0) * unit, pointer + Vector2(14.0, 0.0) * unit, pointer + Vector2(0.0, 18.0) * unit]), Color("ffe25d"))
 	var play := arena_play_rect(viewport_size)
-	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.90), 18.0 * unit), play.grow(5.0 * unit))
-	draw_style_box(make_box(Color("d49b2f") if matchmaking_searching else Color("6fda18"), 16.0 * unit), play)
-	draw_string(ui_font, play.position + Vector2(0.0, 38.0) * unit, ui_text("cancel_search") if matchmaking_searching else ui_text("find_match"), HORIZONTAL_ALIGNMENT_CENTER, play.size.x, int(20.0 * unit), Color.WHITE)
-	if matchmaking_searching:
-		draw_string(ui_font, Vector2(0.0, play.position.y - 28.0 * unit), ui_text("searching"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(16.0 * unit), Color("ffe25d"))
+	var button_pulse: float = (sin(menu_elapsed * 4.0) + 1.0) * 0.5
+	draw_style_box(make_box(Color("071b3d"), 20.0 * unit), play.grow((7.0 + button_pulse * 2.0) * unit))
+	draw_style_box(make_box(Color("159fe1"), 17.0 * unit), play)
+	draw_rect(play, Color("72e8ff"), false, 4.0 * unit)
+	draw_string(ui_font, play.position + Vector2(0.0, 43.0 * unit), "⚔  חיפוש יריב  ⚔" if ui_language == "he" else "⚔  FIND OPPONENT  ⚔", HORIZONTAL_ALIGNMENT_CENTER, play.size.x, int(25.0 * unit), Color.WHITE)
 
 func draw_profile_stat_card(rect: Rect2, label: String, value: String, accent: Color, unit: float) -> void:
 	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.82), 15.0 * unit), rect.grow(3.0 * unit))
