@@ -62,9 +62,9 @@ cp "$ROOT/assets/ui/zoopaloola-splash.svg" "$PROJECT/assets/ui/zoopaloola-splash
 cp "$ROOT/assets/ui/zoopaloola-home-bg-v3.webp" "$PROJECT/assets/ui/zoopaloola-home-bg-v3.webp"
 cp "$ROOT/assets/ui/battle-sky-bg-v1.webp" "$PROJECT/assets/ui/battle-sky-bg-v1.webp"
 cp "$ROOT/assets/ui/battle-gates-home-v1.webp" "$PROJECT/assets/ui/battle-gates-home-v1.webp"
-cp "$ROOT/assets/ui/zoovortex-loading-v1.webp" "$PROJECT/assets/ui/zoovortex-loading-v1.webp"
+cp "$ROOT/assets/ui/zoovortex-loading-v2.webp" "$PROJECT/assets/ui/zoovortex-loading-v2.webp"
 cp "$ROOT/assets/ui/zoovortex-logo-v1.webp" "$PROJECT/assets/ui/zoovortex-logo-v1.webp"
-cp "$ROOT/assets/ui/zoovortex-boot-splash-v2.png" "$PROJECT/assets/ui/zoovortex-boot-splash-v2.png"
+cp "$ROOT/assets/ui/zoovortex-boot-splash-v3.png" "$PROJECT/assets/ui/zoovortex-boot-splash-v3.png"
 cp "$ROOT/assets/ui/zoovortex-app-icon-v1.jpg" "$PROJECT/assets/ui/zoovortex-app-icon-v1.jpg"
 cp "$ROOT"/assets/ui/screens/*.webp "$PROJECT/assets/ui/screens/"
 cp "$ROOT"/assets/ui/character_portraits/*.png "$PROJECT/assets/ui/character_portraits/"
@@ -76,9 +76,9 @@ cp "$ROOT"/assets/ui/full_body/lifebuoy/*.png "$PROJECT/assets/ui/full_body/life
 
 sed -i -E 's/^config\/name=.*/config\/name="ZOOVORTEX"/' "$PROJECT/project.godot"
 if grep -q '^boot_splash/image=' "$PROJECT/project.godot"; then
-  sed -i -E 's#^boot_splash/image=.*#boot_splash/image="res://assets/ui/zoovortex-boot-splash-v2.png"#' "$PROJECT/project.godot"
+  sed -i -E 's#^boot_splash/image=.*#boot_splash/image="res://assets/ui/zoovortex-boot-splash-v3.png"#' "$PROJECT/project.godot"
 else
-  sed -i '/^config\/name=/a boot_splash/image="res://assets/ui/zoovortex-boot-splash-v2.png"' "$PROJECT/project.godot"
+  sed -i '/^config\/name=/a boot_splash/image="res://assets/ui/zoovortex-boot-splash-v3.png"' "$PROJECT/project.godot"
 fi
 if grep -q '^boot_splash/fullsize=' "$PROJECT/project.godot"; then
   sed -i -E 's/^boot_splash\/fullsize=.*/boot_splash\/fullsize=true/' "$PROJECT/project.godot"
