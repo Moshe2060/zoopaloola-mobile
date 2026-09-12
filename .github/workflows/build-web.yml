@@ -67,7 +67,11 @@ jobs:
           custom_template/release=""
           variant/extensions_support=false
           variant/thread_support=false
-          vram_texture_compression/for_desktop=true
+          # The interface is mostly large 2D artwork. Desktop VRAM compression
+          # expands those already-compressed WebP files inside the PCK (the
+          # previous bundle reached 62 MB), which makes mobile startup appear
+          # frozen. Keep the compact source representation for the Web build.
+          vram_texture_compression/for_desktop=false
           vram_texture_compression/for_mobile=false
           html/export_icon=true
           html/custom_html_shell=""

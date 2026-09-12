@@ -4014,8 +4014,8 @@ func accept_pending_friend_invite() -> void:
 	play_sound("ui")
 
 func friend_room_chat_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(1040.0, 658.0) * unit, Vector2(190.0, 44.0) * unit)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(1040.0, 658.0) * scale, Vector2(190.0, 44.0) * scale)
 
 func home_social_panel_rect(viewport_size: Vector2) -> Rect2:
 	var layout := home_layout(viewport_size)
@@ -4468,28 +4468,28 @@ func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
 
 func friend_create_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(188.0, 477.0) * unit, Vector2(388.0, 88.0) * unit)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(188.0, 477.0) * scale, Vector2(388.0, 88.0) * scale)
 
 func friend_join_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(730.0, 477.0) * unit, Vector2(382.0, 88.0) * unit)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(730.0, 477.0) * scale, Vector2(382.0, 88.0) * scale)
 
 func friend_ready_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(412.0, 548.0) * unit, Vector2(456.0, 104.0) * unit)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(412.0, 548.0) * scale, Vector2(456.0, 104.0) * scale)
 
 func friend_share_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(735.0, 166.0) * unit, Vector2(185.0, 52.0) * unit)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(735.0, 166.0) * scale, Vector2(185.0, 52.0) * scale)
 
 func friend_leave_rect(viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(735.0, 222.0) * unit, Vector2(185.0, 48.0) * unit)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(735.0, 222.0) * scale, Vector2(185.0, 48.0) * scale)
 
 func friend_player_rect(slot: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((155.0 + float(slot) * 620.0) * unit, 155.0 * unit), Vector2(350.0, 375.0) * unit)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(155.0 + float(slot) * 620.0, 155.0) * scale, Vector2(350.0, 375.0) * scale)
 
 func friend_edit_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
@@ -6545,10 +6545,16 @@ func draw_auth_screen(viewport_size: Vector2) -> void:
 func draw_friend_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	if multiplayer_room_code.is_empty() and friend_room_concept_texture != null:
-		draw_friend_room_concept_overlay(viewport_size, unit)
+		var concept_scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		draw_set_transform(Vector2.ZERO, 0.0, concept_scale)
+		draw_friend_room_concept_overlay(Vector2(1280.0, 720.0), 1.0)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
 	if not multiplayer_room_code.is_empty() and friend_lobby_concept_texture != null:
-		draw_friend_lobby_concept_overlay(viewport_size, unit)
+		var concept_scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		draw_set_transform(Vector2.ZERO, 0.0, concept_scale)
+		draw_friend_lobby_concept_overlay(Vector2(1280.0, 720.0), 1.0)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if friend_customizer_open:
 			draw_friend_customizer(viewport_size)
 		elif friend_opponent_profile_open:
@@ -6630,9 +6636,9 @@ func draw_friend_room_concept_overlay(viewport_size: Vector2, unit: float) -> vo
 	draw_centered_ui_text(Vector2(405.0, 118.0) * unit, "צרו חדר או הצטרפו באמצעות קוד" if ui_language == "he" else "CREATE A ROOM OR JOIN WITH A CODE", 480.0 * unit, int(18.0 * unit), Color("d9f4ff"))
 	draw_centered_ui_text(Vector2(28.0, 82.0) * unit, ("חזרה  ❮" if ui_language == "he" else "❮  BACK"), 144.0 * unit, int(22.0 * unit), Color.WHITE)
 
-	var create_rect := friend_create_rect(viewport_size)
+	var create_rect := Rect2(188.0, 477.0, 388.0, 88.0)
 	draw_centered_ui_text(create_rect.position + Vector2(0.0, 57.0) * unit, "יצירת חדר חדש" if ui_language == "he" else "CREATE NEW ROOM", create_rect.size.x, int(27.0 * unit), Color.WHITE)
-	var join_rect := friend_join_rect(viewport_size)
+	var join_rect := Rect2(730.0, 477.0, 382.0, 88.0)
 	draw_centered_ui_text(join_rect.position + Vector2(0.0, 57.0) * unit, "הצטרפות לחדר" if ui_language == "he" else "JOIN ROOM", join_rect.size.x, int(27.0 * unit), Color.WHITE)
 
 	draw_centered_ui_text(Vector2(746.0, 392.0) * unit, "קוד החדר" if ui_language == "he" else "ROOM CODE", 320.0 * unit, int(18.0 * unit), Color.WHITE)
@@ -6666,21 +6672,23 @@ func draw_friend_lobby_concept_overlay(viewport_size: Vector2, unit: float) -> v
 	draw_centered_ui_text(Vector2(735.0, 254.0) * unit, "יציאה מהחדר" if ui_language == "he" else "LEAVE ROOM", 185.0 * unit, int(15.0 * unit), Color.WHITE)
 
 	for i in 2:
-		var portal_center := Vector2(360.0 + float(i) * 610.0, 350.0) * unit
-		var info_x := 160.0 + float(i) * 620.0
+		var portal_center := Vector2(360.0 + float(i) * 610.0, 335.0) * unit
+		# The name/status copy belongs to the plaque beneath each portal. Keep its
+		# center aligned with the portal instead of offsetting it toward the edge.
+		var info_x := 190.0 + float(i) * 610.0
 		if i < multiplayer_players.size():
 			var player_data: Dictionary = multiplayer_players[i]
 			var animal := clampi(int(player_data.get("animal", 0)), 0, ANIMAL_NAMES.size() - 1)
 			var ring := clampi(int(player_data.get("ringColor", 0)), 0, RING_COLORS.size() - 1)
-			draw_matchmaking_ship(Rect2(portal_center - Vector2(122.0, 122.0) * unit, Vector2(244.0, 244.0) * unit), animal, ring)
-			draw_string(ui_font, Vector2(info_x, 458.0) * unit, str(player_data.get("name", "Player")), HORIZONTAL_ALIGNMENT_CENTER, 340.0 * unit, int(23.0 * unit), Color.WHITE)
-			draw_centered_ui_text(Vector2(info_x, 485.0) * unit, ("רמה %d" if ui_language == "he" else "LEVEL %d") % int(player_data.get("level", 1)), 340.0 * unit, int(15.0 * unit), Color("cdefff"))
+			draw_matchmaking_ship(Rect2(portal_center - Vector2(108.0, 108.0) * unit, Vector2(216.0, 216.0) * unit), animal, ring)
+			draw_centered_ui_text(Vector2(info_x, 466.0) * unit, str(player_data.get("name", "Player")), 340.0 * unit, int(23.0 * unit), Color.WHITE)
+			draw_centered_ui_text(Vector2(info_x, 493.0) * unit, ("רמה %d" if ui_language == "he" else "LEVEL %d") % int(player_data.get("level", 1)), 340.0 * unit, int(15.0 * unit), Color("cdefff"))
 			var is_ready := bool(player_data.get("ready", false))
-			draw_centered_ui_text(Vector2(info_x, 512.0) * unit, ("מוכן" if ui_language == "he" else "READY") if is_ready else ("לא מוכן" if ui_language == "he" else "NOT READY"), 340.0 * unit, int(15.0 * unit), Color("65ef9d") if is_ready else Color("ffd05a"))
+			draw_centered_ui_text(Vector2(info_x, 518.0) * unit, ("מוכן" if ui_language == "he" else "READY") if is_ready else ("לא מוכן" if ui_language == "he" else "NOT READY"), 340.0 * unit, int(15.0 * unit), Color("65ef9d") if is_ready else Color("ffd05a"))
 		else:
 			draw_mystery_matchmaking_ship(portal_center, unit, int(floor(menu_elapsed * 2.0)) % ANIMAL_NAMES.size())
 			draw_string(ui_font, portal_center + Vector2(-30.0, 17.0) * unit, "?", HORIZONTAL_ALIGNMENT_CENTER, 60.0 * unit, int(48.0 * unit), Color.WHITE)
-			draw_centered_ui_text(Vector2(info_x, 480.0) * unit, "ממתינים לחבר..." if ui_language == "he" else "WAITING FOR A FRIEND...", 340.0 * unit, int(23.0 * unit), Color.WHITE)
+			draw_centered_ui_text(Vector2(info_x, 486.0) * unit, "ממתינים לחבר..." if ui_language == "he" else "WAITING FOR A FRIEND...", 340.0 * unit, int(23.0 * unit), Color.WHITE)
 
 	var ready_text := ("ביטול מוכנות" if multiplayer_ready else "אני מוכן") if ui_language == "he" else ("NOT READY" if multiplayer_ready else "I'M READY")
 	draw_centered_ui_text(Vector2(412.0, 617.0) * unit, ready_text, 456.0 * unit, int(32.0 * unit), Color.WHITE)
@@ -6689,7 +6697,7 @@ func draw_friend_lobby_concept_overlay(viewport_size: Vector2, unit: float) -> v
 		connection_text = "CONNECTED"
 	draw_circle(Vector2(43.0, 683.0) * unit, 8.0 * unit, Color("65ef9d") if multiplayer_state == "connected" else Color("ffd05a"))
 	draw_centered_ui_text(Vector2(55.0, 690.0) * unit, connection_text, 130.0 * unit, int(14.0 * unit), Color.WHITE)
-	var chat_rect := friend_room_chat_rect(viewport_size)
+	var chat_rect := Rect2(1040.0, 658.0, 190.0, 44.0)
 	draw_style_box(make_box(Color("1b91a8"), 12.0 * unit), chat_rect)
 	draw_centered_ui_text(chat_rect.position + Vector2(0.0, 31.0) * unit, ui_text("room_chat"), chat_rect.size.x, int(15.0 * unit), Color.WHITE)
 	if multiplayer_error != "":
