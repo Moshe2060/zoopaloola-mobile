@@ -75,7 +75,7 @@ const UI_TEXT_HE := {
 	"rewards": "פרסים", "rewards_sub": "מתנות ופרסים",
 	"arena": "זירה אונליין", "arena_sub": "משחק מול יריב אקראי",
 	"friend": "משחק מול חבר", "friend_sub": "משחק פרטי • שני מכשירים",
-	"computer": "משחק מול המחשב", "computer_sub": "שחקן יחיד • נגד המחשב",
+	"computer": "קרב מהיר", "computer_sub": "שחקן יחיד • נגד המחשב",
 	"back": "חזרה", "choose_character": "בחירת דמות", "choose_character_sub": "בחרו חיה וצבע גלגל הצלה",
 	"choose_ring": "בחרו גלגל הצלה", "choose_ring_sub": "הצבע שבחרתם יופיע בכל משחק",
 	"choose_animal": "בחרו חיה", "choose_board": "בחרו שולחן משחק", "choose_setup": "בחרו דמות, גלגל ושולחן", "restoring_session": "מחזירים את ההתחברות שלכם...", "red": "אדום", "orange": "כתום", "blue": "כחול", "green": "ירוק", "purple": "סגול", "turquoise": "טורקיז", "pink": "ורוד",
@@ -131,7 +131,7 @@ const UI_TEXT_EN := {
 	"rewards": "REWARDS", "rewards_sub": "Gifts and prizes",
 	"arena": "ONLINE ARENA", "arena_sub": "Play a random opponent",
 	"friend": "PLAY A FRIEND", "friend_sub": "Private match • two devices",
-	"computer": "PLAY VS COMPUTER", "computer_sub": "Single player • vs AI",
+	"computer": "QUICK BATTLE", "computer_sub": "Single player • vs AI",
 	"back": "BACK", "choose_character": "CHOOSE YOUR CHARACTER", "choose_character_sub": "Pick an animal and a lifebuoy color",
 	"choose_ring": "CHOOSE A LIFEBUOY", "choose_ring_sub": "Your color follows you into every match",
 	"choose_animal": "CHOOSE AN ANIMAL", "choose_board": "CHOOSE A GAME TABLE", "choose_setup": "Choose animal, ring and table", "restoring_session": "Restoring your sign-in...", "red": "RED", "orange": "ORANGE", "blue": "BLUE", "green": "GREEN", "purple": "PURPLE", "turquoise": "TURQUOISE", "pink": "PINK",
@@ -241,6 +241,7 @@ var character_gates_background_texture: Texture2D
 var friend_gates_background_texture: Texture2D
 var friend_room_concept_texture: Texture2D
 var friend_lobby_concept_texture: Texture2D
+var quick_battle_concept_texture: Texture2D
 var arena_gates_background_texture: Texture2D
 var arena_search_concept_texture: Texture2D
 var arena_found_concept_texture: Texture2D
@@ -884,6 +885,7 @@ func _ready() -> void:
 	friend_gates_background_texture = load("res://assets/ui/screens/friend-gates-bg-v1.webp") as Texture2D
 	friend_room_concept_texture = load("res://assets/ui/screens/friend-room-concept-v1.webp") as Texture2D
 	friend_lobby_concept_texture = load("res://assets/ui/screens/friend-lobby-concept-v1.webp") as Texture2D
+	quick_battle_concept_texture = load("res://assets/ui/screens/quick-battle-concept-v1.webp") as Texture2D
 	arena_gates_background_texture = load("res://assets/ui/screens/arena-gates-bg-v1.webp") as Texture2D
 	arena_search_concept_texture = load("res://assets/ui/screens/arena-search-concept-v1.webp") as Texture2D
 	arena_found_concept_texture = load("res://assets/ui/screens/arena-found-concept-v2.webp") as Texture2D
@@ -1267,6 +1269,7 @@ func handle_system_back() -> void:
 			exit_current_match()
 		elif customizer_open:
 			customizer_open = false
+			app_screen = APP_HOME
 		elif chat_open:
 			chat_open = false
 			if chat_input != null:
@@ -3137,6 +3140,10 @@ func customizer_panel(viewport_size: Vector2) -> Rect2:
 	return Rect2((viewport_size - size) * 0.5, size)
 
 func customizer_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if quick_battle_concept_texture != null:
+		var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		var width := 50.0
+		return Rect2(Vector2(66.0 + float(index) * 57.0, 505.0) * scale, Vector2(width, 59.0) * scale)
 	var panel := customizer_panel(viewport_size)
 	var gap := 8.0
 	var width := (panel.size.x - 40.0 - gap * float(ANIMAL_NAMES.size() - 1)) / float(ANIMAL_NAMES.size())
@@ -3149,35 +3156,55 @@ func customizer_color_rect(index: int, viewport_size: Vector2) -> Rect2:
 	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 205.0), Vector2(width, 58.0))
 
 func customizer_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if quick_battle_concept_texture != null:
+		var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		return Rect2(Vector2(526.0 + float(index) * 72.0, 505.0) * scale, Vector2(63.0, 59.0) * scale)
 	var panel := customizer_panel(viewport_size)
 	var gap := 10.0
 	var width := (panel.size.x - 40.0 - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT)
 	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 262.0), Vector2(width, 76.0))
 
 func customizer_difficulty_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if quick_battle_concept_texture != null:
+		var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		return Rect2(Vector2(940.0 + float(index) * 91.0, 506.0) * scale, Vector2(82.0, 58.0) * scale)
 	var panel := customizer_panel(viewport_size)
 	var gap := 12.0
 	var width := (panel.size.x - 40.0 - gap * 2.0) / 3.0
 	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 368.0), Vector2(width, 54.0))
 
 func customizer_start_rect(viewport_size: Vector2) -> Rect2:
+	if quick_battle_concept_texture != null:
+		var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		return Rect2(Vector2(455.0, 607.0) * scale, Vector2(370.0, 82.0) * scale)
 	var panel := customizer_panel(viewport_size)
 	return Rect2(panel.position + Vector2(panel.size.x * 0.5 - 110.0, panel.size.y - 68.0), Vector2(220.0, 48.0))
+
+func quick_battle_back_rect(viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(18.0, 18.0) * scale, Vector2(145.0, 58.0) * scale)
 
 func handle_customizer_touch(screen_pos: Vector2) -> bool:
 	var viewport_size := get_viewport_rect().size
 	if not customizer_open:
 		return false
+	if quick_battle_concept_texture != null and quick_battle_back_rect(viewport_size).has_point(screen_pos):
+		customizer_open = false
+		app_screen = APP_HOME
+		play_sound("ui")
+		queue_redraw()
+		return true
 	for i in ANIMAL_NAMES.size():
 		if customizer_animal_rect(i, viewport_size).has_point(screen_pos):
 			try_select_animal(i)
 			queue_redraw()
 			return true
-	for i in RING_COLOR_NAMES.size():
-		if customizer_color_rect(i, viewport_size).has_point(screen_pos):
-			try_select_ring(i)
-			queue_redraw()
-			return true
+	if quick_battle_concept_texture == null:
+		for i in RING_COLOR_NAMES.size():
+			if customizer_color_rect(i, viewport_size).has_point(screen_pos):
+				try_select_ring(i)
+				queue_redraw()
+				return true
 	for i in BOARD_THEME_COUNT:
 		if customizer_board_rect(i, viewport_size).has_point(screen_pos):
 			selected_board_theme = i
@@ -3193,8 +3220,9 @@ func handle_customizer_touch(screen_pos: Vector2) -> bool:
 			queue_redraw()
 			return true
 	if customizer_start_rect(viewport_size).has_point(screen_pos):
-		ai_animal = randi() % ANIMAL_NAMES.size()
-		ai_ring_color = randi() % RING_COLOR_NAMES.size()
+		if quick_battle_concept_texture == null:
+			ai_animal = randi() % ANIMAL_NAMES.size()
+			ai_ring_color = randi() % RING_COLOR_NAMES.size()
 		rebuild_team_piece_textures()
 		customizer_open = false
 		new_game()
@@ -3203,6 +3231,9 @@ func handle_customizer_touch(screen_pos: Vector2) -> bool:
 
 func draw_customizer(viewport_size: Vector2) -> void:
 	if not customizer_open:
+		return
+	if quick_battle_concept_texture != null:
+		draw_quick_battle_setup(viewport_size)
 		return
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.04, 0.08, 0.72))
 	var panel := customizer_panel(viewport_size)
@@ -3242,6 +3273,54 @@ func draw_customizer(viewport_size: Vector2) -> void:
 	var start_rect := customizer_start_rect(viewport_size)
 	draw_style_box(make_box(Color("12a96b"), 14.0), start_rect)
 	draw_string(ui_font, start_rect.position + Vector2(0, 31), "התחלת משחק" if ui_language == "he" else "START MATCH", HORIZONTAL_ALIGNMENT_CENTER, start_rect.size.x, 17, Color.WHITE)
+
+func draw_quick_battle_setup(viewport_size: Vector2) -> void:
+	# The artwork and live controls share the same independent X/Y transform, so
+	# Samsung's extra-wide landscape viewport cannot shift labels off the panels.
+	draw_texture_rect(quick_battle_concept_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_set_transform(Vector2.ZERO, 0.0, scale)
+	draw_centered_ui_text(Vector2(426.0, 72.0), "קרב מהיר" if ui_language == "he" else "QUICK BATTLE", 428.0, 34, Color("fff0b0"))
+	draw_centered_ui_text(Vector2(430.0, 112.0), "בחרו דמות, זירה ורמת קושי" if ui_language == "he" else "CHOOSE A PILOT, ARENA AND DIFFICULTY", 420.0, 16, Color("173b68"))
+	draw_centered_ui_text(Vector2(24.0, 57.0), "חזרה  ❮" if ui_language == "he" else "❮  BACK", 132.0, 20, Color.WHITE)
+
+	# Large dynamic previews. The computer pilot is chosen when this screen opens
+	# and remains stable so the opponent shown is the one entering the match.
+	draw_matchmaking_ship(Rect2(178.0, 145.0, 260.0, 260.0), player_animal, player_ring_color)
+	draw_matchmaking_ship(Rect2(842.0, 145.0, 260.0, 260.0), ai_animal, ai_ring_color)
+	draw_centered_ui_text(Vector2(225.0, 405.0), ui_animal_name(player_animal), 170.0, 19, Color.WHITE)
+	draw_centered_ui_text(Vector2(885.0, 405.0), "המחשב" if ui_language == "he" else "COMPUTER", 170.0, 19, Color.WHITE)
+	draw_centered_ui_text(Vector2(38.0, 475.0), "בחירת דמות" if ui_language == "he" else "CHOOSE PILOT", 420.0, 19, Color.WHITE)
+	draw_centered_ui_text(Vector2(500.0, 475.0), "בחירת זירה" if ui_language == "he" else "CHOOSE ARENA", 390.0, 19, Color.WHITE)
+	draw_centered_ui_text(Vector2(934.0, 475.0), ui_text("difficulty"), 300.0, 19, Color.WHITE)
+
+	for i in ANIMAL_NAMES.size():
+		var animal_rect := Rect2(66.0 + float(i) * 57.0, 505.0, 50.0, 59.0)
+		if i < character_portrait_textures.size() and character_portrait_textures[i] != null:
+			draw_texture_rect(character_portrait_textures[i], animal_rect.grow(-4.0), false, Color.WHITE if is_animal_unlocked(i) else Color(0.35, 0.38, 0.48, 0.72))
+		if i == player_animal:
+			draw_rect(animal_rect.grow(3.0), Color("ffd34f"), false, 4.0)
+		draw_collection_lock_overlay(animal_rect, i, false, 1.0)
+
+	for i in BOARD_THEME_COUNT:
+		var arena_rect := Rect2(526.0 + float(i) * 72.0, 505.0, 63.0, 59.0)
+		var arena_texture := board_theme_texture(i)
+		if arena_texture != null:
+			draw_texture_rect(arena_texture, arena_rect.grow(-4.0), false)
+		if i == selected_board_theme:
+			draw_rect(arena_rect.grow(3.0), Color("ffd34f"), false, 4.0)
+
+	var diff_labels := [ui_text("difficulty_easy"), ui_text("difficulty_medium"), ui_text("difficulty_hard")]
+	var diff_colors := [Color("2d79d8"), Color("f3a71e"), Color("d94754")]
+	for i in 3:
+		var diff_rect := Rect2(940.0 + float(i) * 91.0, 506.0, 82.0, 58.0)
+		if i == computer_difficulty:
+			draw_style_box(make_box(diff_colors[i], 9.0), diff_rect.grow(-3.0))
+			draw_rect(diff_rect.grow(3.0), Color("ffd34f"), false, 4.0)
+		draw_centered_ui_text(diff_rect.position + Vector2(0.0, 38.0), diff_labels[i], diff_rect.size.x, 15, Color.WHITE)
+
+	draw_centered_ui_text(Vector2(455.0, 662.0), "התחלת הקרב" if ui_language == "he" else "START BATTLE", 370.0, 29, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
 	if texture == null: return
@@ -5922,8 +6001,12 @@ func start_selected_mode(mode: String) -> void:
 		status = "Your turn - touch a red ball, pull back and release"
 
 func start_computer_setup() -> void:
-	# Prepare the board behind the modal, but do not allow a shot until the
-	# player confirms the animal and lifebuoy for this computer match.
+	# Pick the computer preview once. It stays unchanged between setup and play,
+	# so the rival shown in the portal is the rival that enters the match.
+	ai_animal = randi() % ANIMAL_NAMES.size()
+	ai_ring_color = randi() % RING_COLOR_NAMES.size()
+	# Prepare the board behind the setup screen, but do not allow a shot until
+	# the player confirms the pilot, arena and difficulty.
 	start_selected_mode("computer")
 	customizer_open = true
 	status = ui_text("choose_setup")
