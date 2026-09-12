@@ -80,9 +80,9 @@ jobs:
           progressive_web_app/offline_page=""
           progressive_web_app/display=1
           progressive_web_app/orientation=1
-          progressive_web_app/icon_144x144="res://assets/ui/zoopaloola-boot-splash-v2.png"
-          progressive_web_app/icon_180x180="res://assets/ui/zoopaloola-boot-splash-v2.png"
-          progressive_web_app/icon_512x512="res://assets/ui/zoopaloola-boot-splash-v2.png"
+          progressive_web_app/icon_144x144="res://assets/ui/zoovortex-app-icon-v1.jpg"
+          progressive_web_app/icon_180x180="res://assets/ui/zoovortex-app-icon-v1.jpg"
+          progressive_web_app/icon_512x512="res://assets/ui/zoovortex-app-icon-v1.jpg"
           progressive_web_app/background_color=Color(0.0118, 0.0549, 0.102, 1)
           EOF
 
