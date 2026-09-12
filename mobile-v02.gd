@@ -6776,7 +6776,11 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.035, 0.08, 0.05))
 	draw_frontend_header(viewport_size, "זירה תחרותית" if ui_language == "he" else "COMPETITIVE ARENA", "בחרו זירה והילחמו על הדירוג" if ui_language == "he" else "CHOOSE AN ARENA AND FIGHT FOR RANK")
 	draw_shop_coin_box(viewport_size, unit)
-	var names: Array[String] = ["שער הירח", "ממלכת השמיים", "מבצר הכתר"] if ui_language == "he" else ["MOON GATE", "SKY KINGDOM", "CROWN FORTRESS"]
+	var names: Array[String] = []
+	if ui_language == "he":
+		names.assign(["שער הירח", "ממלכת השמיים", "מבצר הכתר"])
+	else:
+		names.assign(["MOON GATE", "SKY KINGDOM", "CROWN FORTRESS"])
 	var entries: Array[int] = [int(ARENA_ENTRY_COSTS[0]), int(ARENA_ENTRY_COSTS[1]), int(ARENA_ENTRY_COSTS[2])]
 	var prizes: Array[int] = [int(ARENA_WIN_PRIZES[0]), int(ARENA_WIN_PRIZES[1]), int(ARENA_WIN_PRIZES[2])]
 	var rating_requirements: Array[int] = [0, 1000, 1300]
@@ -6805,7 +6809,11 @@ func draw_arena_screen(viewport_size: Vector2) -> void:
 		for divider in [1, 2]:
 			var divider_x: float = info_rect.position.x + column_width * float(divider)
 			draw_line(Vector2(divider_x, info_rect.position.y + 14.0 * unit), Vector2(divider_x, info_rect.end.y - 14.0 * unit), Color("47769e", 0.65), 2.0 * unit)
-		var labels: Array[String] = ["כניסה", "פרס ניצחון", "דירוג נדרש"] if ui_language == "he" else ["ENTRY", "WIN PRIZE", "RATING"]
+		var labels: Array[String] = []
+		if ui_language == "he":
+			labels.assign(["כניסה", "פרס ניצחון", "דירוג נדרש"])
+		else:
+			labels.assign(["ENTRY", "WIN PRIZE", "RATING"])
 		var entry_value: String = "חינם" if entries[i] == 0 and ui_language == "he" else ("FREE" if entries[i] == 0 else str(entries[i]))
 		var rating_value: String = "—" if rating_requirements[i] == 0 else str(rating_requirements[i])
 		var values: Array[String] = [entry_value, str(prizes[i]), rating_value]
