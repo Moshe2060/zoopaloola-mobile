@@ -64,7 +64,7 @@ cp "$ROOT/assets/ui/battle-sky-bg-v1.webp" "$PROJECT/assets/ui/battle-sky-bg-v1.
 cp "$ROOT/assets/ui/battle-gates-home-v1.webp" "$PROJECT/assets/ui/battle-gates-home-v1.webp"
 cp "$ROOT/assets/ui/zoovortex-loading-v1.webp" "$PROJECT/assets/ui/zoovortex-loading-v1.webp"
 cp "$ROOT/assets/ui/zoovortex-logo-v1.webp" "$PROJECT/assets/ui/zoovortex-logo-v1.webp"
-cp "$ROOT/assets/ui/zoovortex-boot-splash-v1.jpg" "$PROJECT/assets/ui/zoovortex-boot-splash-v1.jpg"
+cp "$ROOT/assets/ui/zoovortex-boot-splash-v2.png" "$PROJECT/assets/ui/zoovortex-boot-splash-v2.png"
 cp "$ROOT/assets/ui/zoovortex-app-icon-v1.jpg" "$PROJECT/assets/ui/zoovortex-app-icon-v1.jpg"
 cp "$ROOT"/assets/ui/screens/*.webp "$PROJECT/assets/ui/screens/"
 cp "$ROOT"/assets/ui/character_portraits/*.png "$PROJECT/assets/ui/character_portraits/"
@@ -75,7 +75,7 @@ cp "$ROOT"/assets/ui/full_body/*.webp "$PROJECT/assets/ui/full_body/"
 cp "$ROOT"/assets/ui/full_body/lifebuoy/*.png "$PROJECT/assets/ui/full_body/lifebuoy/"
 
 sed -i -E 's/^config\/name=.*/config\/name="ZOOVORTEX"/' "$PROJECT/project.godot"
-sed -i -E 's#^boot_splash/image=.*#boot_splash/image="res://assets/ui/zoovortex-boot-splash-v1.jpg"#' "$PROJECT/project.godot"
+sed -i -E 's#^boot_splash/image=.*#boot_splash/image="res://assets/ui/zoovortex-boot-splash-v2.png"#' "$PROJECT/project.godot"
 sed -i -E 's#^config/icon=.*#config/icon="res://assets/ui/zoovortex-app-icon-v1.jpg"#' "$PROJECT/project.godot"
 sed -i -E 's/^package\/name=.*/package\/name="ZOOVORTEX"/' "$PROJECT/export_presets.cfg"
 
