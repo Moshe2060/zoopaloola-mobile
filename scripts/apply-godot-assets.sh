@@ -62,10 +62,11 @@ cp "$ROOT/assets/ui/zoopaloola-splash.svg" "$PROJECT/assets/ui/zoopaloola-splash
 cp "$ROOT/assets/ui/zoopaloola-home-bg-v3.webp" "$PROJECT/assets/ui/zoopaloola-home-bg-v3.webp"
 cp "$ROOT/assets/ui/battle-sky-bg-v1.webp" "$PROJECT/assets/ui/battle-sky-bg-v1.webp"
 cp "$ROOT/assets/ui/battle-gates-home-v1.webp" "$PROJECT/assets/ui/battle-gates-home-v1.webp"
-cp "$ROOT/assets/ui/zoopaloola-loading-team-v1.webp" "$PROJECT/assets/ui/zoopaloola-loading-team-v1.webp"
-cp "$ROOT/assets/ui/zoopaloola-logo-v1.webp" "$PROJECT/assets/ui/zoopaloola-logo-v1.webp"
-cp "$ROOT/assets/ui/zoopaloola-boot-splash-v2.png" "$PROJECT/assets/ui/zoopaloola-boot-splash-v2.png"
-cp "$ROOT/assets/ui/zoopaloola-app-icon-v2.jpg" "$PROJECT/assets/ui/zoopaloola-app-icon-v2.jpg"
+cp "$ROOT/assets/ui/zoovortex-loading-v1.webp" "$PROJECT/assets/ui/zoovortex-loading-v1.webp"
+cp "$ROOT/assets/ui/zoovortex-logo-v1.png" "$PROJECT/assets/ui/zoovortex-logo-v1.png"
+cp "$ROOT/assets/ui/zoovortex-boot-splash-v1.png" "$PROJECT/assets/ui/zoovortex-boot-splash-v1.png"
+cp "$ROOT/assets/ui/zoovortex-app-icon-v1.png" "$PROJECT/assets/ui/zoovortex-app-icon-v1.png"
+cp "$ROOT/assets/ui/zoovortex-app-icon-v1.jpg" "$PROJECT/assets/ui/zoovortex-app-icon-v1.jpg"
 cp "$ROOT"/assets/ui/screens/*.webp "$PROJECT/assets/ui/screens/"
 cp "$ROOT"/assets/ui/character_portraits/*.png "$PROJECT/assets/ui/character_portraits/"
 cp "$ROOT"/assets/ui/character_ships/*.png "$PROJECT/assets/ui/character_ships/"
@@ -74,8 +75,10 @@ cp "$ROOT"/assets/ui/ships/*.png "$PROJECT/assets/ui/ships/"
 cp "$ROOT"/assets/ui/full_body/*.webp "$PROJECT/assets/ui/full_body/"
 cp "$ROOT"/assets/ui/full_body/lifebuoy/*.png "$PROJECT/assets/ui/full_body/lifebuoy/"
 
-sed -i 's/config\/name="Zoopaloola Mobile Prototype"/config\/name="Zoopaloola"/' "$PROJECT/project.godot"
-sed -i '/^config\/name="Zoopaloola"$/a boot_splash/image="res://assets/ui/zoopaloola-boot-splash-v2.png"\nboot_splash/fullsize=true\nboot_splash/bg_color=Color(0.0118, 0.0549, 0.102, 1)\nconfig/icon="res://assets/ui/zoopaloola-app-icon-v2.jpg"' "$PROJECT/project.godot"
+sed -i -E 's/^config\/name=.*/config\/name="ZOOVORTEX"/' "$PROJECT/project.godot"
+sed -i -E 's#^boot_splash/image=.*#boot_splash/image="res://assets/ui/zoovortex-boot-splash-v1.png"#' "$PROJECT/project.godot"
+sed -i -E 's#^config/icon=.*#config/icon="res://assets/ui/zoovortex-app-icon-v1.jpg"#' "$PROJECT/project.godot"
+sed -i -E 's/^package\/name=.*/package\/name="ZOOVORTEX"/' "$PROJECT/export_presets.cfg"
 
 if [[ "$ANDROID_FULLSCREEN" == "1" ]]; then
   # Start Android fullscreen before Godot draws the boot splash, not only
