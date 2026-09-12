@@ -3618,11 +3618,15 @@ func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
 	return Rect2()
 
 func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
-	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	# The arena artwork fills the entire viewport. On extra-wide phones its side
+	# gates move outward with the stretched background, so anchor every live card
+	# to the matching gate's normalized horizontal center instead of centering a
+	# fixed-width three-card row.
+	var unit := viewport_size.y / 720.0
+	var gate_centers: Array[float] = [0.205, 0.500, 0.795]
 	var card_size := Vector2(350.0, 450.0) * unit
-	var gap := 24.0 * unit
-	var total_width := card_size.x * 3.0 + gap * 2.0
-	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + float(index) * (card_size.x + gap), 128.0 * unit), card_size)
+	var center_x: float = viewport_size.x * gate_centers[clampi(index, 0, 2)]
+	return Rect2(Vector2(center_x - card_size.x * 0.5, 128.0 * unit), card_size)
 
 func arena_play_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
