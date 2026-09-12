@@ -206,7 +206,7 @@ const RING_UNLOCK_PRICES := [0, 0, 0, 350, 450, 550, 0]
 const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
 const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
-const ARENA_MATCH_FOUND_DURATION := 3.6
+const ARENA_MATCH_FOUND_DURATION := 5.0
 const ARENA_BOT_FALLBACK_DELAY := 5.0
 const FIREBASE_WEB_VAPID_KEY := ""
 const TUTORIAL_STEP_COUNT := 8
@@ -873,7 +873,7 @@ func _ready() -> void:
 	friend_gates_background_texture = load("res://assets/ui/screens/friend-gates-bg-v1.webp") as Texture2D
 	arena_gates_background_texture = load("res://assets/ui/screens/arena-gates-bg-v1.webp") as Texture2D
 	arena_search_concept_texture = load("res://assets/ui/screens/arena-search-concept-v1.webp") as Texture2D
-	arena_found_concept_texture = load("res://assets/ui/screens/arena-found-concept-v1.webp") as Texture2D
+	arena_found_concept_texture = load("res://assets/ui/screens/arena-found-concept-v2.webp") as Texture2D
 	shop_gates_background_texture = load("res://assets/ui/screens/shop-gates-bg-v1.webp") as Texture2D
 	player_profile_gates_background_texture = load("res://assets/ui/screens/player-profile-gates-bg-v1.webp") as Texture2D
 	leagues_gates_background_texture = load("res://assets/ui/screens/leagues-gates-bg-v1.webp") as Texture2D
@@ -6826,19 +6826,19 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var opponent: Dictionary = arena_matched_opponent if found else {}
 	if found:
-		var found_ship_size := 300.0 * unit
-		draw_matchmaking_ship(Rect2(viewport_size.x * 0.215 - found_ship_size * 0.5, 135.0 * unit, found_ship_size, found_ship_size), player_animal, player_ring_color)
+		var found_ship_size := 310.0 * unit
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.165 - found_ship_size * 0.5, 130.0 * unit, found_ship_size, found_ship_size), player_animal, player_ring_color)
 		var opponent_animal := clampi(int(opponent.get("animal", 0)), 0, ANIMAL_NAMES.size() - 1)
 		var opponent_ring := clampi(int(opponent.get("ringColor", 2)), 0, RING_COLORS.size() - 1)
-		draw_matchmaking_ship(Rect2(viewport_size.x * 0.785 - found_ship_size * 0.5, 135.0 * unit, found_ship_size, found_ship_size), opponent_animal, opponent_ring)
-		draw_string(ui_font, Vector2(0.0, 82.0 * unit), ui_text("match_found"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(42.0 * unit), Color.WHITE)
-		draw_string(ui_font, Vector2(viewport_size.x * 0.030, 455.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(26.0 * unit), Color.WHITE)
-		draw_string(ui_font, Vector2(viewport_size.x * 0.610, 455.0 * unit), str(opponent.get("name", "יריב")), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(26.0 * unit), Color.WHITE)
-		draw_string(ui_font, Vector2(viewport_size.x * 0.030, 492.0 * unit), ("רמה %d  •  דירוג %d" if ui_language == "he" else "LEVEL %d  •  RATING %d") % [player_level, player_rating], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(16.0 * unit), Color("cdefff"))
-		draw_string(ui_font, Vector2(viewport_size.x * 0.610, 492.0 * unit), ("רמה %d  •  דירוג %d" if ui_language == "he" else "LEVEL %d  •  RATING %d") % [int(opponent.get("level", 1)), int(opponent.get("rating", 1000))], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(16.0 * unit), Color("f2d7ff"))
-		draw_string(ui_font, Vector2(0.0, 370.0 * unit), "VS", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(78.0 * unit), Color("ffe25d"))
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.835 - found_ship_size * 0.5, 130.0 * unit, found_ship_size, found_ship_size), opponent_animal, opponent_ring)
+		draw_string(ui_font, Vector2(0.0, 77.0 * unit), ui_text("match_found"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(42.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(0.0, 118.0 * unit), "מתכוננים לקרב" if ui_language == "he" else "GET READY TO BATTLE", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(22.0 * unit), Color("d8efff"))
+		draw_string(ui_font, Vector2(viewport_size.x * 0.035, 520.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.34, int(28.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.625, 520.0 * unit), str(opponent.get("name", "יריב")), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.34, int(28.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.035, 557.0 * unit), ("רמה %d  •  דירוג %d" if ui_language == "he" else "LEVEL %d  •  RATING %d") % [player_level, player_rating], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.34, int(18.0 * unit), Color("cdefff"))
+		draw_string(ui_font, Vector2(viewport_size.x * 0.625, 557.0 * unit), ("רמה %d  •  דירוג %d" if ui_language == "he" else "LEVEL %d  •  RATING %d") % [int(opponent.get("level", 1)), int(opponent.get("rating", 1000))], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.34, int(18.0 * unit), Color("f2d7ff"))
 		var countdown := maxi(1, int(ceil(ARENA_MATCH_FOUND_DURATION - arena_fx_elapsed)))
-		draw_string(ui_font, Vector2(0.0, 614.0 * unit), str(countdown), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(35.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(0.0, 638.0 * unit), str(countdown), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(48.0 * unit), Color.WHITE)
 	else:
 		var search_ship_size := 250.0 * unit
 		draw_matchmaking_ship(Rect2(viewport_size.x * 0.160 - search_ship_size * 0.5, 120.0 * unit, search_ship_size, search_ship_size), player_animal, player_ring_color)
@@ -6850,9 +6850,13 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 		draw_string(ui_font, Vector2(viewport_size.x * 0.785, 278.0 * unit), "?", HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(62.0 * unit), Color.WHITE)
 	var arena_names: Array[String] = ["שער הירח", "ממלכת השמיים", "מבצר הכתר"]
 	var arena_name := arena_names[clampi(selected_arena, 0, 2)]
-	draw_string(ui_font, Vector2(0.0, 510.0 * unit), arena_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(30.0 * unit), Color.WHITE)
-	draw_string(ui_font, Vector2(0.0, 541.0 * unit), ("פרס הקרב %d" if ui_language == "he" else "BATTLE PRIZE %d") % int(ARENA_WIN_PRIZES[clampi(selected_arena, 0, 2)]), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(18.0 * unit), Color("ffe25d"))
-	if not found:
+	var arena_title_y := 480.0 if found else 510.0
+	var arena_prize_y := 508.0 if found else 541.0
+	draw_string(ui_font, Vector2(0.0, arena_title_y * unit), arena_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int((25.0 if found else 30.0) * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(0.0, arena_prize_y * unit), ("פרס הקרב %d" if ui_language == "he" else "BATTLE PRIZE %d") % int(ARENA_WIN_PRIZES[clampi(selected_arena, 0, 2)]), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(18.0 * unit), Color("ffe25d"))
+	if found:
+		draw_string(ui_font, Vector2(0.0, 690.0 * unit), "ביטול" if ui_language == "he" else "CANCEL", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(27.0 * unit), Color.WHITE)
+	else:
 		draw_string(ui_font, Vector2(0.0, 663.0 * unit), ui_text("cancel_search"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(29.0 * unit), Color.WHITE)
 	return true
 
