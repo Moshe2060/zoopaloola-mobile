@@ -1,4 +1,4 @@
-// Build marker: friend-room-redesign-v1
+// Build marker: friend-room-redesign-v2
 (async () => {
 	const currentBuild = document.documentElement.dataset.build || "unknown";
 	const storageKey = "zoovortex-active-build";
