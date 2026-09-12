@@ -206,7 +206,7 @@ const RING_UNLOCK_PRICES := [0, 0, 0, 350, 450, 550, 0]
 const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
 const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
-const ARENA_MATCH_FOUND_DURATION := 2.2
+const ARENA_MATCH_FOUND_DURATION := 3.6
 const FIREBASE_WEB_VAPID_KEY := ""
 const TUTORIAL_STEP_COUNT := 8
 const TUTORIAL_STEPS_HE := [
@@ -6733,12 +6733,21 @@ func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float, oppo
 
 func draw_arena_search_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	# Matchmaking is its own cinematic scene: one active gate replaces the
+	# three-gate selection view, matching the approved search concept.
+	if battle_background_texture != null:
+		draw_texture_rect(battle_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	if arena_gates_background_texture != null:
+		var gate_size := Vector2(510.0, 430.0) * unit
+		var gate_rect := Rect2(Vector2(viewport_size.x * 0.5 - gate_size.x * 0.5, 104.0 * unit), gate_size)
+		var gate_source := Rect2(565.0, 80.0, 790.0, 720.0)
+		draw_texture_rect_region(arena_gates_background_texture, gate_rect, gate_source, Color.WHITE)
 	draw_arena_tunnel_fx(viewport_size, 1.0 if arena_fx_phase == "searching" else 1.35)
-	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.005, 0.035, 0.07, 0.46))
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.005, 0.035, 0.07, 0.18))
 	var header_title := "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT"
 	if arena_fx_phase == "found":
 		header_title = ui_text("match_found")
-	draw_frontend_header(viewport_size, header_title, "זירה אונליין" if ui_language == "he" else "ONLINE ARENA")
+	draw_frontend_header(viewport_size, header_title, ("פותחים את שער הקרב..." if arena_fx_phase != "found" else "מתכוננים לקרב") if ui_language == "he" else ("OPENING THE BATTLE GATE..." if arena_fx_phase != "found" else "PREPARING FOR BATTLE"))
 	var card_size := Vector2(300.0, 390.0) * unit
 	var gap := 105.0 * unit
 	var total_width := card_size.x * 2.0 + gap
@@ -6762,10 +6771,16 @@ func draw_arena_search_screen(viewport_size: Vector2) -> void:
 	var dots: String = [".", "..", "..."][int(menu_elapsed * 2.2) % 3]
 	var status_line := ("מחפשים יריב מתאים" if ui_language == "he" else "SEARCHING FOR A MATCH") + dots
 	if arena_fx_phase == "found":
-		status_line = str(opponent_data.get("name", "")) + (" מוכן לקרב!" if ui_language == "he" else " is ready!")
+		var countdown: int = maxi(1, int(ceil(ARENA_MATCH_FOUND_DURATION - arena_fx_elapsed)))
+		status_line = ("הקרב מתחיל בעוד %d" if ui_language == "he" else "BATTLE STARTS IN %d") % countdown
 	draw_string(ui_font, Vector2(0.0, 566.0 * unit), status_line, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(22.0 * unit), Color("ffe25d"))
-	var arena_names := [ui_text("sakura"), ui_text("bamboo"), ui_text("volcano")]
-	draw_string(ui_font, Vector2(0.0, 598.0 * unit), ("הזירה שנבחרה: " if ui_language == "he" else "SELECTED ARENA: ") + arena_names[clampi(selected_arena, 0, 2)], HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(14.0 * unit), Color("c9edf7"))
+	var arena_names: Array[String] = []
+	if ui_language == "he":
+		arena_names.assign(["שער הירח", "ממלכת השמיים", "מבצר הכתר"])
+	else:
+		arena_names.assign(["MOON GATE", "SKY KINGDOM", "CROWN FORTRESS"])
+	var arena_info := arena_names[clampi(selected_arena, 0, 2)] + ("  •  פרס הקרב " if ui_language == "he" else "  •  BATTLE PRIZE ") + str(ARENA_WIN_PRIZES[clampi(selected_arena, 0, 2)])
+	draw_string(ui_font, Vector2(0.0, 598.0 * unit), arena_info, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(15.0 * unit), Color("c9edf7"))
 	var cancel := arena_play_rect(viewport_size)
 	draw_style_box(make_box(Color(0.02, 0.07, 0.12, 0.92), 18.0 * unit), cancel.grow(5.0 * unit))
 	draw_style_box(make_box(Color("d94b45"), 16.0 * unit), cancel)
