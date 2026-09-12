@@ -6807,16 +6807,15 @@ func draw_matchmaking_ship(rect: Rect2, animal: int, ring_color: int, tint: Colo
 		if light_mask != null:
 			draw_texture_rect(light_mask, rect, false, RING_COLORS[safe_ring].lightened(0.12))
 
-func draw_mystery_matchmaking_ship(center: Vector2, unit: float, animal: int) -> void:
-	# Use only the lower spaceship portion of the real character art. This keeps
-	# the placeholder recognisably a ship and entirely inside the round portal.
-	var ship := matchmaking_hero_texture(animal, 2)
-	if ship == null:
+func draw_mystery_matchmaking_ship(center: Vector2, unit: float, _animal: int) -> void:
+	# The project already has a clean standalone saucer. Using it avoids the
+	# distorted crop that previously produced a black capsule shape.
+	if hero_saucer_texture == null:
 		return
-	var destination := Rect2(center + Vector2(-105.0, -25.0) * unit, Vector2(210.0, 112.0) * unit)
-	var source := Rect2(35.0, 300.0, 570.0, 305.0)
-	draw_texture_rect_region(ship, destination, source, Color(0.018, 0.012, 0.075, 0.94))
-	draw_arc(center + Vector2(0.0, 35.0) * unit, 76.0 * unit, 0.18, PI - 0.18, 40, Color(0.58, 0.30, 0.95, 0.75), 3.0 * unit, true)
+	var destination := Rect2(center + Vector2(-101.0, -56.0) * unit, Vector2(202.0, 142.0) * unit)
+	var source := Rect2(105.0, 95.0, 305.0, 265.0)
+	draw_texture_rect_region(hero_saucer_texture, destination, source, Color(0.025, 0.012, 0.085, 0.96))
+	draw_arc(center + Vector2(0.0, 31.0) * unit, 72.0 * unit, 0.18, PI - 0.18, 40, Color(0.62, 0.34, 0.98, 0.78), 3.0 * unit, true)
 
 func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 	var found: bool = arena_fx_phase == "found"
@@ -6842,7 +6841,7 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 		draw_string(ui_font, Vector2(0.0, 614.0 * unit), str(countdown), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(35.0 * unit), Color.WHITE)
 	else:
 		var search_ship_size := 250.0 * unit
-		draw_matchmaking_ship(Rect2(viewport_size.x * 0.195 - search_ship_size * 0.5, 103.0 * unit, search_ship_size, search_ship_size), player_animal, player_ring_color)
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.160 - search_ship_size * 0.5, 110.0 * unit, search_ship_size, search_ship_size), player_animal, player_ring_color)
 		var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
 		draw_mystery_matchmaking_ship(Vector2(viewport_size.x * 0.805, 226.0 * unit), unit, preview_animal)
 		draw_string(ui_font, Vector2(0.0, 77.0 * unit), "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(40.0 * unit), Color.WHITE)
@@ -6851,10 +6850,10 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 		draw_string(ui_font, Vector2(viewport_size.x * 0.785, 278.0 * unit), "?", HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(62.0 * unit), Color.WHITE)
 	var arena_names: Array[String] = ["שער הירח", "ממלכת השמיים", "מבצר הכתר"]
 	var arena_name := arena_names[clampi(selected_arena, 0, 2)]
-	draw_string(ui_font, Vector2(0.0, 517.0 * unit), arena_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(30.0 * unit), Color.WHITE)
-	draw_string(ui_font, Vector2(0.0, 550.0 * unit), ("פרס הקרב %d" if ui_language == "he" else "BATTLE PRIZE %d") % int(ARENA_WIN_PRIZES[clampi(selected_arena, 0, 2)]), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(18.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, Vector2(0.0, 510.0 * unit), arena_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(30.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(0.0, 541.0 * unit), ("פרס הקרב %d" if ui_language == "he" else "BATTLE PRIZE %d") % int(ARENA_WIN_PRIZES[clampi(selected_arena, 0, 2)]), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(18.0 * unit), Color("ffe25d"))
 	if not found:
-		draw_string(ui_font, Vector2(0.0, 671.0 * unit), ui_text("cancel_search"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(29.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(0.0, 663.0 * unit), ui_text("cancel_search"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(29.0 * unit), Color.WHITE)
 	return true
 
 func draw_arena_search_screen(viewport_size: Vector2) -> void:
