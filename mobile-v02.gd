@@ -396,6 +396,7 @@ var arena_fx_phase := "idle"
 var arena_fx_elapsed := 0.0
 var pending_arena_match: Dictionary = {}
 var arena_matched_opponent: Dictionary = {}
+var arena_bot_cancel_ack_pending := false
 var fcm_token_registered := ""
 var push_setup_done := false
 var tutorial_completed := false
@@ -631,7 +632,9 @@ func begin_arena_bot_match() -> void:
 		return
 	# Leave the live queue before presenting the local fallback so a real match
 	# cannot arrive during the reveal countdown.
-	send_multiplayer({"type": "cancel_match"})
+	arena_bot_cancel_ack_pending = multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN
+	if arena_bot_cancel_ack_pending:
+		send_multiplayer({"type": "cancel_match"})
 	var bot_names_he: Array[String] = ["נועם", "אורי", "ליאם", "מאיה", "איתי", "דניאל"]
 	var bot_names_en: Array[String] = ["Noam", "Ori", "Liam", "Maya", "Itay", "Daniel"]
 	var bot_index: int = randi() % bot_names_he.size()
@@ -5794,6 +5797,9 @@ func handle_multiplayer_message(payload: Dictionary) -> void:
 			matchmaking_searching = true
 			multiplayer_error = ""
 		"search_cancelled":
+			if arena_bot_cancel_ack_pending:
+				arena_bot_cancel_ack_pending = false
+				return
 			matchmaking_searching = false
 			pending_find_match = false
 			arena_fx_phase = "idle"
@@ -6821,19 +6827,19 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 		draw_string(ui_font, Vector2(0.0, 614.0 * unit), str(countdown), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(35.0 * unit), Color.WHITE)
 	else:
 		if local_hero != null:
-			draw_texture_rect(local_hero, Rect2(viewport_size.x * 0.070, 148.0 * unit, 250.0 * unit, 300.0 * unit), false)
+			draw_texture_rect(local_hero, Rect2(viewport_size.x * 0.115, 150.0 * unit, 190.0 * unit, 242.0 * unit), false)
 		var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
 		var mystery := matchmaking_hero_texture(preview_animal, 2)
 		if mystery != null:
-			draw_texture_rect(mystery, Rect2(viewport_size.x * 0.735, 148.0 * unit, 250.0 * unit, 300.0 * unit), false, Color(0.015, 0.025, 0.08, 0.82))
+			draw_texture_rect(mystery, Rect2(viewport_size.x * 0.765, 150.0 * unit, 190.0 * unit, 242.0 * unit), false, Color(0.015, 0.025, 0.08, 0.82))
 		draw_string(ui_font, Vector2(0.0, 77.0 * unit), "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(40.0 * unit), Color.WHITE)
-		draw_string(ui_font, Vector2(viewport_size.x * 0.035, 365.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.30, int(24.0 * unit), Color.WHITE)
-		draw_string(ui_font, Vector2(viewport_size.x * 0.665, 365.0 * unit), "מחפשים..." if ui_language == "he" else "SEARCHING...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.30, int(24.0 * unit), Color.WHITE)
-		draw_string(ui_font, Vector2(viewport_size.x * 0.785, 285.0 * unit), "?", HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(68.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.055, 353.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.28, int(22.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.665, 353.0 * unit), "מחפשים..." if ui_language == "he" else "SEARCHING...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.28, int(22.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(viewport_size.x * 0.785, 278.0 * unit), "?", HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(62.0 * unit), Color.WHITE)
 	var arena_names: Array[String] = ["שער הירח", "ממלכת השמיים", "מבצר הכתר"]
 	var arena_name := arena_names[clampi(selected_arena, 0, 2)]
-	draw_string(ui_font, Vector2(0.0, 548.0 * unit), arena_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(23.0 * unit), Color.WHITE)
-	draw_string(ui_font, Vector2(0.0, 578.0 * unit), ("פרס הקרב %d" if ui_language == "he" else "BATTLE PRIZE %d") % int(ARENA_WIN_PRIZES[clampi(selected_arena, 0, 2)]), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(15.0 * unit), Color("ffe25d"))
+	draw_string(ui_font, Vector2(0.0, 514.0 * unit), arena_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(23.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(0.0, 545.0 * unit), ("פרס הקרב %d" if ui_language == "he" else "BATTLE PRIZE %d") % int(ARENA_WIN_PRIZES[clampi(selected_arena, 0, 2)]), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(15.0 * unit), Color("ffe25d"))
 	if not found:
 		draw_string(ui_font, Vector2(0.0, 667.0 * unit), ui_text("cancel_search"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(23.0 * unit), Color.WHITE)
 	return true
