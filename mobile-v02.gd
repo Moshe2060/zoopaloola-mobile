@@ -536,8 +536,8 @@ window.zpShowNotification = (title, body, data) => {
   try {
     const note = new Notification(title, {
       body: body,
-      icon: './zoovortex-app-icon-v1.png',
-      badge: './zoovortex-app-icon-v1.png',
+      icon: './zoovortex-app-icon-v1.jpg',
+      badge: './zoovortex-app-icon-v1.jpg',
       data: data || {}
     });
     note.onclick = () => {
