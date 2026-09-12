@@ -6791,14 +6791,21 @@ func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float, oppo
 
 func matchmaking_hero_texture(animal: int, ring_color: int) -> Texture2D:
 	var safe_animal := clampi(animal, 0, ANIMAL_NAMES.size() - 1)
-	var safe_ring := clampi(ring_color, 0, RING_COLORS.size() - 1)
-	if safe_animal < lifebuoy_hero_textures.size():
-		var colors: Array = lifebuoy_hero_textures[safe_animal]
-		if safe_ring < colors.size() and colors[safe_ring] != null:
-			return colors[safe_ring] as Texture2D
-	if safe_animal < full_body_animal_textures.size():
-		return full_body_animal_textures[safe_animal]
+	if safe_animal < character_ship_textures.size():
+		return character_ship_textures[safe_animal]
 	return null
+
+func draw_matchmaking_ship(rect: Rect2, animal: int, ring_color: int, tint: Color = Color.WHITE) -> void:
+	var safe_animal := clampi(animal, 0, ANIMAL_NAMES.size() - 1)
+	var safe_ring := clampi(ring_color, 0, RING_COLORS.size() - 1)
+	var ship := matchmaking_hero_texture(safe_animal, safe_ring)
+	if ship == null:
+		return
+	draw_texture_rect(ship, rect, false, tint)
+	if tint == Color.WHITE and safe_animal < character_ship_light_masks.size():
+		var light_mask: Texture2D = character_ship_light_masks[safe_animal]
+		if light_mask != null:
+			draw_texture_rect(light_mask, rect, false, RING_COLORS[safe_ring].lightened(0.12))
 
 func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 	var found: bool = arena_fx_phase == "found"
@@ -6808,15 +6815,12 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 	draw_texture_rect(background, Rect2(Vector2.ZERO, viewport_size), false)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var opponent: Dictionary = arena_matched_opponent if found else {}
-	var local_hero := matchmaking_hero_texture(player_animal, player_ring_color)
 	if found:
-		if local_hero != null:
-			draw_texture_rect(local_hero, Rect2(viewport_size.x * 0.105, 116.0 * unit, 285.0 * unit, 370.0 * unit), false)
+		var found_ship_size := 300.0 * unit
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.215 - found_ship_size * 0.5, 135.0 * unit, found_ship_size, found_ship_size), player_animal, player_ring_color)
 		var opponent_animal := clampi(int(opponent.get("animal", 0)), 0, ANIMAL_NAMES.size() - 1)
 		var opponent_ring := clampi(int(opponent.get("ringColor", 2)), 0, RING_COLORS.size() - 1)
-		var opponent_hero := matchmaking_hero_texture(opponent_animal, opponent_ring)
-		if opponent_hero != null:
-			draw_texture_rect(opponent_hero, Rect2(viewport_size.x * 0.675, 116.0 * unit, 285.0 * unit, 370.0 * unit), false)
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.785 - found_ship_size * 0.5, 135.0 * unit, found_ship_size, found_ship_size), opponent_animal, opponent_ring)
 		draw_string(ui_font, Vector2(0.0, 82.0 * unit), ui_text("match_found"), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(42.0 * unit), Color.WHITE)
 		draw_string(ui_font, Vector2(viewport_size.x * 0.030, 455.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(26.0 * unit), Color.WHITE)
 		draw_string(ui_font, Vector2(viewport_size.x * 0.610, 455.0 * unit), str(opponent.get("name", "יריב")), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.36, int(26.0 * unit), Color.WHITE)
@@ -6826,12 +6830,10 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 		var countdown := maxi(1, int(ceil(ARENA_MATCH_FOUND_DURATION - arena_fx_elapsed)))
 		draw_string(ui_font, Vector2(0.0, 614.0 * unit), str(countdown), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(35.0 * unit), Color.WHITE)
 	else:
-		if local_hero != null:
-			draw_texture_rect(local_hero, Rect2(viewport_size.x * 0.115, 150.0 * unit, 190.0 * unit, 242.0 * unit), false)
+		var search_ship_size := 218.0 * unit
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.195 - search_ship_size * 0.5, 142.0 * unit, search_ship_size, search_ship_size), player_animal, player_ring_color)
 		var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
-		var mystery := matchmaking_hero_texture(preview_animal, 2)
-		if mystery != null:
-			draw_texture_rect(mystery, Rect2(viewport_size.x * 0.765, 150.0 * unit, 190.0 * unit, 242.0 * unit), false, Color(0.015, 0.025, 0.08, 0.82))
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.805 - search_ship_size * 0.5, 142.0 * unit, search_ship_size, search_ship_size), preview_animal, 2, Color(0.015, 0.025, 0.08, 0.82))
 		draw_string(ui_font, Vector2(0.0, 77.0 * unit), "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(40.0 * unit), Color.WHITE)
 		draw_string(ui_font, Vector2(viewport_size.x * 0.055, 353.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.28, int(22.0 * unit), Color.WHITE)
 		draw_string(ui_font, Vector2(viewport_size.x * 0.665, 353.0 * unit), "מחפשים..." if ui_language == "he" else "SEARCHING...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.28, int(22.0 * unit), Color.WHITE)
