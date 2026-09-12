@@ -75,8 +75,26 @@ cp "$ROOT"/assets/ui/full_body/*.webp "$PROJECT/assets/ui/full_body/"
 cp "$ROOT"/assets/ui/full_body/lifebuoy/*.png "$PROJECT/assets/ui/full_body/lifebuoy/"
 
 sed -i -E 's/^config\/name=.*/config\/name="ZOOVORTEX"/' "$PROJECT/project.godot"
-sed -i -E 's#^boot_splash/image=.*#boot_splash/image="res://assets/ui/zoovortex-boot-splash-v2.png"#' "$PROJECT/project.godot"
-sed -i -E 's#^config/icon=.*#config/icon="res://assets/ui/zoovortex-app-icon-v1.jpg"#' "$PROJECT/project.godot"
+if grep -q '^boot_splash/image=' "$PROJECT/project.godot"; then
+  sed -i -E 's#^boot_splash/image=.*#boot_splash/image="res://assets/ui/zoovortex-boot-splash-v2.png"#' "$PROJECT/project.godot"
+else
+  sed -i '/^config\/name=/a boot_splash/image="res://assets/ui/zoovortex-boot-splash-v2.png"' "$PROJECT/project.godot"
+fi
+if grep -q '^boot_splash/fullsize=' "$PROJECT/project.godot"; then
+  sed -i -E 's/^boot_splash\/fullsize=.*/boot_splash\/fullsize=true/' "$PROJECT/project.godot"
+else
+  sed -i '/^boot_splash\/image=/a boot_splash/fullsize=true' "$PROJECT/project.godot"
+fi
+if grep -q '^boot_splash/show_image=' "$PROJECT/project.godot"; then
+  sed -i -E 's/^boot_splash\/show_image=.*/boot_splash\/show_image=true/' "$PROJECT/project.godot"
+else
+  sed -i '/^boot_splash\/fullsize=/a boot_splash/show_image=true' "$PROJECT/project.godot"
+fi
+if grep -q '^config/icon=' "$PROJECT/project.godot"; then
+  sed -i -E 's#^config/icon=.*#config/icon="res://assets/ui/zoovortex-app-icon-v1.jpg"#' "$PROJECT/project.godot"
+else
+  sed -i '/^boot_splash\/show_image=/a config/icon="res://assets/ui/zoovortex-app-icon-v1.jpg"' "$PROJECT/project.godot"
+fi
 sed -i -E 's/^package\/name=.*/package\/name="ZOOVORTEX"/' "$PROJECT/export_presets.cfg"
 
 if [[ "$ANDROID_FULLSCREEN" == "1" ]]; then
