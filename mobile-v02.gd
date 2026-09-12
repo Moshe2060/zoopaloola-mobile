@@ -412,6 +412,7 @@ var outgoing_friend_requests: Array = []
 var home_social_tab := 0
 var home_friend_profile_index := -1
 var battle_gates_league_open := false
+var rewards_league_mode := false
 var lobby_chat_messages: Array = []
 var friend_id_input: LineEdit
 var lobby_chat_input: LineEdit
@@ -5844,9 +5845,35 @@ func daily_claim_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	return Rect2(Vector2((viewport_size.x - 420.0 * unit) * 0.5, viewport_size.y * 0.62), Vector2(420.0, 78.0) * unit)
 
+func draw_league_rewards_screen(viewport_size: Vector2, unit: float) -> void:
+	draw_frontend_header(viewport_size, "פרסי הליגה" if ui_language == "he" else "LEAGUE REWARDS", "התקדמו בדירוג ופתחו פרסים גדולים יותר" if ui_language == "he" else "CLIMB THE RANKS TO UNLOCK BIGGER REWARDS")
+	var rewards := [100, 250, 500, 900, 1500]
+	for i in 5:
+		var card := Rect2(Vector2(58.0 + float(i) * 244.0, 176.0) * unit, Vector2(218.0, 350.0) * unit)
+		var reached := i <= mini(player_league_tier, 4)
+		var current := i == mini(player_league_tier, 4)
+		var accent: Color = Color("ffe25d") if current else league_color(i)
+		draw_gate_panel(card, accent, unit, 0.94 if reached else 0.76)
+		draw_league_badge(card.position + Vector2(109.0, 78.0) * unit, i, (48.0 if current else 40.0) * unit, current, unit)
+		draw_string(ui_font, card.position + Vector2(0.0, 155.0) * unit, league_name(i), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(21.0 * unit), Color("ffe25d") if current else Color.WHITE)
+		draw_string(ui_font, card.position + Vector2(0.0, 191.0) * unit, ("פרס עונתי" if ui_language == "he" else "SEASON REWARD"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(13.0 * unit), Color("9edff5"))
+		draw_circle(card.position + Vector2(78.0, 241.0) * unit, 20.0 * unit, Color("ffc83d"))
+		draw_circle(card.position + Vector2(78.0, 241.0) * unit, 12.0 * unit, Color("e9971b"), false, 4.0 * unit, true)
+		draw_string(ui_font, card.position + Vector2(104.0, 250.0) * unit, str(rewards[i]), HORIZONTAL_ALIGNMENT_LEFT, 90.0 * unit, int(23.0 * unit), Color.WHITE)
+		var status := "הליגה הנוכחית" if current and ui_language == "he" else ("CURRENT LEAGUE" if current else ("נפתח" if reached and ui_language == "he" else ("UNLOCKED" if reached else ("נעול" if ui_language == "he" else "LOCKED"))))
+		draw_style_box(make_box(Color("2bbf82") if reached else Color("273a53"), 12.0 * unit), Rect2(card.position + Vector2(25.0, 289.0) * unit, Vector2(168.0, 42.0) * unit))
+		draw_string(ui_font, card.position + Vector2(25.0, 317.0) * unit, status, HORIZONTAL_ALIGNMENT_CENTER, 168.0 * unit, int(13.0 * unit), Color.WHITE)
+	var info := Rect2(Vector2(268.0, 565.0) * unit, Vector2(744.0, 76.0) * unit)
+	draw_gate_panel(info, Color("58dcff"), unit, 0.90)
+	draw_string(ui_font, info.position + Vector2(20.0, 31.0) * unit, "הפרסים מחולקים בסיום עונת הליגה בהתאם לדרגה הגבוהה ביותר" if ui_language == "he" else "REWARDS ARE GRANTED AT SEASON END BASED ON YOUR HIGHEST LEAGUE", HORIZONTAL_ALIGNMENT_CENTER, info.size.x - 40.0 * unit, int(16.0 * unit), Color.WHITE)
+	draw_string(ui_font, info.position + Vector2(20.0, 57.0) * unit, ("הדירוג הנוכחי שלכם: %d" if ui_language == "he" else "YOUR CURRENT RATING: %d") % player_rating, HORIZONTAL_ALIGNMENT_CENTER, info.size.x - 40.0 * unit, int(14.0 * unit), Color("ffe25d"))
+
 func draw_rewards_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.06))
+	if rewards_league_mode:
+		draw_league_rewards_screen(viewport_size, unit)
+		return
 	draw_frontend_header(viewport_size, ui_text("daily_title"), ui_text("daily_sub"))
 	var card := Rect2(Vector2((viewport_size.x - 640.0 * unit) * 0.5, 160.0 * unit), Vector2(640.0, 420.0) * unit)
 	draw_gate_panel(card, Color("f6d365"), unit, 0.58)
@@ -5914,13 +5941,15 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 		if battle_gates_league_open:
 			if league_rewards_rect(viewport_size).has_point(screen_pos):
 				battle_gates_league_open = false
+				rewards_league_mode = true
 				app_screen = APP_REWARDS
 				play_sound("ui")
 				queue_redraw()
 				return
-			battle_gates_league_open = false
-			play_sound("ui")
-			queue_redraw()
+			if frontend_back_rect(viewport_size).has_point(screen_pos):
+				battle_gates_league_open = false
+				play_sound("ui")
+				queue_redraw()
 			return
 		if home_friend_profile_index >= 0:
 			if home_friend_profile_close_rect(viewport_size).has_point(screen_pos):
@@ -6032,6 +6061,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				shop_preview_board = selected_board_theme
 			else:
 				app_screen = APP_REWARDS
+				rewards_league_mode = false
 			play_sound("ui")
 			queue_redraw()
 			return
@@ -6048,6 +6078,13 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			return
 	else:
 		if frontend_back_rect(viewport_size).has_point(screen_pos):
+			if app_screen == APP_REWARDS and rewards_league_mode:
+				rewards_league_mode = false
+				app_screen = APP_HOME
+				battle_gates_league_open = true
+				play_sound("ui")
+				queue_redraw()
+				return
 			if app_screen == APP_SHOP:
 				shop_page = SHOP_PAGE_ANIMALS
 			if app_screen == APP_PLAYER_PROFILE:
@@ -6127,7 +6164,7 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					start_arena_search()
 				return
 		elif app_screen == APP_REWARDS:
-			if daily_claim_rect(viewport_size).has_point(screen_pos):
+			if not rewards_league_mode and daily_claim_rect(viewport_size).has_point(screen_pos):
 				claim_daily_reward()
 				return
 		elif app_screen == APP_PLAYER_PROFILE:
