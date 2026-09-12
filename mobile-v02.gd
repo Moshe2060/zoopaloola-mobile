@@ -330,6 +330,9 @@ var player_coins := 0
 var owned_animals: Array = []
 var owned_rings: Array = []
 var shop_page := SHOP_PAGE_HUB
+var shop_preview_animal := 0
+var shop_preview_ring := 0
+var shop_preview_board := 0
 var selected_arena := 0
 const BOARD_THEME_COUNT := 5
 var selected_board_theme := 0
@@ -6018,6 +6021,9 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			elif (battle_gates_home_texture != null and i == 2) or (battle_gates_home_texture == null and i == 0):
 				app_screen = APP_SHOP
 				shop_page = SHOP_PAGE_HUB
+				shop_preview_animal = player_animal
+				shop_preview_ring = player_ring_color
+				shop_preview_board = selected_board_theme
 			else:
 				app_screen = APP_REWARDS
 			play_sound("ui")
@@ -6074,26 +6080,35 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			if shop_page == SHOP_PAGE_ANIMALS:
 				for i in ANIMAL_NAMES.size():
 					if shop_detail_grid_rect(i, viewport_size, ANIMAL_NAMES.size()).has_point(screen_pos):
-						try_purchase_animal(i)
+						shop_preview_animal = i
 						queue_redraw()
 						return
 			elif shop_page == SHOP_PAGE_RINGS:
 				for i in RING_COLOR_NAMES.size():
 					if shop_detail_grid_rect(i, viewport_size, RING_COLOR_NAMES.size()).has_point(screen_pos):
-						try_purchase_ring(i)
+						shop_preview_ring = i
 						queue_redraw()
 						return
 			elif shop_page == SHOP_PAGE_BOARDS:
 				for i in BOARD_THEME_COUNT:
 					if shop_detail_grid_rect(i, viewport_size, BOARD_THEME_COUNT).has_point(screen_pos):
-						selected_board_theme = i
-						room_board_theme = i
-						match_board_theme = i
-						save_player_profile()
-						play_sound("ui")
-						show_menu_notice("השולחן נבחר" if ui_language == "he" else "TABLE EQUIPPED")
+						shop_preview_board = i
 						queue_redraw()
 						return
+			if shop_action_rect(viewport_size).has_point(screen_pos):
+				if shop_page == SHOP_PAGE_ANIMALS:
+					try_purchase_animal(shop_preview_animal)
+				elif shop_page == SHOP_PAGE_RINGS:
+					try_purchase_ring(shop_preview_ring)
+				elif shop_page == SHOP_PAGE_BOARDS:
+					selected_board_theme = shop_preview_board
+					room_board_theme = shop_preview_board
+					match_board_theme = shop_preview_board
+					save_player_profile()
+					play_sound("ui")
+					show_menu_notice("השולחן נבחר" if ui_language == "he" else "TABLE EQUIPPED")
+				queue_redraw()
+				return
 		elif app_screen == APP_ARENA:
 			for i in 3:
 				if arena_card_rect(i, viewport_size).has_point(screen_pos):
@@ -7355,6 +7370,10 @@ func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var total_w := card_w * 4.0 + gap * 3.0
 	return Rect2(Vector2((viewport_size.x - total_w) * 0.5 + float(index) * (card_w + gap), 92.0 * unit), Vector2(card_w, 54.0 * unit))
 
+func shop_action_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(70.0, 610.0) * unit, Vector2(326.0, 66.0) * unit)
+
 func shop_detail_columns(item_count: int) -> int:
 	return 4 if item_count > 6 else 3
 
@@ -7440,22 +7459,21 @@ func draw_texture_fit(texture: Texture2D, rect: Rect2) -> void:
 	draw_texture_rect(texture, Rect2(pos, draw_size), false)
 
 func draw_shop_ring_preview(art_rect: Rect2, index: int) -> void:
-	var preview_animal := 0
-	if preview_animal < lifebuoy_hero_textures.size():
-		var colors: Array = lifebuoy_hero_textures[preview_animal]
-		if index < colors.size() and colors[index] != null:
-			draw_texture_fit(colors[index] as Texture2D, art_rect)
-			return
 	var center := art_rect.get_center()
-	var radius := minf(art_rect.size.x, art_rect.size.y) * 0.34
+	var radius := minf(art_rect.size.x, art_rect.size.y) * 0.36
+	var light_color: Color = RING_COLORS[clampi(index, 0, RING_COLORS.size() - 1)]
 	draw_set_transform(center, 0.0, Vector2(1.0, 0.52))
-	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, RING_COLORS[index], radius * 0.30, true)
+	draw_circle(Vector2(0.0, radius * 0.68), radius * 0.74, Color(light_color.r, light_color.g, light_color.b, 0.22))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_circle(center, radius * 0.34, Color(0.02, 0.06, 0.12, 0.88))
+	if hero_saucer_texture != null:
+		draw_texture_fit(hero_saucer_texture, art_rect.grow(-4.0))
+	draw_set_transform(center + Vector2(0.0, radius * 0.45), 0.0, Vector2(1.0, 0.34))
+	draw_arc(Vector2.ZERO, radius * 0.85, 0.0, TAU, 40, light_color.lightened(0.15), radius * 0.11, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func draw_shop_detail_card(index: int, rect: Rect2, is_ring: bool, unit: float) -> void:
 	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
-	var selected := (player_ring_color == index) if is_ring else (player_animal == index)
+	var selected := (shop_preview_ring == index) if is_ring else (shop_preview_animal == index)
 	var accent := Color("467ce8") if is_ring else Color("24b889")
 	draw_gate_panel(rect, Color("ffe25d") if selected else accent, unit, 0.96)
 	var art_rect := Rect2(rect.position + Vector2(10.0 * unit, 10.0 * unit), Vector2(rect.size.x - 20.0 * unit, rect.size.y - 92.0 * unit))
@@ -7463,14 +7481,17 @@ func draw_shop_detail_card(index: int, rect: Rect2, is_ring: bool, unit: float) 
 	if is_ring:
 		draw_shop_ring_preview(art_rect.grow(-8.0 * unit), index)
 	else:
-		if index < full_body_animal_textures.size() and full_body_animal_textures[index] != null:
-			draw_texture_fit(full_body_animal_textures[index], art_rect.grow(-6.0 * unit))
+		if index < character_portrait_textures.size() and character_portrait_textures[index] != null:
+			draw_texture_fit(character_portrait_textures[index], art_rect.grow(-14.0 * unit))
 	if not unlocked:
 		draw_rect(art_rect, Color(0.01, 0.03, 0.08, 0.62))
-		draw_string(ui_font, art_rect.position + Vector2(0.0, art_rect.size.y * 0.48), "🔒", HORIZONTAL_ALIGNMENT_CENTER, art_rect.size.x, int(24.0 * unit), Color.WHITE)
-	if selected and unlocked:
+		var lock_center := art_rect.get_center()
+		draw_arc(lock_center + Vector2(0.0, -9.0 * unit), 14.0 * unit, PI, TAU, 24, Color("ffe25d"), 6.0 * unit, true)
+		draw_style_box(make_box(Color("f0a51e"), 6.0 * unit), Rect2(lock_center - Vector2(20.0, 7.0) * unit, Vector2(40.0, 34.0) * unit))
+		draw_circle(lock_center + Vector2(0.0, 7.0 * unit), 4.0 * unit, Color("173249"))
+	if selected:
 		draw_style_box(make_box(Color("ffe25d"), 10.0 * unit), Rect2(rect.position + Vector2(8.0 * unit, 8.0 * unit), Vector2(rect.size.x - 16.0 * unit, 22.0 * unit)))
-		draw_string(ui_font, rect.position + Vector2(0.0, 24.0 * unit), ui_text("equipped_item"), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(10.0 * unit), Color("173249"))
+		draw_string(ui_font, rect.position + Vector2(0.0, 24.0 * unit), "תצוגה" if ui_language == "he" else "PREVIEW", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(10.0 * unit), Color("173249"))
 	var label := ui_ring_name(index) if is_ring else ui_animal_name(index)
 	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y - 58.0 * unit), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(14.0 * unit), Color.WHITE)
 	var price_text := shop_detail_price_label(index, is_ring)
@@ -7489,30 +7510,50 @@ func draw_shop_hub(viewport_size: Vector2, unit: float) -> void:
 func draw_shop_feature(viewport_size: Vector2, unit: float) -> void:
 	var panel := Rect2(32.0 * unit, 166.0 * unit, 402.0 * unit, viewport_size.y - 194.0 * unit)
 	draw_gate_panel(panel, Color("58dcff"), unit, 0.80)
-	var art := Rect2(panel.position + Vector2(18.0, 18.0) * unit, Vector2(panel.size.x - 36.0 * unit, panel.size.y - 92.0 * unit))
-	if shop_page == SHOP_PAGE_ANIMALS or shop_page == SHOP_PAGE_RINGS:
-		if player_animal < character_ship_textures.size():
-			draw_texture_fit(character_ship_textures[player_animal], art)
-		if player_animal < character_ship_light_masks.size() and character_ship_light_masks[player_animal] != null:
-			var mask: Texture2D = character_ship_light_masks[player_animal]
+	var art := Rect2(panel.position + Vector2(18.0, 18.0) * unit, Vector2(panel.size.x - 36.0 * unit, panel.size.y - 122.0 * unit))
+	if shop_page == SHOP_PAGE_ANIMALS:
+		if shop_preview_animal < character_ship_textures.size():
+			draw_texture_fit(character_ship_textures[shop_preview_animal], art)
+		if shop_preview_animal < character_ship_light_masks.size() and character_ship_light_masks[shop_preview_animal] != null:
+			var mask: Texture2D = character_ship_light_masks[shop_preview_animal]
 			var mask_size := mask.get_size()
 			var mask_scale := minf(art.size.x / mask_size.x, art.size.y / mask_size.y)
 			var draw_size := mask_size * mask_scale
 			draw_texture_rect(mask, Rect2(art.position + (art.size - draw_size) * 0.5, draw_size), false, RING_COLORS[player_ring_color])
+	elif shop_page == SHOP_PAGE_RINGS:
+		draw_shop_ring_preview(art.grow(-24.0 * unit), shop_preview_ring)
 	elif shop_page == SHOP_PAGE_BOARDS:
-		draw_shop_board_preview(selected_board_theme, art.grow(-16.0 * unit), unit)
+		draw_shop_board_preview(shop_preview_board, art.grow(-16.0 * unit), unit)
 	else:
 		draw_shop_category_icon(2, art.get_center(), 110.0 * unit, unit)
-	var title := ui_animal_name(player_animal)
+	var title := ui_animal_name(shop_preview_animal)
 	if shop_page == SHOP_PAGE_RINGS:
-		title = ui_ring_name(player_ring_color)
+		title = ui_ring_name(shop_preview_ring)
 	elif shop_page == SHOP_PAGE_BOARDS:
-		title = board_theme_name(selected_board_theme)
+		title = board_theme_name(shop_preview_board)
 	elif shop_page == SHOP_PAGE_EFFECTS:
 		title = ui_text("coming_soon")
-	var title_box := Rect2(panel.position + Vector2(28.0 * unit, panel.size.y - 70.0 * unit), Vector2(panel.size.x - 56.0 * unit, 52.0 * unit))
+	var title_box := Rect2(panel.position + Vector2(28.0 * unit, panel.size.y - 142.0 * unit), Vector2(panel.size.x - 56.0 * unit, 46.0 * unit))
 	draw_style_box(make_box(Color(0.02, 0.07, 0.14, 0.96), 14.0 * unit), title_box)
 	draw_string(ui_font, title_box.position + Vector2(0.0, 34.0 * unit), title, HORIZONTAL_ALIGNMENT_CENTER, title_box.size.x, int(20.0 * unit), Color.WHITE)
+	if shop_page != SHOP_PAGE_EFFECTS:
+		var action := shop_action_rect(viewport_size)
+		var action_text := ""
+		if shop_page == SHOP_PAGE_ANIMALS:
+			if is_animal_unlocked(shop_preview_animal):
+				action_text = ui_text("equipped_item") if shop_preview_animal == player_animal else ("בחר דמות" if ui_language == "he" else "SELECT CHARACTER")
+			else:
+				action_text = ("קנה ב־%d מטבעות" if ui_language == "he" else "BUY FOR %d COINS") % animal_unlock_price(shop_preview_animal)
+		elif shop_page == SHOP_PAGE_RINGS:
+			if is_ring_unlocked(shop_preview_ring):
+				action_text = ui_text("equipped_item") if shop_preview_ring == player_ring_color else ("בחר צבע תאורה" if ui_language == "he" else "SELECT LIGHT COLOR")
+			else:
+				action_text = ("קנה ב־%d מטבעות" if ui_language == "he" else "BUY FOR %d COINS") % ring_unlock_price(shop_preview_ring)
+		else:
+			action_text = ui_text("equipped_item") if shop_preview_board == selected_board_theme else ("בחר שולחן" if ui_language == "he" else "EQUIP TABLE")
+		draw_style_box(make_box(Color("70420b"), 18.0 * unit), action.grow(5.0 * unit))
+		draw_style_box(make_box(Color("f0a51e"), 15.0 * unit), action)
+		draw_string(ui_font, action.position + Vector2(0.0, 42.0 * unit), action_text, HORIZONTAL_ALIGNMENT_CENTER, action.size.x, int(21.0 * unit), Color.WHITE)
 
 func draw_shop_detail_page(viewport_size: Vector2, item_count: int, is_ring: bool, unit: float) -> void:
 	var panel := Rect2(450.0 * unit, 166.0 * unit, viewport_size.x - 474.0 * unit, viewport_size.y - 194.0 * unit)
@@ -7534,7 +7575,7 @@ func draw_shop_boards_page(viewport_size: Vector2, unit: float) -> void:
 	draw_gate_panel(panel, Color("58dcff"), unit, 0.88)
 	for i in BOARD_THEME_COUNT:
 		var card := shop_detail_grid_rect(i, viewport_size, BOARD_THEME_COUNT)
-		draw_gate_panel(card, Color("ffe25d") if i == selected_board_theme else board_theme_accent(i), unit, 0.96)
+		draw_gate_panel(card, Color("ffe25d") if i == shop_preview_board else board_theme_accent(i), unit, 0.96)
 		draw_shop_board_preview(i, card.grow(-12.0 * unit), unit)
 		draw_string(ui_font, card.position + Vector2(0.0, card.size.y - 15.0 * unit), board_theme_name(i), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(13.0 * unit), Color.WHITE)
 
