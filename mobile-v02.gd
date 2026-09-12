@@ -536,8 +536,8 @@ window.zpShowNotification = (title, body, data) => {
   try {
     const note = new Notification(title, {
       body: body,
-      icon: './zoopaloola-boot-splash-v2.png',
-      badge: './zoopaloola-boot-splash-v2.png',
+      icon: './zoovortex-app-icon-v1.png',
+      badge: './zoovortex-app-icon-v1.png',
       data: data || {}
     });
     note.onclick = () => {
@@ -878,8 +878,9 @@ func _ready() -> void:
 	player_profile_gates_background_texture = load("res://assets/ui/screens/player-profile-gates-bg-v1.webp") as Texture2D
 	leagues_gates_background_texture = load("res://assets/ui/screens/leagues-gates-bg-v1.webp") as Texture2D
 	rewards_gates_background_texture = load("res://assets/ui/screens/rewards-gates-bg-v1.webp") as Texture2D
-	loading_team_texture = load("res://assets/ui/zoopaloola-loading-team-v1.webp") as Texture2D
-	zoopaloola_logo_texture = load("res://assets/ui/zoopaloola-logo-v1.webp") as Texture2D
+	loading_team_texture = load("res://assets/ui/zoovortex-loading-v1.webp") as Texture2D
+	# The new splash artwork already contains the approved ZOOVORTEX wordmark.
+	zoopaloola_logo_texture = null
 	wood_podium_texture = load("res://assets/ui/full_body/lifebuoy/wood-podium-v1.png") as Texture2D
 	hero_saucer_texture = load("res://assets/ui/ships/hero-saucer-base-v1.png") as Texture2D
 	if board_texture == null:
@@ -6439,7 +6440,7 @@ func draw_splash_screen(viewport_size: Vector2) -> void:
 	var progress := clampf(splash_elapsed / 2.85, 0.0, 1.0)
 	var fill_rect := Rect2(loading_rect.position, Vector2(maxf(12.0 * unit, loading_rect.size.x * progress), loading_rect.size.y))
 	draw_style_box(make_box(Color("ffd83d"), 10.0), fill_rect)
-	draw_string(ui_font, Vector2(0.0, loading_rect.position.y - 12.0 * unit), "LOADING THE ISLAND...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(13.0 * unit), Color.WHITE)
+	draw_string(ui_font, Vector2(0.0, loading_rect.position.y - 12.0 * unit), "פותחים את המערבולת..." if ui_language == "he" else "OPENING THE VORTEX...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(15.0 * unit), Color.WHITE)
 
 func draw_frontend(viewport_size: Vector2) -> void:
 	if app_screen == APP_AUTH:
