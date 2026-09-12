@@ -6807,6 +6807,23 @@ func draw_matchmaking_ship(rect: Rect2, animal: int, ring_color: int, tint: Colo
 		if light_mask != null:
 			draw_texture_rect(light_mask, rect, false, RING_COLORS[safe_ring].lightened(0.12))
 
+func draw_mystery_matchmaking_ship(center: Vector2, unit: float) -> void:
+	# Keep the search placeholder entirely inside the purple portal. Drawing the
+	# full character texture as a silhouette made the animal spill over the frame.
+	var shadow := Color(0.018, 0.012, 0.075, 0.94)
+	var glow := Color(0.48, 0.20, 0.88, 0.42)
+	draw_circle(center + Vector2(0.0, 19.0) * unit, 78.0 * unit, glow)
+	draw_colored_polygon(PackedVector2Array([
+		center + Vector2(-88.0, 25.0) * unit,
+		center + Vector2(-55.0, 59.0) * unit,
+		center + Vector2(55.0, 59.0) * unit,
+		center + Vector2(88.0, 25.0) * unit,
+		center + Vector2(52.0, 4.0) * unit,
+		center + Vector2(-52.0, 4.0) * unit,
+	]), shadow)
+	draw_circle(center + Vector2(0.0, 5.0) * unit, 52.0 * unit, shadow)
+	draw_arc(center + Vector2(0.0, 23.0) * unit, 75.0 * unit, 0.15, PI - 0.15, 40, Color(0.58, 0.30, 0.95, 0.75), 4.0 * unit, true)
+
 func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 	var found: bool = arena_fx_phase == "found"
 	var background: Texture2D = arena_found_concept_texture if found else arena_search_concept_texture
@@ -6830,10 +6847,9 @@ func draw_concept_matchmaking_screen(viewport_size: Vector2) -> bool:
 		var countdown := maxi(1, int(ceil(ARENA_MATCH_FOUND_DURATION - arena_fx_elapsed)))
 		draw_string(ui_font, Vector2(0.0, 614.0 * unit), str(countdown), HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(35.0 * unit), Color.WHITE)
 	else:
-		var search_ship_size := 218.0 * unit
-		draw_matchmaking_ship(Rect2(viewport_size.x * 0.195 - search_ship_size * 0.5, 142.0 * unit, search_ship_size, search_ship_size), player_animal, player_ring_color)
-		var preview_animal := int(floor(menu_elapsed * 2.5)) % ANIMAL_NAMES.size()
-		draw_matchmaking_ship(Rect2(viewport_size.x * 0.805 - search_ship_size * 0.5, 142.0 * unit, search_ship_size, search_ship_size), preview_animal, 2, Color(0.015, 0.025, 0.08, 0.82))
+		var search_ship_size := 292.0 * unit
+		draw_matchmaking_ship(Rect2(viewport_size.x * 0.195 - search_ship_size * 0.5, 91.0 * unit, search_ship_size, search_ship_size), player_animal, player_ring_color)
+		draw_mystery_matchmaking_ship(Vector2(viewport_size.x * 0.805, 244.0 * unit), unit)
 		draw_string(ui_font, Vector2(0.0, 77.0 * unit), "מחפשים יריב" if ui_language == "he" else "FINDING AN OPPONENT", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(40.0 * unit), Color.WHITE)
 		draw_string(ui_font, Vector2(viewport_size.x * 0.055, 353.0 * unit), profile_name, HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.28, int(22.0 * unit), Color.WHITE)
 		draw_string(ui_font, Vector2(viewport_size.x * 0.665, 353.0 * unit), "מחפשים..." if ui_language == "he" else "SEARCHING...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x * 0.28, int(22.0 * unit), Color.WHITE)
