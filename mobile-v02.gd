@@ -5912,6 +5912,12 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			handle_tutorial_touch(screen_pos, viewport_size)
 			return
 		if battle_gates_league_open:
+			if league_rewards_rect(viewport_size).has_point(screen_pos):
+				battle_gates_league_open = false
+				app_screen = APP_REWARDS
+				play_sound("ui")
+				queue_redraw()
+				return
 			battle_gates_league_open = false
 			play_sound("ui")
 			queue_redraw()
@@ -7106,26 +7112,88 @@ func draw_battle_gates_home_screen(viewport_size: Vector2) -> void:
 	draw_home_friend_profile(viewport_size)
 	draw_tutorial_overlay(viewport_size)
 
-func draw_battle_gates_league_screen(viewport_size: Vector2) -> void:
-	draw_screen_background(leagues_gates_background_texture, viewport_size, 0.05)
+func league_rewards_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	draw_frontend_header(viewport_size, ui_text("leaderboard_title"), league_name(player_league_tier))
-	var rating_box := Rect2(Vector2(105.0, 430.0) * unit, Vector2(300.0, 92.0) * unit)
-	draw_style_box(make_box(Color(0.015, 0.06, 0.15, 0.72), 20.0 * unit), rating_box)
-	draw_string(ui_font, rating_box.position + Vector2(0.0, 35.0) * unit, league_name(player_league_tier), HORIZONTAL_ALIGNMENT_CENTER, rating_box.size.x, int(20.0 * unit), Color("ffe25d"))
-	draw_string(ui_font, rating_box.position + Vector2(0.0, 70.0) * unit, ui_text("rating_label") + ": " + str(player_rating), HORIZONTAL_ALIGNMENT_CENTER, rating_box.size.x, int(17.0 * unit), Color.WHITE)
+	return Rect2(Vector2(730.0, 630.0) * unit, Vector2(390.0, 60.0) * unit)
+
+func draw_league_badge(center: Vector2, tier: int, radius: float, active: bool, unit: float) -> void:
+	var color: Color = league_color(tier)
+	if active:
+		draw_circle(center, radius * 1.28, Color(color.r, color.g, color.b, 0.20))
+		draw_circle(center, radius * 1.10, Color("ffe25d"))
+	draw_circle(center, radius, color)
+	draw_circle(center, radius * 0.76, Color(0.03, 0.10, 0.22, 0.94))
+	for i in 5:
+		var angle := -PI * 0.5 + float(i) * TAU / 5.0
+		draw_circle(center + Vector2(cos(angle), sin(angle)) * radius * 0.31, radius * 0.12, color.lightened(0.28))
+	draw_circle(center + Vector2(0.0, radius * 0.12), radius * 0.25, color.lightened(0.18))
+	if tier >= 3:
+		for side in [-1.0, 1.0]:
+			draw_colored_polygon(PackedVector2Array([center + Vector2(side * radius * 0.72, -radius * 0.25), center + Vector2(side * radius * 1.15, -radius * 0.55), center + Vector2(side * radius * 0.92, radius * 0.30)]), Color("f2b633"))
+	if tier == 4:
+		draw_colored_polygon(PackedVector2Array([center + Vector2(-radius * 0.48, -radius * 0.88), center + Vector2(-radius * 0.18, -radius * 1.20), center, center + Vector2(radius * 0.18, -radius * 1.20), center + Vector2(radius * 0.48, -radius * 0.88)]), Color("ffd85a"))
+
+func draw_battle_gates_league_screen(viewport_size: Vector2) -> void:
+	draw_screen_background(leagues_gates_background_texture, viewport_size, 0.08)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_frontend_header(viewport_size, "ליגות ודירוג" if ui_language == "he" else "LEAGUES & RANKING", "הדרך שלכם לפסגה" if ui_language == "he" else "YOUR ROAD TO THE TOP")
+	var hero_rect := Rect2(Vector2(16.0, 126.0) * unit, Vector2(430.0, 430.0) * unit)
+	if player_animal < character_ship_textures.size() and character_ship_textures[player_animal] != null:
+		draw_texture_rect(character_ship_textures[player_animal], hero_rect, false)
+		if player_animal < character_ship_light_masks.size() and character_ship_light_masks[player_animal] != null:
+			draw_texture_rect(character_ship_light_masks[player_animal], hero_rect, false, RING_COLORS[player_ring_color].lightened(0.12))
+	var platform := Vector2(230.0, 555.0) * unit
+	draw_set_transform(platform, 0.0, Vector2(1.0, 0.28))
+	draw_circle(Vector2.ZERO, 160.0 * unit, Color(0.02, 0.10, 0.22, 0.90))
+	draw_arc(Vector2.ZERO, 154.0 * unit, 0.0, TAU, 72, Color("58dcff"), 7.0 * unit, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var league_plaque := Rect2(Vector2(70.0, 570.0) * unit, Vector2(320.0, 100.0) * unit)
+	draw_gate_panel(league_plaque, league_color(player_league_tier), unit, 0.95)
+	draw_league_badge(league_plaque.position + Vector2(55.0, 50.0) * unit, player_league_tier, 30.0 * unit, true, unit)
+	draw_string(ui_font, league_plaque.position + Vector2(92.0, 45.0) * unit, league_name(player_league_tier), HORIZONTAL_ALIGNMENT_CENTER, league_plaque.size.x - 112.0 * unit, int(24.0 * unit), Color.WHITE)
+	draw_string(ui_font, league_plaque.position + Vector2(92.0, 73.0) * unit, str(player_rating) + " " + ui_text("rating_label"), HORIZONTAL_ALIGNMENT_CENTER, league_plaque.size.x - 112.0 * unit, int(14.0 * unit), Color("ffe25d"))
+
+	var panel := Rect2(Vector2(450.0, 112.0) * unit, Vector2(790.0, 570.0) * unit)
+	draw_gate_panel(panel, Color("58dcff"), unit, 0.95)
+	var visible_tier: int = mini(player_league_tier, 4)
+	var path_y := panel.position.y + 92.0 * unit
+	draw_line(Vector2(panel.position.x + 74.0 * unit, path_y), Vector2(panel.end.x - 74.0 * unit, path_y), Color("48d7ff"), 5.0 * unit, true)
+	for i in 5:
+		var badge_center := Vector2(panel.position.x + (80.0 + float(i) * 157.0) * unit, path_y)
+		draw_league_badge(badge_center, i, (39.0 if i == visible_tier else 30.0) * unit, i == visible_tier, unit)
+		draw_string(ui_font, badge_center + Vector2(-65.0, 66.0) * unit, league_name(i), HORIZONTAL_ALIGNMENT_CENTER, 130.0 * unit, int(14.0 * unit), Color("ffe25d") if i == visible_tier else Color.WHITE)
+	var current_floor: int = LEAGUE_RATING_THRESHOLDS[clampi(player_league_tier, 0, LEAGUE_RATING_THRESHOLDS.size() - 1)]
+	var next_target: int = LEAGUE_RATING_THRESHOLDS[mini(player_league_tier + 1, LEAGUE_RATING_THRESHOLDS.size() - 1)]
+	var progress: float = 1.0 if player_league_tier >= 4 else clampf(float(player_rating - current_floor) / float(maxi(1, next_target - current_floor)), 0.0, 1.0)
+	var progress_rect := Rect2(panel.position + Vector2(112.0, 175.0) * unit, Vector2(566.0, 20.0) * unit)
+	draw_style_box(make_box(Color("10294e"), 10.0 * unit), progress_rect.grow(4.0 * unit))
+	draw_style_box(make_box(Color("ffd23f"), 8.0 * unit), Rect2(progress_rect.position, Vector2(maxf(12.0 * unit, progress_rect.size.x * progress), progress_rect.size.y)))
+	draw_string(ui_font, panel.position + Vector2(0.0, 215.0) * unit, str(player_rating) + " / " + str(next_target), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(15.0 * unit), Color("d7f6ff"))
 	var entries := global_leaderboard.duplicate()
 	if entries.is_empty():
 		entries = [{"rank": 1, "name": profile_name, "rating": player_rating, "publicId": firebase_public_id}]
-	var count := mini(6, entries.size())
+	var count := mini(5, entries.size())
 	for i in count:
 		var entry: Dictionary = entries[i]
-		var row := Rect2(Vector2(510.0, 250.0 + float(i) * 56.0) * unit, Vector2(660.0, 48.0) * unit)
+		var row := Rect2(panel.position + Vector2(42.0, 240.0 + float(i) * 59.0) * unit, Vector2(706.0, 50.0) * unit)
 		var is_me := str(entry.get("publicId", "")) == firebase_public_id
-		draw_style_box(make_box(Color(0.45, 0.25, 0.08, 0.82) if is_me else Color(0.015, 0.07, 0.17, 0.62), 13.0 * unit), row)
-		draw_string(ui_font, row.position + Vector2(14.0, 31.0) * unit, "#" + str(entry.get("rank", i + 1)), HORIZONTAL_ALIGNMENT_LEFT, 60.0 * unit, int(16.0 * unit), Color("ffe25d"))
-		draw_string(ui_font, row.position + Vector2(80.0, 31.0) * unit, str(entry.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, 390.0 * unit, int(17.0 * unit), Color.WHITE)
-		draw_string(ui_font, row.position + Vector2(510.0, 31.0) * unit, str(entry.get("rating", 0)), HORIZONTAL_ALIGNMENT_CENTER, 120.0 * unit, int(17.0 * unit), Color("8cecff"))
+		draw_style_box(make_box(Color(0.46, 0.28, 0.06, 0.94) if is_me else Color(0.015, 0.07, 0.17, 0.88), 13.0 * unit), row)
+		if is_me:
+			draw_rect(row, Color("ffe25d"), false, 3.0 * unit)
+		var rank := int(entry.get("rank", i + 1))
+		draw_circle(row.position + Vector2(30.0, 25.0) * unit, 19.0 * unit, Color("f5bf35") if rank <= 3 else Color("29486b"))
+		draw_string(ui_font, row.position + Vector2(12.0, 32.0) * unit, str(rank), HORIZONTAL_ALIGNMENT_CENTER, 36.0 * unit, int(16.0 * unit), Color("173249") if rank <= 3 else Color.WHITE)
+		var avatar_index := clampi(int(entry.get("animal", entry.get("animalIndex", i % ANIMAL_NAMES.size()))), 0, ANIMAL_NAMES.size() - 1)
+		if avatar_index < character_portrait_textures.size() and character_portrait_textures[avatar_index] != null:
+			draw_texture_rect(character_portrait_textures[avatar_index], Rect2(row.position + Vector2(58.0, 5.0) * unit, Vector2(40.0, 40.0) * unit), false)
+		draw_string(ui_font, row.position + Vector2(110.0, 32.0) * unit, str(entry.get("name", "")), HORIZONTAL_ALIGNMENT_LEFT, 350.0 * unit, int(17.0 * unit), Color("ffe25d") if is_me else Color.WHITE)
+		draw_string(ui_font, row.position + Vector2(490.0, 32.0) * unit, str(entry.get("rating", 0)), HORIZONTAL_ALIGNMENT_CENTER, 105.0 * unit, int(17.0 * unit), Color("8cecff"))
+		draw_circle(row.position + Vector2(626.0, 25.0) * unit, 10.0 * unit, Color("ffc83d"))
+		draw_string(ui_font, row.position + Vector2(644.0, 31.0) * unit, str(maxi(50, 250 - i * 40)), HORIZONTAL_ALIGNMENT_LEFT, 55.0 * unit, int(14.0 * unit), Color("ffe25d"))
+	var rewards := league_rewards_rect(viewport_size)
+	draw_style_box(make_box(Color("70420b"), 17.0 * unit), rewards.grow(5.0 * unit))
+	draw_style_box(make_box(Color("f0a51e"), 14.0 * unit), rewards)
+	draw_string(ui_font, rewards.position + Vector2(0.0, 39.0 * unit), "צפייה בפרסי הליגה" if ui_language == "he" else "VIEW LEAGUE REWARDS", HORIZONTAL_ALIGNMENT_CENTER, rewards.size.x, int(21.0 * unit), Color.WHITE)
 
 func draw_home_mode_icon(kind: int, center: Vector2, unit: float) -> void:
 	if kind == 0:
