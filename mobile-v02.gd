@@ -207,6 +207,7 @@ const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
 const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
 const MATCH_SERVER_URL := "wss://zoopaloola-mobile.onrender.com/ws"
 const ARENA_MATCH_FOUND_DURATION := 3.6
+const ARENA_BOT_FALLBACK_DELAY := 5.0
 const FIREBASE_WEB_VAPID_KEY := ""
 const TUTORIAL_STEP_COUNT := 8
 const TUTORIAL_STEPS_HE := [
@@ -623,11 +624,52 @@ func begin_arena_match_found(payload: Dictionary) -> void:
 	play_sound("invite")
 	queue_redraw()
 
+func begin_arena_bot_match() -> void:
+	if arena_fx_phase != "searching" or not matchmaking_searching:
+		return
+	# Leave the live queue before presenting the local fallback so a real match
+	# cannot arrive during the reveal countdown.
+	send_multiplayer({"type": "cancel_match"})
+	var bot_names_he: Array[String] = ["נועם", "אורי", "ליאם", "מאיה", "איתי", "דניאל"]
+	var bot_names_en: Array[String] = ["Noam", "Ori", "Liam", "Maya", "Itay", "Daniel"]
+	var bot_index: int = randi() % bot_names_he.size()
+	var bot_animal: int = randi() % ANIMAL_NAMES.size()
+	if bot_animal == player_animal:
+		bot_animal = (bot_animal + 1) % ANIMAL_NAMES.size()
+	var bot_ring: int = randi() % RING_COLORS.size()
+	var bot_rating: int = maxi(650, player_rating + (randi() % 121) - 60)
+	arena_matched_opponent = {
+		"name": bot_names_he[bot_index] if ui_language == "he" else bot_names_en[bot_index],
+		"animal": bot_animal,
+		"ringColor": bot_ring,
+		"level": maxi(1, player_level + (randi() % 5) - 2),
+		"rating": bot_rating,
+		"isBot": true
+	}
+	pending_arena_match = {
+		"source": "arena",
+		"bot": true,
+		"slot": 0,
+		"turn": 0,
+		"arena": selected_arena,
+		"boardTheme": arena_board_theme_for_level(selected_arena)
+	}
+	matchmaking_searching = false
+	pending_find_match = false
+	arena_fx_phase = "found"
+	arena_fx_elapsed = 0.0
+	play_sound("invite")
+	queue_redraw()
+
 func apply_match_started(payload: Dictionary) -> void:
 	multiplayer_slot = int(payload.get("slot", multiplayer_slot))
 	turn = int(payload.get("turn", 0))
-	game_mode = "online"
+	var is_bot_match: bool = bool(payload.get("bot", false))
+	game_mode = "computer" if is_bot_match else "online"
 	match_source = str(payload.get("source", "friend"))
+	if is_bot_match:
+		ai_animal = clampi(int(arena_matched_opponent.get("animal", 1)), 0, ANIMAL_NAMES.size() - 1)
+		ai_ring_color = clampi(int(arena_matched_opponent.get("ringColor", 2)), 0, RING_COLORS.size() - 1)
 	if match_source == "arena":
 		var entry: int = int(ARENA_ENTRY_COSTS[clampi(int(payload.get("arena", selected_arena)), 0, ARENA_ENTRY_COSTS.size() - 1)])
 		player_coins = maxi(0, player_coins - entry)
@@ -656,6 +698,9 @@ func update_arena_fx(delta: float) -> void:
 	if arena_fx_phase == "idle":
 		return
 	arena_fx_elapsed += delta
+	if arena_fx_phase == "searching" and arena_fx_elapsed >= ARENA_BOT_FALLBACK_DELAY:
+		begin_arena_bot_match()
+		return
 	if arena_fx_phase == "found" and arena_fx_elapsed >= ARENA_MATCH_FOUND_DURATION and not pending_arena_match.is_empty():
 		apply_match_started(pending_arena_match)
 
@@ -6722,7 +6767,10 @@ func draw_matchmaking_card(rect: Rect2, is_local_player: bool, unit: float, oppo
 	draw_string(ui_font, name_bar.position + Vector2(10.0, 31.0) * unit, card_name, HORIZONTAL_ALIGNMENT_CENTER, name_bar.size.x - 20.0 * unit, int(21.0 * unit), Color.WHITE)
 	var detail := player_level_label() if is_local_player else ("יריב מתאים יצטרף בקרוב" if ui_language == "he" else "A MATCHED OPPONENT WILL APPEAR")
 	if not is_local_player and not opponent.is_empty():
-		detail = ("דירוג: %d" if ui_language == "he" else "RATING: %d") % int(opponent.get("rating", 1000))
+		if bool(opponent.get("isBot", false)):
+			detail = ("יריב אימון • דירוג %d" if ui_language == "he" else "TRAINING RIVAL • RATING %d") % int(opponent.get("rating", 1000))
+		else:
+			detail = ("דירוג: %d" if ui_language == "he" else "RATING: %d") % int(opponent.get("rating", 1000))
 	draw_string(ui_font, name_bar.position + Vector2(10.0, 54.0) * unit, detail, HORIZONTAL_ALIGNMENT_CENTER, name_bar.size.x - 20.0 * unit, int(11.0 * unit), Color("a9cde2"))
 	var badge_center := rect.position + Vector2(24.0, 24.0) * unit
 	draw_circle(badge_center, 23.0 * unit, Color("ffe25d") if is_local_player else Color("59d7f0"))
