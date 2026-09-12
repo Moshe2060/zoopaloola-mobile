@@ -330,6 +330,7 @@ var menu_elapsed := 0.0
 var game_mode := "computer"
 var profile_name := "PLAYER 1"
 var player_coins := 0
+var player_gems := 0
 var owned_animals: Array = []
 var owned_rings: Array = []
 var shop_page := SHOP_PAGE_HUB
@@ -867,7 +868,7 @@ func _ready() -> void:
 	]
 	lobby_background_texture = load("res://assets/ui/zoopaloola-home-bg-v3.webp") as Texture2D
 	battle_background_texture = load("res://assets/ui/battle-sky-bg-v1.webp") as Texture2D
-	battle_gates_home_texture = load("res://assets/ui/battle-gates-home-v1.webp") as Texture2D
+	battle_gates_home_texture = load("res://assets/ui/battle-gates-home-clean-v2.webp") as Texture2D
 	auth_gates_background_texture = load("res://assets/ui/screens/auth-gates-bg-v1.webp") as Texture2D
 	character_gates_background_texture = load("res://assets/ui/screens/character-gates-bg-v1.webp") as Texture2D
 	friend_gates_background_texture = load("res://assets/ui/screens/friend-gates-bg-v1.webp") as Texture2D
@@ -3741,6 +3742,8 @@ func home_top_control_rects(viewport_size: Vector2) -> Dictionary:
 	}
 
 func home_coin_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(viewport_size.x * 0.685, viewport_size.y * 0.035, viewport_size.x * 0.120, viewport_size.y * 0.070)
 	return home_top_control_rects(viewport_size).coin
 
 func home_settings_rect(viewport_size: Vector2) -> Rect2:
@@ -3759,6 +3762,8 @@ func home_sound_toggle_rect(viewport_size: Vector2) -> Rect2:
 	return home_top_control_rects(viewport_size).sound
 
 func home_gems_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(viewport_size.x * 0.815, viewport_size.y * 0.035, viewport_size.x * 0.100, viewport_size.y * 0.070)
 	return home_top_control_rects(viewport_size).gems
 
 func tutorial_step_data(step: int) -> Dictionary:
@@ -4820,6 +4825,7 @@ func load_player_profile() -> void:
 	player_animal = clampi(int(config.get_value("player", "animal", player_animal)), 0, ANIMAL_NAMES.size() - 1)
 	player_ring_color = clampi(int(config.get_value("player", "ring_color", player_ring_color)), 0, RING_COLORS.size() - 1)
 	player_coins = maxi(0, int(config.get_value("player", "coins", player_coins)))
+	player_gems = maxi(0, int(config.get_value("player", "gems", player_gems)))
 	player_level = clampi(int(config.get_value("player", "level", player_level)), 1, 999)
 	player_xp = maxi(0, int(config.get_value("player", "xp", player_xp)))
 	player_wins = maxi(0, int(config.get_value("player", "wins", player_wins)))
@@ -4862,6 +4868,7 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("player", "animal", player_animal)
 	config.set_value("player", "ring_color", player_ring_color)
 	config.set_value("player", "coins", player_coins)
+	config.set_value("player", "gems", player_gems)
 	config.set_value("player", "economy_version", ECONOMY_VERSION)
 	config.set_value("player", "owned_animals", owned_animals)
 	config.set_value("player", "owned_rings", owned_rings)
@@ -5295,6 +5302,7 @@ func firestore_fields(include_public_id: bool = true) -> Dictionary:
 		"animal": {"integerValue": str(player_animal)},
 		"ringColor": {"integerValue": str(player_ring_color)},
 		"coins": {"integerValue": str(player_coins)},
+		"gems": {"integerValue": str(player_gems)},
 		"economyVersion": {"integerValue": str(ECONOMY_VERSION)},
 		"ownedAnimals": {"stringValue": JSON.stringify(owned_animals)},
 		"ownedRings": {"stringValue": JSON.stringify(owned_rings)},
@@ -7372,13 +7380,93 @@ func draw_battle_gates_home_screen(viewport_size: Vector2) -> void:
 		draw_battle_gates_league_screen(viewport_size)
 		return
 	draw_texture_rect(battle_gates_home_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+
+	# All account data and labels are live UI. Nothing user-specific is baked
+	# into the background artwork, so language and progression update instantly.
+	var title_rect := Rect2(Vector2(viewport_size.x * 0.365, 18.0 * unit), Vector2(viewport_size.x * 0.270, 78.0 * unit))
+	draw_gate_panel(title_rect, Color("58dcff"), unit, 0.93)
+	draw_string(ui_font, title_rect.position + Vector2(0.0, 51.0) * unit, "שערי הקרב" if ui_language == "he" else "BATTLE GATES", HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x, int(29.0 * unit), Color.WHITE)
+
+	var profile := home_profile_rect(viewport_size)
+	draw_gate_panel(profile, Color("58dcff"), unit, 0.95)
+	var avatar_center := profile.position + Vector2(45.0, 43.0) * unit
+	draw_circle(avatar_center, 34.0 * unit, Color("d6a62f"))
+	draw_circle(avatar_center, 28.0 * unit, Color("173d72"))
+	draw_string(ui_font, avatar_center + Vector2(-25.0, 10.0) * unit, profile_initial(), HORIZONTAL_ALIGNMENT_CENTER, 50.0 * unit, int(25.0 * unit), Color.WHITE)
+	draw_string(ui_font, profile.position + Vector2(88.0, 32.0) * unit, profile_name, HORIZONTAL_ALIGNMENT_LEFT, profile.size.x - 100.0 * unit, int(20.0 * unit), Color.WHITE)
+	draw_string(ui_font, profile.position + Vector2(88.0, 57.0) * unit, ("רמה %d" if ui_language == "he" else "LEVEL %d") % player_level, HORIZONTAL_ALIGNMENT_LEFT, 105.0 * unit, int(13.0 * unit), Color("8cecff"))
+	var xp_track := Rect2(profile.position + Vector2(88.0, 65.0) * unit, Vector2(112.0, 7.0) * unit)
+	draw_style_box(make_box(Color("13294a"), 4.0 * unit), xp_track)
+	var xp_ratio := clampf(float(player_xp) / float(maxi(1, player_next_level_xp)), 0.0, 1.0)
+	draw_style_box(make_box(Color("42dfff"), 4.0 * unit), Rect2(xp_track.position, Vector2(xp_track.size.x * xp_ratio, xp_track.size.y)))
 	var id_rect := player_id_copy_rect(viewport_size)
-	var id_text := firebase_public_id if not firebase_public_id.is_empty() else "ZP-XXXXXXXX"
+	var id_text := firebase_public_id if not firebase_public_id.is_empty() else ("מתחבר..." if ui_language == "he" else "CONNECTING...")
 	draw_style_box(make_box(Color(0.035, 0.10, 0.22, 0.96), 10.0), id_rect)
 	draw_string(ui_font, id_rect.position + Vector2(8.0, id_rect.size.y * 0.67), id_text, HORIZONTAL_ALIGNMENT_LEFT, id_rect.size.x - 36.0, maxi(10, int(viewport_size.y * 0.018)), Color("dff6ff"))
 	draw_string(ui_font, id_rect.position + Vector2(id_rect.size.x - 30.0, id_rect.size.y * 0.68), "▣", HORIZONTAL_ALIGNMENT_CENTER, 24.0, maxi(11, int(viewport_size.y * 0.020)), Color("8cecff"))
+
+	var coin_rect := home_coin_rect(viewport_size)
+	var gem_rect := home_gems_rect(viewport_size)
+	for currency_rect in [coin_rect, gem_rect]:
+		draw_style_box(make_box(Color("071c43"), 15.0 * unit), currency_rect.grow(3.0 * unit))
+		draw_style_box(make_box(Color(0.035, 0.10, 0.22, 0.96), 13.0 * unit), currency_rect)
+	draw_circle(coin_rect.position + Vector2(25.0, 27.0) * unit, 15.0 * unit, Color("ffc83d"))
+	draw_circle(coin_rect.position + Vector2(25.0, 27.0) * unit, 9.0 * unit, Color("e9971b"), false, 3.0 * unit, true)
+	draw_string(ui_font, coin_rect.position + Vector2(48.0, 35.0) * unit, str(player_coins), HORIZONTAL_ALIGNMENT_LEFT, coin_rect.size.x - 54.0 * unit, int(19.0 * unit), Color.WHITE)
+	var gem_center := gem_rect.position + Vector2(24.0, 27.0) * unit
+	draw_colored_polygon(PackedVector2Array([gem_center + Vector2(0.0, -15.0) * unit, gem_center + Vector2(13.0, -3.0) * unit, gem_center + Vector2(8.0, 14.0) * unit, gem_center + Vector2(-8.0, 14.0) * unit, gem_center + Vector2(-13.0, -3.0) * unit]), Color("62eaff"))
+	draw_string(ui_font, gem_rect.position + Vector2(47.0, 35.0) * unit, str(player_gems), HORIZONTAL_ALIGNMENT_LEFT, gem_rect.size.x - 52.0 * unit, int(19.0 * unit), Color.WHITE)
+	var settings := home_settings_rect(viewport_size)
+	draw_gate_panel(settings, Color("58dcff"), unit, 0.95)
+	draw_string(ui_font, settings.position + Vector2(0.0, 31.0) * unit, "HE" if ui_language == "he" else "EN", HORIZONTAL_ALIGNMENT_CENTER, settings.size.x, int(14.0 * unit), Color.WHITE)
+
+	var mode_labels := ["זירה תחרותית", "קרב עם חבר", "קרב מהיר"] if ui_language == "he" else ["COMPETITIVE", "PLAY A FRIEND", "QUICK BATTLE"]
+	var mode_colors := [Color("f0a52a"), Color("a64eff"), Color("25bff2")]
+	for i in 3:
+		var button := home_mode_rect(i, viewport_size)
+		var plaque_w := button.size.x * (0.70 if i != 2 else 0.82)
+		var plaque := Rect2(Vector2(button.get_center().x - plaque_w * 0.5, button.end.y - 72.0 * unit), Vector2(plaque_w, 58.0 * unit))
+		draw_gate_panel(plaque, mode_colors[i], unit, 0.92)
+		draw_string(ui_font, plaque.position + Vector2(0.0, 39.0) * unit, mode_labels[i], HORIZONTAL_ALIGNMENT_CENTER, plaque.size.x, int((19.0 if i != 2 else 24.0) * unit), Color.WHITE)
+
+	var nav_labels := ["דמויות", "ליגות", "חנות", "פרסים"] if ui_language == "he" else ["CHARACTERS", "LEAGUES", "SHOP", "REWARDS"]
+	var nav_panel := Rect2(Vector2(viewport_size.x * 0.225, viewport_size.y * 0.855), Vector2(viewport_size.x * 0.55, viewport_size.y * 0.14))
+	draw_style_box(make_box(Color(0.02, 0.075, 0.17, 0.96), 28.0 * unit), nav_panel)
+	draw_rect(Rect2(nav_panel.position, Vector2(nav_panel.size.x, 3.0 * unit)), Color("58dcff"))
+	for i in 4:
+		var nav := home_nav_rect(i, viewport_size)
+		if i > 0:
+			draw_line(Vector2(nav.position.x, nav.position.y + 18.0 * unit), Vector2(nav.position.x, nav.end.y - 14.0 * unit), Color("39709a"), 2.0 * unit)
+		draw_battle_home_nav_icon(i, nav.position + Vector2(nav.size.x * 0.5, 32.0 * unit), unit)
+		draw_string(ui_font, nav.position + Vector2(0.0, 72.0) * unit, nav_labels[i], HORIZONTAL_ALIGNMENT_CENTER, nav.size.x, int(14.0 * unit), Color.WHITE)
 	draw_home_friend_profile(viewport_size)
 	draw_tutorial_overlay(viewport_size)
+
+func draw_battle_home_nav_icon(kind: int, center: Vector2, unit: float) -> void:
+	var color := Color("8cecff")
+	if kind == 0:
+		for offset in [-10.0, 10.0]:
+			draw_circle(center + Vector2(offset, -5.0) * unit, 6.0 * unit, color)
+			draw_arc(center + Vector2(offset, 9.0) * unit, 10.0 * unit, PI, TAU, 14, color, 4.0 * unit, true)
+	elif kind == 1:
+		var cup := Rect2(center + Vector2(-12.0, -11.0) * unit, Vector2(24.0, 17.0) * unit)
+		draw_rect(cup, color, false, 4.0 * unit)
+		draw_arc(center + Vector2(-13.0, -3.0) * unit, 8.0 * unit, PI * 0.5, PI * 1.5, 12, color, 3.0 * unit, true)
+		draw_arc(center + Vector2(13.0, -3.0) * unit, 8.0 * unit, -PI * 0.5, PI * 0.5, 12, color, 3.0 * unit, true)
+		draw_line(center + Vector2(0.0, 6.0) * unit, center + Vector2(0.0, 15.0) * unit, color, 4.0 * unit)
+		draw_line(center + Vector2(-9.0, 15.0) * unit, center + Vector2(9.0, 15.0) * unit, color, 4.0 * unit)
+	elif kind == 2:
+		var basket := Rect2(center + Vector2(-14.0, -5.0) * unit, Vector2(28.0, 18.0) * unit)
+		draw_rect(basket, color, false, 4.0 * unit)
+		draw_line(center + Vector2(-18.0, -11.0) * unit, center + Vector2(-13.0, -5.0) * unit, color, 4.0 * unit)
+		for offset in [-8.0, 8.0]:
+			draw_circle(center + Vector2(offset, 18.0) * unit, 3.5 * unit, color)
+	else:
+		var gift := Rect2(center + Vector2(-13.0, -7.0) * unit, Vector2(26.0, 21.0) * unit)
+		draw_rect(gift, color, false, 4.0 * unit)
+		draw_line(center + Vector2(0.0, -7.0) * unit, center + Vector2(0.0, 14.0) * unit, color, 3.0 * unit)
+		draw_line(center + Vector2(-13.0, 0.0) * unit, center + Vector2(13.0, 0.0) * unit, color, 3.0 * unit)
 
 func league_rewards_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)

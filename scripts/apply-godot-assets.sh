@@ -62,6 +62,7 @@ cp "$ROOT/assets/ui/zoopaloola-splash.svg" "$PROJECT/assets/ui/zoopaloola-splash
 cp "$ROOT/assets/ui/zoopaloola-home-bg-v3.webp" "$PROJECT/assets/ui/zoopaloola-home-bg-v3.webp"
 cp "$ROOT/assets/ui/battle-sky-bg-v1.webp" "$PROJECT/assets/ui/battle-sky-bg-v1.webp"
 cp "$ROOT/assets/ui/battle-gates-home-v1.webp" "$PROJECT/assets/ui/battle-gates-home-v1.webp"
+cp "$ROOT/assets/ui/battle-gates-home-clean-v2.webp" "$PROJECT/assets/ui/battle-gates-home-clean-v2.webp"
 cp "$ROOT/assets/ui/zoovortex-loading-v2.webp" "$PROJECT/assets/ui/zoovortex-loading-v2.webp"
 cp "$ROOT/assets/ui/zoovortex-logo-v1.webp" "$PROJECT/assets/ui/zoovortex-logo-v1.webp"
 cp "$ROOT/assets/ui/zoovortex-boot-splash-v3.png" "$PROJECT/assets/ui/zoovortex-boot-splash-v3.png"
