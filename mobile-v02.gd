@@ -3633,11 +3633,11 @@ func player_id_copy_rect(viewport_size: Vector2) -> Rect2:
 	if battle_gates_home_texture != null and app_screen == APP_HOME:
 		return Rect2(viewport_size.x * 0.220, viewport_size.y * 0.078, viewport_size.x * 0.112, viewport_size.y * 0.047)
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(1050.0, 620.0) * unit, Vector2(168.0, 42.0) * unit)
+	return Rect2(Vector2(1018.0, 180.0) * unit, Vector2(48.0, 38.0) * unit)
 
-func player_google_rect(viewport_size: Vector2) -> Rect2:
+func player_edit_profile_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(842.0, 620.0) * unit, Vector2(192.0, 42.0) * unit)
+	return Rect2(Vector2(842.0, 614.0) * unit, Vector2(376.0, 48.0) * unit)
 
 func home_profile_rect(viewport_size: Vector2) -> Rect2:
 	if battle_gates_home_texture != null:
@@ -6102,9 +6102,11 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				claim_daily_reward()
 				return
 		elif app_screen == APP_PLAYER_PROFILE:
-			if player_google_rect(viewport_size).has_point(screen_pos):
-				if firebase_provider != "google":
-					begin_google_sign_in()
+			if player_edit_profile_rect(viewport_size).has_point(screen_pos):
+				commit_profile_name()
+				play_sound("ui")
+				app_screen = APP_PROFILE
+				queue_redraw()
 				return
 			if player_id_copy_rect(viewport_size).has_point(screen_pos):
 				if not firebase_public_id.is_empty():
@@ -6771,14 +6773,18 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	draw_style_box(make_box(Color("33dfff"), 8.0 * unit), Rect2(achievement_bar.position, Vector2(achievement_bar.size.x * 0.45, achievement_bar.size.y)))
 	draw_string(ui_font, achievement_card.position + Vector2(250.0, 158.0) * unit, "18 / 40", HORIZONTAL_ALIGNMENT_RIGHT, 82.0 * unit, int(12.0 * unit), Color.WHITE)
 
-	var google_rect := player_google_rect(viewport_size)
-	var google_connected := firebase_provider == "google"
-	draw_style_box(make_box(Color("3c9a73") if google_connected else Color("3275d8"), 12.0 * unit), google_rect)
-	var google_label := ("Google מחובר" if ui_language == "he" else "GOOGLE LINKED") if google_connected else ("חיבור Google" if ui_language == "he" else "CONNECT GOOGLE")
-	draw_string(ui_font, google_rect.position + Vector2(0.0, 29.0) * unit, google_label, HORIZONTAL_ALIGNMENT_CENTER, google_rect.size.x, int(15.0 * unit), Color.WHITE)
+	var edit_rect := player_edit_profile_rect(viewport_size)
+	draw_style_box(make_box(Color("70420b"), 15.0 * unit), edit_rect.grow(4.0 * unit))
+	draw_style_box(make_box(Color("e8a21d"), 13.0 * unit), edit_rect)
+	draw_line(edit_rect.position + Vector2(22.0, 7.0) * unit, Vector2(edit_rect.end.x - 22.0 * unit, edit_rect.position.y + 7.0 * unit), Color("fff1a8"), 2.0 * unit, true)
+	var pencil_center := edit_rect.position + Vector2(47.0, 24.0) * unit
+	draw_line(pencil_center + Vector2(-8.0, 7.0) * unit, pencil_center + Vector2(8.0, -9.0) * unit, Color.WHITE, 6.0 * unit, true)
+	draw_colored_polygon(PackedVector2Array([pencil_center + Vector2(-11.0, 10.0) * unit, pencil_center + Vector2(-5.0, 8.0) * unit, pencil_center + Vector2(-9.0, 4.0) * unit]), Color("fff1a8"))
+	draw_string(ui_font, edit_rect.position + Vector2(28.0, 32.0) * unit, "עריכת פרופיל" if ui_language == "he" else "EDIT PROFILE", HORIZONTAL_ALIGNMENT_CENTER, edit_rect.size.x - 45.0 * unit, int(18.0 * unit), Color.WHITE)
 	var copy_rect := player_id_copy_rect(viewport_size)
-	draw_style_box(make_box(Color("d89a1d") if not firebase_public_id.is_empty() else Color("70858d"), 12.0 * unit), copy_rect)
-	draw_string(ui_font, copy_rect.position + Vector2(0.0, 29.0) * unit, "העתקה" if ui_language == "he" else "COPY ID", HORIZONTAL_ALIGNMENT_CENTER, copy_rect.size.x, int(16.0 * unit), Color.WHITE)
+	draw_style_box(make_box(Color("173d72") if not firebase_public_id.is_empty() else Color("44556a"), 10.0 * unit), copy_rect)
+	draw_rect(Rect2(copy_rect.position + Vector2(15.0, 9.0) * unit, Vector2(15.0, 15.0) * unit), Color("8cecff"), false, 2.0 * unit)
+	draw_rect(Rect2(copy_rect.position + Vector2(20.0, 14.0) * unit, Vector2(15.0, 15.0) * unit), Color.WHITE, false, 2.0 * unit)
 
 func draw_home_social_panel(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
