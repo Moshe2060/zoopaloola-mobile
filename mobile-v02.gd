@@ -358,6 +358,7 @@ var home_ambient_particles: Array = []
 var sound_enabled := true
 var sfx_player: AudioStreamPlayer
 var last_daily_claim := ""
+var daily_login_streak := 0
 var menu_notice := ""
 var menu_notice_time := 0.0
 var multiplayer_socket := WebSocketPeer.new()
@@ -2094,10 +2095,19 @@ func claim_daily_reward() -> void:
 	if not can_claim_daily():
 		show_menu_notice(ui_text("claimed"))
 		return
-	player_coins += DAILY_REWARD_COINS
+	var today_unix := Time.get_unix_time_from_datetime_string(daily_claim_key() + "T00:00:00")
+	var previous_unix := Time.get_unix_time_from_datetime_string(last_daily_claim + "T00:00:00") if not last_daily_claim.is_empty() else 0
+	if previous_unix > 0 and int((today_unix - previous_unix) / 86400.0) == 1:
+		daily_login_streak += 1
+	else:
+		daily_login_streak = 1
+	var rewards := [50, 60, 70, 80, 100, 120, 200]
+	var reward_index := (daily_login_streak - 1) % rewards.size()
+	var reward_coins: int = rewards[reward_index]
+	player_coins += reward_coins
 	last_daily_claim = daily_claim_key()
 	save_player_profile()
-	show_menu_notice(ui_text("daily_claimed_toast"))
+	show_menu_notice(("קיבלתם %d מטבעות!" if ui_language == "he" else "YOU RECEIVED %d COINS!") % reward_coins)
 
 func draw_scoreboards() -> void:
 	# The blue and purple displays baked into the board art are covered by these
@@ -4766,6 +4776,7 @@ func load_player_profile() -> void:
 	computer_difficulty = clampi(int(config.get_value("settings", "computer_difficulty", computer_difficulty)), 0, 2)
 	selected_board_theme = clampi(int(config.get_value("settings", "board_theme", selected_board_theme)), 0, BOARD_THEME_COUNT - 1)
 	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
+	daily_login_streak = maxi(0, int(config.get_value("player", "daily_login_streak", daily_login_streak)))
 	ui_language = str(config.get_value("settings", "language", ui_language))
 	friends_list = config.get_value("social", "friends", [])
 	if typeof(friends_list) != TYPE_ARRAY:
@@ -4806,6 +4817,7 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("player", "rating", player_rating)
 	config.set_value("player", "league_tier", player_league_tier)
 	config.set_value("player", "last_daily_claim", last_daily_claim)
+	config.set_value("player", "daily_login_streak", daily_login_streak)
 	config.set_value("settings", "sound_enabled", sound_enabled)
 	config.set_value("settings", "tutorial_completed", tutorial_completed)
 	config.set_value("settings", "computer_difficulty", computer_difficulty)
@@ -5843,7 +5855,7 @@ func player_level_label() -> String:
 
 func daily_claim_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2((viewport_size.x - 420.0 * unit) * 0.5, viewport_size.y * 0.62), Vector2(420.0, 78.0) * unit)
+	return Rect2(Vector2(63.0, 577.0) * unit, Vector2(270.0, 66.0) * unit)
 
 func draw_league_rewards_screen(viewport_size: Vector2, unit: float) -> void:
 	draw_frontend_header(viewport_size, "פרסי הליגה" if ui_language == "he" else "LEAGUE REWARDS", "התקדמו בדירוג ופתחו פרסים גדולים יותר" if ui_language == "he" else "CLIMB THE RANKS TO UNLOCK BIGGER REWARDS")
@@ -5874,17 +5886,61 @@ func draw_rewards_screen(viewport_size: Vector2) -> void:
 	if rewards_league_mode:
 		draw_league_rewards_screen(viewport_size, unit)
 		return
-	draw_frontend_header(viewport_size, ui_text("daily_title"), ui_text("daily_sub"))
-	var card := Rect2(Vector2((viewport_size.x - 640.0 * unit) * 0.5, 160.0 * unit), Vector2(640.0, 420.0) * unit)
-	draw_gate_panel(card, Color("f6d365"), unit, 0.58)
-	draw_circle(card.position + Vector2(card.size.x * 0.5, 140.0 * unit), 58.0 * unit, Color("ffc83d"))
-	draw_circle(card.position + Vector2(card.size.x * 0.5, 140.0 * unit), 36.0 * unit, Color("e9971b"), false, 8.0 * unit, true)
-	draw_string(ui_font, card.position + Vector2(30.0, 250.0) * unit, "+" + str(DAILY_REWARD_COINS) + ui_text("coins"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 60.0 * unit, int(28.0 * unit), Color.WHITE)
-	draw_string(ui_font, card.position + Vector2(40.0, 292.0) * unit, ("יתרה: %d" if ui_language == "he" else "Balance: %d") % player_coins, HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 80.0 * unit, int(16.0 * unit), Color("fff0c7"))
+	draw_frontend_header(viewport_size, "מרכז הפרסים" if ui_language == "he" else "REWARDS CENTER", "חוזרים בכל יום ומתקדמים לעוד מתנות" if ui_language == "he" else "RETURN DAILY AND PROGRESS TOWARD MORE GIFTS")
+	draw_shop_coin_box(viewport_size, unit)
+	var rewards := [50, 60, 70, 80, 100, 120, 200]
+	var reward_day := daily_login_streak % 7 if can_claim_daily() else maxi(0, (daily_login_streak - 1) % 7)
+	var left := Rect2(Vector2(28.0, 142.0) * unit, Vector2(340.0, 532.0) * unit)
+	draw_gate_panel(left, Color("f6d365"), unit, 0.82)
+	draw_string(ui_font, left.position + Vector2(0.0, 52.0) * unit, "הפרס היומי" if ui_language == "he" else "DAILY REWARD", HORIZONTAL_ALIGNMENT_CENTER, left.size.x, int(28.0 * unit), Color.WHITE)
+	draw_circle(left.position + Vector2(170.0, 112.0) * unit, 28.0 * unit, Color("ffc83d"))
+	draw_string(ui_font, left.position + Vector2(205.0, 122.0) * unit, str(rewards[reward_day]), HORIZONTAL_ALIGNMENT_LEFT, 90.0 * unit, int(31.0 * unit), Color("ffe25d"))
+	var chest := Rect2(left.position + Vector2(55.0, 168.0) * unit, Vector2(230.0, 190.0) * unit)
+	draw_circle(chest.get_center() + Vector2(0.0, 20.0) * unit, 112.0 * unit, Color("ffd43b", 0.13))
+	draw_style_box(make_box(Color("5b2a9a"), 22.0 * unit), Rect2(chest.position + Vector2(8.0, 38.0) * unit, Vector2(214.0, 66.0) * unit))
+	draw_style_box(make_box(Color("173d91"), 16.0 * unit), Rect2(chest.position + Vector2(0.0, 92.0) * unit, Vector2(230.0, 92.0) * unit))
+	draw_rect(Rect2(chest.position + Vector2(98.0, 38.0) * unit, Vector2(34.0, 146.0) * unit), Color("f3b82e"))
+	draw_circle(chest.position + Vector2(115.0, 112.0) * unit, 25.0 * unit, Color("ffe25d"))
+	draw_colored_polygon(PackedVector2Array([chest.position + Vector2(115.0, 94.0) * unit, chest.position + Vector2(128.0, 112.0) * unit, chest.position + Vector2(115.0, 132.0) * unit, chest.position + Vector2(102.0, 112.0) * unit]), Color("2954a7"))
+	draw_string(ui_font, left.position + Vector2(30.0, 390.0) * unit, ("רצף נוכחי: %d ימים" if ui_language == "he" else "CURRENT STREAK: %d DAYS") % daily_login_streak, HORIZONTAL_ALIGNMENT_CENTER, left.size.x - 60.0 * unit, int(17.0 * unit), Color("d7f6ff"))
 	var claim := daily_claim_rect(viewport_size)
 	var ready := can_claim_daily()
-	draw_style_box(make_box(Color("12a96b") if ready else Color("31485d"), 18.0 * unit), claim)
-	draw_string(ui_font, claim.position + Vector2(0.0, 50.0) * unit, ui_text("claim") if ready else ui_text("claimed"), HORIZONTAL_ALIGNMENT_CENTER, claim.size.x, int(22.0 * unit), Color.WHITE)
+	draw_style_box(make_box(Color("70420b") if ready else Color("1c2c42"), 18.0 * unit), claim.grow(5.0 * unit))
+	draw_style_box(make_box(Color("20ae62") if ready else Color("31485d"), 15.0 * unit), claim)
+	draw_string(ui_font, claim.position + Vector2(0.0, 43.0 * unit), ("אספו עכשיו" if ui_language == "he" else "CLAIM NOW") if ready else ui_text("claimed"), HORIZONTAL_ALIGNMENT_CENTER, claim.size.x, int(22.0 * unit), Color.WHITE)
+
+	var panel := Rect2(Vector2(394.0, 142.0) * unit, Vector2(858.0, 532.0) * unit)
+	draw_gate_panel(panel, Color("58dcff"), unit, 0.94)
+	draw_string(ui_font, panel.position + Vector2(0.0, 42.0) * unit, "רצף יומי" if ui_language == "he" else "DAILY STREAK", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(24.0 * unit), Color.WHITE)
+	for i in 7:
+		var tile := Rect2(panel.position + Vector2(25.0 + float(i) * 116.0, 62.0) * unit, Vector2(102.0, 166.0) * unit)
+		var claimed := i < reward_day or (not can_claim_daily() and i == reward_day)
+		var today := can_claim_daily() and i == reward_day
+		draw_gate_panel(tile, Color("ffe25d") if today else (Color("35c98b") if claimed else Color("467ce8")), unit, 0.94)
+		draw_string(ui_font, tile.position + Vector2(0.0, 29.0) * unit, ("יום %d" if ui_language == "he" else "DAY %d") % (i + 1), HORIZONTAL_ALIGNMENT_CENTER, tile.size.x, int(14.0 * unit), Color.WHITE)
+		if i == 6:
+			draw_style_box(make_box(Color("6f3cb5"), 11.0 * unit), Rect2(tile.position + Vector2(22.0, 53.0) * unit, Vector2(58.0, 52.0) * unit))
+		else:
+			draw_circle(tile.position + Vector2(51.0, 79.0) * unit, 25.0 * unit, Color("ffc83d"))
+		draw_string(ui_font, tile.position + Vector2(0.0, 139.0) * unit, str(rewards[i]), HORIZONTAL_ALIGNMENT_CENTER, tile.size.x, int(18.0 * unit), Color("ffe25d"))
+		if claimed:
+			draw_circle(tile.position + Vector2(82.0, 20.0) * unit, 12.0 * unit, Color("20c982"))
+			draw_string(ui_font, tile.position + Vector2(70.0, 26.0) * unit, "✓", HORIZONTAL_ALIGNMENT_CENTER, 24.0 * unit, int(14.0 * unit), Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(0.0, 276.0) * unit, "מסלול העונה" if ui_language == "he" else "SEASON PATH", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(24.0 * unit), Color.WHITE)
+	var milestones := [5, 10, 20, 30]
+	var path_start := panel.position + Vector2(105.0, 355.0) * unit
+	var path_end := panel.position + Vector2(753.0, 355.0) * unit
+	draw_line(path_start, path_end, Color("3978bd"), 10.0 * unit, true)
+	var season_progress := clampf(float(player_wins) / 30.0, 0.0, 1.0)
+	draw_line(path_start, path_start.lerp(path_end, season_progress), Color("ffe25d"), 10.0 * unit, true)
+	for i in 4:
+		var node := path_start.lerp(path_end, float(i) / 3.0)
+		var reached := player_wins >= milestones[i]
+		draw_circle(node, 31.0 * unit, Color("ffe25d") if reached else Color("173d72"))
+		draw_circle(node, 24.0 * unit, Color("70420b") if reached else Color("081b3c"))
+		draw_string(ui_font, node + Vector2(-24.0, 8.0) * unit, str(milestones[i]), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(18.0 * unit), Color.WHITE)
+		draw_string(ui_font, node + Vector2(-48.0, 70.0) * unit, ("תיבה" if i >= 2 and ui_language == "he" else ("CHEST" if i >= 2 else ("מטבעות" if ui_language == "he" else "COINS"))), HORIZONTAL_ALIGNMENT_CENTER, 96.0 * unit, int(12.0 * unit), Color("d7f6ff"))
+	draw_string(ui_font, panel.position + Vector2(0.0, 487.0) * unit, ("ניצחונות העונה: %d" if ui_language == "he" else "SEASON WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(16.0 * unit), Color("ffe25d"))
 
 func ui_text(key: String) -> String:
 	if ui_language == "he":
