@@ -18,6 +18,9 @@ var hud
 var player_health := 100.0
 var rival_health := 100.0
 var energy := 100.0
+var rival_energy := 100.0
+var player_turbo := 0.0
+var rival_turbo := 0.0
 var boost_cooldown := 0.0
 var hit_cooldown := 0.0
 var rival_boost_cooldown := 1.2
@@ -38,6 +41,7 @@ var laser_trap: Node3D
 var laser_trap_center := Vector3(70, 0, -48)
 var laser_angle := 0.0
 var laser_hit_cooldowns := {"player": 0.0, "rival": 0.0}
+var pickups: Array[Dictionary] = []
 var match_finished := false
 var sticky_center := Vector3(82, 0, -54)
 var rng := RandomNumberGenerator.new()
@@ -64,6 +68,9 @@ func _physics_process(delta: float) -> void:
 	energy_regen_delay = maxf(0.0, energy_regen_delay - delta)
 	player_boost_active = maxf(0.0, player_boost_active - delta)
 	rival_boost_active = maxf(0.0, rival_boost_active - delta)
+	player_turbo = maxf(0.0, player_turbo - delta)
+	rival_turbo = maxf(0.0, rival_turbo - delta)
+	rival_energy = minf(100.0, rival_energy + 13.0 * delta)
 	rival_stun = maxf(0.0, rival_stun - delta)
 	rival_boost_cooldown -= delta
 	if match_finished:
@@ -79,6 +86,7 @@ func _physics_process(delta: float) -> void:
 	_update_gravity_trap(delta)
 	_update_spike_trap()
 	_update_laser_trap(delta)
+	_update_pickups(delta)
 	_apply_arena_limits(player)
 	_apply_arena_limits(rival)
 	_update_camera(delta)
@@ -104,7 +112,8 @@ func _update_player(delta: float) -> void:
 	if sticky:
 		speed_factor *= 0.38
 		player_health = maxf(0.0, player_health - delta * 3.0)
-	var target_velocity := desired * DRIVE_SPEED * speed_factor
+	var turbo_factor := 1.42 if player_turbo > 0.0 else 1.0
+	var target_velocity := desired * DRIVE_SPEED * speed_factor * turbo_factor
 	player.velocity.x = move_toward(player.velocity.x, target_velocity.x, ACCELERATION * delta)
 	player.velocity.z = move_toward(player.velocity.z, target_velocity.z, ACCELERATION * delta)
 	var wants_boost: bool = Input.is_action_just_pressed("ui_accept") or (hud != null and hud.consume_boost())
@@ -123,17 +132,28 @@ func _update_rival(delta: float) -> void:
 		rival.velocity = rival.velocity.move_toward(Vector3.ZERO, delta * 8.0)
 		rival.move_and_slide()
 		return
-	var offset := player.global_position - rival.global_position
+	var target_position := player.global_position
+	var wanted_pickup := ""
+	if rival_health < 48.0:
+		wanted_pickup = "health"
+	elif rival_energy < 34.0:
+		wanted_pickup = "energy"
+	var pickup_target := _nearest_active_pickup(rival.global_position, wanted_pickup)
+	if pickup_target != Vector3.INF:
+		target_position = pickup_target
+	var offset := target_position - rival.global_position
 	var distance := offset.length()
 	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
 	var target_angle := atan2(desired.x, desired.z)
 	rival.rotation.y = lerp_angle(rival.rotation.y, target_angle, delta * 3.8)
 	var strafe := Vector3(-desired.z, 0, desired.x) * sin(Time.get_ticks_msec() * 0.0016) * 0.38
-	var target_velocity := (desired + strafe).normalized() * 12.5
+	var rival_speed := 18.0 if rival_turbo > 0.0 else 12.5
+	var target_velocity := (desired + strafe).normalized() * rival_speed
 	rival.velocity.x = move_toward(rival.velocity.x, target_velocity.x, 18.0 * delta)
 	rival.velocity.z = move_toward(rival.velocity.z, target_velocity.z, 18.0 * delta)
-	if rival_boost_cooldown <= 0.0 and distance < 12.0:
+	if rival_boost_cooldown <= 0.0 and distance < 12.0 and rival_energy >= 28.0 and wanted_pickup == "":
 		rival.velocity += desired * 20.0
+		rival_energy -= 28.0
 		rival_boost_active = 0.5
 		rival_boost_cooldown = rng.randf_range(2.4, 4.0)
 	if rival.global_position.distance_to(sticky_center) < 4.6:
@@ -226,6 +246,7 @@ func _update_hud() -> void:
 	hud.energy = energy
 	hud.enemy_health = rival_health
 	hud.exhausted = energy <= 1.0
+	hud.turbo_seconds = player_turbo
 	hud.player_map_position = Vector2(player.global_position.x, player.global_position.z)
 	hud.rival_map_position = Vector2(rival.global_position.x, rival.global_position.z)
 	hud.player_map_heading = player.rotation.y
@@ -274,6 +295,7 @@ func _build_world() -> void:
 	_build_gravity_trap()
 	_build_spike_trap()
 	_build_laser_trap()
+	_build_pickups()
 
 func _make_hovercraft(title: String, color: Color, position: Vector3) -> CharacterBody3D:
 	var body := CharacterBody3D.new()
@@ -593,6 +615,102 @@ func _update_laser_trap(delta: float) -> void:
 		laser_hit_cooldowns[key] = 0.85
 		_spawn_impact_flash(body.global_position + Vector3.UP * 0.5)
 
+func _build_pickups() -> void:
+	var definitions := [
+		["health", Vector3(-102, 0.8, 56)],
+		["health", Vector3(108, 0.8, -12)],
+		["energy", Vector3(-24, 0.8, -78)],
+		["energy", Vector3(36, 0.8, 70)],
+		["turbo", Vector3(-104, 0.8, -6)],
+		["turbo", Vector3(112, 0.8, 72)]
+	]
+	for definition in definitions:
+		var kind: String = definition[0]
+		var position: Vector3 = definition[1]
+		var holder := Node3D.new()
+		holder.name = "Pickup_%s" % kind
+		holder.position = position
+		var color := Color("35ed72") if kind == "health" else (Color("ffb52e") if kind == "energy" else Color("28caff"))
+		var orb := _make_sphere(Vector3.ZERO, Vector3(0.48, 0.48, 0.48), _material(color.lightened(0.18), color, 3.0))
+		holder.add_child(orb)
+		var ring := MeshInstance3D.new()
+		var ring_mesh := TorusMesh.new()
+		ring_mesh.inner_radius = 0.58
+		ring_mesh.outer_radius = 0.72
+		ring.mesh = ring_mesh
+		ring.rotation.x = PI * 0.5
+		ring.material_override = _material(color.darkened(0.2), color, 1.8)
+		holder.add_child(ring)
+		add_child(holder)
+		pickups.append({"kind": kind, "node": holder, "position": position, "active": true, "respawn": 0.0, "phase": rng.randf_range(0.0, TAU)})
+
+func _update_pickups(delta: float) -> void:
+	for index in range(pickups.size()):
+		var pickup: Dictionary = pickups[index]
+		var node: Node3D = pickup.node
+		if not pickup.active:
+			pickup.respawn = maxf(0.0, pickup.respawn - delta)
+			if pickup.respawn <= 0.0:
+				pickup.active = true
+				node.visible = true
+			pickups[index] = pickup
+			continue
+		node.rotation.y += delta * 1.8
+		node.position.y = 0.9 + sin(Time.get_ticks_msec() * 0.0025 + pickup.phase) * 0.24
+		for candidate in [player, rival]:
+			var body: CharacterBody3D = candidate
+			if body.global_position.distance_to(pickup.position) > 2.35:
+				continue
+			_collect_pickup(body, pickup.kind)
+			pickup.active = false
+			pickup.respawn = 9.0
+			node.visible = false
+			pickups[index] = pickup
+			break
+
+func _collect_pickup(body: CharacterBody3D, kind: String) -> void:
+	if body == player:
+		if kind == "health":
+			player_health = minf(100.0, player_health + 26.0)
+		elif kind == "energy":
+			energy = minf(100.0, energy + 48.0)
+			energy_regen_delay = 0.0
+		else:
+			player_turbo = 4.5
+	else:
+		if kind == "health":
+			rival_health = minf(100.0, rival_health + 26.0)
+		elif kind == "energy":
+			rival_energy = minf(100.0, rival_energy + 48.0)
+		else:
+			rival_turbo = 4.5
+	_spawn_pickup_flash(body.global_position, kind)
+
+func _nearest_active_pickup(from: Vector3, kind: String) -> Vector3:
+	if kind == "":
+		return Vector3.INF
+	var nearest := Vector3.INF
+	var nearest_distance := INF
+	for pickup in pickups:
+		if not pickup.active or pickup.kind != kind:
+			continue
+		var distance: float = from.distance_squared_to(pickup.position)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = pickup.position
+	return nearest
+
+func _spawn_pickup_flash(position: Vector3, kind: String) -> void:
+	var flash := OmniLight3D.new()
+	flash.position = position + Vector3.UP
+	flash.light_color = Color("35ed72") if kind == "health" else (Color("ffb52e") if kind == "energy" else Color("28caff"))
+	flash.light_energy = 7.0
+	flash.omni_range = 9.0
+	add_child(flash)
+	var tween := create_tween()
+	tween.tween_property(flash, "light_energy", 0.0, 0.35)
+	tween.tween_callback(flash.queue_free)
+
 func _spawn_impact_flash(position: Vector3) -> void:
 	var flash := OmniLight3D.new()
 	flash.position = position
@@ -615,6 +733,9 @@ func _restart_match() -> void:
 	player_health = 100.0
 	rival_health = 100.0
 	energy = 100.0
+	rival_energy = 100.0
+	player_turbo = 0.0
+	rival_turbo = 0.0
 	boost_cooldown = 0.0
 	energy_regen_delay = 0.0
 	rival_boost_cooldown = 1.2
@@ -623,6 +744,10 @@ func _restart_match() -> void:
 	rival_stun = 0.0
 	spike_hit_cooldowns = {"player": 0.0, "rival": 0.0}
 	laser_hit_cooldowns = {"player": 0.0, "rival": 0.0}
+	for index in range(pickups.size()):
+		pickups[index].active = true
+		pickups[index].respawn = 0.0
+		pickups[index].node.visible = true
 	player.global_position = Vector3(-38, 0.9, 35)
 	rival.global_position = Vector3(38, 0.9, -34)
 	player.rotation.y = PI
