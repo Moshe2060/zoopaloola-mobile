@@ -287,17 +287,17 @@ func _build_world() -> void:
 	var world_env := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("091027")
+	env.background_color = Color("203d61")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("647ac4")
-	env.ambient_light_energy = 0.78
+	env.ambient_light_color = Color("8ec8ff")
+	env.ambient_light_energy = 0.92
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	world_env.environment = env
 	add_child(world_env)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-56, -32, 0)
-	sun.light_color = Color("c9d6ff")
-	sun.light_energy = 1.25
+	sun.light_color = Color("ffe1ad")
+	sun.light_energy = 1.45
 	sun.shadow_enabled = true
 	add_child(sun)
 	# The playable surface is a floating competition arena rather than a test plane.
@@ -330,30 +330,33 @@ func _build_world() -> void:
 	_build_pickups()
 
 func _build_arena_floor_design() -> void:
-	# Three broad routes: a fast central lane and two safer curved-looking side lanes.
-	_make_box_visual(Vector3(250, 0.055, 17), Vector3(0, 0.025, 0), Color("30294b"), Color("514097"), 0.55)
-	_make_box_visual(Vector3(220, 0.05, 11), Vector3(0, 0.03, -62), Color("282744"), Color("245c8c"), 0.5)
-	_make_box_visual(Vector3(220, 0.05, 11), Vector3(0, 0.03, 62), Color("282744"), Color("7b315e"), 0.5)
-	# Start bases make orientation immediate after every restart.
-	_make_cylinder_visual(12.0, 0.08, Vector3(-38, 0.05, 35), Color("173d5b"), Color("29bfff"), 2.0)
-	_make_cylinder_visual(12.0, 0.08, Vector3(38, 0.05, -34), Color("59253f"), Color("ff4f7f"), 2.0)
-	_make_cylinder_visual(7.5, 0.1, Vector3(-38, 0.1, 35), Color("202b4c"), Color("52dcff"), 1.2)
-	_make_cylinder_visual(7.5, 0.1, Vector3(38, 0.1, -34), Color("48233f"), Color("ff769d"), 1.2)
-	# A layered central combat ring is the visual anchor of the map.
-	_make_cylinder_visual(23.0, 0.09, Vector3(0, 0.055, 0), Color("342852"), Color("9c55ff"), 1.7)
-	_make_cylinder_visual(17.5, 0.1, Vector3(0, 0.11, 0), Color("211f3d"), Color("6038a8"), 0.8)
-	# Short glowing lane dashes imply motion and scale.
-	for x in [-90.0, -62.0, -34.0, 34.0, 62.0, 90.0]:
-		_make_box_visual(Vector3(11, 0.04, 0.65), Vector3(x, 0.075, 0), Color("6bd8ff"), Color("48bfff"), 2.4)
-	for x in [-88.0, -52.0, -16.0, 20.0, 56.0, 92.0]:
-		_make_box_visual(Vector3(13, 0.04, 0.45), Vector3(x, 0.07, -62), Color("5574b8"), Color("3996ff"), 1.5)
-		_make_box_visual(Vector3(13, 0.04, 0.45), Vector3(x, 0.07, 62), Color("a04b75"), Color("ff4f9a"), 1.5)
+	# Large irregular combat zones replace every racing lane.
+	_make_cylinder_visual(47.0, 0.06, Vector3(-62, 0.035, -18), Color("29413d"), Color("276b5b"), 0.42)
+	_make_cylinder_visual(45.0, 0.06, Vector3(63, 0.038, 22), Color("413437"), Color("7d4935"), 0.42)
+	_make_cylinder_visual(35.0, 0.07, Vector3(0, 0.045, 0), Color("332b4b"), Color("8857cf"), 0.72)
+	_make_cylinder_visual(27.0, 0.075, Vector3(-92, 0.05, 62), Color("253d49"), Color("2b8faa"), 0.48)
+	_make_cylinder_visual(27.0, 0.075, Vector3(94, 0.05, -61), Color("463340"), Color("b04c70"), 0.48)
+	# Spacious team bases on opposite sides, sized for several hovercrafts.
+	_make_cylinder_visual(19.0, 0.1, Vector3(-38, 0.06, 35), Color("173d5b"), Color("29bfff"), 2.0)
+	_make_cylinder_visual(19.0, 0.1, Vector3(38, 0.06, -34), Color("59253f"), Color("ff4f7f"), 2.0)
+	_make_cylinder_visual(12.5, 0.12, Vector3(-38, 0.12, 35), Color("203453"), Color("52dcff"), 1.15)
+	_make_cylinder_visual(12.5, 0.12, Vector3(38, 0.12, -34), Color("512b42"), Color("ff769d"), 1.15)
+	# The center is a contested plaza, not a road intersection.
+	_make_cylinder_visual(24.0, 0.1, Vector3(0, 0.08, 0), Color("342852"), Color("9c55ff"), 1.25)
+	_make_cylinder_visual(17.5, 0.11, Vector3(0, 0.14, 0), Color("211f3d"), Color("6038a8"), 0.65)
 
 func _build_arena_architecture() -> void:
-	# Symmetrical cover creates deliberate attack and escape routes.
-	for pos in [Vector3(-82, 0.7, -28), Vector3(-82, 0.7, 28), Vector3(-38, 0.7, -48), Vector3(-38, 0.7, 48), Vector3(38, 0.7, -48), Vector3(38, 0.7, 48), Vector3(82, 0.7, -28), Vector3(82, 0.7, 28)]:
-		_make_box_static("ArenaCover", Vector3(12.0, 2.2, 3.0), pos, Color("4a3d67"))
-		_make_box_visual(Vector3(8.0, 0.18, 3.12), pos + Vector3(0, 1.18, 0), Color("65cbea"), Color("52dfff"), 2.2)
+	# Solid rock clusters and ruined walls break sightlines for ambushes.
+	for pos in [Vector3(-78, 1.5, -32), Vector3(-71, 1.5, 38), Vector3(-36, 1.5, -59), Vector3(-29, 1.5, 53), Vector3(32, 1.5, -55), Vector3(39, 1.5, 58), Vector3(72, 1.5, -35), Vector3(78, 1.5, 34)]:
+		_make_rock_cover(pos)
+	for pos in [Vector3(-53, 0.9, -13), Vector3(-51, 0.9, 17), Vector3(52, 0.9, -17), Vector3(54, 0.9, 14), Vector3(-10, 0.9, -35), Vector3(12, 0.9, 36)]:
+		_make_ruin_wall(pos)
+	# Dense bush pockets mark hiding positions while nearby stone provides collision cover.
+	for pos in [Vector3(-96, 0.4, -45), Vector3(-92, 0.4, 49), Vector3(-52, 0.4, 70), Vector3(-19, 0.4, -73), Vector3(20, 0.4, 72), Vector3(54, 0.4, -70), Vector3(94, 0.4, -45), Vector3(96, 0.4, 48)]:
+		_make_bush_cluster(pos)
+	# Two open-sided shelters work as flank tunnels and short team regrouping spaces.
+	_make_cover_arch(Vector3(-63, 0, 4), 0.0, Color("397063"))
+	_make_cover_arch(Vector3(64, 0, -3), PI, Color("765044"))
 	# Four large pylons frame the arena and make every quadrant recognizable.
 	for pos in [Vector3(-126, 0.5, -80), Vector3(126, 0.5, -80), Vector3(-126, 0.5, 80), Vector3(126, 0.5, 80)]:
 		_make_cylinder_static("ArenaPylon", 3.8, 2.4, pos, Color("332850"))
@@ -363,6 +366,29 @@ func _build_arena_architecture() -> void:
 	_make_cylinder_visual(13.0, 0.07, gravity_trap_center + Vector3(0, 0.035, 0), Color("30254d"), Color("9f56ff"), 1.0)
 	_make_cylinder_visual(13.0, 0.07, spike_trap_center + Vector3(0, 0.035, 0), Color("4b2238"), Color("ff416d"), 1.0)
 	_make_cylinder_visual(13.0, 0.07, laser_trap_center + Vector3(0, 0.035, 0), Color("492d25"), Color("ff8c3d"), 1.0)
+
+func _make_rock_cover(position: Vector3) -> void:
+	_make_cylinder_static("RockCover", 4.2, 3.1, position, Color("3b4650"))
+	_make_cylinder_static("RockCover", 2.8, 4.6, position + Vector3(3.4, 0.7, 1.7), Color("46535a"))
+	_make_cylinder_static("RockCover", 2.4, 3.7, position + Vector3(-3.1, 0.35, -1.6), Color("35444a"))
+
+func _make_ruin_wall(position: Vector3) -> void:
+	_make_box_static("RuinWall", Vector3(10.0, 3.0, 2.2), position, Color("5a5264"))
+	_make_box_static("RuinPillar", Vector3(2.2, 5.2, 2.8), position + Vector3(-4.2, 1.0, 0), Color("655a70"))
+	_make_box_visual(Vector3(6.0, 0.14, 2.32), position + Vector3(1.0, 1.58, 0), Color("6e8d70"), Color("62b56e"), 0.65)
+
+func _make_bush_cluster(position: Vector3) -> void:
+	_make_cylinder_static("BushStone", 2.2, 1.5, position, Color("31463c"))
+	add_child(_make_sphere(position + Vector3(0, 1.3, 0), Vector3(3.4, 1.8, 3.0), _material(Color("2e8052"), Color("42a55f"), 0.38)))
+	add_child(_make_sphere(position + Vector3(2.4, 1.1, 0.8), Vector3(2.2, 1.45, 2.0), _material(Color("45a35c"), Color("65bd64"), 0.32)))
+	add_child(_make_sphere(position + Vector3(-2.2, 1.0, -0.7), Vector3(2.0, 1.35, 1.9), _material(Color("236b49"), Color("3d9857"), 0.32)))
+
+func _make_cover_arch(position: Vector3, yaw: float, color: Color) -> void:
+	for x in [-6.0, 6.0]:
+		var pillar := _make_box_static("ShelterPillar", Vector3(2.6, 5.4, 4.0), position + Vector3(x, 2.0, 0), color)
+		pillar.rotation.y = yaw
+	var roof := _make_box_static("ShelterRoof", Vector3(14.5, 1.2, 5.2), position + Vector3(0, 5.0, 0), color.darkened(0.12))
+	roof.rotation.y = yaw
 
 func _make_hovercraft(title: String, color: Color, position: Vector3) -> CharacterBody3D:
 	var body := CharacterBody3D.new()
