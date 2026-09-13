@@ -3,6 +3,7 @@ extends Control
 var move_vector := Vector2.ZERO
 var boost_pressed := false
 var brace_pressed := false
+var gas_pressed := false
 var health := 100.0
 var energy := 100.0
 var enemy_health := 100.0
@@ -11,6 +12,7 @@ var result_text := ""
 var restart_pressed := false
 
 var _move_touch := -1
+var _gas_touch := -1
 var _boost_touch := -1
 var _brace_touch := -1
 var _stick_origin := Vector2.ZERO
@@ -45,10 +47,13 @@ func _input(event: InputEvent) -> void:
 				_move_touch = event.index
 				_stick_origin = event.position
 				_stick_knob = event.position
-			elif event.position.distance_to(Vector2(size.x - 115.0, size.y - 120.0)) < 95.0:
+			elif event.position.distance_to(Vector2(size.x - 105.0, size.y - 110.0)) < 82.0:
+				_gas_touch = event.index
+				gas_pressed = true
+			elif event.position.distance_to(Vector2(size.x - 245.0, size.y - 155.0)) < 68.0:
 				_boost_touch = event.index
 				boost_pressed = true
-			elif event.position.distance_to(Vector2(size.x - 265.0, size.y - 95.0)) < 65.0:
+			elif event.position.distance_to(Vector2(size.x - 350.0, size.y - 75.0)) < 54.0:
 				_brace_touch = event.index
 				brace_pressed = true
 		else:
@@ -57,6 +62,9 @@ func _input(event: InputEvent) -> void:
 				move_vector = Vector2.ZERO
 			if event.index == _boost_touch:
 				_boost_touch = -1
+			if event.index == _gas_touch:
+				_gas_touch = -1
+				gas_pressed = false
 			if event.index == _brace_touch:
 				_brace_touch = -1
 				brace_pressed = false
@@ -87,12 +95,15 @@ func _draw() -> void:
 	draw_circle(stick_center, 82, Color(0.2, 0.55, 0.9, 0.18))
 	draw_arc(stick_center, 82, 0, TAU, 48, Color(0.45, 0.82, 1.0, 0.62), 4)
 	draw_circle(knob, 34, Color(0.48, 0.82, 1.0, 0.55))
-	var boost_center := Vector2(size.x - 115, size.y - 120)
-	draw_circle(boost_center, 66, Color(1.0, 0.34, 0.06, 0.72))
-	draw_string(font, boost_center + Vector2(-35, 8), "BOOST", HORIZONTAL_ALIGNMENT_CENTER, 70, 17, Color.WHITE)
-	var brace_center := Vector2(size.x - 265, size.y - 95)
-	draw_circle(brace_center, 47, Color(0.15, 0.65, 1.0, 0.55))
-	draw_string(font, brace_center + Vector2(-31, 7), "BRACE", HORIZONTAL_ALIGNMENT_CENTER, 62, 14, Color.WHITE)
+	var gas_center := Vector2(size.x - 105, size.y - 110)
+	draw_circle(gas_center, 66, Color(0.12, 0.72, 0.94, 0.72 if gas_pressed else 0.52))
+	draw_string(font, gas_center + Vector2(-35, 8), "GAS", HORIZONTAL_ALIGNMENT_CENTER, 70, 19, Color.WHITE)
+	var boost_center := Vector2(size.x - 245, size.y - 155)
+	draw_circle(boost_center, 50, Color(1.0, 0.34, 0.06, 0.72))
+	draw_string(font, boost_center + Vector2(-34, 7), "PUSH", HORIZONTAL_ALIGNMENT_CENTER, 68, 15, Color.WHITE)
+	var brace_center := Vector2(size.x - 350, size.y - 75)
+	draw_circle(brace_center, 40, Color(0.36, 0.32, 0.9, 0.58))
+	draw_string(font, brace_center + Vector2(-29, 6), "BRACE", HORIZONTAL_ALIGNMENT_CENTER, 58, 12, Color.WHITE)
 	if result_text != "":
 		draw_rect(Rect2(0, 0, size.x, size.y), Color(0.01, 0.01, 0.04, 0.72), true)
 		draw_string(font, Vector2(0, size.y * 0.43), result_text, HORIZONTAL_ALIGNMENT_CENTER, size.x, 54, Color.WHITE)

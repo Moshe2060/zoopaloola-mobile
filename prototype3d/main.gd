@@ -71,10 +71,14 @@ func _update_player(delta: float) -> void:
 	if hud and hud.move_vector.length() > 0.05:
 		input_vec = hud.move_vector
 	var steering := input_vec.x
-	var throttle := -input_vec.y
 	if absf(steering) > 0.04:
 		player.rotation.y -= steering * TURN_SPEED * delta
 	var forward := Vector3(sin(player.rotation.y), 0, cos(player.rotation.y))
+	var throttle := 0.0
+	if Input.is_action_pressed("ui_up") or (hud != null and hud.gas_pressed):
+		throttle = 1.0
+	elif Input.is_action_pressed("ui_down"):
+		throttle = -0.55
 	var desired := forward * throttle
 	var speed_factor := 0.58 if energy <= 1.0 else 1.0
 	var sticky := player.global_position.distance_to(sticky_center) < 4.6
