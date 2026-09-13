@@ -6,6 +6,9 @@ var brace_pressed := false
 var health := 100.0
 var energy := 100.0
 var enemy_health := 100.0
+var exhausted := false
+var result_text := ""
+var restart_pressed := false
 
 var _move_touch := -1
 var _boost_touch := -1
@@ -26,10 +29,18 @@ func consume_boost() -> bool:
 	boost_pressed = false
 	return value
 
+func consume_restart() -> bool:
+	var value := restart_pressed
+	restart_pressed = false
+	return value
+
 func _input(event: InputEvent) -> void:
 	var size := get_viewport_rect().size
 	if event is InputEventScreenTouch:
 		if event.pressed:
+			if result_text != "":
+				restart_pressed = true
+				return
 			if event.position.x < size.x * 0.48 and _move_touch == -1:
 				_move_touch = event.index
 				_stick_origin = event.position
@@ -64,6 +75,8 @@ func _draw() -> void:
 	draw_string(font, Vector2(43, 46), "PLAYER", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.75, 0.92, 1.0))
 	_draw_bar(Rect2(43, 54, 276, 13), health / 100.0, Color(0.18, 0.92, 0.42))
 	_draw_bar(Rect2(43, 72, 276, 10), energy / 100.0, Color(1.0, 0.55, 0.08))
+	if exhausted:
+		draw_string(font, Vector2(43, 106), "EXHAUSTED - VULNERABLE", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1.0, 0.42, 0.18))
 	draw_rect(Rect2(size.x - 338, 24, 310, 48), Color(0.02, 0.04, 0.1, 0.86), true)
 	draw_string(font, Vector2(size.x - 323, 46), "RIVAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.75, 0.75))
 	_draw_bar(Rect2(size.x - 323, 54, 276, 13), enemy_health / 100.0, Color(0.95, 0.22, 0.25))
@@ -80,8 +93,11 @@ func _draw() -> void:
 	var brace_center := Vector2(size.x - 265, size.y - 95)
 	draw_circle(brace_center, 47, Color(0.15, 0.65, 1.0, 0.55))
 	draw_string(font, brace_center + Vector2(-31, 7), "BRACE", HORIZONTAL_ALIGNMENT_CENTER, 62, 14, Color.WHITE)
+	if result_text != "":
+		draw_rect(Rect2(0, 0, size.x, size.y), Color(0.01, 0.01, 0.04, 0.72), true)
+		draw_string(font, Vector2(0, size.y * 0.43), result_text, HORIZONTAL_ALIGNMENT_CENTER, size.x, 54, Color.WHITE)
+		draw_string(font, Vector2(0, size.y * 0.54), "TAP TO FIGHT AGAIN", HORIZONTAL_ALIGNMENT_CENTER, size.x, 22, Color(0.65, 0.88, 1.0))
 
 func _draw_bar(rect: Rect2, ratio: float, color: Color) -> void:
 	draw_rect(rect, Color(0.03, 0.03, 0.05, 0.9), true)
 	draw_rect(Rect2(rect.position + Vector2(2, 2), Vector2((rect.size.x - 4) * clampf(ratio, 0.0, 1.0), rect.size.y - 4)), color, true)
-

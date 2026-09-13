@@ -6,6 +6,8 @@ const ACCELERATION := 22.0
 const BOOST_SPEED := 24.0
 const BOOST_COST := 34.0
 const ENERGY_REGEN := 23.0
+const ENERGY_REGEN_DELAY := 1.15
+const BRACE_DRAIN := 30.0
 
 var player: CharacterBody3D
 var rival: CharacterBody3D
@@ -17,6 +19,12 @@ var energy := 100.0
 var boost_cooldown := 0.0
 var hit_cooldown := 0.0
 var rival_boost_cooldown := 1.2
+var energy_regen_delay := 0.0
+var camera_shake := 0.0
+var spinner: Node3D
+var spinner_angle := 0.0
+var spinner_hit_cooldown := 0.0
+var match_finished := false
 var sticky_center := Vector3(10, 0, -7)
 var rng := RandomNumberGenerator.new()
 
@@ -34,14 +42,25 @@ func _physics_process(delta: float) -> void:
 		return
 	boost_cooldown = maxf(0.0, boost_cooldown - delta)
 	hit_cooldown = maxf(0.0, hit_cooldown - delta)
+	spinner_hit_cooldown = maxf(0.0, spinner_hit_cooldown - delta)
+	energy_regen_delay = maxf(0.0, energy_regen_delay - delta)
 	rival_boost_cooldown -= delta
+	if match_finished:
+		var restart_requested: bool = Input.is_action_just_pressed("ui_accept") or (hud != null and hud.consume_restart())
+		if restart_requested:
+			_restart_match()
+		_update_camera(delta)
+		return
 	_update_player(delta)
 	_update_rival(delta)
 	_resolve_vehicle_collision()
+	_update_spinner(delta)
 	_apply_arena_limits(player)
 	_apply_arena_limits(rival)
 	_update_camera(delta)
 	_update_hud()
+	if player_health <= 0.0 or rival_health <= 0.0:
+		_finish_match()
 
 func _update_player(delta: float) -> void:
 	var input_vec := Vector2(
@@ -69,7 +88,8 @@ func _update_player(delta: float) -> void:
 		player.velocity += forward * BOOST_SPEED
 		energy -= BOOST_COST
 		boost_cooldown = 0.55
-	if boost_cooldown <= 0.0:
+		energy_regen_delay = ENERGY_REGEN_DELAY
+	if energy_regen_delay <= 0.0:
 		energy = minf(100.0, energy + ENERGY_REGEN * delta)
 	player.move_and_slide()
 
@@ -103,12 +123,15 @@ func _resolve_vehicle_collision() -> void:
 	var player_resistance := 0.82 if energy > 30.0 else 0.42
 	if brace and energy > 0.0:
 		player_resistance = 1.25
-		energy = maxf(0.0, energy - 0.45)
+		energy = maxf(0.0, energy - BRACE_DRAIN * get_physics_process_delta_time())
+		energy_regen_delay = ENERGY_REGEN_DELAY
 	player.velocity -= normal * rival_force * (1.25 - player_resistance * 0.45)
 	rival.velocity += normal * player_force * 0.78
 	if hit_cooldown <= 0.0 and player_force + rival_force > 11.0:
 		player_health = maxf(0.0, player_health - rival_force * 0.34)
 		rival_health = maxf(0.0, rival_health - player_force * 0.34)
+		camera_shake = minf(1.0, (player_force + rival_force) / 28.0)
+		_spawn_impact_flash((player.global_position + rival.global_position) * 0.5)
 		hit_cooldown = 0.25
 
 func _apply_arena_limits(body: CharacterBody3D) -> void:
@@ -122,14 +145,22 @@ func _apply_arena_limits(body: CharacterBody3D) -> void:
 func _update_camera(delta: float) -> void:
 	var forward := Vector3(sin(player.rotation.y), 0, cos(player.rotation.y))
 	var desired_pos := player.global_position - forward * 12.5 + Vector3.UP * 7.2
-	camera_rig.global_position = camera_rig.global_position.lerp(desired_pos, 1.0 - exp(-delta * 5.5))
 	var target := player.global_position + forward * 5.0 + Vector3.UP * 0.7
+	var query := PhysicsRayQueryParameters3D.create(target, desired_pos, 1, [player.get_rid()])
+	var collision := get_world_3d().direct_space_state.intersect_ray(query)
+	if not collision.is_empty():
+		desired_pos = collision.position + collision.normal * 0.55
+	camera_rig.global_position = camera_rig.global_position.lerp(desired_pos, 1.0 - exp(-delta * 5.5))
 	camera_rig.look_at(target, Vector3.UP)
+	if camera_shake > 0.01:
+		camera_rig.global_position += Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-0.5, 0.5), rng.randf_range(-1.0, 1.0)) * camera_shake * 0.32
+		camera_shake = move_toward(camera_shake, 0.0, delta * 4.5)
 
 func _update_hud() -> void:
 	hud.health = player_health
 	hud.energy = energy
 	hud.enemy_health = rival_health
+	hud.exhausted = energy <= 1.0
 
 func _build_world() -> void:
 	var world_env := WorldEnvironment.new()
@@ -178,6 +209,7 @@ func _build_world() -> void:
 	reactor.position = Vector3(0, 0.5, 0)
 	reactor.material_override = _material(Color("5e3da0"), Color("912cff"), 2.2)
 	add_child(reactor)
+	_build_spinner()
 
 func _make_hovercraft(title: String, color: Color, position: Vector3) -> CharacterBody3D:
 	var body := CharacterBody3D.new()
@@ -231,6 +263,79 @@ func _build_hud() -> void:
 	add_child(layer)
 	hud = preload("res://touch_hud.gd").new()
 	layer.add_child(hud)
+
+func _build_spinner() -> void:
+	spinner = Node3D.new()
+	spinner.name = "RotatingBumper"
+	spinner.position = Vector3(0, 0.72, 0)
+	add_child(spinner)
+	for index in range(3):
+		var arm := MeshInstance3D.new()
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(1.05, 0.72, 7.2)
+		arm.mesh = mesh
+		var angle := TAU * float(index) / 3.0
+		arm.position = Vector3(sin(angle) * 4.5, 0, cos(angle) * 4.5)
+		arm.rotation.y = angle
+		arm.material_override = _material(Color("5d426f"), Color("ff8b21"), 0.8)
+		spinner.add_child(arm)
+
+func _update_spinner(delta: float) -> void:
+	spinner_angle = fmod(spinner_angle + delta * 0.72, TAU)
+	spinner.rotation.y = spinner_angle
+	if spinner_hit_cooldown > 0.0:
+		return
+	for body in [player, rival]:
+		var flat := Vector2(body.global_position.x, body.global_position.z)
+		if flat.length() < 2.4 or flat.length() > 8.8:
+			continue
+		var body_angle := atan2(flat.x, flat.y)
+		for arm_index in range(3):
+			var arm_angle := spinner_angle + TAU * float(arm_index) / 3.0
+			if absf(wrapf(body_angle - arm_angle, -PI, PI)) < 0.17:
+				var tangent := Vector3(cos(arm_angle), 0, -sin(arm_angle)).normalized()
+				body.velocity += tangent * 23.0
+				if body == player:
+					player_health = maxf(0.0, player_health - 8.0)
+					camera_shake = 0.8
+				else:
+					rival_health = maxf(0.0, rival_health - 8.0)
+				_spawn_impact_flash(body.global_position + Vector3.UP * 0.4)
+				spinner_hit_cooldown = 0.48
+				return
+
+func _spawn_impact_flash(position: Vector3) -> void:
+	var flash := OmniLight3D.new()
+	flash.position = position
+	flash.light_color = Color("ffb04a")
+	flash.light_energy = 5.0
+	flash.omni_range = 7.0
+	add_child(flash)
+	var tween := create_tween()
+	tween.tween_property(flash, "light_energy", 0.0, 0.18)
+	tween.tween_callback(flash.queue_free)
+
+func _finish_match() -> void:
+	match_finished = true
+	player.velocity = Vector3.ZERO
+	rival.velocity = Vector3.ZERO
+	hud.result_text = "VICTORY" if rival_health <= 0.0 else "DEFEAT"
+
+func _restart_match() -> void:
+	match_finished = false
+	player_health = 100.0
+	rival_health = 100.0
+	energy = 100.0
+	boost_cooldown = 0.0
+	energy_regen_delay = 0.0
+	rival_boost_cooldown = 1.2
+	player.global_position = Vector3(0, 0.9, 13)
+	rival.global_position = Vector3(0, 0.9, -13)
+	player.rotation.y = PI
+	rival.rotation.y = 0.0
+	player.velocity = Vector3.ZERO
+	rival.velocity = Vector3.ZERO
+	hud.result_text = ""
 
 func _make_box_static(title: String, size: Vector3, position: Vector3, color: Color) -> StaticBody3D:
 	var body := StaticBody3D.new()
