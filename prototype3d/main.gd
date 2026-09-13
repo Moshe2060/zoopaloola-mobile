@@ -63,7 +63,7 @@ func _update_player(delta: float) -> void:
 	var target_velocity := desired * DRIVE_SPEED * speed_factor
 	player.velocity.x = move_toward(player.velocity.x, target_velocity.x, ACCELERATION * delta)
 	player.velocity.z = move_toward(player.velocity.z, target_velocity.z, ACCELERATION * delta)
-	var wants_boost := Input.is_action_just_pressed("ui_accept") or (hud and hud.consume_boost())
+	var wants_boost: bool = Input.is_action_just_pressed("ui_accept") or (hud != null and hud.consume_boost())
 	if wants_boost and boost_cooldown <= 0.0 and energy >= BOOST_COST:
 		var forward := Vector3(sin(player.rotation.y), 0, cos(player.rotation.y))
 		player.velocity += forward * BOOST_SPEED
@@ -99,7 +99,7 @@ func _resolve_vehicle_collision() -> void:
 	var normal := delta_pos.normalized()
 	var player_force := maxf(0.0, player.velocity.dot(normal))
 	var rival_force := maxf(0.0, rival.velocity.dot(-normal))
-	var brace := (hud and hud.brace_pressed) or Input.is_key_pressed(KEY_SHIFT)
+	var brace: bool = (hud != null and hud.brace_pressed) or Input.is_key_pressed(KEY_SHIFT)
 	var player_resistance := 0.82 if energy > 30.0 else 0.42
 	if brace and energy > 0.0:
 		player_resistance = 1.25
