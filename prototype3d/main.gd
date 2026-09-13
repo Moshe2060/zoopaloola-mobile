@@ -300,17 +300,17 @@ func _build_world() -> void:
 	sun.light_energy = 1.25
 	sun.shadow_enabled = true
 	add_child(sun)
-	_make_box_static("Arena", Vector3(ARENA_HALF_WIDTH * 2.0, 0.7, ARENA_HALF_DEPTH * 2.0), Vector3(0, -0.4, 0), Color("292543"))
-	# A large rectangular arena creates travel routes instead of circular laps.
+	# The playable surface is a floating competition arena rather than a test plane.
+	_make_box_static("Arena", Vector3(ARENA_HALF_WIDTH * 2.0, 0.7, ARENA_HALF_DEPTH * 2.0), Vector3(0, -0.4, 0), Color("211d38"))
+	_make_box_visual(Vector3(ARENA_HALF_WIDTH * 2.0 + 8.0, 2.4, ARENA_HALF_DEPTH * 2.0 + 8.0), Vector3(0, -1.85, 0), Color("141329"), Color("39286a"), 0.35)
+	_make_box_visual(Vector3(ARENA_HALF_WIDTH * 1.35, 3.0, ARENA_HALF_DEPTH * 1.35), Vector3(0, -4.25, 0), Color("0b0d1b"), Color("1c2450"), 0.18)
+	_build_arena_floor_design()
+	# Low arena rails keep the combat readable without hiding the horizon.
 	_make_box_static("NorthBarrier", Vector3(ARENA_HALF_WIDTH * 2.0, 2.7, 1.2), Vector3(0, 0.95, -ARENA_HALF_DEPTH), Color("3c315e"))
 	_make_box_static("SouthBarrier", Vector3(ARENA_HALF_WIDTH * 2.0, 2.7, 1.2), Vector3(0, 0.95, ARENA_HALF_DEPTH), Color("3c315e"))
 	_make_box_static("WestBarrier", Vector3(1.2, 2.7, ARENA_HALF_DEPTH * 2.0), Vector3(-ARENA_HALF_WIDTH, 0.95, 0), Color("3c315e"))
 	_make_box_static("EastBarrier", Vector3(1.2, 2.7, ARENA_HALF_DEPTH * 2.0), Vector3(ARENA_HALF_WIDTH, 0.95, 0), Color("3c315e"))
-	# Landmarks form three recognizable districts with several routes between them.
-	for pos in [Vector3(-105, 0.7, -68), Vector3(-78, 0.7, -22), Vector3(-112, 0.7, 38), Vector3(-67, 0.7, 72), Vector3(-24, 0.7, -61), Vector3(32, 0.7, -77), Vector3(70, 0.7, -28), Vector3(112, 0.7, 18), Vector3(73, 0.7, 63), Vector3(21, 0.7, 74)]:
-		_make_box_static("Cover", Vector3(11.0, 2.2, 2.5), pos, Color("50456d"))
-	for pos in [Vector3(-124, 0.5, 4), Vector3(-57, 0.5, 14), Vector3(123, 0.5, -70), Vector3(103, 0.5, 77), Vector3(-22, 0.5, 89)]:
-		_make_cylinder_static("Landmark", 3.0, 1.1, pos, Color("44326d"))
+	_build_arena_architecture()
 	# Sticky plasma: safe but damaging and slow.
 	var plasma := MeshInstance3D.new()
 	var plasma_mesh := CylinderMesh.new()
@@ -328,6 +328,41 @@ func _build_world() -> void:
 	_build_spike_trap()
 	_build_laser_trap()
 	_build_pickups()
+
+func _build_arena_floor_design() -> void:
+	# Three broad routes: a fast central lane and two safer curved-looking side lanes.
+	_make_box_visual(Vector3(250, 0.055, 17), Vector3(0, 0.025, 0), Color("30294b"), Color("514097"), 0.55)
+	_make_box_visual(Vector3(220, 0.05, 11), Vector3(0, 0.03, -62), Color("282744"), Color("245c8c"), 0.5)
+	_make_box_visual(Vector3(220, 0.05, 11), Vector3(0, 0.03, 62), Color("282744"), Color("7b315e"), 0.5)
+	# Start bases make orientation immediate after every restart.
+	_make_cylinder_visual(12.0, 0.08, Vector3(-38, 0.05, 35), Color("173d5b"), Color("29bfff"), 2.0)
+	_make_cylinder_visual(12.0, 0.08, Vector3(38, 0.05, -34), Color("59253f"), Color("ff4f7f"), 2.0)
+	_make_cylinder_visual(7.5, 0.1, Vector3(-38, 0.1, 35), Color("202b4c"), Color("52dcff"), 1.2)
+	_make_cylinder_visual(7.5, 0.1, Vector3(38, 0.1, -34), Color("48233f"), Color("ff769d"), 1.2)
+	# A layered central combat ring is the visual anchor of the map.
+	_make_cylinder_visual(23.0, 0.09, Vector3(0, 0.055, 0), Color("342852"), Color("9c55ff"), 1.7)
+	_make_cylinder_visual(17.5, 0.1, Vector3(0, 0.11, 0), Color("211f3d"), Color("6038a8"), 0.8)
+	# Short glowing lane dashes imply motion and scale.
+	for x in [-90.0, -62.0, -34.0, 34.0, 62.0, 90.0]:
+		_make_box_visual(Vector3(11, 0.04, 0.65), Vector3(x, 0.075, 0), Color("6bd8ff"), Color("48bfff"), 2.4)
+	for x in [-88.0, -52.0, -16.0, 20.0, 56.0, 92.0]:
+		_make_box_visual(Vector3(13, 0.04, 0.45), Vector3(x, 0.07, -62), Color("5574b8"), Color("3996ff"), 1.5)
+		_make_box_visual(Vector3(13, 0.04, 0.45), Vector3(x, 0.07, 62), Color("a04b75"), Color("ff4f9a"), 1.5)
+
+func _build_arena_architecture() -> void:
+	# Symmetrical cover creates deliberate attack and escape routes.
+	for pos in [Vector3(-82, 0.7, -28), Vector3(-82, 0.7, 28), Vector3(-38, 0.7, -48), Vector3(-38, 0.7, 48), Vector3(38, 0.7, -48), Vector3(38, 0.7, 48), Vector3(82, 0.7, -28), Vector3(82, 0.7, 28)]:
+		_make_box_static("ArenaCover", Vector3(12.0, 2.2, 3.0), pos, Color("4a3d67"))
+		_make_box_visual(Vector3(8.0, 0.18, 3.12), pos + Vector3(0, 1.18, 0), Color("65cbea"), Color("52dfff"), 2.2)
+	# Four large pylons frame the arena and make every quadrant recognizable.
+	for pos in [Vector3(-126, 0.5, -80), Vector3(126, 0.5, -80), Vector3(-126, 0.5, 80), Vector3(126, 0.5, 80)]:
+		_make_cylinder_static("ArenaPylon", 3.8, 2.4, pos, Color("332850"))
+		_make_cylinder_visual(2.2, 6.5, pos + Vector3(0, 4.4, 0), Color("24203f"), Color("805cff"), 1.3)
+		_make_cylinder_visual(0.65, 1.0, pos + Vector3(0, 8.1, 0), Color("bdefff"), Color("6ee7ff"), 3.5)
+	# Raised visual islands give each hazard a designed location without changing driving height.
+	_make_cylinder_visual(13.0, 0.07, gravity_trap_center + Vector3(0, 0.035, 0), Color("30254d"), Color("9f56ff"), 1.0)
+	_make_cylinder_visual(13.0, 0.07, spike_trap_center + Vector3(0, 0.035, 0), Color("4b2238"), Color("ff416d"), 1.0)
+	_make_cylinder_visual(13.0, 0.07, laser_trap_center + Vector3(0, 0.035, 0), Color("492d25"), Color("ff8c3d"), 1.0)
 
 func _make_hovercraft(title: String, color: Color, position: Vector3) -> CharacterBody3D:
 	var body := CharacterBody3D.new()
@@ -882,6 +917,28 @@ func _restart_match() -> void:
 	player.velocity = Vector3.ZERO
 	rival.velocity = Vector3.ZERO
 	hud.result_text = ""
+
+func _make_box_visual(size: Vector3, position: Vector3, color: Color, emission: Color, energy_value: float) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	mesh_instance.mesh = mesh
+	mesh_instance.position = position
+	mesh_instance.material_override = _material(color, emission, energy_value)
+	add_child(mesh_instance)
+	return mesh_instance
+
+func _make_cylinder_visual(radius: float, height: float, position: Vector3, color: Color, emission: Color, energy_value: float) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh_instance.mesh = mesh
+	mesh_instance.position = position
+	mesh_instance.material_override = _material(color, emission, energy_value)
+	add_child(mesh_instance)
+	return mesh_instance
 
 func _make_box_static(title: String, size: Vector3, position: Vector3, color: Color) -> StaticBody3D:
 	var body := StaticBody3D.new()
