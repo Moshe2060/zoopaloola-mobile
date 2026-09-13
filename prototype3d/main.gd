@@ -403,10 +403,11 @@ func _build_gravity_trap() -> void:
 
 func _update_gravity_trap(delta: float) -> void:
 	gravity_trap.rotation.y += delta * 0.9
-	for body in [player, rival]:
-		var offset := gravity_trap_center - body.global_position
+	for candidate in [player, rival]:
+		var body: CharacterBody3D = candidate
+		var offset: Vector3 = gravity_trap_center - body.global_position
 		offset.y = 0.0
-		var distance := offset.length()
+		var distance: float = offset.length()
 		if distance >= 15.0 or distance < 0.1:
 			continue
 		var pull_strength := lerpf(7.0, 29.0, 1.0 - distance / 15.0)
