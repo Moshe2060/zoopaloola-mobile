@@ -1,7 +1,7 @@
 extends Node3D
 
-const ARENA_HALF_WIDTH := 58.0
-const ARENA_HALF_DEPTH := 40.0
+const ARENA_HALF_WIDTH := 140.0
+const ARENA_HALF_DEPTH := 100.0
 const DRIVE_SPEED := 24.0
 const ACCELERATION := 40.0
 const TURN_SPEED := 3.05
@@ -30,14 +30,14 @@ var spinner: Node3D
 var spinner_angle := 0.0
 var spinner_hit_cooldown := 0.0
 var match_finished := false
-var sticky_center := Vector3(29, 0, -18)
+var sticky_center := Vector3(82, 0, -54)
 var rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	rng.randomize()
 	_build_world()
-	player = _make_hovercraft("Elephant", Color("2478d4"), Vector3(-23, 0.9, 22))
-	rival = _make_hovercraft("Monkey", Color("e7a51c"), Vector3(22, 0.9, -20))
+	player = _make_hovercraft("Elephant", Color("2478d4"), Vector3(-38, 0.9, 35))
+	rival = _make_hovercraft("Monkey", Color("e7a51c"), Vector3(38, 0.9, -34))
 	rival.rotation.y = PI
 	_build_camera()
 	_build_hud()
@@ -229,9 +229,9 @@ func _build_world() -> void:
 	_make_box_static("WestBarrier", Vector3(1.2, 2.7, ARENA_HALF_DEPTH * 2.0), Vector3(-ARENA_HALF_WIDTH, 0.95, 0), Color("3c315e"))
 	_make_box_static("EastBarrier", Vector3(1.2, 2.7, ARENA_HALF_DEPTH * 2.0), Vector3(ARENA_HALF_WIDTH, 0.95, 0), Color("3c315e"))
 	# Landmarks form three recognizable districts with several routes between them.
-	for pos in [Vector3(-34, 0.7, -18), Vector3(-22, 0.7, 4), Vector3(-37, 0.7, 23), Vector3(18, 0.7, 18), Vector3(36, 0.7, 7), Vector3(21, 0.7, -29)]:
-		_make_box_static("Cover", Vector3(7.0, 1.7, 2.0), pos, Color("50456d"))
-	for pos in [Vector3(-45, 0.5, 0), Vector3(43, 0.5, -27), Vector3(5, 0.5, 29)]:
+	for pos in [Vector3(-105, 0.7, -68), Vector3(-78, 0.7, -22), Vector3(-112, 0.7, 38), Vector3(-67, 0.7, 72), Vector3(-24, 0.7, -61), Vector3(32, 0.7, -77), Vector3(70, 0.7, -28), Vector3(112, 0.7, 18), Vector3(73, 0.7, 63), Vector3(21, 0.7, 74)]:
+		_make_box_static("Cover", Vector3(11.0, 2.2, 2.5), pos, Color("50456d"))
+	for pos in [Vector3(-124, 0.5, 4), Vector3(-57, 0.5, 14), Vector3(123, 0.5, -70), Vector3(103, 0.5, 77), Vector3(-22, 0.5, 89)]:
 		_make_cylinder_static("Landmark", 3.0, 1.1, pos, Color("44326d"))
 	# Sticky plasma: safe but damaging and slow.
 	var plasma := MeshInstance3D.new()
@@ -368,8 +368,8 @@ func _restart_match() -> void:
 	player_boost_active = 0.0
 	rival_boost_active = 0.0
 	rival_stun = 0.0
-	player.global_position = Vector3(-23, 0.9, 22)
-	rival.global_position = Vector3(22, 0.9, -20)
+	player.global_position = Vector3(-38, 0.9, 35)
+	rival.global_position = Vector3(38, 0.9, -34)
 	player.rotation.y = PI
 	rival.rotation.y = 0.0
 	player.velocity = Vector3.ZERO
