@@ -3108,19 +3108,28 @@ func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: i
 	if team_piece_textures.size() < 2 or team_piece_textures[team] == null:
 		return
 	var texture := team_piece_textures[team]
-	var size := Vector2.ONE * radius * 2.34
-	draw_circle(position + Vector2(radius * 0.09, radius * 0.15), radius * 1.08, Color(0, 0, 0, 0.30 * alpha), true, -1.0, true)
-	draw_texture_rect(texture, Rect2(position - size * 0.5, size), false, Color(1, 1, 1, alpha))
+	# The hovercraft art is intentionally larger than the physics circle.  This
+	# keeps both the pilot and the distinctive hull readable at gameplay scale,
+	# while collisions continue to use the same carefully tuned radius.
+	var size := Vector2.ONE * radius * 3.05
+	var art_center := position + Vector2(0.0, -radius * 0.20)
+	draw_set_transform(position + Vector2(0.0, radius * 0.56), 0.0, Vector2(1.0, 0.38))
+	draw_circle(Vector2.ZERO, radius * 1.18, Color(0, 0, 0, 0.24 * alpha), true, -1.0, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(art_center - size * 0.5, size), false, Color(1, 1, 1, alpha))
 	if teams_share_ring_color():
 		var marker := team_marker_color(team)
-		draw_arc(position, radius * 1.16, 0.0, TAU, 36, marker, maxf(2.5, radius * 0.16), true)
-		draw_circle(position + Vector2(radius * 0.72, -radius * 0.72), radius * 0.22, marker)
-		draw_string(ui_font, position + Vector2(radius * 0.56, -radius * 0.58), str(team + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 0.45, maxi(10, int(radius * 0.42)), Color("173249"))
+		# A small badge is enough when both players use the same character. Avoid
+		# bringing back the bright full-size color ring around every hovercraft.
+		var badge_center := position + Vector2(radius * 0.92, -radius * 0.92)
+		draw_circle(badge_center, radius * 0.30, Color("071a2b", 0.92))
+		draw_circle(badge_center, radius * 0.25, marker)
+		draw_string(ui_font, badge_center + Vector2(-radius * 0.20, radius * 0.14), str(team + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 0.40, maxi(9, int(radius * 0.38)), Color("173249"))
 
 func rebuild_team_piece_textures() -> void:
 	team_piece_textures.clear()
-	team_piece_textures.append(make_colored_animal_texture(player_animal, RING_COLORS[player_ring_color]))
-	team_piece_textures.append(make_colored_animal_texture(ai_animal, RING_COLORS[ai_ring_color]))
+	team_piece_textures.append(character_ship_textures[player_animal] if player_animal < character_ship_textures.size() else null)
+	team_piece_textures.append(character_ship_textures[ai_animal] if ai_animal < character_ship_textures.size() else null)
 
 func make_colored_animal_texture(animal_index: int, target_color: Color) -> Texture2D:
 	if animal_index < 0 or animal_index >= animal_textures.size():
