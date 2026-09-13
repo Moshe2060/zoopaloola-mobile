@@ -7,6 +7,7 @@ var health := 100.0
 var energy := 100.0
 var enemy_health := 100.0
 var exhausted := false
+var turbo_seconds := 0.0
 var result_text := ""
 var restart_pressed := false
 var player_map_position := Vector2.ZERO
@@ -113,6 +114,8 @@ func _draw() -> void:
 	_draw_bar(Rect2(43, 72, 276, 10), energy / 100.0, Color(1.0, 0.55, 0.08))
 	if exhausted:
 		draw_string(font, Vector2(43, 106), "EXHAUSTED - VULNERABLE", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1.0, 0.42, 0.18))
+	elif turbo_seconds > 0.0:
+		draw_string(font, Vector2(43, 106), "TURBO  %.1f" % turbo_seconds, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.25, 0.85, 1.0))
 	draw_rect(Rect2(size.x - 338, 24, 310, 48), Color(0.02, 0.04, 0.1, 0.86), true)
 	draw_string(font, Vector2(size.x - 323, 46), "RIVAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.75, 0.75))
 	_draw_bar(Rect2(size.x - 323, 54, 276, 13), enemy_health / 100.0, Color(0.95, 0.22, 0.25))
