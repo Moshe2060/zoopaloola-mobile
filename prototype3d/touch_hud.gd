@@ -6,6 +6,7 @@ var brace_pressed := false
 var health := 100.0
 var energy := 100.0
 var enemy_health := 100.0
+var rival_unit_health := 100.0
 var exhausted := false
 var turbo_seconds := 0.0
 var ability_ratio := 1.0
@@ -19,6 +20,7 @@ var player_map_heading := 0.0
 var rival_screen_position := Vector2.ZERO
 var rival_on_screen := false
 var rival_warning_side := 1.0
+var team_units: Array = []
 var pickup_message := ""
 var pickup_message_color := Color.WHITE
 var pickup_message_time := 0.0
@@ -151,10 +153,11 @@ func _draw() -> void:
 	elif turbo_seconds > 0.0:
 		draw_string(font, Vector2(43, 106), "TURBO  %.1f" % turbo_seconds, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.25, 0.85, 1.0))
 	draw_rect(Rect2(size.x - 338, 24, 310, 48), Color(0.02, 0.04, 0.1, 0.86), true)
-	draw_string(font, Vector2(size.x - 323, 46), "RIVAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.75, 0.75))
+	draw_string(font, Vector2(size.x - 323, 46), "ENEMY TEAM", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.75, 0.75))
 	_draw_bar(Rect2(size.x - 323, 54, 276, 13), enemy_health / 100.0, Color(0.95, 0.22, 0.25))
 	_draw_minimap(size, font)
 	_draw_rival_feedback(size, font)
+	_draw_team_feedback(font)
 	if pickup_message_time > 0.0:
 		var alpha := minf(1.0, pickup_message_time * 2.0)
 		draw_string(font, Vector2(0, 174), pickup_message, HORIZONTAL_ALIGNMENT_CENTER, size.x, 24, Color(pickup_message_color, alpha))
@@ -199,6 +202,12 @@ func _draw_minimap(size: Vector2, font: Font) -> void:
 	var rival_point := _world_to_map(rect, rival_map_position)
 	draw_circle(rival_point, 5.5, Color("ff3b45"))
 	draw_circle(rival_point, 7.5, Color(1, 1, 1, 0.72), false, 1.5)
+	for unit in team_units:
+		if not unit.alive:
+			continue
+		var unit_point := _world_to_map(rect, unit.map)
+		draw_circle(unit_point, 5.0, unit.color)
+		draw_circle(unit_point, 6.8, Color(1, 1, 1, 0.6), false, 1.2)
 	var player_point := _world_to_map(rect, player_map_position)
 	var heading := Vector2(sin(player_map_heading), cos(player_map_heading))
 	var side := Vector2(-heading.y, heading.x)
@@ -219,7 +228,7 @@ func _draw_rival_feedback(size: Vector2, font: Font) -> void:
 	if rival_on_screen:
 		var bar_rect := Rect2(rival_screen_position + Vector2(-45, -9), Vector2(90, 9))
 		draw_rect(bar_rect, Color(0.04, 0.02, 0.07, 0.88), true)
-		draw_rect(Rect2(bar_rect.position + Vector2(2, 2), Vector2((bar_rect.size.x - 4) * clampf(enemy_health / 100.0, 0.0, 1.0), 5)), Color("ff3b45"), true)
+		draw_rect(Rect2(bar_rect.position + Vector2(2, 2), Vector2((bar_rect.size.x - 4) * clampf(rival_unit_health / 100.0, 0.0, 1.0), 5)), Color("ff3b45"), true)
 		draw_string(font, rival_screen_position + Vector2(-45, -14), "RIVAL", HORIZONTAL_ALIGNMENT_CENTER, 90, 11, Color(1.0, 0.78, 0.78))
 	else:
 		var point := Vector2(size.x - 48 if rival_warning_side > 0.0 else 48, size.y * 0.48)
@@ -227,3 +236,13 @@ func _draw_rival_feedback(size: Vector2, font: Font) -> void:
 		var arrow := PackedVector2Array([point + Vector2(direction * 15, 0), point + Vector2(-direction * 9, -11), point + Vector2(-direction * 9, 11)])
 		draw_colored_polygon(arrow, Color("ff3b45"))
 		draw_string(font, point + Vector2(-42, 31), "RIVAL", HORIZONTAL_ALIGNMENT_CENTER, 84, 12, Color(1.0, 0.7, 0.7))
+
+func _draw_team_feedback(font: Font) -> void:
+	for unit in team_units:
+		if not unit.on_screen or not unit.alive:
+			continue
+		var screen: Vector2 = unit.screen
+		var bar_rect := Rect2(screen + Vector2(-42, -8), Vector2(84, 8))
+		draw_rect(bar_rect, Color(0.03, 0.03, 0.06, 0.88), true)
+		draw_rect(Rect2(bar_rect.position + Vector2(2, 2), Vector2((bar_rect.size.x - 4) * clampf(unit.health / 100.0, 0.0, 1.0), 4)), unit.color, true)
+		draw_string(font, screen + Vector2(-42, -13), unit.label, HORIZONTAL_ALIGNMENT_CENTER, 84, 10, Color.WHITE)

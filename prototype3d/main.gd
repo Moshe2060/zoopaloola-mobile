@@ -22,10 +22,13 @@ var rival_two_hit_cooldown := 0.0
 var rival_stuck_time := 0.0
 var ally_stuck_time := 0.0
 var rival_two_stuck_time := 0.0
+var extra_collision_cooldowns := {"player_rival_two": 0.0, "ally_rival": 0.0, "ally_rival_two": 0.0}
 var camera_rig: Node3D
 var hud
 var player_health := 100.0
 var rival_health := 100.0
+var ally_health := 100.0
+var rival_two_health := 100.0
 var energy := 100.0
 var rival_energy := 100.0
 var player_turbo := 0.0
@@ -76,6 +79,8 @@ func _physics_process(delta: float) -> void:
 		return
 	boost_cooldown = maxf(0.0, boost_cooldown - delta)
 	hit_cooldown = maxf(0.0, hit_cooldown - delta)
+	for collision_key in extra_collision_cooldowns.keys():
+		extra_collision_cooldowns[collision_key] = maxf(0.0, extra_collision_cooldowns[collision_key] - delta)
 	spinner_hit_cooldown = maxf(0.0, spinner_hit_cooldown - delta)
 	spike_hit_cooldowns.player = maxf(0.0, spike_hit_cooldowns.player - delta)
 	spike_hit_cooldowns.rival = maxf(0.0, spike_hit_cooldowns.rival - delta)
@@ -107,6 +112,7 @@ func _physics_process(delta: float) -> void:
 	_update_rival_two(delta)
 	_resolve_team_separation()
 	_resolve_vehicle_collision()
+	_resolve_extra_team_collisions()
 	_update_spinner(delta)
 	_update_gravity_trap(delta)
 	_update_spike_trap()
@@ -118,7 +124,8 @@ func _physics_process(delta: float) -> void:
 	_apply_arena_limits(rival_two)
 	_update_camera(delta)
 	_update_hud()
-	if player_health <= 0.0 or rival_health <= 0.0:
+	_update_knockouts()
+	if player_health <= 0.0 or (rival_health <= 0.0 and rival_two_health <= 0.0):
 		_finish_match()
 
 func _update_player(delta: float) -> void:
@@ -159,6 +166,8 @@ func _update_player(delta: float) -> void:
 	player.move_and_slide()
 
 func _update_rival(delta: float) -> void:
+	if rival_health <= 0.0:
+		return
 	if rival_stun > 0.0:
 		rival.velocity = rival.velocity.move_toward(Vector3.ZERO, delta * 8.0)
 		rival.move_and_slide()
@@ -197,8 +206,10 @@ func _update_rival(delta: float) -> void:
 	rival.move_and_slide()
 
 func _update_ally(delta: float) -> void:
+	if ally_health <= 0.0:
+		return
 	# The support bot owns the second rival so both pairs do not collapse onto one point.
-	var target := rival_two
+	var target := rival_two if rival_two_health > 0.0 else rival
 	var offset := target.global_position - ally.global_position
 	var distance := offset.length()
 	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
@@ -217,8 +228,10 @@ func _update_ally(delta: float) -> void:
 	ally.move_and_slide()
 
 func _update_rival_two(delta: float) -> void:
+	if rival_two_health <= 0.0:
+		return
 	# The second rival pressures the ally, leaving the main rival to duel the player.
-	var target := ally
+	var target := ally if ally_health > 0.0 else player
 	var offset := target.global_position - rival_two.global_position
 	var distance := offset.length()
 	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
@@ -238,7 +251,7 @@ func _update_rival_two(delta: float) -> void:
 func _ai_avoidance(body: CharacterBody3D, wanted: Vector3) -> Vector3:
 	var steering := wanted
 	for other in [player, rival, ally, rival_two]:
-		if other == null or other == body:
+		if other == null or other == body or not _body_alive(other):
 			continue
 		var away: Vector3 = body.global_position - other.global_position
 		away.y = 0.0
@@ -256,6 +269,8 @@ func _resolve_team_separation() -> void:
 		for second_index in range(first_index + 1, bodies.size()):
 			var first: CharacterBody3D = bodies[first_index]
 			var second: CharacterBody3D = bodies[second_index]
+			if not _body_alive(first) or not _body_alive(second):
+				continue
 			var offset := second.global_position - first.global_position
 			offset.y = 0.0
 			var distance := offset.length()
@@ -278,6 +293,8 @@ func _update_ai_stuck_escape(body: CharacterBody3D, wanted: Vector3, target_dist
 	return stuck_time
 
 func _resolve_vehicle_collision() -> void:
+	if rival_health <= 0.0:
+		return
 	var delta_pos := rival.global_position - player.global_position
 	var distance := delta_pos.length()
 	if distance > 3.35 or distance < 0.01:
@@ -330,6 +347,74 @@ func _resolve_vehicle_collision() -> void:
 		_spawn_impact_flash((player.global_position + rival.global_position) * 0.5)
 		hit_cooldown = 0.25
 
+func _resolve_extra_team_collisions() -> void:
+	var pairs := [
+		[player, rival_two, "player_rival_two"],
+		[ally, rival, "ally_rival"],
+		[ally, rival_two, "ally_rival_two"]
+	]
+	for pair in pairs:
+		var blue: CharacterBody3D = pair[0]
+		var orange: CharacterBody3D = pair[1]
+		var key: String = pair[2]
+		if not _body_alive(blue) or not _body_alive(orange):
+			continue
+		var offset := orange.global_position - blue.global_position
+		offset.y = 0.0
+		var distance := offset.length()
+		if distance > 3.65 or distance < 0.02:
+			continue
+		var normal := offset.normalized()
+		var blue_force := maxf(0.0, blue.velocity.dot(normal))
+		var orange_force := maxf(0.0, orange.velocity.dot(-normal))
+		if extra_collision_cooldowns[key] > 0.0 or maxf(blue_force, orange_force) < 5.0:
+			continue
+		var orange_damage := clampf(blue_force * 0.48, 2.0, 12.0)
+		var blue_damage := clampf(orange_force * 0.42, 2.0, 10.0)
+		if blue == player and player_boost_active > 0.0:
+			orange_damage = 12.0
+			player_boost_active = 0.0
+			camera_shake = 0.9
+		_damage_body(orange, orange_damage, Color("ff9f35"))
+		_damage_body(blue, blue_damage, Color("ff7042"))
+		blue.velocity -= normal * (4.0 + orange_force * 0.35)
+		orange.velocity += normal * (4.0 + blue_force * 0.42)
+		_spawn_impact_flash((blue.global_position + orange.global_position) * 0.5)
+		extra_collision_cooldowns[key] = 0.45
+
+func _body_alive(body: CharacterBody3D) -> bool:
+	if body == player:
+		return player_health > 0.0
+	if body == ally:
+		return ally_health > 0.0
+	if body == rival:
+		return rival_health > 0.0
+	return rival_two_health > 0.0
+
+func _damage_body(body: CharacterBody3D, amount: float, color: Color) -> void:
+	if body == player:
+		player_health = maxf(0.0, player_health - amount)
+		camera_shake = maxf(camera_shake, 0.45)
+	elif body == ally:
+		ally_health = maxf(0.0, ally_health - amount)
+	elif body == rival:
+		rival_health = maxf(0.0, rival_health - amount)
+	else:
+		rival_two_health = maxf(0.0, rival_two_health - amount)
+	_show_damage(body, amount, color)
+
+func _update_knockouts() -> void:
+	_set_combatant_active(ally, ally_health > 0.0)
+	_set_combatant_active(rival, rival_health > 0.0)
+	_set_combatant_active(rival_two, rival_two_health > 0.0)
+
+func _set_combatant_active(body: CharacterBody3D, active: bool) -> void:
+	body.visible = active
+	body.collision_layer = 1 if active else 0
+	body.collision_mask = 1 if active else 0
+	if not active:
+		body.velocity = Vector3.ZERO
+
 func _apply_arena_limits(body: CharacterBody3D) -> void:
 	# Hovercrafts must stay at a fixed hover height. Some impulses are applied
 	# close to raised hazards, so never allow a vertical component to accumulate.
@@ -366,7 +451,8 @@ func _update_camera(delta: float) -> void:
 func _update_hud() -> void:
 	hud.health = player_health
 	hud.energy = energy
-	hud.enemy_health = rival_health
+	hud.enemy_health = (rival_health + rival_two_health) * 0.5
+	hud.rival_unit_health = rival_health
 	hud.exhausted = energy <= 1.0
 	hud.turbo_seconds = player_turbo
 	hud.ability_ratio = 1.0 - clampf(player_ability_cooldown / ELEPHANT_ABILITY_COOLDOWN, 0.0, 1.0)
@@ -383,6 +469,23 @@ func _update_hud() -> void:
 	var camera_right := camera.global_transform.basis.x
 	var to_rival := rival.global_position - camera.global_position
 	hud.rival_warning_side = 1.0 if to_rival.dot(camera_right) >= 0.0 else -1.0
+	hud.team_units = []
+	for unit_data in [
+		[ally, ally_health, "ALLY", Color("35c8ff")],
+		[rival_two, rival_two_health, "RIVAL 2", Color("ff7042")]
+	]:
+		var unit: CharacterBody3D = unit_data[0]
+		var screen_position := camera.unproject_position(unit.global_position + Vector3.UP * 2.7)
+		var on_screen := unit.visible and not camera.is_position_behind(unit.global_position) and Rect2(Vector2(32, 96), viewport_size - Vector2(64, 150)).has_point(screen_position)
+		hud.team_units.append({
+			"screen": screen_position,
+			"on_screen": on_screen,
+			"health": unit_data[1],
+			"label": unit_data[2],
+			"color": unit_data[3],
+			"map": Vector2(unit.global_position.x, unit.global_position.z),
+			"alive": unit_data[1] > 0.0
+		})
 
 func _build_world() -> void:
 	var world_env := WorldEnvironment.new()
@@ -937,14 +1040,18 @@ func _spawn_impact_flash(position: Vector3) -> void:
 
 func _activate_elephant_shockwave() -> void:
 	player_ability_cooldown = ELEPHANT_ABILITY_COOLDOWN
-	var offset := rival.global_position - player.global_position
-	offset.y = 0.0
-	if offset.length() <= 9.5 and offset.length() > 0.1:
-		rival.velocity += offset.normalized() * 31.0
-		rival_stun = maxf(rival_stun, 0.72)
-		rival_health = maxf(0.0, rival_health - 6.0)
-		_show_damage(rival, 6.0, Color("46d9ff"))
-		camera_shake = maxf(camera_shake, 0.55)
+	for candidate in [rival, rival_two]:
+		var enemy: CharacterBody3D = candidate
+		if not _body_alive(enemy):
+			continue
+		var offset := enemy.global_position - player.global_position
+		offset.y = 0.0
+		if offset.length() <= 9.5 and offset.length() > 0.1:
+			enemy.velocity += offset.normalized() * 31.0
+			if enemy == rival:
+				rival_stun = maxf(rival_stun, 0.72)
+			_damage_body(enemy, 6.0, Color("46d9ff"))
+			camera_shake = maxf(camera_shake, 0.55)
 	_spawn_ability_ring(player.global_position, Color("43d7ff"), 9.5)
 	_play_tone(235.0, 0.24, 0.22)
 
@@ -1022,12 +1129,16 @@ func _finish_match() -> void:
 	match_finished = true
 	player.velocity = Vector3.ZERO
 	rival.velocity = Vector3.ZERO
-	hud.result_text = "VICTORY" if rival_health <= 0.0 else "DEFEAT"
+	ally.velocity = Vector3.ZERO
+	rival_two.velocity = Vector3.ZERO
+	hud.result_text = "VICTORY" if rival_health <= 0.0 and rival_two_health <= 0.0 else "DEFEAT"
 
 func _restart_match() -> void:
 	match_finished = false
 	player_health = 100.0
 	rival_health = 100.0
+	ally_health = 100.0
+	rival_two_health = 100.0
 	energy = 100.0
 	rival_energy = 100.0
 	player_turbo = 0.0
@@ -1046,6 +1157,7 @@ func _restart_match() -> void:
 	spike_hit_cooldowns = {"player": 0.0, "rival": 0.0}
 	laser_hit_cooldowns = {"player": 0.0, "rival": 0.0}
 	gravity_feedback_cooldowns = {"player": 0.0, "rival": 0.0}
+	extra_collision_cooldowns = {"player_rival_two": 0.0, "ally_rival": 0.0, "ally_rival_two": 0.0}
 	for index in range(pickups.size()):
 		pickups[index].active = true
 		pickups[index].respawn = 0.0
@@ -1062,6 +1174,9 @@ func _restart_match() -> void:
 	rival.velocity = Vector3.ZERO
 	ally.velocity = Vector3.ZERO
 	rival_two.velocity = Vector3.ZERO
+	_set_combatant_active(ally, true)
+	_set_combatant_active(rival, true)
+	_set_combatant_active(rival_two, true)
 	hud.result_text = ""
 
 func _make_box_visual(size: Vector3, position: Vector3, color: Color, emission: Color, energy_value: float) -> MeshInstance3D:
