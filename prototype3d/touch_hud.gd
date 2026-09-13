@@ -13,6 +13,12 @@ var restart_pressed := false
 var player_map_position := Vector2.ZERO
 var rival_map_position := Vector2.ZERO
 var player_map_heading := 0.0
+var rival_screen_position := Vector2.ZERO
+var rival_on_screen := false
+var rival_warning_side := 1.0
+var pickup_message := ""
+var pickup_message_color := Color.WHITE
+var pickup_message_time := 0.0
 var camera_yaw_offset := 0.0
 var camera_yaw_target := 0.0
 
@@ -35,6 +41,7 @@ func _ready() -> void:
 	queue_redraw()
 
 func _process(delta: float) -> void:
+	pickup_message_time = maxf(0.0, pickup_message_time - delta)
 	if _camera_touch == -1:
 		camera_yaw_target = 0.0
 	var smoothing := CAMERA_FOLLOW_SPEED if _camera_touch != -1 else CAMERA_RETURN_SPEED
@@ -52,6 +59,18 @@ func consume_restart() -> bool:
 	var value := restart_pressed
 	restart_pressed = false
 	return value
+
+func show_pickup(kind: String) -> void:
+	if kind == "health":
+		pickup_message = "+26 HEALTH"
+		pickup_message_color = Color("35ed72")
+	elif kind == "energy":
+		pickup_message = "+48 ENERGY"
+		pickup_message_color = Color("ffb52e")
+	else:
+		pickup_message = "TURBO ACTIVE"
+		pickup_message_color = Color("28caff")
+	pickup_message_time = 1.4
 
 func _input(event: InputEvent) -> void:
 	var size := get_viewport_rect().size
@@ -120,6 +139,10 @@ func _draw() -> void:
 	draw_string(font, Vector2(size.x - 323, 46), "RIVAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.75, 0.75))
 	_draw_bar(Rect2(size.x - 323, 54, 276, 13), enemy_health / 100.0, Color(0.95, 0.22, 0.25))
 	_draw_minimap(size, font)
+	_draw_rival_feedback(size, font)
+	if pickup_message_time > 0.0:
+		var alpha := minf(1.0, pickup_message_time * 2.0)
+		draw_string(font, Vector2(0, 174), pickup_message, HORIZONTAL_ALIGNMENT_CENTER, size.x, 24, Color(pickup_message_color, alpha))
 
 	# Touch controls stay visible even before the first touch.
 	var stick_center := Vector2(120, size.y - 120) if _move_touch == -1 else _stick_origin
@@ -170,3 +193,16 @@ func _draw_map_hazard(rect: Rect2, world: Vector2, color: Color, radius: float) 
 	var point := _world_to_map(rect, world)
 	draw_circle(point, radius, Color(color, 0.3))
 	draw_circle(point, radius, color, false, 1.7)
+
+func _draw_rival_feedback(size: Vector2, font: Font) -> void:
+	if rival_on_screen:
+		var bar_rect := Rect2(rival_screen_position + Vector2(-45, -9), Vector2(90, 9))
+		draw_rect(bar_rect, Color(0.04, 0.02, 0.07, 0.88), true)
+		draw_rect(Rect2(bar_rect.position + Vector2(2, 2), Vector2((bar_rect.size.x - 4) * clampf(enemy_health / 100.0, 0.0, 1.0), 5)), Color("ff3b45"), true)
+		draw_string(font, rival_screen_position + Vector2(-45, -14), "RIVAL", HORIZONTAL_ALIGNMENT_CENTER, 90, 11, Color(1.0, 0.78, 0.78))
+	else:
+		var point := Vector2(size.x - 48 if rival_warning_side > 0.0 else 48, size.y * 0.48)
+		var direction := 1.0 if rival_warning_side > 0.0 else -1.0
+		var arrow := PackedVector2Array([point + Vector2(direction * 15, 0), point + Vector2(-direction * 9, -11), point + Vector2(-direction * 9, 11)])
+		draw_colored_polygon(arrow, Color("ff3b45"))
+		draw_string(font, point + Vector2(-42, 31), "RIVAL", HORIZONTAL_ALIGNMENT_CENTER, 84, 12, Color(1.0, 0.7, 0.7))
