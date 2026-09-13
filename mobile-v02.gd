@@ -83,10 +83,10 @@ const UI_TEXT_HE := {
 	"arena_title": "בחירת זירה", "arena_title_sub": "בחרו את מגרש המשחק לקרב האונליין",
 	"sakura": "גן הסאקורה", "bamboo": "חורשת הבמבוק", "volcano": "מקדש הגעש",
 	"entry_free": "כניסה: חינם", "entry": "דמי כניסה: ", "coins": " מטבעות", "prize": "פרס ניצחון: ", "selected": "נבחר", "find_match": "חיפוש יריב אונליין",
-	"profile_title": "פרופיל שחקן", "profile_sub": "הדמות, הצבע האהוב וסטטיסטיקות הקריירה שלכם",
+	"profile_title": "פרופיל שחקן", "profile_sub": "הדמות והחללית הייחודית שלה, לצד סטטיסטיקות הקריירה שלכם",
 	"main_character": "הדמות הראשית", "choose_main": "בחרו דמות ראשית", "favorite_color": "צבע גלגל אהוב",
 	"career": "סטטיסטיקות קריירה", "matches": "משחקים", "wins": "ניצחונות", "losses": "הפסדים", "win_rate": "אחוז הצלחה", "best_streak": "רצף שיא", "world_rank": "דירוג עולמי", "current_streak": "רצף ניצחונות נוכחי: ",
-	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות, גלגלים, אפקטים ושולחנות משחק", "effects": "אפקטים", "collection_info": "אוספים נדירים • עיצובים עונתיים • אנימציות מיוחדות", "coming_soon": "בקרוב",
+	"shop_title": "החנות של זופלולה", "shop_title_sub": "דמויות וחלליות ייחודיות, אפקטים ושולחנות משחק", "effects": "אפקטים", "collection_info": "אוספים נדירים • עיצובים עונתיים • אנימציות מיוחדות", "coming_soon": "בקרוב",
 	"boards": "שולחנות", "boards_sub": "עיצובי מגרש", "boards_section": "שולחנות משחק", "boards_section_sub": "בחרו את עיצוב המגרש לקרב הבא", "board_equipped": "מוגדר למשחק", "board_selected_toast": "שולחן חדש הוגדר!",
 	"board_classic": "קלאסי", "board_ice": "קרח", "board_jungle": "ג'ונגל", "board_volcano": "לבה", "board_candy": "עולם הממתקים",
 	"free_item": "חינם", "locked_item": "נעול", "buy_item": "קנה", "owned_item": "שלך", "equipped_item": "מצויד", "shop_collected": "%d/%d נאספו", "shop_open_category": "לחצו לפתיחה", "shop_effects_empty": "אפקטים מיוחדים יגיעו בקרוב לחנות", "purchase_success": "נרכש בהצלחה!", "unlock_in_shop": "ניתן לרכוש בחנות", "shop_unlocks_sub": "רכשו דמויות וגלגלים נוספים במטבעות", "host_board_only": "רק מארח החדר בוחר שולחן", "guest_board_locked": "שולחן המארח", "arena_board_fixed": "שולחן הזירה",
@@ -139,10 +139,10 @@ const UI_TEXT_EN := {
 	"arena_title": "CHOOSE YOUR ARENA", "arena_title_sub": "Select the battleground for your online match",
 	"sakura": "SAKURA GARDEN", "bamboo": "BAMBOO GROVE", "volcano": "VOLCANO TEMPLE",
 	"entry_free": "ENTRY: FREE", "entry": "ENTRY: ", "coins": " COINS", "prize": "WIN PRIZE: ", "selected": "SELECTED", "find_match": "FIND ONLINE MATCH",
-	"profile_title": "PLAYER PROFILE", "profile_sub": "Your character, favorite color and career statistics",
+	"profile_title": "PLAYER PROFILE", "profile_sub": "Your character, their unique hovercraft and career statistics",
 	"main_character": "MAIN CHARACTER", "choose_main": "CHOOSE YOUR MAIN ANIMAL", "favorite_color": "FAVORITE LIFEBUOY COLOR",
 	"career": "CAREER STATISTICS", "matches": "MATCHES", "wins": "WINS", "losses": "LOSSES", "win_rate": "WIN RATE", "best_streak": "BEST STREAK", "world_rank": "WORLD RANK", "current_streak": "CURRENT WIN STREAK: ",
-	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters, lifebuoys, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections • Seasonal designs • Special animations", "coming_soon": "COMING SOON",
+	"shop_title": "ZOOPA SHOP", "shop_title_sub": "Characters with unique hovercrafts, effects and game tables", "effects": "EFFECTS", "collection_info": "Rare collections • Seasonal designs • Special animations", "coming_soon": "COMING SOON",
 	"boards": "TABLES", "boards_sub": "Board skins", "boards_section": "GAME TABLES", "boards_section_sub": "Choose the look of your next match", "board_equipped": "EQUIPPED", "board_selected_toast": "New table equipped!",
 	"board_classic": "CLASSIC", "board_ice": "ICE", "board_jungle": "JUNGLE", "board_volcano": "LAVA", "board_candy": "CANDY WORLD",
 	"free_item": "FREE", "locked_item": "LOCKED", "buy_item": "BUY", "owned_item": "OWNED", "equipped_item": "EQUIPPED", "shop_collected": "%d/%d COLLECTED", "shop_open_category": "TAP TO OPEN", "shop_effects_empty": "Special effects are coming soon to the shop", "purchase_success": "Purchased!", "unlock_in_shop": "Buy this in the shop", "shop_unlocks_sub": "Unlock more animals and lifebuoys with coins", "host_board_only": "Only the room host picks the table", "guest_board_locked": "Host's table", "arena_board_fixed": "Arena table",
@@ -4541,7 +4541,7 @@ func character_ring_rect(index: int, viewport_size: Vector2) -> Rect2:
 
 func character_save_rect(viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	return Rect2(Vector2(615.0, 598.0) * unit, Vector2(520.0, 76.0) * unit)
+	return Rect2(Vector2(615.0, 482.0) * unit, Vector2(520.0, 76.0) * unit)
 
 func frontend_back_rect(viewport_size: Vector2) -> Rect2:
 	return Rect2(24.0, 22.0, 116.0, 48.0)
@@ -6332,15 +6332,10 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 					try_select_animal(i)
 					queue_redraw()
 					return
-			for i in RING_COLOR_NAMES.size():
-				if character_ring_rect(i, viewport_size).has_point(screen_pos):
-					try_select_ring(i)
-					queue_redraw()
-					return
 		elif app_screen == APP_SHOP:
-			for i in 4:
+			for i in 3:
 				if shop_category_rect(i, viewport_size).has_point(screen_pos):
-					shop_page = [SHOP_PAGE_ANIMALS, SHOP_PAGE_RINGS, SHOP_PAGE_BOARDS, SHOP_PAGE_EFFECTS][i]
+					shop_page = [SHOP_PAGE_ANIMALS, SHOP_PAGE_BOARDS, SHOP_PAGE_EFFECTS][i]
 					play_sound("ui")
 					queue_redraw()
 					return
@@ -6348,12 +6343,6 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 				for i in ANIMAL_NAMES.size():
 					if shop_detail_grid_rect(i, viewport_size, ANIMAL_NAMES.size()).has_point(screen_pos):
 						shop_preview_animal = i
-						queue_redraw()
-						return
-			elif shop_page == SHOP_PAGE_RINGS:
-				for i in RING_COLOR_NAMES.size():
-					if shop_detail_grid_rect(i, viewport_size, RING_COLOR_NAMES.size()).has_point(screen_pos):
-						shop_preview_ring = i
 						queue_redraw()
 						return
 			elif shop_page == SHOP_PAGE_BOARDS:
@@ -6365,8 +6354,6 @@ func handle_frontend_touch(screen_pos: Vector2) -> void:
 			if shop_action_rect(viewport_size).has_point(screen_pos):
 				if shop_page == SHOP_PAGE_ANIMALS:
 					try_purchase_animal(shop_preview_animal)
-				elif shop_page == SHOP_PAGE_RINGS:
-					try_purchase_ring(shop_preview_ring)
 				elif shop_page == SHOP_PAGE_BOARDS:
 					selected_board_theme = shop_preview_board
 					room_board_theme = shop_preview_board
@@ -7230,7 +7217,7 @@ func draw_player_profile_screen(viewport_size: Vector2) -> void:
 	draw_gate_panel(info_panel, Color("58dcff"), unit, 0.96)
 	draw_circle(info_panel.position + Vector2(66.0, 70.0) * unit, 47.0 * unit, Color("d6a62f"))
 	draw_circle(info_panel.position + Vector2(66.0, 70.0) * unit, 40.0 * unit, Color("092657"))
-	var avatar_texture: Texture2D = character_portrait_textures[player_animal] if player_animal < character_portrait_textures.size() else null
+	var avatar_texture: Texture2D = character_ship_textures[player_animal] if player_animal < character_ship_textures.size() else null
 	if avatar_texture != null:
 		draw_texture_rect(avatar_texture, Rect2(info_panel.position + Vector2(31.0, 35.0) * unit, Vector2(70.0, 70.0) * unit), false)
 	draw_string(ui_font, info_panel.position + Vector2(180.0, 28.0) * unit, "שם השחקן" if ui_language == "he" else "PLAYER NAME", HORIZONTAL_ALIGNMENT_LEFT, 350.0 * unit, int(12.0 * unit), Color("8cecff"))
@@ -7845,14 +7832,14 @@ func draw_frontend_header(viewport_size: Vector2, title: String, subtitle: Strin
 
 func draw_profile_screen(viewport_size: Vector2) -> void:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
-	# The character screen deliberately follows the approved concept one-for-one:
-	# hero on the left, two seven-item circular pickers on the right, save below.
+	# Choosing an animal also chooses its unique hovercraft. There is no separate
+	# hovercraft/color picker in the new character system.
 	var back := frontend_back_rect(viewport_size)
 	draw_style_box(make_box(Color("07152f"), 15.0 * unit), back.grow(5.0 * unit))
 	draw_style_box(make_box(Color("173d72"), 13.0 * unit), back)
 	draw_string(ui_font, back.position + Vector2(0.0, 32.0) * unit, "‹  " + ui_text("back"), HORIZONTAL_ALIGNMENT_CENTER, back.size.x, int(17.0 * unit), Color.WHITE)
 
-	var board := Rect2(Vector2(455.0, 92.0) * unit, Vector2(790.0, 500.0) * unit)
+	var board := Rect2(Vector2(455.0, 92.0) * unit, Vector2(790.0, 370.0) * unit)
 	draw_gate_panel(board, Color("58dcff"), unit, 0.82)
 	draw_string(ui_font, board.position + Vector2(0.0, 58.0) * unit, ui_text("choose_character"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(32.0 * unit), Color.WHITE)
 	draw_string(ui_font, board.position + Vector2(0.0, 88.0) * unit, ui_text("choose_character_sub"), HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(14.0 * unit), Color("8cecff"))
@@ -7879,38 +7866,14 @@ func draw_profile_screen(viewport_size: Vector2) -> void:
 		var center := card.get_center()
 		draw_circle(center, 48.0 * unit, Color("ffe25d") if selected else Color("6e8ca7"))
 		draw_circle(center, 42.0 * unit, Color("08234b"))
-		var portrait: Texture2D = character_portrait_textures[i] if i < character_portrait_textures.size() else animal_textures[i]
+		var portrait: Texture2D = character_ship_textures[i] if i < character_ship_textures.size() else animal_textures[i]
 		if portrait != null:
-			draw_texture_rect(portrait, Rect2(center - Vector2(37.0, 37.0) * unit, Vector2(74.0, 74.0) * unit), false)
+			draw_texture_rect(portrait, Rect2(center - Vector2(41.0, 41.0) * unit, Vector2(82.0, 82.0) * unit), false)
 		draw_collection_lock_overlay(card, i, false, unit)
 		if selected:
 			draw_colored_polygon(PackedVector2Array([center + Vector2(0.0, -58.0) * unit, center + Vector2(9.0, -47.0) * unit, center + Vector2(0.0, -38.0) * unit, center + Vector2(-9.0, -47.0) * unit]), Color("58dcff"))
 
-	draw_string(ui_font, board.position + Vector2(0.0, 320.0) * unit, "בחרו חללית" if ui_language == "he" else "CHOOSE A HOVERCRAFT", HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(21.0 * unit), Color.WHITE)
-	draw_line(board.position + Vector2(36.0, 333.0) * unit, board.position + Vector2(board.size.x - 36.0 * unit, 333.0 * unit), Color("32bfff", 0.62), 2.0 * unit, true)
-	for i in RING_COLOR_NAMES.size():
-		var ring_button := character_ring_rect(i, viewport_size)
-		var selected := i == player_ring_color
-		var center := ring_button.get_center()
-		# Compact flying saucer: flattened hull, cockpit, gold ribs and a colored
-		# energy band.  Its touch rectangle stays unchanged.
-		draw_set_transform(center + Vector2(0.0, 7.0) * unit, 0.0, Vector2(1.0, 0.52))
-		draw_circle(Vector2.ZERO, 49.0 * unit, Color(0.0, 0.0, 0.0, 0.42))
-		draw_set_transform(center, 0.0, Vector2(1.0, 0.56))
-		draw_circle(Vector2.ZERO, 49.0 * unit, Color("ffe25d") if selected else Color("8c6728"))
-		draw_circle(Vector2.ZERO, 43.0 * unit, Color("092657"))
-		draw_arc(Vector2.ZERO, 39.0 * unit, 0.0, TAU, 40, RING_COLORS[i].lightened(0.16), 9.0 * unit, true)
-		draw_arc(Vector2.ZERO, 45.0 * unit, 0.55, 1.15, 10, Color("f2b63f"), 7.0 * unit, true)
-		draw_arc(Vector2.ZERO, 45.0 * unit, 2.0, 2.6, 10, Color("f2b63f"), 7.0 * unit, true)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		draw_circle(center - Vector2(0.0, 7.0) * unit, 19.0 * unit, Color("56dfff"))
-		draw_circle(center - Vector2(0.0, 7.0) * unit, 14.0 * unit, Color("102b62"))
-		draw_arc(center - Vector2(0.0, 7.0) * unit, 17.0 * unit, -2.7, -0.5, 16, Color(1.0, 1.0, 1.0, 0.62), 3.0 * unit, true)
-		var crystal := center + Vector2(0.0, 25.0) * unit
-		draw_colored_polygon(PackedVector2Array([crystal + Vector2(0.0, -8.0) * unit, crystal + Vector2(6.0, 0.0) * unit, crystal + Vector2(0.0, 8.0) * unit, crystal + Vector2(-6.0, 0.0) * unit]), RING_COLORS[i].lightened(0.28))
-		draw_collection_lock_overlay(ring_button, i, true, unit)
-		if selected:
-			draw_colored_polygon(PackedVector2Array([center + Vector2(0.0, -58.0) * unit, center + Vector2(9.0, -47.0) * unit, center + Vector2(0.0, -38.0) * unit, center + Vector2(-9.0, -47.0) * unit]), Color("58dcff"))
+	draw_string(ui_font, board.position + Vector2(0.0, 328.0) * unit, "החללית הייחודית נבחרת אוטומטית עם החיה" if ui_language == "he" else "EACH CHARACTER INCLUDES THEIR UNIQUE HOVERCRAFT", HORIZONTAL_ALIGNMENT_CENTER, board.size.x, int(17.0 * unit), Color("8cecff"))
 
 	var save := character_save_rect(viewport_size)
 	draw_style_box(make_box(Color("70420b"), 22.0 * unit), save.grow(7.0 * unit))
@@ -7997,7 +7960,7 @@ func shop_category_rect(index: int, viewport_size: Vector2) -> Rect2:
 	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
 	var gap := 10.0 * unit
 	var card_w := 174.0 * unit
-	var total_w := card_w * 4.0 + gap * 3.0
+	var total_w := card_w * 3.0 + gap * 2.0
 	return Rect2(Vector2((viewport_size.x - total_w) * 0.5 + float(index) * (card_w + gap), 92.0 * unit), Vector2(card_w, 54.0 * unit))
 
 func shop_action_rect(viewport_size: Vector2) -> Rect2:
@@ -8111,8 +8074,8 @@ func draw_shop_detail_card(index: int, rect: Rect2, is_ring: bool, unit: float) 
 	if is_ring:
 		draw_shop_ring_preview(art_rect.grow(-8.0 * unit), index)
 	else:
-		if index < character_portrait_textures.size() and character_portrait_textures[index] != null:
-			draw_texture_fit(character_portrait_textures[index], art_rect.grow(-14.0 * unit))
+		if index < character_ship_textures.size() and character_ship_textures[index] != null:
+			draw_texture_fit(character_ship_textures[index], art_rect.grow(-6.0 * unit))
 	if not unlocked:
 		draw_rect(art_rect, Color(0.01, 0.03, 0.08, 0.62))
 		var lock_center := art_rect.get_center()
@@ -8128,12 +8091,12 @@ func draw_shop_detail_card(index: int, rect: Rect2, is_ring: bool, unit: float) 
 	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y - 30.0 * unit), price_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(13.0 * unit), Color("ffe25d"))
 
 func draw_shop_hub(viewport_size: Vector2, unit: float) -> void:
-	var categories := [ui_text("characters"), "חלליות" if ui_language == "he" else "HOVERCRAFTS", "שולחנות" if ui_language == "he" else "TABLES", ui_text("effects")]
-	var category_colors := [Color("24b889"), Color("467ce8"), Color("f0a51e"), Color("9a58dc")]
-	for i in 4:
+	var categories := [ui_text("characters"), "שולחנות" if ui_language == "he" else "TABLES", ui_text("effects")]
+	var category_colors := [Color("24b889"), Color("f0a51e"), Color("9a58dc")]
+	for i in 3:
 		var card := shop_category_rect(i, viewport_size)
 		var accent: Color = category_colors[i]
-		var active: bool = shop_page == [SHOP_PAGE_ANIMALS, SHOP_PAGE_RINGS, SHOP_PAGE_BOARDS, SHOP_PAGE_EFFECTS][i]
+		var active: bool = shop_page == [SHOP_PAGE_ANIMALS, SHOP_PAGE_BOARDS, SHOP_PAGE_EFFECTS][i]
 		draw_gate_panel(card, Color("ffe25d") if active else accent, unit, 0.92)
 		draw_string(ui_font, card.position + Vector2(0.0, 35.0 * unit), categories[i], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(18.0 * unit), Color("ffe25d") if active else Color.WHITE)
 
