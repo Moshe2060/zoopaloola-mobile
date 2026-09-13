@@ -259,7 +259,18 @@ var animal_textures: Array[Texture2D] = []
 var character_portrait_textures: Array[Texture2D] = []
 var character_ship_textures: Array[Texture2D] = []
 var character_ship_light_masks: Array[Texture2D] = []
-var battle_hovercraft_textures: Array[Texture2D] = []
+# Keep these as explicit preloads. The web exporter cannot discover resources
+# whose paths are assembled dynamically at runtime, which would leave the table
+# pieces invisible even though the source PNGs exist in the repository.
+var battle_hovercraft_textures: Array[Texture2D] = [
+	preload("res://assets/ui/battle_pieces/elephant-hovercraft-v1.png"),
+	preload("res://assets/ui/battle_pieces/zebra-hovercraft-v1.png"),
+	preload("res://assets/ui/battle_pieces/monkey-hovercraft-v1.png"),
+	preload("res://assets/ui/battle_pieces/hippo-hovercraft-v1.png"),
+	preload("res://assets/ui/battle_pieces/rhino-hovercraft-v1.png"),
+	preload("res://assets/ui/battle_pieces/giraffe-hovercraft-v1.png"),
+	preload("res://assets/ui/battle_pieces/tiger-hovercraft-v1.png")
+]
 var hero_saucer_texture: Texture2D
 var full_body_animal_textures: Array[Texture2D] = []
 var lifebuoy_hero_textures: Array = []
@@ -922,8 +933,6 @@ func _ready() -> void:
 		character_ship_textures.append(load("res://assets/ui/character_ships/" + ship_file))
 	for light_file in ["elephant-pilot-v2-lights.png", "zebra-pilot-v2-lights.png", "monkey-pilot-v3-lights.png", "hippo-pilot-v2-lights.png", "rhino-pilot-v2-lights.png", "giraffe-pilot-v2-lights.png", "tiger-pilot-v2-lights.png"]:
 		character_ship_light_masks.append(load("res://assets/ui/character_ships/light_masks/" + light_file))
-	for animal_file in ANIMAL_FILES:
-		battle_hovercraft_textures.append(load("res://assets/ui/battle_pieces/%s-hovercraft-v1.png" % animal_file))
 	rebuild_team_piece_textures()
 	for i in 6:
 		effect_textures.append(load("res://assets/remastered_effects/effect-%d.png" % i))
@@ -3131,8 +3140,15 @@ func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: i
 
 func rebuild_team_piece_textures() -> void:
 	team_piece_textures.clear()
-	team_piece_textures.append(battle_hovercraft_textures[player_animal] if player_animal < battle_hovercraft_textures.size() else null)
-	team_piece_textures.append(battle_hovercraft_textures[ai_animal] if ai_animal < battle_hovercraft_textures.size() else null)
+	var player_piece: Texture2D = battle_hovercraft_textures[player_animal] if player_animal < battle_hovercraft_textures.size() else null
+	var opponent_piece: Texture2D = battle_hovercraft_textures[ai_animal] if ai_animal < battle_hovercraft_textures.size() else null
+	# Never hide gameplay pieces because of a missing optional art resource.
+	if player_piece == null and player_animal < character_ship_textures.size():
+		player_piece = character_ship_textures[player_animal]
+	if opponent_piece == null and ai_animal < character_ship_textures.size():
+		opponent_piece = character_ship_textures[ai_animal]
+	team_piece_textures.append(player_piece)
+	team_piece_textures.append(opponent_piece)
 
 func make_colored_animal_texture(animal_index: int, target_color: Color) -> Texture2D:
 	if animal_index < 0 or animal_index >= animal_textures.size():
