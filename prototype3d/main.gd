@@ -19,6 +19,9 @@ var ally: CharacterBody3D
 var rival_two: CharacterBody3D
 var ally_hit_cooldown := 0.0
 var rival_two_hit_cooldown := 0.0
+var rival_stuck_time := 0.0
+var ally_stuck_time := 0.0
+var rival_two_stuck_time := 0.0
 var camera_rig: Node3D
 var hud
 var player_health := 100.0
@@ -102,6 +105,7 @@ func _physics_process(delta: float) -> void:
 	_update_rival(delta)
 	_update_ally(delta)
 	_update_rival_two(delta)
+	_resolve_team_separation()
 	_resolve_vehicle_collision()
 	_update_spinner(delta)
 	_update_gravity_trap(delta)
@@ -171,6 +175,8 @@ func _update_rival(delta: float) -> void:
 	var offset := target_position - rival.global_position
 	var distance := offset.length()
 	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
+	desired = _ai_avoidance(rival, desired)
+	rival_stuck_time = _update_ai_stuck_escape(rival, desired, distance, rival_stuck_time, delta, -1.0)
 	var target_angle := atan2(desired.x, desired.z)
 	rival.rotation.y = lerp_angle(rival.rotation.y, target_angle, delta * 3.8)
 	var strafe := Vector3(-desired.z, 0, desired.x) * sin(Time.get_ticks_msec() * 0.0016) * 0.38
@@ -191,15 +197,16 @@ func _update_rival(delta: float) -> void:
 	rival.move_and_slide()
 
 func _update_ally(delta: float) -> void:
-	var target := rival
-	if ally.global_position.distance_squared_to(rival_two.global_position) < ally.global_position.distance_squared_to(rival.global_position):
-		target = rival_two
+	# The support bot owns the second rival so both pairs do not collapse onto one point.
+	var target := rival_two
 	var offset := target.global_position - ally.global_position
 	var distance := offset.length()
 	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
 	# The ally stays near the player until an enemy enters the local fight.
 	if ally.global_position.distance_to(player.global_position) > 30.0 and distance > 16.0:
 		desired = (player.global_position - ally.global_position).normalized()
+	desired = _ai_avoidance(ally, desired)
+	ally_stuck_time = _update_ai_stuck_escape(ally, desired, distance, ally_stuck_time, delta, 1.0)
 	var target_angle := atan2(desired.x, desired.z)
 	ally.rotation.y = lerp_angle(ally.rotation.y, target_angle, delta * 3.2)
 	ally.velocity.x = move_toward(ally.velocity.x, desired.x * 16.0, 20.0 * delta)
@@ -210,12 +217,13 @@ func _update_ally(delta: float) -> void:
 	ally.move_and_slide()
 
 func _update_rival_two(delta: float) -> void:
-	var target := player
-	if rival_two.global_position.distance_squared_to(ally.global_position) < rival_two.global_position.distance_squared_to(player.global_position):
-		target = ally
+	# The second rival pressures the ally, leaving the main rival to duel the player.
+	var target := ally
 	var offset := target.global_position - rival_two.global_position
 	var distance := offset.length()
 	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
+	desired = _ai_avoidance(rival_two, desired)
+	rival_two_stuck_time = _update_ai_stuck_escape(rival_two, desired, distance, rival_two_stuck_time, delta, -1.0)
 	var target_angle := atan2(desired.x, desired.z)
 	rival_two.rotation.y = lerp_angle(rival_two.rotation.y, target_angle, delta * 3.5)
 	var flank := Vector3(-desired.z, 0, desired.x) * sin(Time.get_ticks_msec() * 0.0012 + 1.7) * 0.32
@@ -226,6 +234,48 @@ func _update_rival_two(delta: float) -> void:
 		rival_two.velocity += desired * 18.0
 		rival_two_hit_cooldown = 2.4
 	rival_two.move_and_slide()
+
+func _ai_avoidance(body: CharacterBody3D, wanted: Vector3) -> Vector3:
+	var steering := wanted
+	for other in [player, rival, ally, rival_two]:
+		if other == null or other == body:
+			continue
+		var away: Vector3 = body.global_position - other.global_position
+		away.y = 0.0
+		var distance := away.length()
+		if distance > 0.05 and distance < 7.0:
+			var strength := (7.0 - distance) / 7.0
+			steering += away.normalized() * strength * 2.35
+	if steering.length_squared() < 0.01:
+		return wanted
+	return steering.normalized()
+
+func _resolve_team_separation() -> void:
+	var bodies := [player, rival, ally, rival_two]
+	for first_index in range(bodies.size()):
+		for second_index in range(first_index + 1, bodies.size()):
+			var first: CharacterBody3D = bodies[first_index]
+			var second: CharacterBody3D = bodies[second_index]
+			var offset := second.global_position - first.global_position
+			offset.y = 0.0
+			var distance := offset.length()
+			if distance >= 3.7:
+				continue
+			var normal := offset.normalized() if distance > 0.05 else Vector3(1, 0, 0)
+			var push_strength := (3.7 - distance) * 7.5 + 2.0
+			first.velocity -= normal * push_strength
+			second.velocity += normal * push_strength
+
+func _update_ai_stuck_escape(body: CharacterBody3D, wanted: Vector3, target_distance: float, stuck_time: float, delta: float, side: float) -> float:
+	if body.velocity.length() < 1.2 and target_distance > 7.0:
+		stuck_time += delta
+	else:
+		stuck_time = maxf(0.0, stuck_time - delta * 1.8)
+	if stuck_time > 0.72:
+		var sideways := Vector3(-wanted.z, 0, wanted.x) * side
+		body.velocity = -wanted * 7.0 + sideways * 15.0
+		return 0.0
+	return stuck_time
 
 func _resolve_vehicle_collision() -> void:
 	var delta_pos := rival.global_position - player.global_position
@@ -987,6 +1037,9 @@ func _restart_match() -> void:
 	boost_cooldown = 0.0
 	energy_regen_delay = 0.0
 	rival_boost_cooldown = 1.2
+	rival_stuck_time = 0.0
+	ally_stuck_time = 0.0
+	rival_two_stuck_time = 0.0
 	player_boost_active = 0.0
 	rival_boost_active = 0.0
 	rival_stun = 0.0
