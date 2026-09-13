@@ -1,6 +1,7 @@
 extends Node3D
 
-const ARENA_RADIUS := 30.0
+const ARENA_HALF_WIDTH := 58.0
+const ARENA_HALF_DEPTH := 40.0
 const DRIVE_SPEED := 24.0
 const ACCELERATION := 40.0
 const TURN_SPEED := 3.05
@@ -29,14 +30,14 @@ var spinner: Node3D
 var spinner_angle := 0.0
 var spinner_hit_cooldown := 0.0
 var match_finished := false
-var sticky_center := Vector3(10, 0, -7)
+var sticky_center := Vector3(29, 0, -18)
 var rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	rng.randomize()
 	_build_world()
-	player = _make_hovercraft("Elephant", Color("2478d4"), Vector3(0, 0.9, 13))
-	rival = _make_hovercraft("Monkey", Color("e7a51c"), Vector3(0, 0.9, -13))
+	player = _make_hovercraft("Elephant", Color("2478d4"), Vector3(-23, 0.9, 22))
+	rival = _make_hovercraft("Monkey", Color("e7a51c"), Vector3(22, 0.9, -20))
 	rival.rotation.y = PI
 	_build_camera()
 	_build_hud()
@@ -172,12 +173,17 @@ func _resolve_vehicle_collision() -> void:
 		hit_cooldown = 0.25
 
 func _apply_arena_limits(body: CharacterBody3D) -> void:
-	var flat := Vector2(body.global_position.x, body.global_position.z)
-	if flat.length() > ARENA_RADIUS - 2.0:
-		var inward := Vector3(-flat.x, 0, -flat.y).normalized()
-		body.global_position.x = flat.normalized().x * (ARENA_RADIUS - 2.0)
-		body.global_position.z = flat.normalized().y * (ARENA_RADIUS - 2.0)
-		body.velocity += inward * 9.0
+	var bounced := false
+	if absf(body.global_position.x) > ARENA_HALF_WIDTH - 2.0:
+		body.global_position.x = clampf(body.global_position.x, -ARENA_HALF_WIDTH + 2.0, ARENA_HALF_WIDTH - 2.0)
+		body.velocity.x *= -0.48
+		bounced = true
+	if absf(body.global_position.z) > ARENA_HALF_DEPTH - 2.0:
+		body.global_position.z = clampf(body.global_position.z, -ARENA_HALF_DEPTH + 2.0, ARENA_HALF_DEPTH - 2.0)
+		body.velocity.z *= -0.48
+		bounced = true
+	if bounced and body == player:
+		camera_shake = maxf(camera_shake, 0.28)
 
 func _update_camera(delta: float) -> void:
 	var forward := Vector3(sin(player.rotation.y), 0, cos(player.rotation.y))
@@ -216,16 +222,17 @@ func _build_world() -> void:
 	sun.light_energy = 1.25
 	sun.shadow_enabled = true
 	add_child(sun)
-	_make_cylinder_static("Arena", ARENA_RADIUS, 0.7, Vector3(0, -0.4, 0), Color("292543"))
-	# Raised outer barrier segments preserve the arena but leave the horizon visible.
-	for index in range(24):
-		var angle := TAU * float(index) / 24.0
-		var pos := Vector3(sin(angle), 0, cos(angle)) * (ARENA_RADIUS - 0.4)
-		var wall := _make_box_static("Barrier", Vector3(7.2, 2.3, 1.0), pos + Vector3.UP * 0.85, Color("3c315e"))
-		wall.rotation.y = angle
-	# Tactical cover.
-	for pos in [Vector3(-9, 0.7, -4), Vector3(8, 0.7, 5), Vector3(-5, 0.7, 9)]:
-		_make_box_static("Cover", Vector3(4.4, 1.7, 1.5), pos, Color("50456d"))
+	_make_box_static("Arena", Vector3(ARENA_HALF_WIDTH * 2.0, 0.7, ARENA_HALF_DEPTH * 2.0), Vector3(0, -0.4, 0), Color("292543"))
+	# A large rectangular arena creates travel routes instead of circular laps.
+	_make_box_static("NorthBarrier", Vector3(ARENA_HALF_WIDTH * 2.0, 2.7, 1.2), Vector3(0, 0.95, -ARENA_HALF_DEPTH), Color("3c315e"))
+	_make_box_static("SouthBarrier", Vector3(ARENA_HALF_WIDTH * 2.0, 2.7, 1.2), Vector3(0, 0.95, ARENA_HALF_DEPTH), Color("3c315e"))
+	_make_box_static("WestBarrier", Vector3(1.2, 2.7, ARENA_HALF_DEPTH * 2.0), Vector3(-ARENA_HALF_WIDTH, 0.95, 0), Color("3c315e"))
+	_make_box_static("EastBarrier", Vector3(1.2, 2.7, ARENA_HALF_DEPTH * 2.0), Vector3(ARENA_HALF_WIDTH, 0.95, 0), Color("3c315e"))
+	# Landmarks form three recognizable districts with several routes between them.
+	for pos in [Vector3(-34, 0.7, -18), Vector3(-22, 0.7, 4), Vector3(-37, 0.7, 23), Vector3(18, 0.7, 18), Vector3(36, 0.7, 7), Vector3(21, 0.7, -29)]:
+		_make_box_static("Cover", Vector3(7.0, 1.7, 2.0), pos, Color("50456d"))
+	for pos in [Vector3(-45, 0.5, 0), Vector3(43, 0.5, -27), Vector3(5, 0.5, 29)]:
+		_make_cylinder_static("Landmark", 3.0, 1.1, pos, Color("44326d"))
 	# Sticky plasma: safe but damaging and slow.
 	var plasma := MeshInstance3D.new()
 	var plasma_mesh := CylinderMesh.new()
@@ -361,8 +368,8 @@ func _restart_match() -> void:
 	player_boost_active = 0.0
 	rival_boost_active = 0.0
 	rival_stun = 0.0
-	player.global_position = Vector3(0, 0.9, 13)
-	rival.global_position = Vector3(0, 0.9, -13)
+	player.global_position = Vector3(-23, 0.9, 22)
+	rival.global_position = Vector3(22, 0.9, -20)
 	player.rotation.y = PI
 	rival.rotation.y = 0.0
 	player.velocity = Vector3.ZERO
