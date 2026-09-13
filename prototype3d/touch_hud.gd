@@ -18,6 +18,7 @@ var _brace_touch := -1
 var _camera_touch := -1
 var _stick_origin := Vector2.ZERO
 var _stick_knob := Vector2.ZERO
+var _camera_last_position := Vector2.ZERO
 
 const CAMERA_DRAG_SENSITIVITY := 0.006
 const CAMERA_YAW_LIMIT := deg_to_rad(120.0)
@@ -67,6 +68,8 @@ func _input(event: InputEvent) -> void:
 				brace_pressed = true
 			elif event.position.x >= size.x * 0.48 and _camera_touch == -1:
 				_camera_touch = event.index
+				_camera_last_position = event.position
+				camera_yaw_target = camera_yaw_offset
 		else:
 			if event.index == _move_touch:
 				_move_touch = -1
@@ -86,9 +89,13 @@ func _input(event: InputEvent) -> void:
 				move_vector = move_vector.normalized()
 			_stick_knob = _stick_origin + move_vector * 72.0
 		elif event.index == _camera_touch:
-			var safe_drag := clampf(event.relative.x, -80.0, 80.0)
+			# ScreenDrag.relative can become unreliable with a second finger on
+			# the movement stick. Track this touch's own position instead.
+			var drag_delta := event.position - _camera_last_position
+			_camera_last_position = event.position
+			var safe_drag := clampf(drag_delta.x, -80.0, 80.0)
 			camera_yaw_target = clampf(
-				camera_yaw_target + safe_drag * CAMERA_DRAG_SENSITIVITY,
+				camera_yaw_target - safe_drag * CAMERA_DRAG_SENSITIVITY,
 				-CAMERA_YAW_LIMIT,
 				CAMERA_YAW_LIMIT
 			)
