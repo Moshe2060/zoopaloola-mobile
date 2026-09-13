@@ -189,9 +189,11 @@ func _apply_arena_limits(body: CharacterBody3D) -> void:
 		camera_shake = maxf(camera_shake, 0.28)
 
 func _update_camera(delta: float) -> void:
-	var forward := Vector3(sin(player.rotation.y), 0, cos(player.rotation.y))
-	var desired_pos := player.global_position - forward * 12.5 + Vector3.UP * 7.2
-	var target := player.global_position + forward * 5.0 + Vector3.UP * 0.7
+	var camera_offset: float = hud.camera_yaw_offset if hud != null else 0.0
+	var view_angle := player.rotation.y + camera_offset
+	var view_forward := Vector3(sin(view_angle), 0, cos(view_angle))
+	var desired_pos := player.global_position - view_forward * 12.5 + Vector3.UP * 7.2
+	var target := player.global_position + view_forward * 5.0 + Vector3.UP * 0.7
 	var query := PhysicsRayQueryParameters3D.create(target, desired_pos, 1, [player.get_rid()])
 	var collision := get_world_3d().direct_space_state.intersect_ray(query)
 	if not collision.is_empty():

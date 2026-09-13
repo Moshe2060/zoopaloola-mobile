@@ -177,6 +177,22 @@ jobs:
           test -s build/index.html
           test -s build/index.wasm
           test -s build/index.pck
+          # Give every prototype payload a commit-specific URL. A query string
+          # on index.html alone does not invalidate Godot's index.pck/index.wasm
+          # cache, which can leave phones running the previous prototype.
+          PROTOTYPE_BUILD="prototype-${GITHUB_SHA::8}"
+          mv build/index.js "build/${PROTOTYPE_BUILD}.js"
+          mv build/index.wasm "build/${PROTOTYPE_BUILD}.wasm"
+          mv build/index.pck "build/${PROTOTYPE_BUILD}.pck"
+          sed -i \
+            -e "s#src=\"index.js\"#src=\"${PROTOTYPE_BUILD}.js\"#" \
+            -e "s#\"executable\":\"index\"#\"executable\":\"${PROTOTYPE_BUILD}\"#" \
+            -e "s#\"index.pck\"#\"${PROTOTYPE_BUILD}.pck\"#g" \
+            -e "s#\"index.wasm\"#\"${PROTOTYPE_BUILD}.wasm\"#g" \
+            build/index.html
+          grep -q "${PROTOTYPE_BUILD}.js" build/index.html
+          grep -q "${PROTOTYPE_BUILD}.pck" build/index.html
+          grep -q "${PROTOTYPE_BUILD}.wasm" build/index.html
           mkdir -p "$GITHUB_WORKSPACE/zoopaloola_godot_mobile/build/web/prototype3d"
           cp -R build/. "$GITHUB_WORKSPACE/zoopaloola_godot_mobile/build/web/prototype3d/"
 

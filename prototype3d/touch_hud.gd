@@ -9,19 +9,29 @@ var enemy_health := 100.0
 var exhausted := false
 var result_text := ""
 var restart_pressed := false
+var camera_yaw_offset := 0.0
 
 var _move_touch := -1
 var _boost_touch := -1
 var _brace_touch := -1
+var _camera_touch := -1
 var _stick_origin := Vector2.ZERO
 var _stick_knob := Vector2.ZERO
+
+const CAMERA_DRAG_SENSITIVITY := 0.006
+const CAMERA_YAW_LIMIT := deg_to_rad(120.0)
+const CAMERA_RETURN_SPEED := 5.5
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	queue_redraw()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _camera_touch == -1:
+		camera_yaw_offset = lerp_angle(camera_yaw_offset, 0.0, 1.0 - exp(-delta * CAMERA_RETURN_SPEED))
+		if absf(camera_yaw_offset) < 0.002:
+			camera_yaw_offset = 0.0
 	queue_redraw()
 
 func consume_boost() -> bool:
@@ -51,6 +61,8 @@ func _input(event: InputEvent) -> void:
 			elif event.position.distance_to(Vector2(size.x - 250.0, size.y - 80.0)) < 58.0:
 				_brace_touch = event.index
 				brace_pressed = true
+			elif event.position.x >= size.x * 0.48 and _camera_touch == -1:
+				_camera_touch = event.index
 		else:
 			if event.index == _move_touch:
 				_move_touch = -1
@@ -60,12 +72,21 @@ func _input(event: InputEvent) -> void:
 			if event.index == _brace_touch:
 				_brace_touch = -1
 				brace_pressed = false
-	elif event is InputEventScreenDrag and event.index == _move_touch:
-		_stick_knob = event.position
-		move_vector = (_stick_knob - _stick_origin) / 72.0
-		if move_vector.length() > 1.0:
-			move_vector = move_vector.normalized()
-		_stick_knob = _stick_origin + move_vector * 72.0
+			if event.index == _camera_touch:
+				_camera_touch = -1
+	elif event is InputEventScreenDrag:
+		if event.index == _move_touch:
+			_stick_knob = event.position
+			move_vector = (_stick_knob - _stick_origin) / 72.0
+			if move_vector.length() > 1.0:
+				move_vector = move_vector.normalized()
+			_stick_knob = _stick_origin + move_vector * 72.0
+		elif event.index == _camera_touch:
+			camera_yaw_offset = clampf(
+				camera_yaw_offset + event.relative.x * CAMERA_DRAG_SENSITIVITY,
+				-CAMERA_YAW_LIMIT,
+				CAMERA_YAW_LIMIT
+			)
 
 func _draw() -> void:
 	var size := get_viewport_rect().size
