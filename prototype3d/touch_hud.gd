@@ -91,9 +91,9 @@ func _input(event: InputEvent) -> void:
 		elif event.index == _camera_touch:
 			# ScreenDrag.relative can become unreliable with a second finger on
 			# the movement stick. Track this touch's own position instead.
-			var drag_delta := event.position - _camera_last_position
+			var drag_delta: Vector2 = event.position - _camera_last_position
 			_camera_last_position = event.position
-			var safe_drag := clampf(drag_delta.x, -80.0, 80.0)
+			var safe_drag: float = clampf(drag_delta.x, -80.0, 80.0)
 			camera_yaw_target = clampf(
 				camera_yaw_target - safe_drag * CAMERA_DRAG_SENSITIVITY,
 				-CAMERA_YAW_LIMIT,
