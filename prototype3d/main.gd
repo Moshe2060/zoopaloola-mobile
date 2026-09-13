@@ -34,6 +34,7 @@ var spinner_angle := 0.0
 var spinner_hit_cooldown := 0.0
 var gravity_trap: Node3D
 var gravity_trap_center := Vector3(-72, 0, -50)
+var gravity_feedback_cooldowns := {"player": 0.0, "rival": 0.0}
 var spike_trap: Node3D
 var spike_trap_center := Vector3(72, 0, 42)
 var spike_hit_cooldowns := {"player": 0.0, "rival": 0.0}
@@ -65,6 +66,8 @@ func _physics_process(delta: float) -> void:
 	spike_hit_cooldowns.rival = maxf(0.0, spike_hit_cooldowns.rival - delta)
 	laser_hit_cooldowns.player = maxf(0.0, laser_hit_cooldowns.player - delta)
 	laser_hit_cooldowns.rival = maxf(0.0, laser_hit_cooldowns.rival - delta)
+	gravity_feedback_cooldowns.player = maxf(0.0, gravity_feedback_cooldowns.player - delta)
+	gravity_feedback_cooldowns.rival = maxf(0.0, gravity_feedback_cooldowns.rival - delta)
 	energy_regen_delay = maxf(0.0, energy_regen_delay - delta)
 	player_boost_active = maxf(0.0, player_boost_active - delta)
 	rival_boost_active = maxf(0.0, rival_boost_active - delta)
@@ -173,6 +176,7 @@ func _resolve_vehicle_collision() -> void:
 		player.velocity = -normal * 5.5
 		rival_stun = 0.58
 		rival_health = maxf(0.0, rival_health - 12.0)
+		_show_damage(rival, 12.0, Color("ff9f35"))
 		player_boost_active = 0.0
 		camera_shake = 1.0
 		_spawn_impact_flash((player.global_position + rival.global_position) * 0.5)
@@ -185,6 +189,7 @@ func _resolve_vehicle_collision() -> void:
 		player.velocity = -normal * 30.0 * (1.35 - resistance * 0.45)
 		player.global_position -= normal * 0.28
 		player_health = maxf(0.0, player_health - 9.0)
+		_show_damage(player, 9.0, Color("ff9f35"))
 		rival.velocity = normal * 3.0
 		rival_boost_active = 0.0
 		camera_shake = 0.9
@@ -204,6 +209,10 @@ func _resolve_vehicle_collision() -> void:
 	if hit_cooldown <= 0.0 and player_force + rival_force > 11.0:
 		player_health = maxf(0.0, player_health - rival_force * 0.34)
 		rival_health = maxf(0.0, rival_health - player_force * 0.34)
+		if rival_force > 2.5:
+			_show_damage(player, rival_force * 0.34, Color("ffbd55"))
+		if player_force > 2.5:
+			_show_damage(rival, player_force * 0.34, Color("ffbd55"))
 		camera_shake = minf(1.0, (player_force + rival_force) / 28.0)
 		_spawn_impact_flash((player.global_position + rival.global_position) * 0.5)
 		hit_cooldown = 0.25
@@ -250,6 +259,15 @@ func _update_hud() -> void:
 	hud.player_map_position = Vector2(player.global_position.x, player.global_position.z)
 	hud.rival_map_position = Vector2(rival.global_position.x, rival.global_position.z)
 	hud.player_map_heading = player.rotation.y
+	var camera: Camera3D = camera_rig.get_child(0)
+	var rival_behind := camera.is_position_behind(rival.global_position)
+	var rival_screen := camera.unproject_position(rival.global_position + Vector3.UP * 2.7)
+	var viewport_size := get_viewport().get_visible_rect().size
+	hud.rival_screen_position = rival_screen
+	hud.rival_on_screen = not rival_behind and Rect2(Vector2(32, 96), viewport_size - Vector2(64, 150)).has_point(rival_screen)
+	var camera_right := camera.global_transform.basis.x
+	var to_rival := rival.global_position - camera.global_position
+	hud.rival_warning_side = 1.0 if to_rival.dot(camera_right) >= 0.0 else -1.0
 
 func _build_world() -> void:
 	var world_env := WorldEnvironment.new()
@@ -476,6 +494,7 @@ func _update_spinner(delta: float) -> void:
 					camera_shake = 0.8
 				else:
 					rival_health = maxf(0.0, rival_health - 8.0)
+				_show_damage(body, 8.0, Color("ff9f35"))
 				_spawn_impact_flash(body.global_position + Vector3.UP * 0.4)
 				spinner_hit_cooldown = 0.48
 				return
@@ -509,11 +528,15 @@ func _update_gravity_trap(delta: float) -> void:
 		var pull_strength := lerpf(7.0, 29.0, 1.0 - distance / 15.0)
 		body.velocity += offset.normalized() * pull_strength * delta
 		if distance < 6.0:
+			var key := "player" if body == player else "rival"
 			if body == player:
 				player_health = maxf(0.0, player_health - 5.5 * delta)
 				camera_shake = maxf(camera_shake, 0.12)
 			else:
 				rival_health = maxf(0.0, rival_health - 5.5 * delta)
+			if gravity_feedback_cooldowns[key] <= 0.0:
+				_show_damage(body, 4.0, Color("b54cff"))
+				gravity_feedback_cooldowns[key] = 0.75
 
 func _build_spike_trap() -> void:
 	spike_trap = Node3D.new()
@@ -565,6 +588,7 @@ func _update_spike_trap() -> void:
 			camera_shake = maxf(camera_shake, 0.55)
 		else:
 			rival_health = maxf(0.0, rival_health - 7.0)
+		_show_damage(body, 7.0, Color("ff4168"))
 		spike_hit_cooldowns[key] = 0.72
 		_spawn_impact_flash(body.global_position + Vector3.UP * 0.35)
 
@@ -612,6 +636,7 @@ func _update_laser_trap(delta: float) -> void:
 			camera_shake = maxf(camera_shake, 0.7)
 		else:
 			rival_health = maxf(0.0, rival_health - 9.0)
+		_show_damage(body, 9.0, Color("ffad35"))
 		laser_hit_cooldowns[key] = 0.85
 		_spawn_impact_flash(body.global_position + Vector3.UP * 0.5)
 
@@ -677,6 +702,7 @@ func _collect_pickup(body: CharacterBody3D, kind: String) -> void:
 			energy_regen_delay = 0.0
 		else:
 			player_turbo = 4.5
+		hud.show_pickup(kind)
 	else:
 		if kind == "health":
 			rival_health = minf(100.0, rival_health + 26.0)
@@ -685,6 +711,7 @@ func _collect_pickup(body: CharacterBody3D, kind: String) -> void:
 		else:
 			rival_turbo = 4.5
 	_spawn_pickup_flash(body.global_position, kind)
+	_play_tone(880.0 if kind == "turbo" else (720.0 if kind == "energy" else 620.0), 0.14, 0.2)
 
 func _nearest_active_pickup(from: Vector3, kind: String) -> Vector3:
 	if kind == "":
@@ -722,6 +749,51 @@ func _spawn_impact_flash(position: Vector3) -> void:
 	tween.tween_property(flash, "light_energy", 0.0, 0.18)
 	tween.tween_callback(flash.queue_free)
 
+func _show_damage(body: CharacterBody3D, amount: float, color: Color) -> void:
+	var label := Label3D.new()
+	label.text = "-%d" % maxi(1, roundi(amount))
+	label.font_size = 48
+	label.modulate = color
+	label.outline_size = 10
+	label.outline_modulate = Color(0.03, 0.02, 0.08, 0.9)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.global_position = body.global_position + Vector3.UP * 2.5
+	add_child(label)
+	var hit_light := OmniLight3D.new()
+	hit_light.position = body.global_position + Vector3.UP * 0.8
+	hit_light.light_color = color
+	hit_light.light_energy = 4.5
+	hit_light.omni_range = 5.5
+	add_child(hit_light)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(label, "global_position", label.global_position + Vector3.UP * 2.0, 0.75)
+	tween.tween_property(label, "modulate:a", 0.0, 0.75)
+	tween.tween_property(hit_light, "light_energy", 0.0, 0.18)
+	tween.chain().tween_callback(label.queue_free)
+	tween.chain().tween_callback(hit_light.queue_free)
+	_play_tone(155.0, 0.09, 0.14)
+
+func _play_tone(frequency: float, duration: float, volume: float) -> void:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = 22050
+	stream.stereo = false
+	var frames := int(stream.mix_rate * duration)
+	var bytes := PackedByteArray()
+	bytes.resize(frames * 2)
+	for index in range(frames):
+		var fade := 1.0 - float(index) / float(frames)
+		var sample := int(sin(TAU * frequency * float(index) / float(stream.mix_rate)) * 32767.0 * volume * fade)
+		bytes[index * 2] = sample & 0xff
+		bytes[index * 2 + 1] = (sample >> 8) & 0xff
+	stream.data = bytes
+	var audio := AudioStreamPlayer.new()
+	audio.stream = stream
+	audio.finished.connect(audio.queue_free)
+	add_child(audio)
+	audio.play()
+
 func _finish_match() -> void:
 	match_finished = true
 	player.velocity = Vector3.ZERO
@@ -744,6 +816,7 @@ func _restart_match() -> void:
 	rival_stun = 0.0
 	spike_hit_cooldowns = {"player": 0.0, "rival": 0.0}
 	laser_hit_cooldowns = {"player": 0.0, "rival": 0.0}
+	gravity_feedback_cooldowns = {"player": 0.0, "rival": 0.0}
 	for index in range(pickups.size()):
 		pickups[index].active = true
 		pickups[index].respawn = 0.0
