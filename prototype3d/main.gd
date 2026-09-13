@@ -1,10 +1,10 @@
 extends Node3D
 
 const ARENA_RADIUS := 30.0
-const DRIVE_SPEED := 15.0
-const ACCELERATION := 22.0
-const TURN_SPEED := 2.65
-const BOOST_SPEED := 24.0
+const DRIVE_SPEED := 24.0
+const ACCELERATION := 40.0
+const TURN_SPEED := 3.05
+const BOOST_SPEED := 31.0
 const BOOST_COST := 34.0
 const ENERGY_REGEN := 23.0
 const ENERGY_REGEN_DELAY := 1.15
@@ -20,6 +20,9 @@ var energy := 100.0
 var boost_cooldown := 0.0
 var hit_cooldown := 0.0
 var rival_boost_cooldown := 1.2
+var player_boost_active := 0.0
+var rival_boost_active := 0.0
+var rival_stun := 0.0
 var energy_regen_delay := 0.0
 var camera_shake := 0.0
 var spinner: Node3D
@@ -45,6 +48,9 @@ func _physics_process(delta: float) -> void:
 	hit_cooldown = maxf(0.0, hit_cooldown - delta)
 	spinner_hit_cooldown = maxf(0.0, spinner_hit_cooldown - delta)
 	energy_regen_delay = maxf(0.0, energy_regen_delay - delta)
+	player_boost_active = maxf(0.0, player_boost_active - delta)
+	rival_boost_active = maxf(0.0, rival_boost_active - delta)
+	rival_stun = maxf(0.0, rival_stun - delta)
 	rival_boost_cooldown -= delta
 	if match_finished:
 		var restart_requested: bool = Input.is_action_just_pressed("ui_accept") or (hud != null and hud.consume_restart())
@@ -93,12 +99,17 @@ func _update_player(delta: float) -> void:
 		player.velocity += forward * BOOST_SPEED
 		energy -= BOOST_COST
 		boost_cooldown = 0.55
+		player_boost_active = 0.62
 		energy_regen_delay = ENERGY_REGEN_DELAY
 	if energy_regen_delay <= 0.0:
 		energy = minf(100.0, energy + ENERGY_REGEN * delta)
 	player.move_and_slide()
 
 func _update_rival(delta: float) -> void:
+	if rival_stun > 0.0:
+		rival.velocity = rival.velocity.move_toward(Vector3.ZERO, delta * 8.0)
+		rival.move_and_slide()
+		return
 	var offset := player.global_position - rival.global_position
 	var distance := offset.length()
 	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
@@ -110,6 +121,7 @@ func _update_rival(delta: float) -> void:
 	rival.velocity.z = move_toward(rival.velocity.z, target_velocity.z, 18.0 * delta)
 	if rival_boost_cooldown <= 0.0 and distance < 12.0:
 		rival.velocity += desired * 20.0
+		rival_boost_active = 0.5
 		rival_boost_cooldown = rng.randf_range(2.4, 4.0)
 	if rival.global_position.distance_to(sticky_center) < 4.6:
 		rival.velocity *= 0.92
@@ -119,9 +131,33 @@ func _update_rival(delta: float) -> void:
 func _resolve_vehicle_collision() -> void:
 	var delta_pos := rival.global_position - player.global_position
 	var distance := delta_pos.length()
-	if distance > 3.0 or distance < 0.01:
+	if distance > 3.35 or distance < 0.01:
 		return
 	var normal := delta_pos.normalized()
+	if player_boost_active > 0.0:
+		rival.velocity = normal * 34.0
+		rival.global_position += normal * 0.32
+		player.velocity = -normal * 5.5
+		rival_stun = 0.58
+		rival_health = maxf(0.0, rival_health - 12.0)
+		player_boost_active = 0.0
+		camera_shake = 1.0
+		_spawn_impact_flash((player.global_position + rival.global_position) * 0.5)
+		hit_cooldown = 0.3
+		return
+	if rival_boost_active > 0.0:
+		var resistance := 0.48 if energy <= 1.0 else 0.82
+		if hud != null and hud.brace_pressed and energy > 0.0:
+			resistance = 1.25
+		player.velocity = -normal * 30.0 * (1.35 - resistance * 0.45)
+		player.global_position -= normal * 0.28
+		player_health = maxf(0.0, player_health - 9.0)
+		rival.velocity = normal * 3.0
+		rival_boost_active = 0.0
+		camera_shake = 0.9
+		_spawn_impact_flash((player.global_position + rival.global_position) * 0.5)
+		hit_cooldown = 0.3
+		return
 	var player_force := maxf(0.0, player.velocity.dot(normal))
 	var rival_force := maxf(0.0, rival.velocity.dot(-normal))
 	var brace: bool = (hud != null and hud.brace_pressed) or Input.is_key_pressed(KEY_SHIFT)
@@ -204,16 +240,8 @@ func _build_world() -> void:
 	plasma.position = sticky_center + Vector3(0, 0.06, 0)
 	plasma.material_override = _material(Color("19d8d0"), Color("087d98"), 1.7)
 	add_child(plasma)
-	# Center reactor marker.
-	var reactor := MeshInstance3D.new()
-	var reactor_mesh := CylinderMesh.new()
-	reactor_mesh.top_radius = 2.0
-	reactor_mesh.bottom_radius = 2.4
-	reactor_mesh.height = 1.0
-	reactor.mesh = reactor_mesh
-	reactor.position = Vector3(0, 0.5, 0)
-	reactor.material_override = _material(Color("5e3da0"), Color("912cff"), 2.2)
-	add_child(reactor)
+	# The center hub is a real obstacle, not only a decorative mesh.
+	_make_cylinder_static("ReactorCollision", 2.35, 1.7, Vector3(0, 0.72, 0), Color("5e3da0"))
 	_build_spinner()
 
 func _make_hovercraft(title: String, color: Color, position: Vector3) -> CharacterBody3D:
@@ -334,6 +362,9 @@ func _restart_match() -> void:
 	boost_cooldown = 0.0
 	energy_regen_delay = 0.0
 	rival_boost_cooldown = 1.2
+	player_boost_active = 0.0
+	rival_boost_active = 0.0
+	rival_stun = 0.0
 	player.global_position = Vector3(0, 0.9, 13)
 	rival.global_position = Vector3(0, 0.9, -13)
 	player.rotation.y = PI
