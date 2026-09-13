@@ -305,8 +305,7 @@ func _resolve_vehicle_collision() -> void:
 		rival.global_position += normal * 0.32
 		player.velocity = -normal * 5.5
 		rival_stun = 0.58
-		rival_health = maxf(0.0, rival_health - 12.0)
-		_show_damage(rival, 12.0, Color("ff9f35"))
+		_damage_body(rival, 12.0, Color("ff9f35"))
 		player_boost_active = 0.0
 		camera_shake = 1.0
 		_spawn_impact_flash((player.global_position + rival.global_position) * 0.5)
@@ -318,8 +317,7 @@ func _resolve_vehicle_collision() -> void:
 			resistance = 1.25
 		player.velocity = -normal * 30.0 * (1.35 - resistance * 0.45)
 		player.global_position -= normal * 0.28
-		player_health = maxf(0.0, player_health - 9.0)
-		_show_damage(player, 9.0, Color("ff9f35"))
+		_damage_body(player, 9.0, Color("ff9f35"))
 		rival.velocity = normal * 3.0
 		rival_boost_active = 0.0
 		camera_shake = 0.9
@@ -335,14 +333,12 @@ func _resolve_vehicle_collision() -> void:
 		energy = maxf(0.0, energy - BRACE_DRAIN * get_physics_process_delta_time())
 		energy_regen_delay = ENERGY_REGEN_DELAY
 	player.velocity -= normal * rival_force * (1.25 - player_resistance * 0.45)
-	rival.velocity += normal * player_force * 0.78
+	rival.velocity += normal * player_force * 0.95
 	if hit_cooldown <= 0.0 and player_force + rival_force > 11.0:
-		player_health = maxf(0.0, player_health - rival_force * 0.34)
-		rival_health = maxf(0.0, rival_health - player_force * 0.34)
 		if rival_force > 2.5:
-			_show_damage(player, rival_force * 0.34, Color("ffbd55"))
+			_damage_body(player, clampf(rival_force * 0.55, 2.0, 12.0), Color("ff7042"))
 		if player_force > 2.5:
-			_show_damage(rival, player_force * 0.34, Color("ffbd55"))
+			_damage_body(rival, clampf(player_force * 0.62, 2.0, 14.0), Color("ffbd55"))
 		camera_shake = minf(1.0, (player_force + rival_force) / 28.0)
 		_spawn_impact_flash((player.global_position + rival.global_position) * 0.5)
 		hit_cooldown = 0.25
@@ -369,16 +365,18 @@ func _resolve_extra_team_collisions() -> void:
 		var orange_force := maxf(0.0, orange.velocity.dot(-normal))
 		if extra_collision_cooldowns[key] > 0.0 or maxf(blue_force, orange_force) < 5.0:
 			continue
-		var orange_damage := clampf(blue_force * 0.48, 2.0, 12.0)
-		var blue_damage := clampf(orange_force * 0.42, 2.0, 10.0)
+		var orange_damage := clampf(blue_force * 0.62, 2.0, 14.0) if blue_force > 2.5 else 0.0
+		var blue_damage := clampf(orange_force * 0.55, 2.0, 12.0) if orange_force > 2.5 else 0.0
 		if blue == player and player_boost_active > 0.0:
 			orange_damage = 12.0
 			player_boost_active = 0.0
 			camera_shake = 0.9
-		_damage_body(orange, orange_damage, Color("ff9f35"))
-		_damage_body(blue, blue_damage, Color("ff7042"))
-		blue.velocity -= normal * (4.0 + orange_force * 0.35)
-		orange.velocity += normal * (4.0 + blue_force * 0.42)
+		if orange_damage > 0.0:
+			_damage_body(orange, orange_damage, Color("ffbd55"))
+		if blue_damage > 0.0:
+			_damage_body(blue, blue_damage, Color("ff7042"))
+		blue.velocity -= normal * (5.5 + orange_force * 0.45)
+		orange.velocity += normal * (5.5 + blue_force * 0.52)
 		_spawn_impact_flash((blue.global_position + orange.global_position) * 0.5)
 		extra_collision_cooldowns[key] = 0.45
 
@@ -402,6 +400,22 @@ func _damage_body(body: CharacterBody3D, amount: float, color: Color) -> void:
 	else:
 		rival_two_health = maxf(0.0, rival_two_health - amount)
 	_show_damage(body, amount, color)
+	_spawn_damage_pulse(body.global_position, color)
+	_play_tone(145.0 + minf(amount, 14.0) * 7.0, 0.07, 0.1)
+
+func _spawn_damage_pulse(position: Vector3, color: Color) -> void:
+	var ring := MeshInstance3D.new()
+	var mesh := TorusMesh.new()
+	mesh.inner_radius = 0.9
+	mesh.outer_radius = 1.12
+	ring.mesh = mesh
+	ring.position = position + Vector3.UP * 0.24
+	ring.material_override = _material(color.darkened(0.2), color, 4.0)
+	add_child(ring)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(ring, "scale", Vector3.ONE * 2.8, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(ring, "transparency", 1.0, 0.2)
+	tween.chain().tween_callback(ring.queue_free)
 
 func _update_knockouts() -> void:
 	_set_combatant_active(ally, ally_health > 0.0)
@@ -566,6 +580,12 @@ func _build_arena_architecture() -> void:
 		_make_cylinder_static("ArenaPylon", 3.8, 2.4, pos, Color("332850"))
 		_make_cylinder_visual(2.2, 6.5, pos + Vector3(0, 4.4, 0), Color("24203f"), Color("805cff"), 1.3)
 		_make_cylinder_visual(0.65, 1.0, pos + Vector3(0, 8.1, 0), Color("bdefff"), Color("6ee7ff"), 3.5)
+	# Large team towers and vegetation give the blockout a real world silhouette.
+	_make_team_tower(Vector3(-126, 0, 0), Color("2ebfff"))
+	_make_team_tower(Vector3(126, 0, 0), Color("ff6a42"))
+	for pos in [Vector3(-119, 0, -57), Vector3(-111, 0, 66), Vector3(-84, 0, -78), Vector3(-57, 0, 84), Vector3(-12, 0, -87), Vector3(18, 0, 86), Vector3(59, 0, -83), Vector3(88, 0, 78), Vector3(116, 0, -58), Vector3(119, 0, 58)]:
+		_make_tree(pos, rng.randf_range(0.82, 1.18))
+	_build_cliff_edge()
 	# Raised visual islands give each hazard a designed location without changing driving height.
 	_make_cylinder_visual(13.0, 0.07, gravity_trap_center + Vector3(0, 0.035, 0), Color("30254d"), Color("9f56ff"), 1.0)
 	_make_cylinder_visual(13.0, 0.07, spike_trap_center + Vector3(0, 0.035, 0), Color("4b2238"), Color("ff416d"), 1.0)
@@ -593,6 +613,31 @@ func _make_cover_arch(position: Vector3, yaw: float, color: Color) -> void:
 		pillar.rotation.y = yaw
 	var roof := _make_box_static("ShelterRoof", Vector3(14.5, 1.2, 5.2), position + Vector3(0, 5.0, 0), color.darkened(0.12))
 	roof.rotation.y = yaw
+
+func _make_team_tower(position: Vector3, glow: Color) -> void:
+	_make_cylinder_static("TeamTowerBase", 7.0, 2.8, position + Vector3(0, 0.9, 0), Color("3e4654"))
+	_make_cylinder_visual(5.2, 9.0, position + Vector3(0, 6.6, 0), Color("34394a"), glow.darkened(0.45), 0.75)
+	_make_cylinder_visual(6.3, 0.7, position + Vector3(0, 11.0, 0), Color("4d5764"), glow, 1.8)
+	_make_cylinder_visual(2.1, 3.2, position + Vector3(0, 12.8, 0), glow.darkened(0.25), glow, 2.5)
+	for side in [-1.0, 1.0]:
+		_make_box_visual(Vector3(0.45, 6.0, 1.0), position + Vector3(side * 5.1, 6.5, 0), glow.darkened(0.25), glow, 2.2)
+
+func _make_tree(position: Vector3, size_factor: float) -> void:
+	_make_cylinder_visual(0.75 * size_factor, 4.8 * size_factor, position + Vector3(0, 2.4 * size_factor, 0), Color("714d32"), Color("3b251c"), 0.12)
+	add_child(_make_sphere(position + Vector3(0, 5.3, 0) * size_factor, Vector3(3.4, 2.4, 3.4) * size_factor, _material(Color("2d8a52"), Color("3ba961"), 0.28)))
+	add_child(_make_sphere(position + Vector3(2.0, 5.0, 0.8) * size_factor, Vector3(2.3, 1.8, 2.2) * size_factor, _material(Color("43a85c"), Color("56be6b"), 0.24)))
+	add_child(_make_sphere(position + Vector3(-1.8, 5.1, -0.6) * size_factor, Vector3(2.4, 1.9, 2.3) * size_factor, _material(Color("26784c"), Color("349457"), 0.22)))
+
+func _build_cliff_edge() -> void:
+	for x in [-120.0, -90.0, -60.0, -30.0, 0.0, 30.0, 60.0, 90.0, 120.0]:
+		_make_cylinder_visual(9.0, 5.5, Vector3(x, -2.5, -103), Color("394452"), Color("283040"), 0.12)
+		_make_cylinder_visual(9.0, 5.5, Vector3(x, -2.5, 103), Color("394452"), Color("283040"), 0.12)
+	for z in [-75.0, -45.0, -15.0, 15.0, 45.0, 75.0]:
+		_make_cylinder_visual(9.0, 5.5, Vector3(-143, -2.5, z), Color("394452"), Color("283040"), 0.12)
+		_make_cylinder_visual(9.0, 5.5, Vector3(143, -2.5, z), Color("394452"), Color("283040"), 0.12)
+	# Bright drops at the arena edge suggest waterfalls without adding gameplay collision.
+	for x in [-94.0, -18.0, 64.0, 112.0]:
+		_make_box_visual(Vector3(8.0, 5.8, 0.35), Vector3(x, -3.0, 103.5), Color("4daee5"), Color("6bdcff"), 1.55)
 
 func _make_hovercraft(title: String, color: Color, position: Vector3) -> CharacterBody3D:
 	var body := CharacterBody3D.new()
