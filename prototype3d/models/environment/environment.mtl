@@ -37,3 +37,25 @@ newmtl energy_orange
 Kd 1.0 0.30 0.08
 Ke 0.72 0.12 0.02
 Ns 120
+newmtl spike_base
+Kd 0.28 0.04 0.11
+Ke 0.30 0.01 0.06
+newmtl spike
+Kd 0.72 0.06 0.18
+Ke 0.35 0.02 0.09
+Ns 90
+newmtl gravity_dark
+Kd 0.10 0.04 0.22
+Ke 0.08 0.01 0.18
+newmtl gravity
+Kd 0.55 0.10 0.95
+Ke 0.32 0.03 0.72
+Ns 110
+newmtl laser
+Kd 1.0 0.10 0.08
+Ke 0.80 0.02 0.02
+Ns 140
+newmtl spinner
+Kd 0.38 0.20 0.48
+Ke 0.62 0.18 0.03
+Ns 80

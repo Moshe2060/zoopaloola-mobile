@@ -790,18 +790,9 @@ func _build_hud() -> void:
 func _build_spinner() -> void:
 	spinner = Node3D.new()
 	spinner.name = "RotatingBumper"
-	spinner.position = Vector3(0, 0.72, 0)
+	spinner.position = Vector3.ZERO
 	add_child(spinner)
-	for index in range(3):
-		var arm := MeshInstance3D.new()
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(1.05, 0.72, 7.2)
-		arm.mesh = mesh
-		var angle := TAU * float(index) / 3.0
-		arm.position = Vector3(sin(angle) * 4.5, 0, cos(angle) * 4.5)
-		arm.rotation.y = angle
-		arm.material_override = _material(Color("5d426f"), Color("ff8b21"), 0.8)
-		spinner.add_child(arm)
+	spinner.add_child(_environment_mesh("res://models/environment/spinner_hub.obj"))
 
 func _update_spinner(delta: float) -> void:
 	spinner_angle = fmod(spinner_angle + delta * 0.72, TAU)
@@ -833,17 +824,7 @@ func _build_gravity_trap() -> void:
 	gravity_trap.name = "GravityMagnet"
 	gravity_trap.position = gravity_trap_center + Vector3.UP * 0.08
 	add_child(gravity_trap)
-	for index in range(3):
-		var ring := MeshInstance3D.new()
-		var mesh := CylinderMesh.new()
-		var radius := 6.5 - float(index) * 1.65
-		mesh.top_radius = radius
-		mesh.bottom_radius = radius
-		mesh.height = 0.055 + float(index) * 0.025
-		ring.mesh = mesh
-		ring.position.y = float(index) * 0.055
-		ring.material_override = _material(Color("34205e").lightened(float(index) * 0.08), Color("a338ff"), 1.6 + float(index) * 0.35)
-		gravity_trap.add_child(ring)
+	gravity_trap.add_child(_environment_mesh("res://models/environment/gravity_core.obj"))
 
 func _update_gravity_trap(delta: float) -> void:
 	gravity_trap.rotation.y += delta * 0.9
@@ -872,30 +853,7 @@ func _build_spike_trap() -> void:
 	spike_trap.name = "SpikeField"
 	spike_trap.position = spike_trap_center
 	add_child(spike_trap)
-	var warning := MeshInstance3D.new()
-	var warning_mesh := CylinderMesh.new()
-	warning_mesh.top_radius = 8.0
-	warning_mesh.bottom_radius = 8.0
-	warning_mesh.height = 0.06
-	warning.mesh = warning_mesh
-	warning.position.y = 0.04
-	warning.material_override = _material(Color("53192e"), Color("ff245f"), 1.25)
-	spike_trap.add_child(warning)
-	var spike_material := _material(Color("9a304c"), Color("ff496e"), 0.7)
-	for ring in range(3):
-		var radius := 2.0 + float(ring) * 2.15
-		var count := 6 + ring * 4
-		for index in range(count):
-			var angle := TAU * float(index) / float(count) + float(ring) * 0.28
-			var spike := MeshInstance3D.new()
-			var mesh := CylinderMesh.new()
-			mesh.top_radius = 0.04
-			mesh.bottom_radius = 0.38
-			mesh.height = 1.25
-			spike.mesh = mesh
-			spike.position = Vector3(sin(angle) * radius, 0.64, cos(angle) * radius)
-			spike.material_override = spike_material
-			spike_trap.add_child(spike)
+	spike_trap.add_child(_environment_mesh("res://models/environment/spike_trap.obj"))
 
 func _update_spike_trap() -> void:
 	for candidate in [player, rival]:
@@ -926,21 +884,12 @@ func _build_laser_trap() -> void:
 	laser_trap.name = "RotatingLaser"
 	laser_trap.position = laser_trap_center
 	add_child(laser_trap)
-	var base := MeshInstance3D.new()
-	var base_mesh := CylinderMesh.new()
-	base_mesh.top_radius = 1.35
-	base_mesh.bottom_radius = 1.7
-	base_mesh.height = 1.4
-	base.mesh = base_mesh
-	base.position.y = 0.7
-	base.material_override = _material(Color("2a334e"), Color("6073bc"), 0.35)
-	laser_trap.add_child(base)
-	laser_trap.add_child(_make_sphere(Vector3(0, 1.65, 0), Vector3(0.44, 0.44, 0.44), _material(Color("ffdfdf"), Color("ff173d"), 3.8)))
+	laser_trap.add_child(_environment_mesh("res://models/environment/laser_reactor.obj"))
 	var beam := MeshInstance3D.new()
 	var beam_mesh := BoxMesh.new()
 	beam_mesh.size = Vector3(0.24, 0.24, 24.0)
 	beam.mesh = beam_mesh
-	beam.position = Vector3(0, 1.65, 12.0)
+	beam.position = Vector3(0, 1.9, 12.0)
 	beam.material_override = _material(Color("ff5971"), Color("ff082f"), 5.0)
 	laser_trap.add_child(beam)
 
@@ -1242,12 +1191,15 @@ func _make_cylinder_visual(radius: float, height: float, position: Vector3, colo
 	return mesh_instance
 
 func _add_environment_model(path: String, position: Vector3, scale_value: Vector3 = Vector3.ONE) -> MeshInstance3D:
-	var mesh_instance := MeshInstance3D.new()
-	var mesh_resource = load(path)
-	mesh_instance.mesh = mesh_resource
+	var mesh_instance := _environment_mesh(path)
 	mesh_instance.position = position
 	mesh_instance.scale = scale_value
 	add_child(mesh_instance)
+	return mesh_instance
+
+func _environment_mesh(path: String) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.mesh = load(path)
 	return mesh_instance
 
 func _make_box_collider(title: String, size: Vector3, position: Vector3) -> StaticBody3D:
