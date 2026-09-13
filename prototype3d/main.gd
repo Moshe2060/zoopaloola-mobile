@@ -31,6 +31,13 @@ var spinner_angle := 0.0
 var spinner_hit_cooldown := 0.0
 var gravity_trap: Node3D
 var gravity_trap_center := Vector3(-72, 0, -50)
+var spike_trap: Node3D
+var spike_trap_center := Vector3(72, 0, 42)
+var spike_hit_cooldowns := {"player": 0.0, "rival": 0.0}
+var laser_trap: Node3D
+var laser_trap_center := Vector3(70, 0, -48)
+var laser_angle := 0.0
+var laser_hit_cooldowns := {"player": 0.0, "rival": 0.0}
 var match_finished := false
 var sticky_center := Vector3(82, 0, -54)
 var rng := RandomNumberGenerator.new()
@@ -50,6 +57,10 @@ func _physics_process(delta: float) -> void:
 	boost_cooldown = maxf(0.0, boost_cooldown - delta)
 	hit_cooldown = maxf(0.0, hit_cooldown - delta)
 	spinner_hit_cooldown = maxf(0.0, spinner_hit_cooldown - delta)
+	spike_hit_cooldowns.player = maxf(0.0, spike_hit_cooldowns.player - delta)
+	spike_hit_cooldowns.rival = maxf(0.0, spike_hit_cooldowns.rival - delta)
+	laser_hit_cooldowns.player = maxf(0.0, laser_hit_cooldowns.player - delta)
+	laser_hit_cooldowns.rival = maxf(0.0, laser_hit_cooldowns.rival - delta)
 	energy_regen_delay = maxf(0.0, energy_regen_delay - delta)
 	player_boost_active = maxf(0.0, player_boost_active - delta)
 	rival_boost_active = maxf(0.0, rival_boost_active - delta)
@@ -66,6 +77,8 @@ func _physics_process(delta: float) -> void:
 	_resolve_vehicle_collision()
 	_update_spinner(delta)
 	_update_gravity_trap(delta)
+	_update_spike_trap()
+	_update_laser_trap(delta)
 	_apply_arena_limits(player)
 	_apply_arena_limits(rival)
 	_update_camera(delta)
@@ -209,6 +222,9 @@ func _update_hud() -> void:
 	hud.energy = energy
 	hud.enemy_health = rival_health
 	hud.exhausted = energy <= 1.0
+	hud.player_map_position = Vector2(player.global_position.x, player.global_position.z)
+	hud.rival_map_position = Vector2(rival.global_position.x, rival.global_position.z)
+	hud.player_map_heading = player.rotation.y
 
 func _build_world() -> void:
 	var world_env := WorldEnvironment.new()
@@ -252,6 +268,8 @@ func _build_world() -> void:
 	_make_cylinder_static("ReactorCollision", 2.35, 1.7, Vector3(0, 0.72, 0), Color("5e3da0"))
 	_build_spinner()
 	_build_gravity_trap()
+	_build_spike_trap()
+	_build_laser_trap()
 
 func _make_hovercraft(title: String, color: Color, position: Vector3) -> CharacterBody3D:
 	var body := CharacterBody3D.new()
@@ -471,6 +489,101 @@ func _update_gravity_trap(delta: float) -> void:
 			else:
 				rival_health = maxf(0.0, rival_health - 5.5 * delta)
 
+func _build_spike_trap() -> void:
+	spike_trap = Node3D.new()
+	spike_trap.name = "SpikeField"
+	spike_trap.position = spike_trap_center
+	add_child(spike_trap)
+	var warning := MeshInstance3D.new()
+	var warning_mesh := CylinderMesh.new()
+	warning_mesh.top_radius = 8.0
+	warning_mesh.bottom_radius = 8.0
+	warning_mesh.height = 0.06
+	warning.mesh = warning_mesh
+	warning.position.y = 0.04
+	warning.material_override = _material(Color("53192e"), Color("ff245f"), 1.25)
+	spike_trap.add_child(warning)
+	var spike_material := _material(Color("9a304c"), Color("ff496e"), 0.7)
+	for ring in range(3):
+		var radius := 2.0 + float(ring) * 2.15
+		var count := 6 + ring * 4
+		for index in range(count):
+			var angle := TAU * float(index) / float(count) + float(ring) * 0.28
+			var spike := MeshInstance3D.new()
+			var mesh := CylinderMesh.new()
+			mesh.top_radius = 0.04
+			mesh.bottom_radius = 0.38
+			mesh.height = 1.25
+			spike.mesh = mesh
+			spike.position = Vector3(sin(angle) * radius, 0.64, cos(angle) * radius)
+			spike.material_override = spike_material
+			spike_trap.add_child(spike)
+
+func _update_spike_trap() -> void:
+	for candidate in [player, rival]:
+		var body: CharacterBody3D = candidate
+		if body.global_position.distance_to(spike_trap_center) > 8.1:
+			continue
+		var key := "player" if body == player else "rival"
+		if spike_hit_cooldowns[key] > 0.0:
+			continue
+		body.velocity *= 0.72
+		body.velocity += (body.global_position - spike_trap_center).normalized() * 8.0
+		if body == player:
+			player_health = maxf(0.0, player_health - 7.0)
+			camera_shake = maxf(camera_shake, 0.55)
+		else:
+			rival_health = maxf(0.0, rival_health - 7.0)
+		spike_hit_cooldowns[key] = 0.72
+		_spawn_impact_flash(body.global_position + Vector3.UP * 0.35)
+
+func _build_laser_trap() -> void:
+	laser_trap = Node3D.new()
+	laser_trap.name = "RotatingLaser"
+	laser_trap.position = laser_trap_center
+	add_child(laser_trap)
+	var base := MeshInstance3D.new()
+	var base_mesh := CylinderMesh.new()
+	base_mesh.top_radius = 1.35
+	base_mesh.bottom_radius = 1.7
+	base_mesh.height = 1.4
+	base.mesh = base_mesh
+	base.position.y = 0.7
+	base.material_override = _material(Color("2a334e"), Color("6073bc"), 0.35)
+	laser_trap.add_child(base)
+	laser_trap.add_child(_make_sphere(Vector3(0, 1.65, 0), Vector3(0.44, 0.44, 0.44), _material(Color("ffdfdf"), Color("ff173d"), 3.8)))
+	var beam := MeshInstance3D.new()
+	var beam_mesh := BoxMesh.new()
+	beam_mesh.size = Vector3(0.24, 0.24, 24.0)
+	beam.mesh = beam_mesh
+	beam.position = Vector3(0, 1.65, 12.0)
+	beam.material_override = _material(Color("ff5971"), Color("ff082f"), 5.0)
+	laser_trap.add_child(beam)
+
+func _update_laser_trap(delta: float) -> void:
+	laser_angle = fmod(laser_angle + delta * 0.88, TAU)
+	laser_trap.rotation.y = laser_angle
+	var beam_direction := Vector3(sin(laser_angle), 0, cos(laser_angle))
+	for candidate in [player, rival]:
+		var body: CharacterBody3D = candidate
+		var local_offset := body.global_position - laser_trap_center
+		local_offset.y = 0.0
+		var along := local_offset.dot(beam_direction)
+		var sideways := absf(local_offset.cross(beam_direction).y)
+		if along < 0.8 or along > 24.0 or sideways > 1.35:
+			continue
+		var key := "player" if body == player else "rival"
+		if laser_hit_cooldowns[key] > 0.0:
+			continue
+		body.velocity += beam_direction * 12.0
+		if body == player:
+			player_health = maxf(0.0, player_health - 9.0)
+			camera_shake = maxf(camera_shake, 0.7)
+		else:
+			rival_health = maxf(0.0, rival_health - 9.0)
+		laser_hit_cooldowns[key] = 0.85
+		_spawn_impact_flash(body.global_position + Vector3.UP * 0.5)
+
 func _spawn_impact_flash(position: Vector3) -> void:
 	var flash := OmniLight3D.new()
 	flash.position = position
@@ -499,6 +612,8 @@ func _restart_match() -> void:
 	player_boost_active = 0.0
 	rival_boost_active = 0.0
 	rival_stun = 0.0
+	spike_hit_cooldowns = {"player": 0.0, "rival": 0.0}
+	laser_hit_cooldowns = {"player": 0.0, "rival": 0.0}
 	player.global_position = Vector3(-38, 0.9, 35)
 	rival.global_position = Vector3(38, 0.9, -34)
 	player.rotation.y = PI
