@@ -3,6 +3,7 @@ extends Node3D
 const ARENA_RADIUS := 30.0
 const DRIVE_SPEED := 15.0
 const ACCELERATION := 22.0
+const TURN_SPEED := 2.65
 const BOOST_SPEED := 24.0
 const BOOST_COST := 34.0
 const ENERGY_REGEN := 23.0
@@ -69,11 +70,12 @@ func _update_player(delta: float) -> void:
 	)
 	if hud and hud.move_vector.length() > 0.05:
 		input_vec = hud.move_vector
-	var desired := Vector3(input_vec.x, 0, input_vec.y)
-	if desired.length() > 0.05:
-		desired = desired.normalized()
-		var target_angle := atan2(desired.x, desired.z)
-		player.rotation.y = lerp_angle(player.rotation.y, target_angle, delta * 7.0)
+	var steering := input_vec.x
+	var throttle := -input_vec.y
+	if absf(steering) > 0.04:
+		player.rotation.y -= steering * TURN_SPEED * delta
+	var forward := Vector3(sin(player.rotation.y), 0, cos(player.rotation.y))
+	var desired := forward * throttle
 	var speed_factor := 0.58 if energy <= 1.0 else 1.0
 	var sticky := player.global_position.distance_to(sticky_center) < 4.6
 	if sticky:
@@ -84,7 +86,6 @@ func _update_player(delta: float) -> void:
 	player.velocity.z = move_toward(player.velocity.z, target_velocity.z, ACCELERATION * delta)
 	var wants_boost: bool = Input.is_action_just_pressed("ui_accept") or (hud != null and hud.consume_boost())
 	if wants_boost and boost_cooldown <= 0.0 and energy >= BOOST_COST:
-		var forward := Vector3(sin(player.rotation.y), 0, cos(player.rotation.y))
 		player.velocity += forward * BOOST_SPEED
 		energy -= BOOST_COST
 		boost_cooldown = 0.55
