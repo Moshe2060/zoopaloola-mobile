@@ -10,6 +10,8 @@ const BOOST_COST := 34.0
 const ENERGY_REGEN := 23.0
 const ENERGY_REGEN_DELAY := 1.15
 const BRACE_DRAIN := 30.0
+const ELEPHANT_ABILITY_COOLDOWN := 8.0
+const MONKEY_ABILITY_COOLDOWN := 5.2
 
 var player: CharacterBody3D
 var rival: CharacterBody3D
@@ -21,6 +23,8 @@ var energy := 100.0
 var rival_energy := 100.0
 var player_turbo := 0.0
 var rival_turbo := 0.0
+var player_ability_cooldown := 0.0
+var rival_ability_cooldown := 2.4
 var boost_cooldown := 0.0
 var hit_cooldown := 0.0
 var rival_boost_cooldown := 1.2
@@ -68,6 +72,8 @@ func _physics_process(delta: float) -> void:
 	laser_hit_cooldowns.rival = maxf(0.0, laser_hit_cooldowns.rival - delta)
 	gravity_feedback_cooldowns.player = maxf(0.0, gravity_feedback_cooldowns.player - delta)
 	gravity_feedback_cooldowns.rival = maxf(0.0, gravity_feedback_cooldowns.rival - delta)
+	player_ability_cooldown = maxf(0.0, player_ability_cooldown - delta)
+	rival_ability_cooldown = maxf(0.0, rival_ability_cooldown - delta)
 	energy_regen_delay = maxf(0.0, energy_regen_delay - delta)
 	player_boost_active = maxf(0.0, player_boost_active - delta)
 	rival_boost_active = maxf(0.0, rival_boost_active - delta)
@@ -116,7 +122,8 @@ func _update_player(delta: float) -> void:
 		speed_factor *= 0.38
 		player_health = maxf(0.0, player_health - delta * 3.0)
 	var turbo_factor := 1.42 if player_turbo > 0.0 else 1.0
-	var target_velocity := desired * DRIVE_SPEED * speed_factor * turbo_factor
+	# The elephant is intentionally heavier and slightly slower, but resists hits.
+	var target_velocity := desired * DRIVE_SPEED * 0.9 * speed_factor * turbo_factor
 	player.velocity.x = move_toward(player.velocity.x, target_velocity.x, ACCELERATION * delta)
 	player.velocity.z = move_toward(player.velocity.z, target_velocity.z, ACCELERATION * delta)
 	var wants_boost: bool = Input.is_action_just_pressed("ui_accept") or (hud != null and hud.consume_boost())
@@ -128,6 +135,9 @@ func _update_player(delta: float) -> void:
 		energy_regen_delay = ENERGY_REGEN_DELAY
 	if energy_regen_delay <= 0.0:
 		energy = minf(100.0, energy + ENERGY_REGEN * delta)
+	var wants_ability: bool = Input.is_key_pressed(KEY_E) or (hud != null and hud.consume_ability())
+	if wants_ability and player_ability_cooldown <= 0.0:
+		_activate_elephant_shockwave()
 	player.move_and_slide()
 
 func _update_rival(delta: float) -> void:
@@ -150,7 +160,7 @@ func _update_rival(delta: float) -> void:
 	var target_angle := atan2(desired.x, desired.z)
 	rival.rotation.y = lerp_angle(rival.rotation.y, target_angle, delta * 3.8)
 	var strafe := Vector3(-desired.z, 0, desired.x) * sin(Time.get_ticks_msec() * 0.0016) * 0.38
-	var rival_speed := 18.0 if rival_turbo > 0.0 else 12.5
+	var rival_speed := 20.0 if rival_turbo > 0.0 else 14.5
 	var target_velocity := (desired + strafe).normalized() * rival_speed
 	rival.velocity.x = move_toward(rival.velocity.x, target_velocity.x, 18.0 * delta)
 	rival.velocity.z = move_toward(rival.velocity.z, target_velocity.z, 18.0 * delta)
@@ -159,6 +169,8 @@ func _update_rival(delta: float) -> void:
 		rival_energy -= 28.0
 		rival_boost_active = 0.5
 		rival_boost_cooldown = rng.randf_range(2.4, 4.0)
+	if rival_ability_cooldown <= 0.0 and distance < 9.5 and wanted_pickup == "":
+		_activate_monkey_dash(desired)
 	if rival.global_position.distance_to(sticky_center) < 4.6:
 		rival.velocity *= 0.92
 		rival_health = maxf(0.0, rival_health - delta * 3.0)
@@ -183,7 +195,7 @@ func _resolve_vehicle_collision() -> void:
 		hit_cooldown = 0.3
 		return
 	if rival_boost_active > 0.0:
-		var resistance := 0.48 if energy <= 1.0 else 0.82
+		var resistance := 0.62 if energy <= 1.0 else 0.98
 		if hud != null and hud.brace_pressed and energy > 0.0:
 			resistance = 1.25
 		player.velocity = -normal * 30.0 * (1.35 - resistance * 0.45)
@@ -199,7 +211,7 @@ func _resolve_vehicle_collision() -> void:
 	var player_force := maxf(0.0, player.velocity.dot(normal))
 	var rival_force := maxf(0.0, rival.velocity.dot(-normal))
 	var brace: bool = (hud != null and hud.brace_pressed) or Input.is_key_pressed(KEY_SHIFT)
-	var player_resistance := 0.82 if energy > 30.0 else 0.42
+	var player_resistance := 0.98 if energy > 30.0 else 0.58
 	if brace and energy > 0.0:
 		player_resistance = 1.25
 		energy = maxf(0.0, energy - BRACE_DRAIN * get_physics_process_delta_time())
@@ -256,6 +268,8 @@ func _update_hud() -> void:
 	hud.enemy_health = rival_health
 	hud.exhausted = energy <= 1.0
 	hud.turbo_seconds = player_turbo
+	hud.ability_ratio = 1.0 - clampf(player_ability_cooldown / ELEPHANT_ABILITY_COOLDOWN, 0.0, 1.0)
+	hud.ability_ready = player_ability_cooldown <= 0.0
 	hud.player_map_position = Vector2(player.global_position.x, player.global_position.z)
 	hud.rival_map_position = Vector2(rival.global_position.x, rival.global_position.z)
 	hud.player_map_heading = player.rotation.y
@@ -749,6 +763,44 @@ func _spawn_impact_flash(position: Vector3) -> void:
 	tween.tween_property(flash, "light_energy", 0.0, 0.18)
 	tween.tween_callback(flash.queue_free)
 
+func _activate_elephant_shockwave() -> void:
+	player_ability_cooldown = ELEPHANT_ABILITY_COOLDOWN
+	var offset := rival.global_position - player.global_position
+	offset.y = 0.0
+	if offset.length() <= 9.5 and offset.length() > 0.1:
+		rival.velocity += offset.normalized() * 31.0
+		rival_stun = maxf(rival_stun, 0.72)
+		rival_health = maxf(0.0, rival_health - 6.0)
+		_show_damage(rival, 6.0, Color("46d9ff"))
+		camera_shake = maxf(camera_shake, 0.55)
+	_spawn_ability_ring(player.global_position, Color("43d7ff"), 9.5)
+	_play_tone(235.0, 0.24, 0.22)
+
+func _activate_monkey_dash(toward_player: Vector3) -> void:
+	rival_ability_cooldown = MONKEY_ABILITY_COOLDOWN
+	var side_sign := -1.0 if rng.randf() < 0.5 else 1.0
+	var sideways := Vector3(-toward_player.z, 0, toward_player.x) * side_sign
+	# A small backward component makes the dash useful as an actual dodge.
+	rival.velocity = sideways.normalized() * 29.0 - toward_player * 7.0
+	rival_boost_active = 0.0
+	_spawn_ability_ring(rival.global_position, Color("ffd13b"), 4.2)
+	_play_tone(510.0, 0.12, 0.16)
+
+func _spawn_ability_ring(position: Vector3, color: Color, target_radius: float) -> void:
+	var ring := MeshInstance3D.new()
+	var mesh := TorusMesh.new()
+	mesh.inner_radius = 0.78
+	mesh.outer_radius = 1.0
+	ring.mesh = mesh
+	ring.position = position + Vector3.UP * 0.18
+	ring.material_override = _material(color.darkened(0.22), color, 4.2)
+	add_child(ring)
+	var target_scale := Vector3.ONE * target_radius
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(ring, "scale", target_scale, 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(ring, "transparency", 1.0, 0.34)
+	tween.chain().tween_callback(ring.queue_free)
+
 func _show_damage(body: CharacterBody3D, amount: float, color: Color) -> void:
 	var label := Label3D.new()
 	label.text = "-%d" % maxi(1, roundi(amount))
@@ -808,6 +860,8 @@ func _restart_match() -> void:
 	rival_energy = 100.0
 	player_turbo = 0.0
 	rival_turbo = 0.0
+	player_ability_cooldown = 0.0
+	rival_ability_cooldown = 2.4
 	boost_cooldown = 0.0
 	energy_regen_delay = 0.0
 	rival_boost_cooldown = 1.2
