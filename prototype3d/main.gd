@@ -400,8 +400,22 @@ func _damage_body(body: CharacterBody3D, amount: float, color: Color) -> void:
 	else:
 		rival_two_health = maxf(0.0, rival_two_health - amount)
 	_show_damage(body, amount, color)
+	_animate_combatant_hit(body, color)
 	_spawn_damage_pulse(body.global_position, color)
 	_play_tone(145.0 + minf(amount, 14.0) * 7.0, 0.07, 0.1)
+
+func _animate_combatant_hit(body: CharacterBody3D, color: Color) -> void:
+	var model := body.get_node_or_null("CombatantModel") as MeshInstance3D
+	if model == null:
+		return
+	var original_rotation := model.rotation
+	var original_scale := model.scale
+	var direction := -1.0 if body.velocity.x < 0.0 else 1.0
+	var tween := create_tween()
+	tween.tween_property(model, "rotation:z", original_rotation.z + direction * 0.16, 0.055)
+	tween.parallel().tween_property(model, "scale", original_scale * Vector3(1.08, 0.88, 1.08), 0.055)
+	tween.tween_property(model, "rotation:z", original_rotation.z, 0.13).set_trans(Tween.TRANS_BACK)
+	tween.parallel().tween_property(model, "scale", original_scale, 0.13).set_trans(Tween.TRANS_BACK)
 
 func _spawn_damage_pulse(position: Vector3, color: Color) -> void:
 	var ring := MeshInstance3D.new()
@@ -645,28 +659,15 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	shape.height = 0.8
 	collision.shape = shape
 	body.add_child(collision)
-	var hull := MeshInstance3D.new()
-	var hull_mesh := CylinderMesh.new()
-	hull_mesh.top_radius = 1.32
-	hull_mesh.bottom_radius = 1.62
-	hull_mesh.height = 0.72
-	hull.mesh = hull_mesh
-	hull.material_override = _material(color, color.lightened(0.15), 0.75)
-	body.add_child(hull)
-	var cockpit := MeshInstance3D.new()
-	var cockpit_mesh := SphereMesh.new()
-	cockpit_mesh.radius = 0.72
-	cockpit_mesh.height = 1.15
-	cockpit.mesh = cockpit_mesh
-	cockpit.position = Vector3(0, 0.6, 0)
-	cockpit.scale = Vector3(0.85, 0.72, 0.85)
-	cockpit.material_override = _material(Color("1b213d"), Color("5275ba"), 0.55)
-	body.add_child(cockpit)
-	if title.begins_with("Elephant"):
-		_add_elephant_pilot(body)
-		_add_elephant_armor(body)
-	elif title.begins_with("Monkey"):
-		_add_monkey_pilot(body)
+	var model_paths := {
+		"Elephant": "res://models/combatants/elephant_vanguard.obj",
+		"ElephantAlly": "res://models/combatants/elephant_guardian.obj",
+		"Monkey": "res://models/combatants/monkey_raider.obj",
+		"MonkeyTwo": "res://models/combatants/monkey_brute.obj"
+	}
+	var combatant_model := _environment_mesh(model_paths[title])
+	combatant_model.name = "CombatantModel"
+	body.add_child(combatant_model)
 	var team_marker := MeshInstance3D.new()
 	var marker_mesh := CylinderMesh.new()
 	marker_mesh.top_radius = 1.82
@@ -677,13 +678,6 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	var marker_color := Color("35c8ff") if title.begins_with("Elephant") else Color("ff7042")
 	team_marker.material_override = _material(marker_color.darkened(0.28), marker_color, 2.2)
 	body.add_child(team_marker)
-	var nose := MeshInstance3D.new()
-	var nose_mesh := BoxMesh.new()
-	nose_mesh.size = Vector3(0.34, 0.18, 0.62)
-	nose.mesh = nose_mesh
-	nose.position = Vector3(0, 0.22, 1.56)
-	nose.material_override = _material(Color("eaf6ff"), color, 1.9)
-	body.add_child(nose)
 	add_child(body)
 	return body
 
