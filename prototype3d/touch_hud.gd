@@ -9,6 +9,9 @@ var enemy_health := 100.0
 var exhausted := false
 var result_text := ""
 var restart_pressed := false
+var player_map_position := Vector2.ZERO
+var rival_map_position := Vector2.ZERO
+var player_map_heading := 0.0
 var camera_yaw_offset := 0.0
 var camera_yaw_target := 0.0
 
@@ -113,6 +116,7 @@ func _draw() -> void:
 	draw_rect(Rect2(size.x - 338, 24, 310, 48), Color(0.02, 0.04, 0.1, 0.86), true)
 	draw_string(font, Vector2(size.x - 323, 46), "RIVAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.75, 0.75))
 	_draw_bar(Rect2(size.x - 323, 54, 276, 13), enemy_health / 100.0, Color(0.95, 0.22, 0.25))
+	_draw_minimap(size, font)
 
 	# Touch controls stay visible even before the first touch.
 	var stick_center := Vector2(120, size.y - 120) if _move_touch == -1 else _stick_origin
@@ -134,3 +138,32 @@ func _draw() -> void:
 func _draw_bar(rect: Rect2, ratio: float, color: Color) -> void:
 	draw_rect(rect, Color(0.03, 0.03, 0.05, 0.9), true)
 	draw_rect(Rect2(rect.position + Vector2(2, 2), Vector2((rect.size.x - 4) * clampf(ratio, 0.0, 1.0), rect.size.y - 4)), color, true)
+
+func _draw_minimap(size: Vector2, font: Font) -> void:
+	var map_size := Vector2(210, 126)
+	var rect := Rect2(Vector2((size.x - map_size.x) * 0.5, 18), map_size)
+	draw_rect(rect, Color(0.015, 0.025, 0.075, 0.86), true)
+	draw_rect(rect, Color(0.38, 0.7, 1.0, 0.72), false, 2.0)
+	draw_string(font, rect.position + Vector2(8, 16), "ARENA MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.72, 0.88, 1.0))
+	_draw_map_hazard(rect, Vector2(-72, -50), Color("b54cff"), 7.0)
+	_draw_map_hazard(rect, Vector2(72, 42), Color("ff4168"), 7.0)
+	_draw_map_hazard(rect, Vector2(70, -48), Color("ffad35"), 6.0)
+	_draw_map_hazard(rect, Vector2.ZERO, Color("7c6cff"), 5.0)
+	var rival_point := _world_to_map(rect, rival_map_position)
+	draw_circle(rival_point, 5.5, Color("ff3b45"))
+	draw_circle(rival_point, 7.5, Color(1, 1, 1, 0.72), false, 1.5)
+	var player_point := _world_to_map(rect, player_map_position)
+	var heading := Vector2(sin(player_map_heading), cos(player_map_heading))
+	var side := Vector2(-heading.y, heading.x)
+	var arrow := PackedVector2Array([player_point + heading * 9.0, player_point - heading * 6.0 + side * 5.0, player_point - heading * 6.0 - side * 5.0])
+	draw_colored_polygon(arrow, Color("36c8ff"))
+	draw_polyline(PackedVector2Array([arrow[0], arrow[1], arrow[2], arrow[0]]), Color.WHITE, 1.5)
+
+func _world_to_map(rect: Rect2, world: Vector2) -> Vector2:
+	var normalized := Vector2(clampf((world.x + 140.0) / 280.0, 0.0, 1.0), clampf((world.y + 100.0) / 200.0, 0.0, 1.0))
+	return rect.position + Vector2(normalized.x * rect.size.x, normalized.y * rect.size.y)
+
+func _draw_map_hazard(rect: Rect2, world: Vector2, color: Color, radius: float) -> void:
+	var point := _world_to_map(rect, world)
+	draw_circle(point, radius, Color(color, 0.3))
+	draw_circle(point, radius, color, false, 1.7)
