@@ -10,6 +10,7 @@ var exhausted := false
 var result_text := ""
 var restart_pressed := false
 var camera_yaw_offset := 0.0
+var camera_yaw_target := 0.0
 
 var _move_touch := -1
 var _boost_touch := -1
@@ -21,6 +22,7 @@ var _stick_knob := Vector2.ZERO
 const CAMERA_DRAG_SENSITIVITY := 0.006
 const CAMERA_YAW_LIMIT := deg_to_rad(120.0)
 const CAMERA_RETURN_SPEED := 5.5
+const CAMERA_FOLLOW_SPEED := 12.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -29,9 +31,11 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if _camera_touch == -1:
-		camera_yaw_offset = lerp_angle(camera_yaw_offset, 0.0, 1.0 - exp(-delta * CAMERA_RETURN_SPEED))
-		if absf(camera_yaw_offset) < 0.002:
-			camera_yaw_offset = 0.0
+		camera_yaw_target = 0.0
+	var smoothing := CAMERA_FOLLOW_SPEED if _camera_touch != -1 else CAMERA_RETURN_SPEED
+	camera_yaw_offset = lerp(camera_yaw_offset, camera_yaw_target, 1.0 - exp(-delta * smoothing))
+	if _camera_touch == -1 and absf(camera_yaw_offset) < 0.002:
+		camera_yaw_offset = 0.0
 	queue_redraw()
 
 func consume_boost() -> bool:
@@ -82,8 +86,9 @@ func _input(event: InputEvent) -> void:
 				move_vector = move_vector.normalized()
 			_stick_knob = _stick_origin + move_vector * 72.0
 		elif event.index == _camera_touch:
-			camera_yaw_offset = clampf(
-				camera_yaw_offset + event.relative.x * CAMERA_DRAG_SENSITIVITY,
+			var safe_drag := clampf(event.relative.x, -80.0, 80.0)
+			camera_yaw_target = clampf(
+				camera_yaw_target + safe_drag * CAMERA_DRAG_SENSITIVITY,
 				-CAMERA_YAW_LIMIT,
 				CAMERA_YAW_LIMIT
 			)
