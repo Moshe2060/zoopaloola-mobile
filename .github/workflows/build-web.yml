@@ -159,6 +159,27 @@ jobs:
           touch build/web/.nojekyll
           ls -lh build/web
 
+      - name: Build isolated 3D arena prototype
+        working-directory: prototype3d
+        run: |
+          godot --headless --editor --path . --quit-after 20 > /tmp/godot-prototype-import.log 2>&1
+          cat /tmp/godot-prototype-import.log
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource|could not be loaded' /tmp/godot-prototype-import.log; then
+            exit 1
+          fi
+          godot --headless --path . --quit-after 3 > /tmp/godot-prototype-validation.log 2>&1
+          cat /tmp/godot-prototype-validation.log
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Failed to load script|Failed loading resource|could not be loaded' /tmp/godot-prototype-validation.log; then
+            exit 1
+          fi
+          mkdir -p build
+          godot --headless --path . --export-release "Web" build/index.html
+          test -s build/index.html
+          test -s build/index.wasm
+          test -s build/index.pck
+          mkdir -p "$GITHUB_WORKSPACE/zoopaloola_godot_mobile/build/web/prototype3d"
+          cp -R build/. "$GITHUB_WORKSPACE/zoopaloola_godot_mobile/build/web/prototype3d/"
+
       - name: Wait for Android release
         uses: actions/github-script@v7
         with:

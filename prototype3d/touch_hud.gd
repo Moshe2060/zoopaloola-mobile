@@ -1,0 +1,87 @@
+extends Control
+
+var move_vector := Vector2.ZERO
+var boost_pressed := false
+var brace_pressed := false
+var health := 100.0
+var energy := 100.0
+var enemy_health := 100.0
+
+var _move_touch := -1
+var _boost_touch := -1
+var _brace_touch := -1
+var _stick_origin := Vector2.ZERO
+var _stick_knob := Vector2.ZERO
+
+func _ready() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	queue_redraw()
+
+func _process(_delta: float) -> void:
+	queue_redraw()
+
+func consume_boost() -> bool:
+	var value := boost_pressed
+	boost_pressed = false
+	return value
+
+func _input(event: InputEvent) -> void:
+	var size := get_viewport_rect().size
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			if event.position.x < size.x * 0.48 and _move_touch == -1:
+				_move_touch = event.index
+				_stick_origin = event.position
+				_stick_knob = event.position
+			elif event.position.distance_to(Vector2(size.x - 115.0, size.y - 120.0)) < 95.0:
+				_boost_touch = event.index
+				boost_pressed = true
+			elif event.position.distance_to(Vector2(size.x - 265.0, size.y - 95.0)) < 65.0:
+				_brace_touch = event.index
+				brace_pressed = true
+		else:
+			if event.index == _move_touch:
+				_move_touch = -1
+				move_vector = Vector2.ZERO
+			if event.index == _boost_touch:
+				_boost_touch = -1
+			if event.index == _brace_touch:
+				_brace_touch = -1
+				brace_pressed = false
+	elif event is InputEventScreenDrag and event.index == _move_touch:
+		_stick_knob = event.position
+		move_vector = (_stick_knob - _stick_origin) / 72.0
+		if move_vector.length() > 1.0:
+			move_vector = move_vector.normalized()
+		_stick_knob = _stick_origin + move_vector * 72.0
+
+func _draw() -> void:
+	var size := get_viewport_rect().size
+	var font := ThemeDB.fallback_font
+	# Top HUD: player and opponent health, plus player push energy.
+	draw_rect(Rect2(28, 24, 310, 66), Color(0.02, 0.04, 0.1, 0.86), true)
+	draw_string(font, Vector2(43, 46), "PLAYER", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.75, 0.92, 1.0))
+	_draw_bar(Rect2(43, 54, 276, 13), health / 100.0, Color(0.18, 0.92, 0.42))
+	_draw_bar(Rect2(43, 72, 276, 10), energy / 100.0, Color(1.0, 0.55, 0.08))
+	draw_rect(Rect2(size.x - 338, 24, 310, 48), Color(0.02, 0.04, 0.1, 0.86), true)
+	draw_string(font, Vector2(size.x - 323, 46), "RIVAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.75, 0.75))
+	_draw_bar(Rect2(size.x - 323, 54, 276, 13), enemy_health / 100.0, Color(0.95, 0.22, 0.25))
+
+	# Touch controls stay visible even before the first touch.
+	var stick_center := Vector2(120, size.y - 120) if _move_touch == -1 else _stick_origin
+	var knob := stick_center if _move_touch == -1 else _stick_knob
+	draw_circle(stick_center, 82, Color(0.2, 0.55, 0.9, 0.18))
+	draw_arc(stick_center, 82, 0, TAU, 48, Color(0.45, 0.82, 1.0, 0.62), 4)
+	draw_circle(knob, 34, Color(0.48, 0.82, 1.0, 0.55))
+	var boost_center := Vector2(size.x - 115, size.y - 120)
+	draw_circle(boost_center, 66, Color(1.0, 0.34, 0.06, 0.72))
+	draw_string(font, boost_center + Vector2(-35, 8), "BOOST", HORIZONTAL_ALIGNMENT_CENTER, 70, 17, Color.WHITE)
+	var brace_center := Vector2(size.x - 265, size.y - 95)
+	draw_circle(brace_center, 47, Color(0.15, 0.65, 1.0, 0.55))
+	draw_string(font, brace_center + Vector2(-31, 7), "BRACE", HORIZONTAL_ALIGNMENT_CENTER, 62, 14, Color.WHITE)
+
+func _draw_bar(rect: Rect2, ratio: float, color: Color) -> void:
+	draw_rect(rect, Color(0.03, 0.03, 0.05, 0.9), true)
+	draw_rect(Rect2(rect.position + Vector2(2, 2), Vector2((rect.size.x - 4) * clampf(ratio, 0.0, 1.0), rect.size.y - 4)), color, true)
+
