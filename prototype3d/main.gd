@@ -15,6 +15,10 @@ const MONKEY_ABILITY_COOLDOWN := 5.2
 
 var player: CharacterBody3D
 var rival: CharacterBody3D
+var ally: CharacterBody3D
+var rival_two: CharacterBody3D
+var ally_hit_cooldown := 0.0
+var rival_two_hit_cooldown := 0.0
 var camera_rig: Node3D
 var hud
 var player_health := 100.0
@@ -56,7 +60,11 @@ func _ready() -> void:
 	_build_world()
 	player = _make_hovercraft("Elephant", Color("2478d4"), Vector3(-38, 0.9, 35))
 	rival = _make_hovercraft("Monkey", Color("e7a51c"), Vector3(38, 0.9, -34))
+	ally = _make_hovercraft("ElephantAlly", Color("25b8e8"), Vector3(-46, 0.9, 30))
+	rival_two = _make_hovercraft("MonkeyTwo", Color("ef6735"), Vector3(47, 0.9, -29))
 	rival.rotation.y = PI
+	ally.rotation.y = 0.4
+	rival_two.rotation.y = PI
 	_build_camera()
 	_build_hud()
 
@@ -81,6 +89,8 @@ func _physics_process(delta: float) -> void:
 	rival_turbo = maxf(0.0, rival_turbo - delta)
 	rival_energy = minf(100.0, rival_energy + 13.0 * delta)
 	rival_stun = maxf(0.0, rival_stun - delta)
+	ally_hit_cooldown = maxf(0.0, ally_hit_cooldown - delta)
+	rival_two_hit_cooldown = maxf(0.0, rival_two_hit_cooldown - delta)
 	rival_boost_cooldown -= delta
 	if match_finished:
 		var restart_requested: bool = Input.is_action_just_pressed("ui_accept") or (hud != null and hud.consume_restart())
@@ -90,6 +100,8 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_player(delta)
 	_update_rival(delta)
+	_update_ally(delta)
+	_update_rival_two(delta)
 	_resolve_vehicle_collision()
 	_update_spinner(delta)
 	_update_gravity_trap(delta)
@@ -98,6 +110,8 @@ func _physics_process(delta: float) -> void:
 	_update_pickups(delta)
 	_apply_arena_limits(player)
 	_apply_arena_limits(rival)
+	_apply_arena_limits(ally)
+	_apply_arena_limits(rival_two)
 	_update_camera(delta)
 	_update_hud()
 	if player_health <= 0.0 or rival_health <= 0.0:
@@ -175,6 +189,43 @@ func _update_rival(delta: float) -> void:
 		rival.velocity *= 0.92
 		rival_health = maxf(0.0, rival_health - delta * 3.0)
 	rival.move_and_slide()
+
+func _update_ally(delta: float) -> void:
+	var target := rival
+	if ally.global_position.distance_squared_to(rival_two.global_position) < ally.global_position.distance_squared_to(rival.global_position):
+		target = rival_two
+	var offset := target.global_position - ally.global_position
+	var distance := offset.length()
+	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
+	# The ally stays near the player until an enemy enters the local fight.
+	if ally.global_position.distance_to(player.global_position) > 30.0 and distance > 16.0:
+		desired = (player.global_position - ally.global_position).normalized()
+	var target_angle := atan2(desired.x, desired.z)
+	ally.rotation.y = lerp_angle(ally.rotation.y, target_angle, delta * 3.2)
+	ally.velocity.x = move_toward(ally.velocity.x, desired.x * 16.0, 20.0 * delta)
+	ally.velocity.z = move_toward(ally.velocity.z, desired.z * 16.0, 20.0 * delta)
+	if distance < 8.5 and ally_hit_cooldown <= 0.0:
+		ally.velocity += desired * 18.0
+		ally_hit_cooldown = 2.2
+	ally.move_and_slide()
+
+func _update_rival_two(delta: float) -> void:
+	var target := player
+	if rival_two.global_position.distance_squared_to(ally.global_position) < rival_two.global_position.distance_squared_to(player.global_position):
+		target = ally
+	var offset := target.global_position - rival_two.global_position
+	var distance := offset.length()
+	var desired := offset.normalized() if distance > 0.1 else Vector3.ZERO
+	var target_angle := atan2(desired.x, desired.z)
+	rival_two.rotation.y = lerp_angle(rival_two.rotation.y, target_angle, delta * 3.5)
+	var flank := Vector3(-desired.z, 0, desired.x) * sin(Time.get_ticks_msec() * 0.0012 + 1.7) * 0.32
+	var wanted := (desired + flank).normalized()
+	rival_two.velocity.x = move_toward(rival_two.velocity.x, wanted.x * 15.5, 19.0 * delta)
+	rival_two.velocity.z = move_toward(rival_two.velocity.z, wanted.z * 15.5, 19.0 * delta)
+	if distance < 8.5 and rival_two_hit_cooldown <= 0.0:
+		rival_two.velocity += desired * 18.0
+		rival_two_hit_cooldown = 2.4
+	rival_two.move_and_slide()
 
 func _resolve_vehicle_collision() -> void:
 	var delta_pos := rival.global_position - player.global_position
@@ -418,11 +469,21 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	cockpit.scale = Vector3(0.85, 0.72, 0.85)
 	cockpit.material_override = _material(Color("1b213d"), Color("5275ba"), 0.55)
 	body.add_child(cockpit)
-	if title == "Elephant":
+	if title.begins_with("Elephant"):
 		_add_elephant_pilot(body)
 		_add_elephant_armor(body)
-	elif title == "Monkey":
+	elif title.begins_with("Monkey"):
 		_add_monkey_pilot(body)
+	var team_marker := MeshInstance3D.new()
+	var marker_mesh := CylinderMesh.new()
+	marker_mesh.top_radius = 1.82
+	marker_mesh.bottom_radius = 1.82
+	marker_mesh.height = 0.08
+	team_marker.mesh = marker_mesh
+	team_marker.position = Vector3(0, -0.39, 0)
+	var marker_color := Color("35c8ff") if title.begins_with("Elephant") else Color("ff7042")
+	team_marker.material_override = _material(marker_color.darkened(0.28), marker_color, 2.2)
+	body.add_child(team_marker)
 	var nose := MeshInstance3D.new()
 	var nose_mesh := BoxMesh.new()
 	nose_mesh.size = Vector3(0.34, 0.18, 0.62)
@@ -938,10 +999,16 @@ func _restart_match() -> void:
 		pickups[index].node.visible = true
 	player.global_position = Vector3(-38, 0.9, 35)
 	rival.global_position = Vector3(38, 0.9, -34)
+	ally.global_position = Vector3(-46, 0.9, 30)
+	rival_two.global_position = Vector3(47, 0.9, -29)
 	player.rotation.y = PI
 	rival.rotation.y = 0.0
+	ally.rotation.y = 0.4
+	rival_two.rotation.y = PI
 	player.velocity = Vector3.ZERO
 	rival.velocity = Vector3.ZERO
+	ally.velocity = Vector3.ZERO
+	rival_two.velocity = Vector3.ZERO
 	hud.result_text = ""
 
 func _make_box_visual(size: Vector3, position: Vector3, color: Color, emission: Color, energy_value: float) -> MeshInstance3D:
