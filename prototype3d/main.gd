@@ -281,6 +281,7 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	body.add_child(cockpit)
 	if title == "Elephant":
 		_add_elephant_pilot(body)
+		_add_elephant_armor(body)
 	elif title == "Monkey":
 		_add_monkey_pilot(body)
 	var nose := MeshInstance3D.new()
@@ -309,6 +310,46 @@ func _add_elephant_pilot(body: Node3D) -> void:
 	trunk.rotation.x = deg_to_rad(63.0)
 	trunk.material_override = skin
 	body.add_child(trunk)
+	var dark := _material(Color("141820"), Color.BLACK, 0.0)
+	for side in [-1.0, 1.0]:
+		body.add_child(_make_sphere(Vector3(side * 0.2, 1.3, 0.55), Vector3(0.07, 0.07, 0.045), dark))
+		var arm := MeshInstance3D.new()
+		var arm_mesh := CapsuleMesh.new()
+		arm_mesh.radius = 0.13
+		arm_mesh.height = 0.86
+		arm.mesh = arm_mesh
+		arm.position = Vector3(side * 0.42, 0.79, 0.48)
+		arm.rotation.x = deg_to_rad(68.0)
+		arm.rotation.z = deg_to_rad(side * 18.0)
+		arm.material_override = skin
+		body.add_child(arm)
+
+func _add_elephant_armor(body: Node3D) -> void:
+	var blue := _material(Color("1e64bd"), Color("2d8dff"), 0.48)
+	var gold := _material(Color("c38a27"), Color("ffb43a"), 0.35)
+	var bumper := _material(Color("202536"), Color("17213f"), 0.18)
+	var glow := _material(Color("d9f4ff"), Color("57b8ff"), 2.5)
+	# Layered side armor and rear engine housings.
+	for side in [-1.0, 1.0]:
+		body.add_child(_make_box_part(Vector3(side * 1.36, 0.18, 0.0), Vector3(0.38, 0.56, 1.24), blue))
+		body.add_child(_make_box_part(Vector3(side * 0.82, 0.28, -1.25), Vector3(0.62, 0.72, 0.62), blue))
+		body.add_child(_make_box_part(Vector3(side * 0.82, 0.24, -1.59), Vector3(0.38, 0.3, 0.08), glow))
+		body.add_child(_make_box_part(Vector3(side * 1.08, 0.36, 0.72), Vector3(0.32, 0.16, 0.5), gold))
+	# Reinforced segmented pushing bumper at the front.
+	for index in range(3):
+		var x := (float(index) - 1.0) * 0.82
+		body.add_child(_make_box_part(Vector3(x, 0.12, 1.58), Vector3(0.72, 0.42, 0.34), bumper))
+	# Four visible hover emitters underneath.
+	for pos in [Vector3(-0.92, -0.4, -0.7), Vector3(0.92, -0.4, -0.7), Vector3(-0.92, -0.4, 0.72), Vector3(0.92, -0.4, 0.72)]:
+		var thruster := MeshInstance3D.new()
+		var thruster_mesh := CylinderMesh.new()
+		thruster_mesh.top_radius = 0.2
+		thruster_mesh.bottom_radius = 0.28
+		thruster_mesh.height = 0.16
+		thruster.mesh = thruster_mesh
+		thruster.position = pos
+		thruster.material_override = glow
+		body.add_child(thruster)
 
 func _add_monkey_pilot(body: Node3D) -> void:
 	var fur := _material(Color("774326"), Color("3c2015"), 0.12)
@@ -326,6 +367,15 @@ func _make_sphere(position: Vector3, scale_value: Vector3, material: Material) -
 	part.mesh = mesh
 	part.position = position
 	part.scale = scale_value
+	part.material_override = material
+	return part
+
+func _make_box_part(position: Vector3, size: Vector3, material: Material) -> MeshInstance3D:
+	var part := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	part.mesh = mesh
+	part.position = position
 	part.material_override = material
 	return part
 
