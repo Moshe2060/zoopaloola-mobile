@@ -201,7 +201,9 @@ const SHOP_PAGE_RINGS := "rings"
 const SHOP_PAGE_BOARDS := "boards"
 const SHOP_PAGE_EFFECTS := "effects"
 const ECONOMY_VERSION := 2
-const ANIMAL_UNLOCK_PRICES := [0, 0, 0, 550, 750, 950, 0]
+const TIGER_UNLOCK_FIX_VERSION := 1
+const TIGER_ANIMAL_INDEX := 6
+const ANIMAL_UNLOCK_PRICES := [0, 0, 0, 550, 750, 950, 1400]
 const RING_UNLOCK_PRICES := [0, 0, 0, 350, 450, 550, 0]
 const LEAGUE_RATING_THRESHOLDS := [0, 900, 1100, 1300, 1500, 1700]
 const LEAGUE_NAME_KEYS := ["league_rookie", "league_amateur", "league_pro", "league_elite", "league_legend", "league_legend"]
@@ -4824,6 +4826,22 @@ func apply_economy_migration(config: ConfigFile) -> void:
 	config.set_value("player", "owned_rings", owned_rings)
 	config.save(PLAYER_PROFILE_PATH)
 
+func apply_tiger_lock_migration(config: ConfigFile) -> void:
+	var saved_version := int(config.get_value("player", "tiger_unlock_fix_version", 0))
+	if saved_version >= TIGER_UNLOCK_FIX_VERSION:
+		return
+	# The tiger previously had a zero price, which accidentally marked it as
+	# owned for every existing profile. Relock it once without touching coins or
+	# any character that the player legitimately purchased.
+	if TIGER_ANIMAL_INDEX < owned_animals.size():
+		owned_animals[TIGER_ANIMAL_INDEX] = false
+	if player_animal == TIGER_ANIMAL_INDEX:
+		player_animal = first_unlocked_animal()
+	config.set_value("player", "animal", player_animal)
+	config.set_value("player", "owned_animals", owned_animals)
+	config.set_value("player", "tiger_unlock_fix_version", TIGER_UNLOCK_FIX_VERSION)
+	config.save(PLAYER_PROFILE_PATH)
+
 func try_select_animal(index: int) -> bool:
 	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
 	if not is_animal_unlocked(i):
@@ -4956,6 +4974,7 @@ func load_player_profile() -> void:
 	firebase_email = str(config.get_value("firebase", "email", firebase_email))
 	load_owned_collections(config)
 	apply_economy_migration(config)
+	apply_tiger_lock_migration(config)
 	ensure_valid_loadout()
 
 func save_player_profile(sync_cloud: bool = true) -> void:
@@ -4966,6 +4985,7 @@ func save_player_profile(sync_cloud: bool = true) -> void:
 	config.set_value("player", "coins", player_coins)
 	config.set_value("player", "gems", player_gems)
 	config.set_value("player", "economy_version", ECONOMY_VERSION)
+	config.set_value("player", "tiger_unlock_fix_version", TIGER_UNLOCK_FIX_VERSION)
 	config.set_value("player", "owned_animals", owned_animals)
 	config.set_value("player", "owned_rings", owned_rings)
 	config.set_value("player", "level", player_level)
