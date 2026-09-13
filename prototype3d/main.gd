@@ -592,14 +592,15 @@ func _build_arena_architecture() -> void:
 	_make_cylinder_visual(13.0, 0.07, laser_trap_center + Vector3(0, 0.035, 0), Color("492d25"), Color("ff8c3d"), 1.0)
 
 func _make_rock_cover(position: Vector3) -> void:
-	_make_cylinder_static("RockCover", 4.2, 3.1, position, Color("3b4650"))
-	_make_cylinder_static("RockCover", 2.8, 4.6, position + Vector3(3.4, 0.7, 1.7), Color("46535a"))
-	_make_cylinder_static("RockCover", 2.4, 3.7, position + Vector3(-3.1, 0.35, -1.6), Color("35444a"))
+	_add_environment_model("res://models/environment/rock_cover.obj", position + Vector3.DOWN * 1.5)
+	_make_cylinder_collider("RockCover", 4.2, 3.1, position)
+	_make_cylinder_collider("RockCover", 2.8, 4.6, position + Vector3(3.4, 0.7, 1.7))
+	_make_cylinder_collider("RockCover", 2.4, 3.7, position + Vector3(-3.1, 0.35, -1.6))
 
 func _make_ruin_wall(position: Vector3) -> void:
-	_make_box_static("RuinWall", Vector3(10.0, 3.0, 2.2), position, Color("5a5264"))
-	_make_box_static("RuinPillar", Vector3(2.2, 5.2, 2.8), position + Vector3(-4.2, 1.0, 0), Color("655a70"))
-	_make_box_visual(Vector3(6.0, 0.14, 2.32), position + Vector3(1.0, 1.58, 0), Color("6e8d70"), Color("62b56e"), 0.65)
+	_add_environment_model("res://models/environment/ruin_wall.obj", position + Vector3.DOWN * 0.9)
+	_make_box_collider("RuinWall", Vector3(10.0, 3.0, 2.2), position)
+	_make_box_collider("RuinPillar", Vector3(2.2, 5.2, 2.8), position + Vector3(-4.2, 1.0, 0))
 
 func _make_bush_cluster(position: Vector3) -> void:
 	_make_cylinder_static("BushStone", 2.2, 1.5, position, Color("31463c"))
@@ -615,18 +616,12 @@ func _make_cover_arch(position: Vector3, yaw: float, color: Color) -> void:
 	roof.rotation.y = yaw
 
 func _make_team_tower(position: Vector3, glow: Color) -> void:
-	_make_cylinder_static("TeamTowerBase", 7.0, 2.8, position + Vector3(0, 0.9, 0), Color("3e4654"))
-	_make_cylinder_visual(5.2, 9.0, position + Vector3(0, 6.6, 0), Color("34394a"), glow.darkened(0.45), 0.75)
-	_make_cylinder_visual(6.3, 0.7, position + Vector3(0, 11.0, 0), Color("4d5764"), glow, 1.8)
-	_make_cylinder_visual(2.1, 3.2, position + Vector3(0, 12.8, 0), glow.darkened(0.25), glow, 2.5)
-	for side in [-1.0, 1.0]:
-		_make_box_visual(Vector3(0.45, 6.0, 1.0), position + Vector3(side * 5.1, 6.5, 0), glow.darkened(0.25), glow, 2.2)
+	var model_path := "res://models/environment/team_tower_blue.obj" if glow.b > glow.r else "res://models/environment/team_tower_orange.obj"
+	_add_environment_model(model_path, position)
+	_make_cylinder_collider("TeamTowerBase", 7.0, 13.0, position + Vector3(0, 5.6, 0))
 
 func _make_tree(position: Vector3, size_factor: float) -> void:
-	_make_cylinder_visual(0.75 * size_factor, 4.8 * size_factor, position + Vector3(0, 2.4 * size_factor, 0), Color("714d32"), Color("3b251c"), 0.12)
-	add_child(_make_sphere(position + Vector3(0, 5.3, 0) * size_factor, Vector3(3.4, 2.4, 3.4) * size_factor, _material(Color("2d8a52"), Color("3ba961"), 0.28)))
-	add_child(_make_sphere(position + Vector3(2.0, 5.0, 0.8) * size_factor, Vector3(2.3, 1.8, 2.2) * size_factor, _material(Color("43a85c"), Color("56be6b"), 0.24)))
-	add_child(_make_sphere(position + Vector3(-1.8, 5.1, -0.6) * size_factor, Vector3(2.4, 1.9, 2.3) * size_factor, _material(Color("26784c"), Color("349457"), 0.22)))
+	_add_environment_model("res://models/environment/jungle_tree.obj", position, Vector3.ONE * size_factor)
 
 func _build_cliff_edge() -> void:
 	for x in [-120.0, -90.0, -60.0, -30.0, 0.0, 30.0, 60.0, 90.0, 120.0]:
@@ -1245,6 +1240,40 @@ func _make_cylinder_visual(radius: float, height: float, position: Vector3, colo
 	mesh_instance.material_override = _material(color, emission, energy_value)
 	add_child(mesh_instance)
 	return mesh_instance
+
+func _add_environment_model(path: String, position: Vector3, scale_value: Vector3 = Vector3.ONE) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var mesh_resource = load(path)
+	mesh_instance.mesh = mesh_resource
+	mesh_instance.position = position
+	mesh_instance.scale = scale_value
+	add_child(mesh_instance)
+	return mesh_instance
+
+func _make_box_collider(title: String, size: Vector3, position: Vector3) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.name = title
+	body.position = position
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	body.add_child(collision)
+	add_child(body)
+	return body
+
+func _make_cylinder_collider(title: String, radius: float, height: float, position: Vector3) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.name = title
+	body.position = position
+	var collision := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = radius
+	shape.height = height
+	collision.shape = shape
+	body.add_child(collision)
+	add_child(body)
+	return body
 
 func _make_box_static(title: String, size: Vector3, position: Vector3, color: Color) -> StaticBody3D:
 	var body := StaticBody3D.new()

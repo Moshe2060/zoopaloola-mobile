@@ -1,0 +1,39 @@
+newmtl rock
+Kd 0.24 0.29 0.32
+Ns 20
+newmtl crystal
+Kd 0.22 0.82 1.0
+Ke 0.12 0.48 0.72
+newmtl wood
+Kd 0.34 0.20 0.11
+newmtl leaf_dark
+Kd 0.06 0.35 0.20
+newmtl leaf
+Kd 0.10 0.55 0.28
+newmtl leaf_light
+Kd 0.27 0.68 0.32
+newmtl temple
+Kd 0.34 0.31 0.39
+newmtl stone
+Kd 0.25 0.29 0.34
+newmtl temple_light
+Kd 0.48 0.43 0.55
+newmtl vine
+Kd 0.12 0.48 0.23
+newmtl metal_dark
+Kd 0.10 0.12 0.18
+Ns 80
+newmtl metal
+Kd 0.28 0.32 0.40
+Ns 100
+newmtl tower
+Kd 0.17 0.20 0.28
+Ns 70
+newmtl energy
+Kd 0.18 0.72 1.0
+Ke 0.08 0.38 0.75
+Ns 120
+newmtl energy_orange
+Kd 1.0 0.30 0.08
+Ke 0.72 0.12 0.02
+Ns 120
