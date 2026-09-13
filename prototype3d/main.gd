@@ -189,6 +189,10 @@ func _resolve_vehicle_collision() -> void:
 		hit_cooldown = 0.25
 
 func _apply_arena_limits(body: CharacterBody3D) -> void:
+	# Hovercrafts must stay at a fixed hover height. Some impulses are applied
+	# close to raised hazards, so never allow a vertical component to accumulate.
+	body.global_position.y = 0.9
+	body.velocity.y = 0.0
 	var bounced := false
 	if absf(body.global_position.x) > ARENA_HALF_WIDTH - 2.0:
 		body.global_position.x = clampf(body.global_position.x, -ARENA_HALF_WIDTH + 2.0, ARENA_HALF_WIDTH - 2.0)
@@ -522,13 +526,18 @@ func _build_spike_trap() -> void:
 func _update_spike_trap() -> void:
 	for candidate in [player, rival]:
 		var body: CharacterBody3D = candidate
-		if body.global_position.distance_to(spike_trap_center) > 8.1:
+		var escape_direction := body.global_position - spike_trap_center
+		escape_direction.y = 0.0
+		if escape_direction.length() > 8.1:
 			continue
 		var key := "player" if body == player else "rival"
 		if spike_hit_cooldowns[key] > 0.0:
 			continue
 		body.velocity *= 0.72
-		body.velocity += (body.global_position - spike_trap_center).normalized() * 8.0
+		if escape_direction.length_squared() > 0.001:
+			body.velocity += escape_direction.normalized() * 8.0
+		body.velocity.y = 0.0
+		body.global_position.y = 0.9
 		if body == player:
 			player_health = maxf(0.0, player_health - 7.0)
 			camera_shake = maxf(camera_shake, 0.55)
