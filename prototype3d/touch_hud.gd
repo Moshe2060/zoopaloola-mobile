@@ -8,8 +8,11 @@ var energy := 100.0
 var enemy_health := 100.0
 var exhausted := false
 var turbo_seconds := 0.0
+var ability_ratio := 1.0
+var ability_ready := true
 var result_text := ""
 var restart_pressed := false
+var ability_pressed := false
 var player_map_position := Vector2.ZERO
 var rival_map_position := Vector2.ZERO
 var player_map_heading := 0.0
@@ -25,6 +28,7 @@ var camera_yaw_target := 0.0
 var _move_touch := -1
 var _boost_touch := -1
 var _brace_touch := -1
+var _ability_touch := -1
 var _camera_touch := -1
 var _stick_origin := Vector2.ZERO
 var _stick_knob := Vector2.ZERO
@@ -60,6 +64,11 @@ func consume_restart() -> bool:
 	restart_pressed = false
 	return value
 
+func consume_ability() -> bool:
+	var value := ability_pressed
+	ability_pressed = false
+	return value
+
 func show_pickup(kind: String) -> void:
 	if kind == "health":
 		pickup_message = "+26 HEALTH"
@@ -89,6 +98,10 @@ func _input(event: InputEvent) -> void:
 			elif event.position.distance_to(Vector2(size.x - 250.0, size.y - 80.0)) < 58.0:
 				_brace_touch = event.index
 				brace_pressed = true
+			elif event.position.distance_to(Vector2(size.x - 258.0, size.y - 190.0)) < 62.0:
+				_ability_touch = event.index
+				if ability_ready:
+					ability_pressed = true
 			elif event.position.x >= size.x * 0.48 and _camera_touch == -1:
 				_camera_touch = event.index
 				_camera_last_position = event.position
@@ -102,6 +115,8 @@ func _input(event: InputEvent) -> void:
 			if event.index == _brace_touch:
 				_brace_touch = -1
 				brace_pressed = false
+			if event.index == _ability_touch:
+				_ability_touch = -1
 			if event.index == _camera_touch:
 				_camera_touch = -1
 	elif event is InputEventScreenDrag:
@@ -156,6 +171,12 @@ func _draw() -> void:
 	var brace_center := Vector2(size.x - 250, size.y - 80)
 	draw_circle(brace_center, 42, Color(0.36, 0.32, 0.9, 0.58))
 	draw_string(font, brace_center + Vector2(-31, 6), "BRACE", HORIZONTAL_ALIGNMENT_CENTER, 62, 12, Color.WHITE)
+	var ability_center := Vector2(size.x - 258, size.y - 190)
+	draw_circle(ability_center, 49, Color(0.08, 0.1, 0.18, 0.78))
+	draw_arc(ability_center, 49, -PI * 0.5, -PI * 0.5 + TAU * ability_ratio, 40, Color("43d7ff") if ability_ready else Color("3b6680"), 6)
+	draw_string(font, ability_center + Vector2(-42, -3), "SHOCK", HORIZONTAL_ALIGNMENT_CENTER, 84, 13, Color.WHITE if ability_ready else Color(0.55, 0.62, 0.68))
+	if not ability_ready:
+		draw_string(font, ability_center + Vector2(-35, 16), "%d" % ceili((1.0 - ability_ratio) * 8.0), HORIZONTAL_ALIGNMENT_CENTER, 70, 13, Color(0.7, 0.86, 0.95))
 	if result_text != "":
 		draw_rect(Rect2(0, 0, size.x, size.y), Color(0.01, 0.01, 0.04, 0.72), true)
 		draw_string(font, Vector2(0, size.y * 0.43), result_text, HORIZONTAL_ALIGNMENT_CENTER, size.x, 54, Color.WHITE)
