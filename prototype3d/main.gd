@@ -29,6 +29,8 @@ var camera_shake := 0.0
 var spinner: Node3D
 var spinner_angle := 0.0
 var spinner_hit_cooldown := 0.0
+var gravity_trap: Node3D
+var gravity_trap_center := Vector3(-72, 0, -50)
 var match_finished := false
 var sticky_center := Vector3(82, 0, -54)
 var rng := RandomNumberGenerator.new()
@@ -63,6 +65,7 @@ func _physics_process(delta: float) -> void:
 	_update_rival(delta)
 	_resolve_vehicle_collision()
 	_update_spinner(delta)
+	_update_gravity_trap(delta)
 	_apply_arena_limits(player)
 	_apply_arena_limits(rival)
 	_update_camera(delta)
@@ -246,6 +249,7 @@ func _build_world() -> void:
 	# The center hub is a real obstacle, not only a decorative mesh.
 	_make_cylinder_static("ReactorCollision", 2.35, 1.7, Vector3(0, 0.72, 0), Color("5e3da0"))
 	_build_spinner()
+	_build_gravity_trap()
 
 func _make_hovercraft(title: String, color: Color, position: Vector3) -> CharacterBody3D:
 	var body := CharacterBody3D.new()
@@ -275,6 +279,10 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	cockpit.scale = Vector3(0.85, 0.72, 0.85)
 	cockpit.material_override = _material(Color("1b213d"), Color("5275ba"), 0.55)
 	body.add_child(cockpit)
+	if title == "Elephant":
+		_add_elephant_pilot(body)
+	elif title == "Monkey":
+		_add_monkey_pilot(body)
 	var nose := MeshInstance3D.new()
 	var nose_mesh := BoxMesh.new()
 	nose_mesh.size = Vector3(0.34, 0.18, 0.62)
@@ -284,6 +292,42 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	body.add_child(nose)
 	add_child(body)
 	return body
+
+func _add_elephant_pilot(body: Node3D) -> void:
+	var skin := _material(Color("7f899c"), Color("3e4863"), 0.18)
+	var head := _make_sphere(Vector3(0, 1.18, 0.08), Vector3(0.62, 0.58, 0.64), skin)
+	body.add_child(head)
+	for side in [-1.0, 1.0]:
+		var ear := _make_sphere(Vector3(side * 0.58, 1.2, 0.02), Vector3(0.42, 0.5, 0.16), skin)
+		body.add_child(ear)
+	var trunk := MeshInstance3D.new()
+	var trunk_mesh := CapsuleMesh.new()
+	trunk_mesh.radius = 0.16
+	trunk_mesh.height = 0.92
+	trunk.mesh = trunk_mesh
+	trunk.position = Vector3(0, 0.88, 0.56)
+	trunk.rotation.x = deg_to_rad(63.0)
+	trunk.material_override = skin
+	body.add_child(trunk)
+
+func _add_monkey_pilot(body: Node3D) -> void:
+	var fur := _material(Color("774326"), Color("3c2015"), 0.12)
+	var face := _material(Color("d8a068"), Color("6e4329"), 0.1)
+	body.add_child(_make_sphere(Vector3(0, 1.18, 0.08), Vector3(0.58, 0.58, 0.58), fur))
+	body.add_child(_make_sphere(Vector3(0, 1.08, 0.48), Vector3(0.38, 0.3, 0.3), face))
+	for side in [-1.0, 1.0]:
+		body.add_child(_make_sphere(Vector3(side * 0.55, 1.22, 0.04), Vector3(0.26, 0.3, 0.16), fur))
+
+func _make_sphere(position: Vector3, scale_value: Vector3, material: Material) -> MeshInstance3D:
+	var part := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.72
+	mesh.height = 1.44
+	part.mesh = mesh
+	part.position = position
+	part.scale = scale_value
+	part.material_override = material
+	return part
 
 func _build_camera() -> void:
 	camera_rig = Node3D.new()
@@ -339,6 +383,40 @@ func _update_spinner(delta: float) -> void:
 				_spawn_impact_flash(body.global_position + Vector3.UP * 0.4)
 				spinner_hit_cooldown = 0.48
 				return
+
+func _build_gravity_trap() -> void:
+	gravity_trap = Node3D.new()
+	gravity_trap.name = "GravityMagnet"
+	gravity_trap.position = gravity_trap_center + Vector3.UP * 0.08
+	add_child(gravity_trap)
+	for index in range(3):
+		var ring := MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		var radius := 6.5 - float(index) * 1.65
+		mesh.top_radius = radius
+		mesh.bottom_radius = radius
+		mesh.height = 0.055 + float(index) * 0.025
+		ring.mesh = mesh
+		ring.position.y = float(index) * 0.055
+		ring.material_override = _material(Color("34205e").lightened(float(index) * 0.08), Color("a338ff"), 1.6 + float(index) * 0.35)
+		gravity_trap.add_child(ring)
+
+func _update_gravity_trap(delta: float) -> void:
+	gravity_trap.rotation.y += delta * 0.9
+	for body in [player, rival]:
+		var offset := gravity_trap_center - body.global_position
+		offset.y = 0.0
+		var distance := offset.length()
+		if distance >= 15.0 or distance < 0.1:
+			continue
+		var pull_strength := lerpf(7.0, 29.0, 1.0 - distance / 15.0)
+		body.velocity += offset.normalized() * pull_strength * delta
+		if distance < 6.0:
+			if body == player:
+				player_health = maxf(0.0, player_health - 5.5 * delta)
+				camera_shake = maxf(camera_shake, 0.12)
+			else:
+				rival_health = maxf(0.0, rival_health - 5.5 * delta)
 
 func _spawn_impact_flash(position: Vector3) -> void:
 	var flash := OmniLight3D.new()
