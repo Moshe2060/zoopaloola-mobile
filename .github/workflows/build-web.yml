@@ -180,7 +180,7 @@ jobs:
           # Give every prototype payload a commit-specific URL. A query string
           # on index.html alone does not invalidate Godot's index.pck/index.wasm
           # cache, which can leave phones running the previous prototype.
-          PROTOTYPE_BUILD="prototype-${GITHUB_SHA::8}"
+          PROTOTYPE_BUILD="prototype-$(printf '%s' "$GITHUB_SHA" | cut -c1-8)"
           mv build/index.js "build/${PROTOTYPE_BUILD}.js"
           mv build/index.wasm "build/${PROTOTYPE_BUILD}.wasm"
           mv build/index.pck "build/${PROTOTYPE_BUILD}.pck"
