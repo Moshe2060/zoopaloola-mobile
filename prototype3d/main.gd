@@ -60,6 +60,7 @@ var pickups: Array[Dictionary] = []
 var match_finished := false
 var sticky_center := Vector3(82, 0, -54)
 var rng := RandomNumberGenerator.new()
+var engine_audio: AudioStreamPlayer3D
 
 func _ready() -> void:
 	rng.randomize()
@@ -123,6 +124,7 @@ func _physics_process(delta: float) -> void:
 	_apply_arena_limits(ally)
 	_apply_arena_limits(rival_two)
 	_update_camera(delta)
+	_update_drive_feedback(delta)
 	_update_hud()
 	_update_knockouts()
 	if player_health <= 0.0 or (rival_health <= 0.0 and rival_two_health <= 0.0):
@@ -673,6 +675,8 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 		combatant_model.scale = Vector3.ONE * 2.05
 		combatant_model.position.y = 0.62
 	body.add_child(combatant_model)
+	if title == "Elephant":
+		_add_collision_hovercraft_kit(body)
 	var team_marker := MeshInstance3D.new()
 	var marker_mesh := CylinderMesh.new()
 	marker_mesh.top_radius = 1.82
@@ -693,6 +697,85 @@ func _combatant_visual(path: String) -> Node3D:
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = resource as Mesh
 	return mesh_instance
+
+func _add_collision_hovercraft_kit(body: Node3D) -> void:
+	var armor := _material(Color("16233a"), Color("174f8c"), 0.2)
+	var edge := _material(Color("37445a"), Color("1d3559"), 0.12)
+	var glow := _material(Color("8cecff"), Color("20cfff"), 3.8)
+	# A three-piece V ram gives the circular Meshy hull an obvious attack direction.
+	var center_ram := _make_box_part(Vector3(0, 0.22, 2.05), Vector3(0.72, 0.48, 1.02), armor)
+	body.add_child(center_ram)
+	for side in [-1.0, 1.0]:
+		var wing_ram := _make_box_part(Vector3(side * 0.92, 0.18, 1.78), Vector3(1.25, 0.42, 0.48), armor)
+		wing_ram.rotation.y = side * deg_to_rad(18.0)
+		body.add_child(wing_ram)
+		var side_guard := _make_box_part(Vector3(side * 1.78, 0.12, 0.22), Vector3(0.32, 0.48, 1.65), edge)
+		side_guard.rotation.y = side * deg_to_rad(5.0)
+		body.add_child(side_guard)
+		var exhaust := _make_box_part(Vector3(side * 0.82, 0.02, -2.0), Vector3(0.28, 0.24, 0.5), glow)
+		exhaust.name = "EngineTrailLeft" if side < 0.0 else "EngineTrailRight"
+		body.add_child(exhaust)
+	var engine_light := OmniLight3D.new()
+	engine_light.name = "EngineLight"
+	engine_light.position = Vector3(0, 0.2, -1.65)
+	engine_light.light_color = Color("32d6ff")
+	engine_light.light_energy = 0.65
+	engine_light.omni_range = 3.5
+	body.add_child(engine_light)
+	engine_audio = AudioStreamPlayer3D.new()
+	engine_audio.name = "EngineAudio"
+	engine_audio.stream = _make_engine_loop()
+	engine_audio.volume_db = -24.0
+	engine_audio.pitch_scale = 0.72
+	engine_audio.max_distance = 38.0
+	body.add_child(engine_audio)
+	engine_audio.play()
+
+func _make_engine_loop() -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = 22050
+	stream.stereo = false
+	var frames := int(stream.mix_rate * 0.32)
+	var bytes := PackedByteArray()
+	bytes.resize(frames * 2)
+	for index in range(frames):
+		var phase := TAU * float(index) / float(stream.mix_rate)
+		var motor := sin(phase * 74.0) * 0.54 + sin(phase * 148.0) * 0.22 + sin(phase * 37.0) * 0.14
+		var sample := int(clampf(motor, -1.0, 1.0) * 32767.0 * 0.34)
+		bytes[index * 2] = sample & 0xff
+		bytes[index * 2 + 1] = (sample >> 8) & 0xff
+	stream.data = bytes
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = frames
+	return stream
+
+func _update_drive_feedback(delta: float) -> void:
+	if player == null:
+		return
+	var speed_ratio := clampf(Vector2(player.velocity.x, player.velocity.z).length() / BOOST_SPEED, 0.0, 1.25)
+	var input_steer := Input.get_axis("ui_left", "ui_right")
+	if hud != null and absf(hud.move_vector.x) > 0.04:
+		input_steer = hud.move_vector.x
+	var model := player.get_node_or_null("CombatantModel") as Node3D
+	if model != null:
+		var base_height := 0.62 + sin(Time.get_ticks_msec() * 0.0065) * (0.035 + speed_ratio * 0.025)
+		model.position.y = lerpf(model.position.y, base_height, 1.0 - exp(-delta * 8.0))
+		model.rotation.x = lerpf(model.rotation.x, -speed_ratio * 0.055, 1.0 - exp(-delta * 5.0))
+		model.rotation.z = lerpf(model.rotation.z, input_steer * 0.13, 1.0 - exp(-delta * 7.0))
+	for trail_name in ["EngineTrailLeft", "EngineTrailRight"]:
+		var trail := player.get_node_or_null(trail_name) as MeshInstance3D
+		if trail != null:
+			trail.scale.z = lerpf(trail.scale.z, 0.35 + speed_ratio * 2.5, 1.0 - exp(-delta * 11.0))
+			trail.visible = speed_ratio > 0.06
+	var engine_light := player.get_node_or_null("EngineLight") as OmniLight3D
+	if engine_light != null:
+		engine_light.light_energy = 0.45 + speed_ratio * 2.4
+		engine_light.omni_range = 3.0 + speed_ratio * 3.5
+	if engine_audio != null:
+		engine_audio.pitch_scale = lerpf(engine_audio.pitch_scale, 0.72 + speed_ratio * 0.72, 1.0 - exp(-delta * 4.0))
+		engine_audio.volume_db = lerpf(engine_audio.volume_db, -24.0 + speed_ratio * 13.0, 1.0 - exp(-delta * 5.0))
 
 func _add_elephant_pilot(body: Node3D) -> void:
 	var skin := _material(Color("7f899c"), Color("3e4863"), 0.18)
