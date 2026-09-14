@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 113927)
-Total output lines: 8349
-
 extends Node2D
 
 const BOARD_W := 207.0
@@ -2513,7 +2510,4322 @@ func draw_press_trap(effect: Dictionary) -> void:
 func hammer_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
 
-func hamm…53927 tokens truncated…"
+func hammer_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == HAMMER_TRAP_HOLE:
+			return true
+	return false
+
+func hammer_weapon_points() -> Dictionary:
+	var hit := trap_ball_position(HAMMER_TRAP_HOLE, hammer_point(1072.0, 522.0))
+	var scale_y := board_rect.size.y / 600.0
+	return {
+		# Mounts sit deep on the two stones, far away from the capture point, just
+		# like the supplied original screenshots. The heads point away from the
+		# hole while idle and swing inward only during a strike.
+		"right": hit + Vector2(12.0, -52.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 0),
+		"bottom": hit + Vector2(-64.0, 22.0) * scale_y + trap_weapon_offset(HAMMER_TRAP_HOLE, 1),
+		"hit": hit
+	}
+
+func hammer_strike_amount(seconds: float, first_start: float) -> float:
+	# Each hammer gets its own repeated stroke. Their starts are separated by
+	# half a cycle, producing right-left-right-left impacts without overlap.
+	if seconds < first_start or seconds >= 2.20:
+		return 0.0
+	var local := fmod(seconds - first_start, 0.68)
+	if local < 0.12:
+		return smooth_step(local / 0.12)
+	if local < 0.17:
+		return 1.0
+	if local < 0.32:
+		return 1.0 - smooth_step((local - 0.17) / 0.15)
+	return 0.0
+
+func draw_hammer_sprite_frame(texture: Texture2D, anchor: Vector2, angle: float, target_length: float, pivot_ratio: Vector2, head_ratio: Vector2, alpha: float) -> void:
+	if texture == null or alpha <= 0.01:
+		return
+	var source := texture.get_size()
+	var pivot := source * pivot_ratio
+	var head := source * head_ratio
+	var internal_angle := (head - pivot).angle()
+	var internal_length := maxf(1.0, pivot.distance_to(head))
+	var factor := target_length / internal_length
+	draw_set_transform(anchor, angle - internal_angle, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-pivot * factor, source * factor), false, Color(1.0, 1.0, 1.0, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_hammer_cutout(texture: Texture2D, center: Vector2, target_height: float, rotation: float, alpha: float = 1.0) -> void:
+	if texture == null or alpha <= 0.01:
+		return
+	var source := texture.get_size()
+	var factor := target_height / maxf(1.0, source.y)
+	var size := source * factor
+	draw_set_transform(center, rotation, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_trap_hammer(anchor: Vector2, hit_point: Vector2, rest_angle: float, amount: float, weapon_scale: float, mirrored: bool) -> void:
+	var strike_angle := (hit_point - anchor).angle()
+	var angle := lerp_angle(rest_angle, strike_angle, amount)
+	var target_length := anchor.distance_to(hit_point) * weapon_scale
+	# Rotate the complete restored hammer around the center of its stone-mounted
+	# base. Nothing is translated into the pocket; only the arm swings inward.
+	var swing_mix := smooth_step((amount - 0.52) / 0.28)
+	draw_hammer_sprite_frame(hammer_idle_texture, anchor, angle, target_length, Vector2(0.50, 0.91), Vector2(0.50, 0.15), 1.0 - swing_mix)
+	draw_hammer_sprite_frame(hammer_swing_texture, anchor, angle, target_length, Vector2(0.75, 0.17), Vector2(0.38, 0.78), swing_mix)
+
+func draw_hammer_weapons_idle() -> void:
+	if hammer_trap_is_active():
+		return
+	var points := hammer_weapon_points()
+	draw_trap_hammer(points.right, points.hit, deg_to_rad(-90.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+	draw_trap_hammer(points.bottom, points.hit, deg_to_rad(180.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+
+func draw_hammer_trap(effect: Dictionary) -> void:
+	var seconds: float = effect.elapsed
+	var scale_y := board_rect.size.y / 600.0
+	var points := hammer_weapon_points()
+	var right_weapon: Vector2 = points.right
+	var bottom_weapon: Vector2 = points.bottom
+	var hit_point: Vector2 = points.hit
+	var radius := trap_ball_radius(HAMMER_TRAP_HOLE, 27.0 * scale_y)
+	var right_amount := hammer_strike_amount(seconds, 0.20)
+	var bottom_amount := hammer_strike_amount(seconds, 0.54)
+	var impact := maxf(
+		smooth_step((right_amount - 0.52) / 0.44),
+		smooth_step((bottom_amount - 0.52) / 0.44)
+	)
+	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
+	var center := hit_point
+	var ball_radius := radius
+	var alpha := 1.0
+	if release > 0.0:
+		var fall := release * release
+		center = hit_point.lerp(effect_fall_endpoint(HAMMER_TRAP_HOLE), fall)
+		center.y -= sin(release * PI) * 5.0 * scale_y
+		ball_radius *= 1.0 - release * 0.32
+		alpha = 1.0 - release * 0.10
+
+	var squash_x := 1.0
+	var squash_y := 1.0
+	var ball_rotation := 0.0
+	# The ball stays progressively crushed after every alternating blow instead
+	# of returning completely to its original size between hits.
+	var completed_hits := clampi(int(floor((seconds - 0.20) / 0.34)) + 1, 0, 6)
+	var permanent_crush := float(completed_hits) / 6.0
+	# Keep the accumulated crushed shape during the fall as well. Previously
+	# this was applied only before release, so the ball briefly grew back.
+	ball_radius *= lerpf(1.0, 0.72, permanent_crush)
+	squash_x = lerpf(1.0, 1.10, permanent_crush)
+	squash_y = lerpf(1.0, 0.70, permanent_crush)
+	if release <= 0.0 and impact > 0.01:
+		ball_radius *= lerpf(1.0, 0.88, impact)
+		if right_amount >= bottom_amount:
+			squash_x *= lerpf(1.0, 0.48, impact)
+			squash_y *= lerpf(1.0, 1.42, impact)
+			ball_rotation = -0.13 * impact
+		else:
+			squash_x *= lerpf(1.0, 1.42, impact)
+			squash_y *= lerpf(1.0, 0.48, impact)
+			ball_rotation = 0.13 * impact
+
+	# Draw the ball first, then the hammers, so their heads visibly land on top.
+	draw_press_ball(center, ball_radius, squash_x, squash_y, ball_rotation, effect.team, effect.piece, alpha)
+	if release <= 0.0:
+		draw_trap_hammer(right_weapon, hit_point + Vector2(radius * 0.12, -radius * 0.08), deg_to_rad(-90.0), right_amount, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+		draw_trap_hammer(bottom_weapon, hit_point + Vector2(-radius * 0.08, radius * 0.12), deg_to_rad(180.0), bottom_amount, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+	else:
+		# Return both hammers to their stone-mounted idle poses as soon as the
+		# crushing ends. The active fall continues, but the weapons never vanish.
+		draw_trap_hammer(right_weapon, hit_point, deg_to_rad(-90.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 0), false)
+		draw_trap_hammer(bottom_weapon, hit_point, deg_to_rad(180.0), 0.0, trap_weapon_scale(HAMMER_TRAP_HOLE, 1), true)
+
+	if impact > 0.05 and release <= 0.0:
+		draw_circle(center, ball_radius * 0.78, Color(1.0, 0.98, 0.82, 0.72 * impact))
+		draw_circle(center, ball_radius * (1.32 + impact * 0.18), Color(1.0, 0.77, 0.25, 0.28 * impact), false, maxf(2.0, 4.0 * scale_y))
+		for i in 6:
+			var a := TAU * float(i) / 6.0
+			var p1 := center + Vector2(cos(a), sin(a)) * ball_radius * 1.10
+			var p2 := center + Vector2(cos(a), sin(a)) * ball_radius * (1.35 + impact * 0.28)
+			draw_line(p1, p2, Color(1.0, 0.90, 0.50, 0.82 * impact), maxf(1.0, 2.0 * scale_y), true)
+
+func electric_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func draw_electric_arc(start: Vector2, finish: Vector2, phase: float, alpha: float, width: float) -> void:
+	var points := PackedVector2Array()
+	var delta := finish - start
+	var normal := delta.normalized().orthogonal() if delta.length_squared() > 0.01 else Vector2.UP
+	for i in 11:
+		var t := float(i) / 10.0
+		var jitter := 0.0
+		if i > 0 and i < 10:
+			jitter = sin(float(i) * 12.73 + phase * 19.0) * width * 2.2
+			jitter += cos(float(i) * 7.31 + phase * 11.0) * width
+		points.append(start.lerp(finish, t) + normal * jitter)
+	draw_polyline(points, Color(0.72, 0.93, 1.0, alpha * 0.52), width * 2.4, true)
+	draw_polyline(points, Color(0.96, 1.0, 1.0, alpha), width, true)
+
+func electric_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == ELECTRIC_TRAP_HOLE:
+			return true
+	return false
+
+func electric_weapon_points() -> Dictionary:
+	var capture := trap_ball_position(ELECTRIC_TRAP_HOLE, board_to_screen(SCORING_HOLE_CENTERS[ELECTRIC_TRAP_HOLE]))
+	var scale_y := board_rect.size.y / 600.0
+	return {
+		"capture": capture,
+		"top": capture + electric_top_offset * scale_y + trap_weapon_offset(ELECTRIC_TRAP_HOLE, 0),
+		"right": capture + electric_right_offset * scale_y + trap_weapon_offset(ELECTRIC_TRAP_HOLE, 1)
+	}
+
+func draw_electric_emitter(center: Vector2, target: Vector2, size: float, power: float = 0.0) -> Vector2:
+	var direction := (target - center).normalized()
+	if direction.length_squared() < 0.01:
+		direction = Vector2.RIGHT
+	var angle := direction.angle()
+	# Heavy stone-mounted high-voltage generator: steel housing, copper coil,
+	# ceramic insulators and a forked discharge head. Everything is drawn in the
+	# weapon's local axis so both emitters retain the editor-approved positions.
+	draw_set_transform(center + Vector2(0.0, size * 0.10), angle, Vector2.ONE)
+	var shadow_rect := Rect2(Vector2(-size * 0.52, -size * 0.39) + Vector2(0.0, size * 0.10), Vector2(size * 0.86, size * 0.78))
+	draw_style_box(make_box(Color(0.02, 0.04, 0.06, 0.32), size * 0.14), shadow_rect)
+	var body_rect := Rect2(Vector2(-size * 0.52, -size * 0.39), Vector2(size * 0.86, size * 0.78))
+	draw_style_box(make_box(Color("1f3039"), size * 0.13), body_rect)
+	var inner_rect := Rect2(Vector2(-size * 0.43, -size * 0.30), Vector2(size * 0.65, size * 0.60))
+	draw_style_box(make_box(Color("6f858e"), size * 0.10), inner_rect)
+	# Rear mounting band and four warm metal bolts.
+	draw_rect(Rect2(Vector2(-size * 0.47, -size * 0.32), Vector2(size * 0.13, size * 0.64)), Color("314650"))
+	for bolt_y in [-0.22, 0.22]:
+		draw_circle(Vector2(-size * 0.405, size * bolt_y), size * 0.045, Color("e6bd43"))
+	# Bright copper induction coil wrapped around a dark magnetic core.
+	draw_rect(Rect2(Vector2(-size * 0.27, -size * 0.20), Vector2(size * 0.39, size * 0.40)), Color("243740"))
+	for i in 5:
+		var coil_x := size * (-0.235 + float(i) * 0.078)
+		draw_line(Vector2(coil_x, -size * 0.22), Vector2(coil_x, size * 0.22), Color("6f2b18"), size * 0.090, true)
+		draw_line(Vector2(coil_x - size * 0.012, -size * 0.20), Vector2(coil_x - size * 0.012, size * 0.20), Color("f18a2b"), size * 0.045, true)
+	# Two pale ceramic insulators lead into the forked electrode.
+	for insulator_y in [-0.17, 0.17]:
+		draw_line(Vector2(size * 0.14, size * insulator_y), Vector2(size * 0.42, size * insulator_y), Color("24343b"), size * 0.15, true)
+		draw_line(Vector2(size * 0.16, size * insulator_y), Vector2(size * 0.39, size * insulator_y), Color("d9e7e4"), size * 0.085, true)
+		for ring_x in [0.20, 0.29, 0.38]:
+			draw_line(Vector2(size * ring_x, size * (insulator_y - 0.075)), Vector2(size * ring_x, size * (insulator_y + 0.075)), Color("6d8790"), size * 0.035, true)
+	# Fork tips focus the discharge into a single bright muzzle point.
+	var fork_color := Color("a9c0c5")
+	draw_line(Vector2(size * 0.40, -size * 0.17), Vector2(size * 0.62, -size * 0.08), fork_color, size * 0.075, true)
+	draw_line(Vector2(size * 0.40, size * 0.17), Vector2(size * 0.62, size * 0.08), fork_color, size * 0.075, true)
+	draw_circle(Vector2(size * 0.62, -size * 0.08), size * 0.065, Color("d8f6ff"))
+	draw_circle(Vector2(size * 0.62, size * 0.08), size * 0.065, Color("d8f6ff"))
+	# Animated energy window remains subtle at idle and brightens before firing.
+	var core_alpha := 0.34 + power * 0.58
+	draw_circle(Vector2(-size * 0.07, 0.0), size * (0.095 + power * 0.018), Color(0.35, 0.88, 1.0, core_alpha))
+	draw_circle(Vector2(-size * 0.07, 0.0), size * 0.17, Color(0.18, 0.70, 1.0, 0.10 + power * 0.16), false, maxf(1.0, size * 0.035), true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var upper_tip := center + direction * size * 0.62 - direction.orthogonal() * size * 0.08
+	var lower_tip := center + direction * size * 0.62 + direction.orthogonal() * size * 0.08
+	var tip := center + direction * size * 0.70
+	if power > 0.01:
+		draw_electric_arc(upper_tip, lower_tip, float(Time.get_ticks_msec()) * 0.006, 0.30 + power * 0.65, maxf(1.0, size * 0.035))
+		draw_circle(tip, size * (0.08 + power * 0.045), Color(0.82, 0.97, 1.0, 0.42 + power * 0.50))
+	return tip
+
+func draw_electric_weapons_idle() -> void:
+	if customizer_open or electric_trap_is_active():
+		return
+	var points := electric_weapon_points()
+	var scale_y := board_rect.size.y / 600.0
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.0045) + 1.0) * 0.5
+	draw_electric_emitter(points.top, points.capture, electric_top_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 0), pulse * 0.20)
+	draw_electric_emitter(points.right, points.capture, electric_right_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 1), pulse * 0.20)
+
+func draw_electric_trap(effect: Dictionary) -> void:
+	var seconds: float = effect.elapsed
+	var scale_y := board_rect.size.y / 600.0
+	var points := electric_weapon_points()
+	var top_weapon: Vector2 = points.top
+	var right_weapon: Vector2 = points.right
+	var shock_point: Vector2 = points.capture
+	var radius := trap_ball_radius(ELECTRIC_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale)
+	var charge := smooth_step(seconds / 0.30)
+	var charge_fade := 1.0 - smooth_step((seconds - 1.12) / 0.28)
+	var beam_power := charge * charge_fade
+	var electrified := smooth_step((seconds - 0.10) / 0.38)
+	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
+	var center := shock_point
+	var ball_radius := radius
+	var alpha := 1.0
+
+	if release > 0.0:
+		# Fall out through the nearby upper-right opening while remaining charged.
+		var fall := release * release
+		center = shock_point.lerp(effect_fall_endpoint(ELECTRIC_TRAP_HOLE), fall)
+		center.y -= sin(release * PI) * 7.0 * scale_y
+		ball_radius *= 1.0 - release * 0.34
+		alpha = 1.0 - release * 0.10
+
+	var top_tip := draw_electric_emitter(top_weapon, shock_point, electric_top_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 0), beam_power)
+	var right_tip := draw_electric_emitter(right_weapon, shock_point, electric_right_size * scale_y * trap_weapon_scale(ELECTRIC_TRAP_HOLE, 1), beam_power)
+
+	# One short, bright discharge from each weapon, as in the source animation.
+	if beam_power > 0.01 and release <= 0.0:
+		draw_electric_arc(top_tip, shock_point - Vector2(radius * 0.34, radius * 0.30), seconds * 2.3, beam_power, maxf(1.4, 2.5 * scale_y))
+		draw_electric_arc(right_tip, shock_point + Vector2(radius * 0.34, radius * 0.28), seconds * 2.7 + 0.43, beam_power, maxf(1.4, 2.5 * scale_y))
+
+	# Keep the real character ball visible under the electric glow.
+	var shake := Vector2.ZERO
+	if electrified > 0.05 and release <= 0.0:
+		shake = Vector2(sin(seconds * 43.0), cos(seconds * 37.0)) * 2.5 * scale_y * electrified
+	draw_rubber_game_ball(center + shake, ball_radius, effect.team, effect.piece, alpha)
+	# Strong irregular white/yellow flashes repeatedly wash over the whole ball.
+	var flash_wave := sin(seconds * 17.0) * 0.5 + sin(seconds * 29.0 + 0.7) * 0.3 + 0.2
+	var flash := smooth_step(clampf((flash_wave - 0.12) / 0.48, 0.0, 1.0)) * electrified
+	if flash > 0.02:
+		draw_circle(center + shake, ball_radius * (1.04 + flash * 0.10), Color(1.0, 0.96, 0.60, flash * 0.72 * alpha), true, -1.0, true)
+		draw_circle(center + shake, ball_radius * (1.36 + flash * 0.18), Color(1.0, 0.88, 0.24, flash * 0.20 * alpha), false, maxf(2.0, 4.0 * scale_y), true)
+
+	# Compact lightning remains wrapped around the ball, including during its fall.
+	var local_power := electrified * (1.0 - release * 0.18)
+	if local_power > 0.01:
+		draw_circle(center + shake, ball_radius * (1.30 + sin(seconds * 24.0) * 0.07), Color(0.82, 0.96, 1.0, 0.18 * local_power * alpha))
+		for i in 10:
+			var a := TAU * float(i) / 10.0 + seconds * (2.1 + float(i % 3) * 0.2)
+			var inner := center + shake + Vector2(cos(a), sin(a)) * ball_radius * 0.82
+			var outer_angle := a + sin(seconds * 17.0 + float(i)) * 0.28
+			var outer := center + shake + Vector2(cos(outer_angle), sin(outer_angle)) * ball_radius * (1.30 + 0.22 * sin(seconds * 21.0 + float(i)))
+			draw_electric_arc(inner, outer, seconds * 1.4 + float(i), local_power * alpha * 0.92, maxf(1.0, 1.8 * scale_y))
+
+
+func fire_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func fire_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == FIRE_TRAP_HOLE:
+			return true
+	return false
+
+func draw_fire_emitter(center: Vector2, target: Vector2, size: float, heat: float = 0.0) -> Vector2:
+	var direction := (target - center).normalized()
+	if fire_launcher_texture == null:
+		return center
+	var source := fire_launcher_texture.get_size()
+	var factor := size / source.y
+	# The generated turret's rotation center is inside the large round base,
+	# not at the center of its square canvas.
+	var pivot := Vector2(source.x * 0.43, source.y * 0.52)
+	var draw_size := source * factor
+	draw_set_transform(center, direction.angle(), Vector2.ONE)
+	draw_texture_rect(fire_launcher_texture, Rect2(-pivot * factor, draw_size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var nozzle_tip := center + direction * (source.x - pivot.x) * factor
+	if heat > 0.01:
+		draw_circle(nozzle_tip, size * (0.055 + heat * 0.035), Color(1.0, 0.66, 0.12, 0.45 + heat * 0.45))
+	return nozzle_tip
+
+func fire_weapon_points() -> Dictionary:
+	var burn := trap_ball_position(FIRE_TRAP_HOLE, fire_point(112.0, 536.0))
+	return {
+		"burn": burn,
+		"left": fire_point(78.0, 492.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 0),
+		"bottom": fire_point(188.0, 565.0) + trap_weapon_offset(FIRE_TRAP_HOLE, 1)
+	}
+
+func draw_fire_weapons_idle() -> void:
+	if customizer_open or fire_trap_is_active():
+		return
+	var points := fire_weapon_points()
+	var scale_y := board_rect.size.y / 600.0
+	draw_fire_emitter(points.left, points.burn, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0))
+	draw_fire_emitter(points.bottom, points.burn, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1))
+
+func draw_fire_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
+	if amount <= 0.01:
+		return
+	var end := origin.lerp(target, amount)
+	var direction := end - origin
+	if direction.length_squared() < 0.01:
+		return
+	var normal := direction.normalized().orthogonal()
+	var scale_y := board_rect.size.y / 600.0 * edit_scale
+	var outer := PackedVector2Array()
+	var inner := PackedVector2Array()
+	for i in 14:
+		var t := float(i) / 13.0
+		var wave := sin(t * 18.0 + seed_offset * 13.0 + float(Time.get_ticks_msec()) * 0.018) * 7.0 * scale_y
+		outer.append(origin.lerp(end, t) + normal * wave)
+		inner.append(origin.lerp(end, t) + normal * wave * 0.42)
+	draw_polyline(outer, Color(0.82, 0.08, 0.005, 0.92), 24.0 * scale_y, true)
+	draw_polyline(outer, Color(1.0, 0.32, 0.01, 0.98), 16.0 * scale_y, true)
+	draw_polyline(inner, Color(1.0, 0.82, 0.12, 0.98), 7.0 * scale_y, true)
+	for i in 12:
+		var phase := fmod(float(i) / 11.0 + seed_offset + float(Time.get_ticks_msec()) * 0.0007, 1.0) * amount
+		var p := origin.lerp(target, phase)
+		p += normal * sin(phase * 29.0 + seed_offset * 17.0) * 13.0 * scale_y
+		var r := (3.5 + float(i % 4) * 1.7) * scale_y
+		draw_circle(p, r, Color(1.0, 0.20 + 0.14 * float(i % 3), 0.005, 0.88))
+
+func draw_burning_ball(center: Vector2, radius: float, burn: float, team: int, piece: int, alpha: float) -> void:
+	var now := float(Time.get_ticks_msec()) * 0.001
+	# Let the animal remain visible while soot spreads over it instead of
+	# replacing it instantly with a flat black fire icon.
+	draw_rubber_game_ball(center, radius, team, piece, (1.0 - burn * 0.78) * alpha)
+	var ember_radius := radius * lerpf(0.88, 1.02, burn)
+	# Soft heat haze and deep ember body.
+	draw_circle(center, ember_radius * 1.34, Color(1.0, 0.14, 0.01, 0.10 * burn * alpha))
+	draw_circle(center, ember_radius * 1.15, Color(1.0, 0.30, 0.015, 0.12 * burn * alpha))
+	draw_circle(center, ember_radius, Color(0.025, 0.018, 0.014, 0.82 * burn * alpha))
+	# Irregular soot patches keep the surface organic and textured.
+	for i in 13:
+		var a := float(i) * 2.399 + 0.31
+		var distance := ember_radius * (0.18 + 0.56 * absf(sin(float(i) * 1.73)))
+		var soot_center: Vector2 = center + Vector2(cos(a), sin(a)) * distance
+		var soot_size := ember_radius * (0.13 + 0.09 * absf(cos(float(i) * 2.11)))
+		draw_circle(soot_center, soot_size, Color(0.005, 0.004, 0.003, (0.34 + float(i % 3) * 0.10) * burn * alpha))
+	# Fine glowing fissures rather than thick cartoon spokes.
+	for i in 7:
+		var a := float(i) * 2.31 + 0.52
+		var crack_a: Vector2 = center + Vector2(cos(a), sin(a)) * ember_radius * 0.18
+		var elbow: Vector2 = center + Vector2(cos(a + 0.20), sin(a + 0.20)) * ember_radius * 0.46
+		var crack_b: Vector2 = center + Vector2(cos(a - 0.10), sin(a - 0.10)) * ember_radius * 0.78
+		var heat := (0.58 + 0.42 * sin(now * 7.0 + float(i) * 1.7)) * burn * alpha
+		draw_line(crack_a, elbow, Color(1.0, 0.16, 0.005, heat * 0.75), maxf(1.0, radius * 0.035), true)
+		draw_line(elbow, crack_b, Color(1.0, 0.42, 0.015, heat), maxf(1.0, radius * 0.045), true)
+	# Flames rise upward in translucent, constantly changing tongues.
+	for i in 8:
+		var x_ratio := -0.82 + float(i) * 1.64 / 7.0
+		var surface_y := sqrt(maxf(0.0, 1.0 - x_ratio * x_ratio))
+		var flame_base: Vector2 = center + Vector2(x_ratio * ember_radius, -surface_y * ember_radius * 0.72)
+		var sway := sin(now * (5.2 + float(i % 3)) + float(i) * 1.91)
+		var flame_height := radius * (0.34 + 0.30 * absf(sin(now * 6.4 + float(i)))) * burn
+		var flame_tip: Vector2 = flame_base + Vector2(sway * radius * 0.16, -flame_height)
+		var flame_width := radius * (0.09 + 0.035 * float(i % 3)) * burn
+		var tongue := PackedVector2Array([
+			flame_base - Vector2(flame_width, 0.0),
+			flame_tip,
+			flame_base + Vector2(flame_width, 0.0)
+		])
+		draw_colored_polygon(tongue, Color(1.0, 0.15, 0.005, 0.48 * burn * alpha))
+		draw_line(flame_base, flame_tip.lerp(flame_base, 0.36), Color(1.0, 0.72, 0.10, 0.66 * burn * alpha), maxf(1.0, flame_width * 0.48), true)
+	# Sparse sparks and smoke sell the heat without forming a uniform outline.
+	for i in 7:
+		var phase := fmod(now * (0.52 + float(i) * 0.035) + float(i) * 0.173, 1.0)
+		var spark: Vector2 = center + Vector2(sin(float(i) * 3.17 + now) * radius * 0.72, -radius * (0.75 + phase * 1.75))
+		draw_circle(spark, maxf(0.8, radius * (0.045 - phase * 0.018)), Color(1.0, 0.55 + phase * 0.30, 0.08, (1.0 - phase) * burn * alpha))
+	for i in 4:
+		var smoke_phase := fmod(now * 0.22 + float(i) * 0.24, 1.0)
+		var smoke: Vector2 = center + Vector2(sin(now * 1.4 + float(i)) * radius * 0.45, -radius * (1.15 + smoke_phase * 1.65))
+		var smoke_radius := radius * (0.12 + smoke_phase * 0.18)
+		draw_circle(smoke, smoke_radius, Color(0.08, 0.075, 0.07, (1.0 - smoke_phase) * 0.18 * burn * alpha))
+
+func draw_fire_trap(effect: Dictionary) -> void:
+	var seconds: float = effect.elapsed
+	var scale_y := board_rect.size.y / 600.0
+	var points := fire_weapon_points()
+	var left_weapon: Vector2 = points.left
+	var bottom_weapon: Vector2 = points.bottom
+	var burn_point: Vector2 = points.burn
+	var radius := trap_ball_radius(FIRE_TRAP_HOLE, 27.0 * scale_y)
+	var ignition := smooth_step(seconds / 0.38)
+	var burn := smooth_step((seconds - 0.12) / 1.48)
+	var fire_fall_start := 2.72
+	var release := smooth_step((seconds - fire_fall_start) / (FIRE_EFFECT_DURATION - fire_fall_start))
+	var center := burn_point
+	var alpha := 1.0
+	if release > 0.0:
+		var gravity_fall := release * release
+		# End in the visible water strip close to the lower-left corner.
+		center = burn_point.lerp(effect_fall_endpoint(FIRE_TRAP_HOLE), gravity_fall)
+		center.x += sin(release * PI) * -6.0 * scale_y
+		radius *= 1.0 - release * 0.22
+		alpha = 1.0 - release * 0.10
+	var stream_strength := ignition * (1.0 - smooth_step((seconds - 1.62) / 0.42))
+	var left_tip := draw_fire_emitter(left_weapon, burn_point, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 0), stream_strength)
+	var bottom_tip := draw_fire_emitter(bottom_weapon, burn_point, 58.0 * scale_y * trap_weapon_scale(FIRE_TRAP_HOLE, 1), stream_strength)
+	if stream_strength > 0.01:
+		draw_fire_stream(left_tip, burn_point, stream_strength, 0.17, trap_weapon_scale(FIRE_TRAP_HOLE, 0))
+		draw_fire_stream(bottom_tip, burn_point, stream_strength, 0.63, trap_weapon_scale(FIRE_TRAP_HOLE, 1))
+	draw_burning_ball(center, radius, burn, effect.team, effect.piece, alpha)
+
+func ice_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func ice_weapon_points() -> Dictionary:
+	var freeze := trap_ball_position(ICE_TRAP_HOLE, ice_point(600.0, 548.0))
+	return {
+		"freeze": freeze,
+		"left": ice_point(470.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 0),
+		"right": ice_point(730.0, 565.0) + trap_weapon_offset(ICE_TRAP_HOLE, 1)
+	}
+
+func ice_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == ICE_TRAP_HOLE:
+			return true
+	return false
+
+func draw_ice_emitter(center: Vector2, target: Vector2, size: float, frost_power: float = 0.0) -> Vector2:
+	var direction := (target - center).normalized()
+	if direction.length_squared() < 0.01:
+		direction = Vector2.RIGHT
+	var angle := direction.angle()
+	# Detailed cryogenic cannon based on the source animation: a permanent
+	# stone-mounted base, violet coolant reservoir and stepped silver nozzle.
+	draw_set_transform(center, angle, Vector2.ONE)
+	var shadow := Rect2(Vector2(-size * 0.53, -size * 0.34) + Vector2(0.0, size * 0.10), Vector2(size * 0.86, size * 0.68))
+	draw_style_box(make_box(Color(0.02, 0.04, 0.07, 0.30), size * 0.15), shadow)
+	var mount := Rect2(Vector2(-size * 0.53, -size * 0.34), Vector2(size * 0.45, size * 0.68))
+	draw_style_box(make_box(Color("253844"), size * 0.14), mount)
+	var mount_inner := Rect2(Vector2(-size * 0.45, -size * 0.26), Vector2(size * 0.30, size * 0.52))
+	draw_style_box(make_box(Color("8498a0"), size * 0.11), mount_inner)
+	for bolt_y in [-0.20, 0.20]:
+		draw_circle(Vector2(-size * 0.39, size * bolt_y), size * 0.043, Color("d7e5e7"))
+	# Rounded insulated coolant tank with layered shading and a polished highlight.
+	var tank_start := Vector2(-size * 0.12, 0.0)
+	var tank_end := Vector2(size * 0.25, 0.0)
+	draw_line(tank_start, tank_end, Color("171d3a"), size * 0.58, true)
+	draw_line(tank_start, tank_end, Color("4a43aa"), size * 0.48, true)
+	draw_line(tank_start, tank_end, Color("6860d5"), size * 0.38, true)
+	draw_line(tank_start - Vector2(0.0, size * 0.075), tank_end - Vector2(0.0, size * 0.075), Color(0.76, 0.72, 1.0, 0.80), size * 0.085, true)
+	draw_line(tank_start + Vector2(0.0, size * 0.12), tank_end + Vector2(0.0, size * 0.12), Color(0.10, 0.12, 0.30, 0.55), size * 0.07, true)
+	# Cooling bands use a dark rim and a bright steel center.
+	for band_x in [-0.07, 0.08, 0.22]:
+		draw_line(Vector2(size * band_x, -size * 0.27), Vector2(size * band_x, size * 0.27), Color("182934"), size * 0.095, true)
+		draw_line(Vector2(size * band_x, -size * 0.24), Vector2(size * band_x, size * 0.24), Color("9fb3ba"), size * 0.045, true)
+	# Illuminated snowflake pressure window.
+	var gauge_center := Vector2(size * 0.01, 0.0)
+	draw_circle(gauge_center, size * 0.12, Color("172b39"))
+	draw_circle(gauge_center, size * 0.085, Color(0.42, 0.88, 1.0, 0.42 + frost_power * 0.48))
+	for spoke in 3:
+		var spoke_angle := float(spoke) * PI / 3.0
+		var spoke_vector := Vector2(cos(spoke_angle), sin(spoke_angle)) * size * 0.061
+		draw_line(gauge_center - spoke_vector, gauge_center + spoke_vector, Color(0.91, 1.0, 1.0, 0.88), maxf(1.0, size * 0.018), true)
+	# Stepped nozzle with a pale ceramic cold tip.
+	draw_line(Vector2(size * 0.27, 0.0), Vector2(size * 0.53, 0.0), Color("263844"), size * 0.27, true)
+	draw_line(Vector2(size * 0.29, 0.0), Vector2(size * 0.51, 0.0), Color("a8bcc1"), size * 0.15, true)
+	for ring_x in [0.31, 0.42, 0.52]:
+		draw_line(Vector2(size * ring_x, -size * 0.18), Vector2(size * ring_x, size * 0.18), Color("343768"), size * 0.07, true)
+	var local_tip := Vector2(size * 0.62, 0.0)
+	draw_circle(local_tip, size * 0.12, Color("25364b"))
+	draw_circle(local_tip, size * (0.072 + frost_power * 0.018), Color(0.83, 0.98, 1.0, 0.62 + frost_power * 0.34))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var tip := center + direction * size * 0.62
+	# Cold vapor and tiny ice crystals make the nozzle feel active without
+	# obscuring the weapon or the gameplay ball.
+	var vapor_phase := float(Time.get_ticks_msec()) * 0.0025
+	for i in 4:
+		var drift := fmod(vapor_phase + float(i) * 0.24, 1.0)
+		var vapor_center := tip + direction * size * drift * 0.23 + direction.orthogonal() * sin(vapor_phase * 3.0 + float(i)) * size * 0.055
+		var vapor_alpha := (1.0 - drift) * (0.08 + frost_power * 0.18)
+		draw_circle(vapor_center, size * (0.035 + drift * 0.055), Color(0.78, 0.96, 1.0, vapor_alpha))
+	if frost_power > 0.01:
+		draw_circle(tip, size * (0.12 + frost_power * 0.04), Color(0.63, 0.92, 1.0, 0.14 + frost_power * 0.20))
+		for i in 3:
+			var crystal_angle := vapor_phase * 4.0 + TAU * float(i) / 3.0
+			var crystal := tip + Vector2(cos(crystal_angle), sin(crystal_angle)) * size * 0.16
+			draw_circle(crystal, maxf(1.0, size * 0.022), Color(0.91, 1.0, 1.0, 0.60 * frost_power))
+	return tip
+
+func draw_ice_weapons_idle() -> void:
+	if customizer_open or ice_trap_is_active():
+		return
+	var points := ice_weapon_points()
+	var scale_y := board_rect.size.y / 600.0
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.0038) + 1.0) * 0.5
+	draw_ice_emitter(points.left, points.freeze, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 0), pulse * 0.16)
+	draw_ice_emitter(points.right, points.freeze, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 1), pulse * 0.16)
+
+func draw_ice_stream(origin: Vector2, target: Vector2, amount: float, seed_offset: float, edit_scale: float = 1.0) -> void:
+	if amount <= 0.01:
+		return
+	var direction := target - origin
+	var normal := direction.normalized().orthogonal()
+	var end := origin.lerp(target, amount)
+	var width := maxf(2.0, board_rect.size.y / 600.0 * 7.0 * edit_scale)
+	draw_line(origin, end, Color(0.67, 0.93, 1.0, 0.46), width * 2.1, true)
+	draw_line(origin, end, Color(0.92, 0.99, 1.0, 0.94), width, true)
+	for i in 13:
+		var phase := fmod(float(i) / 12.0 + seed_offset + amount * 0.9, 1.0)
+		if phase > amount:
+			continue
+		var p := origin.lerp(target, phase)
+		var wobble := sin(phase * 31.0 + seed_offset * 17.0) * width * 1.3
+		p += normal * wobble
+		var particle_radius := width * (0.38 + float(i % 3) * 0.16)
+		draw_circle(p, particle_radius, Color(0.82, 0.97, 1.0, 0.88))
+
+func draw_ice_shell(center: Vector2, radius: float, amount: float, alpha: float = 1.0) -> void:
+	if amount <= 0.01:
+		return
+	var shell_radius := radius * lerpf(0.72, 1.32, amount)
+	var points := PackedVector2Array()
+	for i in 16:
+		var angle := TAU * float(i) / 16.0
+		var jag := 1.0 + (0.10 if i % 2 == 0 else -0.04) * amount
+		points.append(center + Vector2(cos(angle), sin(angle)) * shell_radius * jag)
+	draw_colored_polygon(points, Color(0.64, 0.91, 1.0, (0.18 + amount * 0.46) * alpha))
+	var outline := points.duplicate()
+	outline.append(points[0])
+	draw_polyline(outline, Color(0.88, 0.98, 1.0, 0.92 * alpha), maxf(2.0, radius * 0.09), true)
+	for i in 7:
+		var a := float(i) * 2.21 + amount
+		var inner := center + Vector2(cos(a), sin(a)) * shell_radius * 0.28
+		var outer := center + Vector2(cos(a + 0.22), sin(a + 0.22)) * shell_radius * (0.58 + 0.28 * amount)
+		draw_line(inner, outer, Color(0.90, 0.99, 1.0, 0.72 * amount * alpha), maxf(1.0, radius * 0.055), true)
+
+func draw_ice_trap(effect: Dictionary) -> void:
+	var seconds: float = effect.elapsed
+	var scale_y := board_rect.size.y / 600.0
+	var points := ice_weapon_points()
+	var left_weapon: Vector2 = points.left
+	var right_weapon: Vector2 = points.right
+	var freeze_point: Vector2 = points.freeze
+	var radius := trap_ball_radius(ICE_TRAP_HOLE, 27.0 * scale_y)
+	var spray := smooth_step(seconds / 0.82)
+	var freeze := smooth_step((seconds - 0.22) / 1.18)
+	var release := smooth_step((seconds - TRAP_CAPTURE_TIME) / TRAP_FALL_TIME)
+	var center := freeze_point
+	var alpha := 1.0
+	if release > 0.0:
+		var gravity_fall := release * release
+		# Finish just below the table so the small frozen animal remains visible
+		# when the water-floating phase takes over.
+		center = freeze_point.lerp(effect_fall_endpoint(ICE_TRAP_HOLE), gravity_fall)
+		center.x += sin(release * PI) * 5.0 * scale_y
+		radius *= 1.0 - release * 0.28
+		alpha = 1.0 - release * 0.12
+	var stream_strength := spray * (1.0 - smooth_step((seconds - 1.28) / 0.37))
+	var left_tip := draw_ice_emitter(left_weapon, freeze_point, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 0), stream_strength)
+	var right_tip := draw_ice_emitter(right_weapon, freeze_point, 53.0 * scale_y * trap_weapon_scale(ICE_TRAP_HOLE, 1), stream_strength)
+	if seconds < 1.65:
+		draw_ice_stream(left_tip, freeze_point, stream_strength, 0.13, trap_weapon_scale(ICE_TRAP_HOLE, 0))
+		draw_ice_stream(right_tip, freeze_point, stream_strength, 0.61, trap_weapon_scale(ICE_TRAP_HOLE, 1))
+	draw_rubber_game_ball(center, radius, effect.team, effect.piece, 1.0 - freeze * 0.58)
+	draw_ice_shell(center, radius, freeze, alpha)
+	if freeze > 0.55 and release <= 0.0:
+		var sparkle := 0.55 + sin(seconds * 18.0) * 0.35
+		for i in 6:
+			var a := TAU * float(i) / 6.0 + seconds * 0.7
+			var p := center + Vector2(cos(a), sin(a)) * radius * 1.48
+			draw_circle(p, maxf(1.5, 2.4 * scale_y), Color(0.91, 1.0, 1.0, sparkle))
+
+func rubber_point(x: float, y: float) -> Vector2:
+	return board_rect.position + Vector2(x / 1200.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
+
+func smooth_step(value: float) -> float:
+	var v := clampf(value, 0.0, 1.0)
+	return v * v * (3.0 - 2.0 * v)
+
+func rubber_hand_pose(value: float) -> int:
+	if value < 0.25: return 0
+	if value < 0.48: return 1
+	if value < 0.68: return 2
+	if value < 0.86: return 3
+	return 4
+
+func draw_rubber_game_ball(position: Vector2, radius: float, team: int, piece: int, alpha: float) -> void:
+	if team_piece_textures.size() < 2 or team_piece_textures[team] == null:
+		return
+	var texture := team_piece_textures[team]
+	# The hovercraft art is intentionally larger than the physics circle.  This
+	# keeps both the pilot and the distinctive hull readable at gameplay scale,
+	# while collisions continue to use the same carefully tuned radius.
+	var size := Vector2.ONE * radius * 3.05
+	var art_center := position + Vector2(0.0, -radius * 0.20)
+	draw_set_transform(position + Vector2(0.0, radius * 0.56), 0.0, Vector2(1.0, 0.38))
+	draw_circle(Vector2.ZERO, radius * 1.18, Color(0, 0, 0, 0.24 * alpha), true, -1.0, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_texture_rect(texture, Rect2(art_center - size * 0.5, size), false, Color(1, 1, 1, alpha))
+	if teams_share_ring_color():
+		var marker := team_marker_color(team)
+		# A small badge is enough when both players use the same character. Avoid
+		# bringing back the bright full-size color ring around every hovercraft.
+		var badge_center := position + Vector2(radius * 0.92, -radius * 0.92)
+		draw_circle(badge_center, radius * 0.30, Color("071a2b", 0.92))
+		draw_circle(badge_center, radius * 0.25, marker)
+		draw_string(ui_font, badge_center + Vector2(-radius * 0.20, radius * 0.14), str(team + 1), HORIZONTAL_ALIGNMENT_CENTER, radius * 0.40, maxi(9, int(radius * 0.38)), Color("173249"))
+
+func rebuild_team_piece_textures() -> void:
+	team_piece_textures.clear()
+	var player_piece: Texture2D = battle_hovercraft_textures[player_animal] if player_animal < battle_hovercraft_textures.size() else null
+	var opponent_piece: Texture2D = battle_hovercraft_textures[ai_animal] if ai_animal < battle_hovercraft_textures.size() else null
+	# Never hide gameplay pieces because of a missing optional art resource.
+	if player_piece == null and player_animal < character_ship_textures.size():
+		player_piece = character_ship_textures[player_animal]
+	if opponent_piece == null and ai_animal < character_ship_textures.size():
+		opponent_piece = character_ship_textures[ai_animal]
+	team_piece_textures.append(player_piece)
+	team_piece_textures.append(opponent_piece)
+
+func make_colored_animal_texture(animal_index: int, target_color: Color) -> Texture2D:
+	if animal_index < 0 or animal_index >= animal_textures.size():
+		return null
+	var image: Image = animal_textures[animal_index].get_image().duplicate()
+	var mask: Image = animal_ring_masks[animal_index].get_image()
+	for y in image.get_height():
+		for x in image.get_width():
+			var amount: float = mask.get_pixel(x, y).r
+			if amount <= 0.001:
+				continue
+			var original: Color = image.get_pixel(x, y)
+			var recolored: Color = Color.from_hsv(target_color.h, maxf(original.s, target_color.s * 0.82), original.v, original.a)
+			image.set_pixel(x, y, original.lerp(recolored, amount))
+	return ImageTexture.create_from_image(image)
+
+func customizer_panel(viewport_size: Vector2) -> Rect2:
+	var size := Vector2(minf(820.0, viewport_size.x - 36.0), minf(560.0, viewport_size.y - 34.0))
+	return Rect2((viewport_size - size) * 0.5, size)
+
+func customizer_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if quick_battle_concept_texture != null:
+		var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		var width := 50.0
+		return Rect2(Vector2(66.0 + float(index) * 57.0, 505.0) * scale, Vector2(width, 59.0) * scale)
+	var panel := customizer_panel(viewport_size)
+	var gap := 8.0
+	var width := (panel.size.x - 40.0 - gap * float(ANIMAL_NAMES.size() - 1)) / float(ANIMAL_NAMES.size())
+	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 82.0), Vector2(width, 68.0))
+
+func customizer_color_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := customizer_panel(viewport_size)
+	var gap := 8.0
+	var width := (panel.size.x - 40.0 - gap * float(RING_COLOR_NAMES.size() - 1)) / float(RING_COLOR_NAMES.size())
+	return Rect2(panel.position + Vector2(20.0 + index * (width + gap), 205.0), Vector2(width, 58.0))
+
+func customizer_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if quick_battle_concept_texture != null:
+		var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		return Rect2(Vector2(526.0 + float(index) * 72.0, 505.0) * scale, Vector2(63.0, 59.0) * scale)
+	var panel := customizer_panel(viewport_size)
+	var gap := 10.0
+	var width := (panel.size.x - 40.0 - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT)
+	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 262.0), Vector2(width, 76.0))
+
+func customizer_difficulty_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if quick_battle_concept_texture != null:
+		var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		return Rect2(Vector2(940.0 + float(index) * 91.0, 506.0) * scale, Vector2(82.0, 58.0) * scale)
+	var panel := customizer_panel(viewport_size)
+	var gap := 12.0
+	var width := (panel.size.x - 40.0 - gap * 2.0) / 3.0
+	return Rect2(panel.position + Vector2(20.0 + float(index) * (width + gap), 368.0), Vector2(width, 54.0))
+
+func customizer_start_rect(viewport_size: Vector2) -> Rect2:
+	if quick_battle_concept_texture != null:
+		var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		return Rect2(Vector2(455.0, 607.0) * scale, Vector2(370.0, 82.0) * scale)
+	var panel := customizer_panel(viewport_size)
+	return Rect2(panel.position + Vector2(panel.size.x * 0.5 - 110.0, panel.size.y - 68.0), Vector2(220.0, 48.0))
+
+func quick_battle_back_rect(viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(18.0, 18.0) * scale, Vector2(145.0, 58.0) * scale)
+
+func handle_customizer_touch(screen_pos: Vector2) -> bool:
+	var viewport_size := get_viewport_rect().size
+	if not customizer_open:
+		return false
+	if quick_battle_concept_texture != null and quick_battle_back_rect(viewport_size).has_point(screen_pos):
+		customizer_open = false
+		app_screen = APP_HOME
+		play_sound("ui")
+		queue_redraw()
+		return true
+	for i in ANIMAL_NAMES.size():
+		if customizer_animal_rect(i, viewport_size).has_point(screen_pos):
+			try_select_animal(i)
+			queue_redraw()
+			return true
+	if quick_battle_concept_texture == null:
+		for i in RING_COLOR_NAMES.size():
+			if customizer_color_rect(i, viewport_size).has_point(screen_pos):
+				try_select_ring(i)
+				queue_redraw()
+				return true
+	for i in BOARD_THEME_COUNT:
+		if customizer_board_rect(i, viewport_size).has_point(screen_pos):
+			selected_board_theme = i
+			save_player_profile()
+			play_sound("ui")
+			queue_redraw()
+			return true
+	for i in 3:
+		if customizer_difficulty_rect(i, viewport_size).has_point(screen_pos):
+			computer_difficulty = i
+			save_player_profile()
+			play_sound("ui")
+			queue_redraw()
+			return true
+	if customizer_start_rect(viewport_size).has_point(screen_pos):
+		if quick_battle_concept_texture == null:
+			ai_animal = randi() % ANIMAL_NAMES.size()
+			ai_ring_color = randi() % RING_COLOR_NAMES.size()
+		rebuild_team_piece_textures()
+		customizer_open = false
+		new_game()
+		return true
+	return true
+
+func draw_customizer(viewport_size: Vector2) -> void:
+	if not customizer_open:
+		return
+	if quick_battle_concept_texture != null:
+		draw_quick_battle_setup(viewport_size)
+		return
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.04, 0.08, 0.72))
+	var panel := customizer_panel(viewport_size)
+	draw_style_box(make_box(Color("122337"), 18.0), panel)
+	draw_string(ui_font, panel.position + Vector2(0, 38), ui_text("choose_setup"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 22, Color("f6d365"))
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_string(ui_font, panel.position + Vector2(20, 72), "דמות" if ui_language == "he" else "ANIMAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	for i in ANIMAL_NAMES.size():
+		var rect := customizer_animal_rect(i, viewport_size)
+		draw_style_box(make_box(Color("7256d8") if i == player_animal else Color("26384b"), 10.0), rect)
+		if i < full_body_animal_textures.size() and full_body_animal_textures[i] != null:
+			var portrait := Rect2(rect.position + Vector2(rect.size.x * 0.5 - 22.0, 4.0), Vector2(44.0, 48.0))
+			draw_texture_rect(full_body_animal_textures[i], portrait, false)
+		draw_collection_lock_overlay(rect, i, false, unit)
+		draw_string(ui_font, rect.position + Vector2(0, 62), ANIMAL_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(20, 195), "צבע הגלגל" if ui_language == "he" else "LIFEBUOY COLOR", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	for i in RING_COLOR_NAMES.size():
+		var rect := customizer_color_rect(i, viewport_size)
+		draw_style_box(make_box(RING_COLORS[i], 10.0), rect)
+		if i == player_ring_color:
+			draw_rect(rect.grow(3.0), Color.WHITE, false, 3.0)
+		draw_collection_lock_overlay(rect, i, true, unit)
+		draw_string(ui_font, rect.position + Vector2(0, 36), RING_COLOR_NAMES[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(20, 248), ui_text("choose_board"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	for i in BOARD_THEME_COUNT:
+		draw_board_theme_card(i, customizer_board_rect(i, viewport_size), i == selected_board_theme, unit)
+	draw_string(ui_font, panel.position + Vector2(20, 354), ui_text("difficulty"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE)
+	var diff_labels := [ui_text("difficulty_easy"), ui_text("difficulty_medium"), ui_text("difficulty_hard")]
+	var diff_colors := [Color("51d995"), Color("f6aa20"), Color("e94f78")]
+	for i in 3:
+		var diff_rect := customizer_difficulty_rect(i, viewport_size)
+		var selected := i == computer_difficulty
+		draw_style_box(make_box(diff_colors[i] if selected else Color("26384b"), 12.0), diff_rect)
+		if selected:
+			draw_rect(diff_rect.grow(3.0), Color.WHITE, false, 3.0)
+		draw_string(ui_font, diff_rect.position + Vector2(0, 34), diff_labels[i], HORIZONTAL_ALIGNMENT_CENTER, diff_rect.size.x, 14, Color.WHITE)
+	var start_rect := customizer_start_rect(viewport_size)
+	draw_style_box(make_box(Color("12a96b"), 14.0), start_rect)
+	draw_string(ui_font, start_rect.position + Vector2(0, 31), "התחלת משחק" if ui_language == "he" else "START MATCH", HORIZONTAL_ALIGNMENT_CENTER, start_rect.size.x, 17, Color.WHITE)
+
+func draw_quick_battle_setup(viewport_size: Vector2) -> void:
+	# The artwork and live controls share the same independent X/Y transform, so
+	# Samsung's extra-wide landscape viewport cannot shift labels off the panels.
+	draw_texture_rect(quick_battle_concept_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_set_transform(Vector2.ZERO, 0.0, scale)
+	draw_centered_ui_text(Vector2(426.0, 72.0), "קרב מהיר" if ui_language == "he" else "QUICK BATTLE", 428.0, 34, Color("fff0b0"))
+	draw_centered_ui_text(Vector2(430.0, 112.0), "בחרו דמות, זירה ורמת קושי" if ui_language == "he" else "CHOOSE A PILOT, ARENA AND DIFFICULTY", 420.0, 16, Color("173b68"))
+	draw_centered_ui_text(Vector2(24.0, 57.0), "חזרה  ❮" if ui_language == "he" else "❮  BACK", 132.0, 20, Color.WHITE)
+
+	# Large dynamic previews. The computer pilot is chosen when this screen opens
+	# and remains stable so the opponent shown is the one entering the match.
+	draw_matchmaking_ship(Rect2(178.0, 145.0, 260.0, 260.0), player_animal, player_ring_color)
+	draw_matchmaking_ship(Rect2(842.0, 145.0, 260.0, 260.0), ai_animal, ai_ring_color)
+	draw_centered_ui_text(Vector2(225.0, 405.0), ui_animal_name(player_animal), 170.0, 19, Color.WHITE)
+	draw_centered_ui_text(Vector2(885.0, 405.0), "המחשב" if ui_language == "he" else "COMPUTER", 170.0, 19, Color.WHITE)
+	draw_centered_ui_text(Vector2(38.0, 475.0), "בחירת דמות" if ui_language == "he" else "CHOOSE PILOT", 420.0, 19, Color.WHITE)
+	draw_centered_ui_text(Vector2(500.0, 475.0), "בחירת זירה" if ui_language == "he" else "CHOOSE ARENA", 390.0, 19, Color.WHITE)
+	draw_centered_ui_text(Vector2(934.0, 475.0), ui_text("difficulty"), 300.0, 19, Color.WHITE)
+
+	for i in ANIMAL_NAMES.size():
+		var animal_rect := Rect2(66.0 + float(i) * 57.0, 505.0, 50.0, 59.0)
+		if i < character_portrait_textures.size() and character_portrait_textures[i] != null:
+			draw_texture_rect(character_portrait_textures[i], animal_rect.grow(-4.0), false, Color.WHITE if is_animal_unlocked(i) else Color(0.35, 0.38, 0.48, 0.72))
+		if i == player_animal:
+			draw_rect(animal_rect.grow(3.0), Color("ffd34f"), false, 4.0)
+		draw_collection_lock_overlay(animal_rect, i, false, 1.0)
+
+	for i in BOARD_THEME_COUNT:
+		var arena_rect := Rect2(526.0 + float(i) * 72.0, 505.0, 63.0, 59.0)
+		var arena_texture := board_theme_texture(i)
+		if arena_texture != null:
+			draw_texture_rect(arena_texture, arena_rect.grow(-4.0), false)
+		if i == selected_board_theme:
+			draw_rect(arena_rect.grow(3.0), Color("ffd34f"), false, 4.0)
+
+	var diff_labels := [ui_text("difficulty_easy"), ui_text("difficulty_medium"), ui_text("difficulty_hard")]
+	var diff_colors := [Color("2d79d8"), Color("f3a71e"), Color("d94754")]
+	for i in 3:
+		var diff_rect := Rect2(940.0 + float(i) * 91.0, 506.0, 82.0, 58.0)
+		if i == computer_difficulty:
+			draw_style_box(make_box(diff_colors[i], 9.0), diff_rect.grow(-3.0))
+			draw_rect(diff_rect.grow(3.0), Color("ffd34f"), false, 4.0)
+		draw_centered_ui_text(diff_rect.position + Vector2(0.0, 38.0), diff_labels[i], diff_rect.size.x, 15, Color.WHITE)
+
+	draw_centered_ui_text(Vector2(455.0, 662.0), "התחלת הקרב" if ui_language == "he" else "START BATTLE", 370.0, 29, Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func abyss_bloom_center() -> Vector2:
+	# Use the calibrated capture point, not the decorative corner artwork. This
+	# makes the dark core sit exactly where the physics accepts a scored ball.
+	return trap_ball_position(RUBBER_TRAP_HOLE, rubber_point(128.0, 104.0))
+
+func draw_abyss_bloom_sprite(center: Vector2, size: float, rotation: float = 0.0, alpha: float = 1.0) -> void:
+	if abyss_bloom_texture == null:
+		return
+	draw_set_transform(center, rotation, Vector2.ONE)
+	draw_texture_rect(abyss_bloom_texture, Rect2(Vector2.ONE * -size * 0.5, Vector2.ONE * size), false, Color(1.0, 1.0, 1.0, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_abyss_bloom_idle() -> void:
+	if customizer_open or rubber_trap_is_active():
+		return
+	var scale_y := board_rect.size.y / 600.0
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
+	var center := abyss_bloom_center()
+	var size := (118.0 + pulse * 3.0) * scale_y
+	draw_circle(center, 31.0 * scale_y, Color(0.18, 0.02, 0.38, 0.32 + pulse * 0.10))
+	draw_abyss_bloom_sprite(center, size, sin(float(Time.get_ticks_msec()) * 0.0015) * 0.018)
+
+func draw_abyss_bloom_trap(effect: Dictionary) -> void:
+	var elapsed: float = effect.elapsed
+	var progress := clampf(elapsed / ABYSS_EFFECT_DURATION, 0.0, 1.0)
+	var scale_y := board_rect.size.y / 600.0
+	var center := abyss_bloom_center()
+	var opening := smooth_step(progress / 0.22) * (1.0 - smooth_step((progress - 0.78) / 0.20))
+	var sprite_size := (118.0 + opening * 13.0) * scale_y
+	draw_circle(center, (31.0 + opening * 9.0) * scale_y, Color(0.33, 0.02, 0.65, 0.38 + opening * 0.24))
+	draw_abyss_bloom_sprite(center, sprite_size, progress * 0.08)
+
+	# Compact gravity ribbons remain inside the weapon footprint. They guide
+	# the eye inward and never imply that the piece can be launched back out.
+	var ribbon_power := smooth_step(progress / 0.20) * (1.0 - smooth_step((progress - 0.72) / 0.18))
+	for ring_index in range(3):
+		var radius := (20.0 + float(ring_index) * 8.0 - progress * 7.0) * scale_y
+		var phase := elapsed * (3.4 + float(ring_index) * 0.55) + float(ring_index) * 1.7
+		draw_arc(center, radius, phase, phase + PI * 1.25, 30, Color(0.45, 0.18 + float(ring_index) * 0.10, 1.0, ribbon_power * 0.82), maxf(1.5, 3.2 * scale_y), true)
+
+	var consume := smooth_step((progress - 0.10) / 0.66)
+	if consume < 0.985:
+		var orbit_radius := (18.0 * (1.0 - consume)) * scale_y
+		var orbit_angle := elapsed * (5.0 + consume * 8.0)
+		var ball_center := center + Vector2(cos(orbit_angle), sin(orbit_angle) * 0.58) * orbit_radius
+		var ball_radius := trap_ball_radius(RUBBER_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale) * (1.0 - consume * 0.94)
+		draw_rubber_game_ball(ball_center, ball_radius, effect.team, effect.piece, 1.0 - smooth_step((consume - 0.76) / 0.22))
+
+	# Final inward flash marks deletion; it collapses toward the center rather
+	# than exploding outward.
+	if progress > 0.68:
+		var collapse := smooth_step((progress - 0.68) / 0.32)
+		draw_circle(center, (15.0 * (1.0 - collapse) + 2.0) * scale_y, Color(0.72, 0.35, 1.0, (1.0 - collapse) * 0.72))
+
+func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
+	if texture == null: return
+	var delta := target - anchor
+	# Fit the arm to the actual weapon-to-ball distance. The former large
+	# minimum made short upper-left arms overshoot the hole and leave the board.
+	var height := maxf(width * 1.02, delta.length() * 1.04)
+	var angle := delta.angle() + PI * 0.5 + rotation_offset
+	draw_set_transform(anchor, angle, Vector2(-1.0 if mirror else 1.0, 1.0))
+	draw_texture_rect(texture, Rect2(-width * 0.5, -height, width, height), false, Color(1, 1, 1, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_rubber_wrap(position: Vector2, radius: float, amount: float, spin: float) -> void:
+	if rubber_wrap_texture == null or amount <= 0.001:
+		return
+	# Twelve extracted stages reproduce the original wide crossing strips,
+	# irregular outer loops and final compact cocoon instead of invented rings.
+	var frame := clampi(int(floor(amount * 11.99)), 0, 11)
+	var source := Rect2(0.0, float(frame * 210), 210.0, 210.0)
+	var size := Vector2.ONE * radius * 5.35
+	var top_left := position - Vector2(102.0, 108.0) / 210.0 * size
+	draw_texture_rect_region(rubber_wrap_texture, Rect2(top_left, size), source, Color.WHITE)
+
+func rubber_launcher_points() -> Dictionary:
+	var capture := trap_ball_position(RUBBER_TRAP_HOLE, rubber_point(128.0, 104.0))
+	return {
+		"capture": capture,
+		# Measured from the source video: the launchers sit diagonally across
+		# the opening, not directly above and left of the captured ball.
+		"top": rubber_point(223.0, 33.0) + trap_weapon_offset(RUBBER_TRAP_HOLE, 0),
+		"side": rubber_point(54.0, 177.0) + trap_weapon_offset(RUBBER_TRAP_HOLE, 1)
+	}
+
+func rubber_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == RUBBER_TRAP_HOLE:
+			return true
+	return false
+
+func draw_rubber_launcher(center: Vector2, target: Vector2, size: float, pulse: float = 0.0) -> Vector2:
+	var direction := (target - center).normalized()
+	if rubber_launcher_texture == null:
+		return center
+	# The HD sprite faces right. Its body center is at x=205 in a 512x412
+	# image, so rotate around the machine body rather than the image midpoint.
+	# This keeps both launchers seated on their stones like the original.
+	var source := rubber_launcher_texture.get_size()
+	var draw_height := size * (1.0 + pulse * 0.025)
+	var factor := draw_height / source.y
+	var draw_size := source * factor
+	var body_center_x := 205.0 * factor
+	draw_set_transform(center, direction.angle(), Vector2.ONE)
+	draw_texture_rect(rubber_launcher_texture, Rect2(Vector2(-body_center_x, -draw_size.y * 0.5), draw_size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	return center + direction * (307.0 * factor)
+
+func draw_rubber_launchers_idle() -> void:
+	if customizer_open or rubber_trap_is_active():
+		return
+	var points := rubber_launcher_points()
+	var scale_y := board_rect.size.y / 600.0
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
+	draw_rubber_launcher(points.top, points.capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 0), pulse * 0.18)
+	draw_rubber_launcher(points.side, points.capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 1), pulse * 0.18)
+
+func draw_elastic_tape(origin: Vector2, target: Vector2, amount: float, bend: float, width: float) -> void:
+	if amount <= 0.001:
+		return
+	var end := origin.lerp(target, amount)
+	var delta := end - origin
+	var normal := Vector2(-delta.y, delta.x).normalized()
+	var points := PackedVector2Array()
+	for i in 17:
+		var u := float(i) / 16.0
+		var wave := sin(u * PI) * bend + sin(u * TAU * 2.0 + amount * 8.0) * bend * 0.12
+		points.append(origin.lerp(end, u) + normal * wave)
+	draw_polyline(points, Color(0.43, 0.45, 0.48, 0.90), width * 1.55, true)
+	draw_polyline(points, Color("faf8f0"), width, true)
+	# A slim pink edge reproduces the colored elastic seam seen in the frames.
+	var seam := PackedVector2Array()
+	for p in points:
+		seam.append(p + normal * width * 0.32)
+	draw_polyline(seam, Color("d95caf"), maxf(1.0, width * 0.22), true)
+
+func draw_rubber_trap(effect: Dictionary) -> void:
+	var elapsed: float = effect.elapsed
+	var t := elapsed / RUBBER_CAPTURE_TIME
+	var scale_y := board_rect.size.y / 600.0
+	var points := rubber_launcher_points()
+	var anchor_top: Vector2 = points.top
+	var anchor_left: Vector2 = points.side
+	var capture: Vector2 = points.capture
+	# Use exactly the same on-screen radius as the live gameplay piece. The old
+	# fixed effect radius was about 1.5x larger and caused a visible size pop on
+	# the first wrapping frame.
+	var ball_radius := trap_ball_radius(RUBBER_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale)
+	# The real gameplay ball has already entered this hole. Start the trap at
+	# the capture point so the V4 preview's staged entry is not replayed.
+	var ball := capture
+	var reach := smooth_step((t - 0.04) / 0.18)
+	var wrap := smooth_step((t - 0.05) / 0.72)
+	var team: int = effect.team
+	var piece: int = effect.piece
+	draw_rubber_launcher(anchor_top, capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 0), reach)
+	draw_rubber_launcher(anchor_left, capture, 44.0 * scale_y * trap_weapon_scale(RUBBER_TRAP_HOLE, 1), reach)
+	if elapsed < RUBBER_CAPTURE_TIME:
+		var focus := wrap * (1.0 - wrap * 0.45)
+		draw_circle(ball, ball_radius * (1.45 + sin(t * 45.0) * 0.08), Color(1.0, 0.965, 0.72, 0.28 * focus))
+		# Once wrapping begins, draw only the cocoon. Fading the original ball
+		# underneath it left a visible duplicate through the first wrapping pass.
+		if wrap <= 0.001:
+			draw_rubber_game_ball(ball, ball_radius, team, piece, 1.0)
+		if wrap > 0.0:
+			draw_rubber_wrap(ball, ball_radius, wrap, 0.0)
+	else:
+		var release := smooth_step((elapsed - RUBBER_CAPTURE_TIME) / RUBBER_FALL_TIME)
+		var fall := release * release
+		var out := effect_fall_endpoint(RUBBER_TRAP_HOLE)
+		ball = capture.lerp(out, fall)
+		ball_radius *= 1.0 - release * 0.42
+		# Keep the cocoon on the falling ball exactly like the source frames.
+		draw_rubber_wrap(ball, ball_radius, 1.0, 0.0)
+
+func editor_panel_rect(viewport_size: Vector2) -> Rect2:
+	# Keep the editor in the vertical center so it does not cover the weapons
+	# and capture points along the bottom edge of the table.
+	var panel_width := minf(980.0, viewport_size.x - 24.0)
+	return Rect2((viewport_size.x - panel_width) * 0.5, (viewport_size.y - 150.0) * 0.5, panel_width, 150.0)
+
+func editor_button(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := editor_panel_rect(viewport_size)
+	var button_w := (panel.size.x - 22.0) / 14.0
+	return Rect2(panel.position + Vector2(6.0 + index * button_w, 82.0), Vector2(button_w - 4.0, 56.0))
+
+func editor_top_button(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := editor_panel_rect(viewport_size)
+	var button_w := (panel.size.x - 12.0) / 7.0
+	return Rect2(panel.position + Vector2(6.0 + index * button_w, 8.0), Vector2(button_w - 4.0, 46.0))
+
+func handle_effect_editor_touch(screen_pos: Vector2) -> bool:
+	var viewport_size := get_viewport_rect().size
+	var toggle := Rect2(viewport_size.x - 334.0, 6.0, 145.0, 42.0)
+	if toggle.has_point(screen_pos):
+		effect_editor_enabled = not effect_editor_enabled
+		if effect_editor_enabled:
+			replay_effect_editor()
+		queue_redraw()
+		return true
+	if not effect_editor_enabled:
+		return false
+	for i in 7:
+		if not editor_top_button(i, viewport_size).has_point(screen_pos):
+			continue
+		if i == 0:
+			DisplayServer.clipboard_set(editor_settings_text())
+			status = "Effect settings copied"
+		else:
+			editor_hole = i - 1
+			editor_target = 0
+			replay_effect_editor()
+		queue_redraw()
+		return true
+	for i in 14:
+		if not editor_button(i, viewport_size).has_point(screen_pos):
+			continue
+		match i:
+			0: editor_target = 0
+			1: editor_target = 1
+			2: editor_target = 2
+			3: editor_target = 3
+			4: editor_target = 4
+			5: editor_target = 5
+			6: change_editor_offset(Vector2(-1, 0))
+			7: change_editor_offset(Vector2(1, 0))
+			8: change_editor_offset(Vector2(0, -1))
+			9: change_editor_offset(Vector2(0, 1))
+			10: change_editor_width(-0.10)
+			11: change_editor_width(0.10)
+			12: reset_editor_target()
+			13: replay_effect_editor()
+		replay_effect_editor()
+		queue_redraw()
+		return true
+	return editor_panel_rect(viewport_size).has_point(screen_pos)
+
+func change_editor_offset(amount: Vector2) -> void:
+	if editor_target == 5:
+		var side := editor_wall_side(editor_hole)
+		if side == 0 or side == 2:
+			table_wall_offsets[side] += amount.x
+		else:
+			table_wall_offsets[side] += amount.y
+	elif editor_target == 4:
+		trap_entry_offsets[editor_hole] += amount
+	elif editor_target == 3:
+		trap_fall_offsets[editor_hole] += amount
+	elif editor_target == 2:
+		trap_ball_offsets[editor_hole] += amount
+	else:
+		trap_weapon_offsets[editor_hole * 2 + editor_target] += amount
+
+func change_editor_width(amount: float) -> void:
+	if editor_target == 5:
+		var side := editor_wall_side(editor_hole)
+		table_wall_sizes[side] = clampf(table_wall_sizes[side] + amount * 10.0, 1.0, 12.0)
+		return
+	if editor_target == 4:
+		trap_entry_radii[editor_hole] = clampf(trap_entry_radii[editor_hole] + amount * 10.0, 2.0, 40.0)
+		return
+	if editor_target == 3:
+		return
+	if editor_target == 2:
+		trap_ball_scales[editor_hole] = clampf(trap_ball_scales[editor_hole] + amount, 0.4, 2.0)
+	else:
+		var index := editor_hole * 2 + editor_target
+		trap_weapon_scales[index] = clampf(trap_weapon_scales[index] + amount, 0.4, 2.0)
+
+func approved_weapon_offset(hole: int, weapon: int) -> Vector2:
+	var approved: Array[Vector2] = [
+		Vector2(0.0, 15.0), Vector2(10.0, -5.0),
+		Vector2(-3.0, 0.0), Vector2(14.0, -1.0),
+		Vector2(10.0, 40.0), Vector2(-27.0, -3.0),
+		Vector2(20.0, 5.0), Vector2(0.0, 5.0),
+		Vector2(26.0, 1.0), Vector2(-16.0, 2.0),
+		Vector2(-5.0, -10.0), Vector2(10.0, 0.0)
+	]
+	return approved[hole * 2 + weapon]
+
+func approved_weapon_scale(hole: int, weapon: int) -> float:
+	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.2, 1.2, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0]
+	return approved[hole * 2 + weapon]
+
+func approved_ball_offset(hole: int) -> Vector2:
+	var approved: Array[Vector2] = [Vector2(-10.0, -15.0), Vector2(4.0, -5.0), Vector2(35.0, -5.0), Vector2(10.0, 20.0), Vector2(5.0, 20.0), Vector2(0.0, 10.0)]
+	return approved[hole]
+
+func approved_ball_scale(hole: int) -> float:
+	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+	return approved[hole]
+
+func approved_fall_offset(hole: int) -> Vector2:
+	var approved: Array[Vector2] = [Vector2(20.0, 55.0), Vector2(0.0, 30.0), Vector2(-15.0, 45.0), Vector2.ZERO, Vector2.ZERO, Vector2(-30.0, -60.0)]
+	return approved[hole]
+
+func approved_entry_offset(hole: int) -> Vector2:
+	var approved: Array[Vector2] = [
+		Vector2(-13.0, 0.0), Vector2(-1.0, -11.0), Vector2(11.0, -2.0),
+		Vector2(12.0, 14.0), Vector2(1.0, 19.0), Vector2(-12.0, 14.0)
+	]
+	return approved[hole]
+
+func approved_entry_radius(hole: int) -> float:
+	var approved: Array[float] = [13.0, 12.0, 12.0, 12.0, 11.0, 12.0]
+	return approved[hole]
+
+func approved_wall_offset(side: int) -> float:
+	var approved: Array[float] = [-2.0, -7.0, 5.0, 8.0]
+	return approved[side]
+
+func approved_wall_size(side: int) -> float:
+	var approved: Array[float] = [1.0, 1.0, 1.0, 1.0]
+	return approved[side]
+
+func reset_editor_target() -> void:
+	if editor_target == 5:
+		var side := editor_wall_side(editor_hole)
+		table_wall_offsets[side] = approved_wall_offset(side)
+		table_wall_sizes[side] = approved_wall_size(side)
+	elif editor_target == 4:
+		trap_entry_offsets[editor_hole] = approved_entry_offset(editor_hole)
+		trap_entry_radii[editor_hole] = approved_entry_radius(editor_hole)
+	elif editor_target == 3:
+		trap_fall_offsets[editor_hole] = approved_fall_offset(editor_hole)
+	elif editor_target == 2:
+		trap_ball_offsets[editor_hole] = approved_ball_offset(editor_hole)
+		trap_ball_scales[editor_hole] = approved_ball_scale(editor_hole)
+	else:
+		var index := editor_hole * 2 + editor_target
+		trap_weapon_offsets[index] = approved_weapon_offset(editor_hole, editor_target)
+		trap_weapon_scales[index] = approved_weapon_scale(editor_hole, editor_target)
+
+func change_editor_rotation(amount: float) -> void:
+	if effect_editor_mode == "electric":
+		return
+	if editor_selected_hand == 0:
+		rubber_top_rotation += amount
+	else:
+		rubber_side_rotation += amount
+
+func toggle_editor_mirror() -> void:
+	if effect_editor_mode == "electric":
+		return
+	if editor_selected_hand == 0:
+		rubber_top_mirror = not rubber_top_mirror
+	else:
+		rubber_side_mirror = not rubber_side_mirror
+
+func apply_rubber_preset_a() -> void:
+	rubber_top_offset = Vector2(-60.0, -10.0)
+	rubber_side_offset = Vector2(20.0, 20.0)
+	rubber_top_width = 72.0
+	rubber_side_width = 72.0
+	rubber_top_rotation = deg_to_rad(-20.0)
+	rubber_side_rotation = deg_to_rad(-5.0)
+	rubber_top_mirror = false
+	rubber_side_mirror = false
+	status = "Rubber preset A"
+
+func apply_rubber_preset_b() -> void:
+	rubber_top_offset = Vector2(-40.0, 25.0)
+	rubber_side_offset = Vector2(10.0, -20.0)
+	rubber_top_width = 72.0
+	rubber_side_width = 72.0
+	rubber_top_rotation = deg_to_rad(-175.0)
+	rubber_side_rotation = deg_to_rad(-165.0)
+	rubber_top_mirror = true
+	rubber_side_mirror = true
+	status = "Rubber preset B"
+
+func replay_rubber_editor() -> void:
+	active_effects.clear()
+	active_effects.append({"hole":RUBBER_TRAP_HOLE, "elapsed":0.0, "team":0, "piece":0})
+
+func replay_effect_editor() -> void:
+	active_effects.clear()
+	active_effects.append({"hole":editor_hole, "elapsed":0.0, "team":0, "piece":0})
+
+func editor_settings_text() -> String:
+	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
+	var first := editor_hole * 2
+	var wall_side := editor_wall_side(editor_hole)
+	var wall_names := ["left", "top", "right", "bottom"]
+	return "%s: weapon1=%s %.2f; weapon2=%s %.2f; ball=%s %.2f; fall=%s; entry=%s radius=%.1f; wall=%s offset=%.1f size=%.1f" % [names[editor_hole], trap_weapon_offsets[first], trap_weapon_scales[first], trap_weapon_offsets[first + 1], trap_weapon_scales[first + 1], trap_ball_offsets[editor_hole], trap_ball_scales[editor_hole], trap_fall_offsets[editor_hole], trap_entry_offsets[editor_hole], trap_entry_radii[editor_hole], wall_names[wall_side], table_wall_offsets[wall_side], table_wall_sizes[wall_side]]
+
+func draw_editor_button(rect: Rect2, label: String, selected_button: bool = false) -> void:
+	draw_style_box(make_box(Color("7256d8") if selected_button else Color("26384b"), 8.0), rect)
+	draw_string(ui_font, rect.position + Vector2(0, 36), label, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 16, Color.WHITE)
+
+func draw_effect_editor(viewport_size: Vector2) -> void:
+	if not effect_editor_enabled:
+		return
+	var panel := editor_panel_rect(viewport_size)
+	draw_style_box(make_box(Color(0.04, 0.07, 0.12, 0.94), 12.0), panel)
+	var names := ["RUBBER", "PRESS", "ELECTRIC", "HAMMER", "ICE", "FIRE"]
+	var editor_title := "ALL WEAPONS + CAPTURE BALL EDITOR"
+	draw_string(ui_font, panel.position + Vector2(8, 76), editor_title, HORIZONTAL_ALIGNMENT_LEFT, 330, 14, Color("f6d365"))
+	var selected_name: String = ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "WALL"][editor_target]
+	var values := editor_settings_text()
+	draw_string(ui_font, panel.position + Vector2(345, 76), names[editor_hole] + " / " + selected_name, HORIZONTAL_ALIGNMENT_LEFT, 180, 13, Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(530, 76), values, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 540, 9, Color("dbe7f3"))
+	draw_editor_button(editor_top_button(0, viewport_size), "COPY")
+	for i in 6:
+		draw_editor_button(editor_top_button(i + 1, viewport_size), names[i], editor_hole == i)
+	var labels := ["WEAPON 1", "WEAPON 2", "BALL", "FALL", "ENTRY", "WALL", "X -", "X +", "Y -", "Y +", "SIZE-", "SIZE+", "RESET", "REPLAY"]
+	for i in 14:
+		draw_editor_button(editor_button(i, viewport_size), labels[i], (i == editor_target and i < 6))
+
+func frontend_top_button(index: int, viewport_size: Vector2) -> Rect2:
+	return Rect2(viewport_size.x - 300.0 + index * 142.0, 22.0, 126.0, 48.0)
+
+func frontend_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var card_width := minf(286.0, (viewport_size.x - 128.0) / 3.0)
+	var total_width := card_width * 3.0 + 32.0
+	return Rect2(Vector2((viewport_size.x - total_width) * 0.5 + index * (card_width + 16.0), viewport_size.y * 0.43), Vector2(card_width, minf(225.0, viewport_size.y * 0.34)))
+
+func home_layout(viewport_size: Vector2) -> Dictionary:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var header_h := 96.0 * unit
+	var left_x := 18.0 * unit
+	var left_w := 164.0 * unit
+	var right_w := 258.0 * unit
+	var right_x := viewport_size.x - right_w - 14.0 * unit
+	var bottom_bar_h := 88.0 * unit
+	var content_top := header_h + 10.0 * unit
+	var content_bottom := viewport_size.y - bottom_bar_h - 12.0 * unit
+	var center_left := left_x + left_w + 16.0 * unit
+	var center_right := right_x - 16.0 * unit
+	var center_w := maxf(140.0 * unit, center_right - center_left)
+	var stats_h := 58.0 * unit
+	var rail_button_h := 74.0 * unit
+	var rail_gap := 10.0 * unit
+	var rail_start_y := content_top + stats_h + 10.0 * unit
+	var bottom_y := viewport_size.y - bottom_bar_h - 4.0 * unit
+	var bottom_button_h := 78.0 * unit
+	var bottom_gap := 10.0 * unit
+	var bottom_avail_w := center_w - bottom_gap * 2.0
+	var arena_w := bottom_avail_w * 0.30
+	var friend_w := bottom_avail_w * 0.32
+	var play_w := bottom_avail_w * 0.38
+	var arena_x := center_left
+	var friend_x := arena_x + arena_w + bottom_gap
+	var play_x := friend_x + friend_w + bottom_gap
+	return {
+		"unit": unit,
+		"header_h": header_h,
+		"left_x": left_x,
+		"left_w": left_w,
+		"right_x": right_x,
+		"right_w": right_w,
+		"content_top": content_top,
+		"content_bottom": content_bottom,
+		"center_left": center_left,
+		"center_right": center_right,
+		"center_w": center_w,
+		"stats_h": stats_h,
+		"rail_button_h": rail_button_h,
+		"rail_gap": rail_gap,
+		"rail_start_y": rail_start_y,
+		"bottom_y": bottom_y,
+		"bottom_button_h": bottom_button_h,
+		"arena_w": arena_w,
+		"friend_w": friend_w,
+		"play_w": play_w,
+		"arena_x": arena_x,
+		"friend_x": friend_x,
+		"play_x": play_x,
+	}
+
+func home_stats_rect(viewport_size: Vector2) -> Rect2:
+	var layout := home_layout(viewport_size)
+	return Rect2(layout.left_x, layout.content_top, layout.left_w, layout.stats_h)
+
+func home_mode_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		# The entire portal island is a button, not only its caption plaque.
+		if index == 0:
+			return Rect2(viewport_size.x * 0.675, viewport_size.y * 0.145, viewport_size.x * 0.300, viewport_size.y * 0.575)
+		if index == 1:
+			return Rect2(viewport_size.x * 0.025, viewport_size.y * 0.145, viewport_size.x * 0.300, viewport_size.y * 0.575)
+		if index == 2:
+			return Rect2(viewport_size.x * 0.325, viewport_size.y * 0.145, viewport_size.x * 0.350, viewport_size.y * 0.640)
+		return Rect2()
+	var layout := home_layout(viewport_size)
+	if index == 0:
+		return Rect2(layout.arena_x, layout.bottom_y, layout.arena_w, layout.bottom_button_h)
+	if index == 1:
+		return Rect2(layout.friend_x, layout.bottom_y, layout.friend_w, layout.bottom_button_h)
+	if index == 2:
+		return Rect2(layout.play_x, layout.bottom_y, layout.play_w, layout.bottom_button_h)
+	return Rect2()
+
+func arena_card_rect(index: int, viewport_size: Vector2) -> Rect2:
+	# The arena artwork fills the entire viewport. On extra-wide phones its side
+	# gates move outward with the stretched background, so anchor every live card
+	# to the matching gate's normalized horizontal center instead of centering a
+	# fixed-width three-card row.
+	var unit := viewport_size.y / 720.0
+	var gate_centers: Array[float] = [0.205, 0.500, 0.795]
+	var card_size := Vector2(350.0, 450.0) * unit
+	var center_x: float = viewport_size.x * gate_centers[clampi(index, 0, 2)]
+	return Rect2(Vector2(center_x - card_size.x * 0.5, 128.0 * unit), card_size)
+
+func arena_play_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((viewport_size.x - 430.0 * unit) * 0.5, viewport_size.y - 82.0 * unit), Vector2(430.0, 64.0) * unit)
+
+func arena_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var gap := 14.0 * unit
+	var card_w := minf(200.0 * unit, (viewport_size.x - 100.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
+	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
+	var start_x := (viewport_size.x - total_w) * 0.5
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 556.0 * unit), Vector2(card_w, 72.0 * unit))
+
+func player_profile_animal_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((62.0 + float(index) * 62.0) * unit, 526.0 * unit), Vector2(54.0, 62.0) * unit)
+
+func player_profile_color_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((70.0 + float(index) * 60.0) * unit, 614.0 * unit), Vector2(44.0, 44.0) * unit)
+
+func player_id_copy_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null and app_screen == APP_HOME:
+		return Rect2(viewport_size.x * 0.220, viewport_size.y * 0.078, viewport_size.x * 0.112, viewport_size.y * 0.047)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(1018.0, 180.0) * unit, Vector2(48.0, 38.0) * unit)
+
+func player_edit_profile_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(842.0, 614.0) * unit, Vector2(376.0, 48.0) * unit)
+
+func home_profile_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(viewport_size.x * 0.025, viewport_size.y * 0.030, viewport_size.x * 0.320, viewport_size.y * 0.120)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(28.0 * unit, 22.0 * unit, 282.0 * unit, 58.0 * unit)
+
+func home_top_control_rects(viewport_size: Vector2) -> Dictionary:
+	var layout := home_layout(viewport_size)
+	var unit: float = layout.unit
+	var right_x: float = layout.right_x
+	var y: float = 22.0 * unit
+	var h: float = 54.0 * unit
+	var gap: float = 8.0 * unit
+	var coin_w: float = 154.0 * unit
+	var gem_w: float = 120.0 * unit
+	var small_w: float = 54.0 * unit
+	var coin_x: float = right_x - coin_w - gap
+	var gem_x: float = coin_x - gem_w - gap
+	var sound_x: float = gem_x - small_w - gap
+	var help_x: float = sound_x - small_w - gap
+	var settings_x: float = help_x - small_w - gap
+	return {
+		"coin": Rect2(coin_x, y, coin_w, h),
+		"gems": Rect2(gem_x, y, gem_w, h),
+		"sound": Rect2(sound_x, y, small_w, h),
+		"help": Rect2(help_x, y, small_w, h),
+		"settings": Rect2(settings_x, y, small_w, h),
+	}
+
+func home_coin_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(viewport_size.x * 0.685, viewport_size.y * 0.035, viewport_size.x * 0.120, viewport_size.y * 0.070)
+	return home_top_control_rects(viewport_size).coin
+
+func home_settings_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(viewport_size.x * 0.925, viewport_size.y * 0.030, viewport_size.x * 0.050, viewport_size.y * 0.078)
+	return home_top_control_rects(viewport_size).settings
+
+func home_help_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(-1000.0, -1000.0, 1.0, 1.0)
+	return home_top_control_rects(viewport_size).help
+
+func home_sound_toggle_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(-1000.0, -1000.0, 1.0, 1.0)
+	return home_top_control_rects(viewport_size).sound
+
+func home_gems_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return Rect2(viewport_size.x * 0.815, viewport_size.y * 0.035, viewport_size.x * 0.100, viewport_size.y * 0.070)
+	return home_top_control_rects(viewport_size).gems
+
+func tutorial_step_data(step: int) -> Dictionary:
+	var steps := TUTORIAL_STEPS_HE if ui_language == "he" else TUTORIAL_STEPS_EN
+	return steps[clampi(step, 0, steps.size() - 1)]
+
+func tutorial_panel_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var width := minf(760.0 * unit, viewport_size.x - 48.0 * unit)
+	var height := minf(520.0 * unit, viewport_size.y - 72.0 * unit)
+	return Rect2(Vector2((viewport_size.x - width) * 0.5, (viewport_size.y - height) * 0.5), Vector2(width, height))
+
+func tutorial_prev_rect(viewport_size: Vector2) -> Rect2:
+	var panel := tutorial_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(24.0 * unit, panel.size.y - 64.0 * unit), Vector2(120.0 * unit, 44.0 * unit))
+
+func tutorial_next_rect(viewport_size: Vector2) -> Rect2:
+	var panel := tutorial_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.end - Vector2(144.0 * unit, 64.0 * unit), Vector2(120.0 * unit, 44.0 * unit))
+
+func tutorial_skip_rect(viewport_size: Vector2) -> Rect2:
+	var panel := tutorial_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.end - Vector2(54.0 * unit, panel.size.y - 8.0 * unit), Vector2(36.0 * unit, 36.0 * unit))
+
+func tutorial_highlight_rect(step: int, viewport_size: Vector2) -> Rect2:
+	match step:
+		5:
+			return home_mode_rect(2, viewport_size).grow(8.0)
+		6:
+			return home_social_panel_rect(viewport_size).grow(6.0)
+		7:
+			return home_mode_rect(2, viewport_size).grow(12.0)
+	return Rect2()
+
+func maybe_start_tutorial() -> void:
+	if tutorial_completed or tutorial_open or tutorial_dismissed_session:
+		return
+	open_tutorial()
+
+func open_tutorial(from_step: int = 0) -> void:
+	tutorial_open = true
+	tutorial_step = clampi(from_step, 0, TUTORIAL_STEP_COUNT - 1)
+	play_sound("ui")
+	queue_redraw()
+
+func complete_tutorial() -> void:
+	tutorial_open = false
+	tutorial_completed = true
+	save_player_profile()
+	play_sound("ui")
+	queue_redraw()
+
+func advance_tutorial_step() -> void:
+	if tutorial_step >= TUTORIAL_STEP_COUNT - 1:
+		complete_tutorial()
+	else:
+		tutorial_step += 1
+		play_sound("ui")
+		queue_redraw()
+
+func retreat_tutorial_step() -> void:
+	tutorial_step = maxi(0, tutorial_step - 1)
+	play_sound("ui")
+	queue_redraw()
+
+func handle_tutorial_touch(screen_pos: Vector2, viewport_size: Vector2) -> void:
+	if tutorial_skip_rect(viewport_size).has_point(screen_pos):
+		complete_tutorial()
+		return
+	if tutorial_step > 0 and tutorial_prev_rect(viewport_size).has_point(screen_pos):
+		retreat_tutorial_step()
+		return
+	if tutorial_next_rect(viewport_size).has_point(screen_pos):
+		advance_tutorial_step()
+		return
+
+func draw_tutorial_art(art_id: String, rect: Rect2, unit: float) -> void:
+	var center := rect.get_center()
+	match art_id:
+		"welcome":
+			draw_circle(center, 58.0 * unit, Color("8cecff", 0.22))
+			draw_circle(center + Vector2(-28.0, 8.0) * unit, 22.0 * unit, Color("ef3340"))
+			draw_circle(center + Vector2(24.0, -6.0) * unit, 22.0 * unit, Color("1677ff"))
+			draw_string(ui_font, center + Vector2(-34.0, 58.0) * unit, "ZOOPA", HORIZONTAL_ALIGNMENT_CENTER, 68.0 * unit, int(22.0 * unit), Color("ffe25d"))
+		"shoot":
+			var ball_pos := center + Vector2(36.0, 10.0) * unit
+			draw_circle(ball_pos, 18.0 * unit, Color("ef3340"))
+			draw_line(ball_pos, ball_pos + Vector2(-72.0, 28.0) * unit, Color("ffe25d"), 5.0 * unit, true)
+			draw_circle(ball_pos + Vector2(-72.0, 28.0) * unit, 10.0 * unit, Color("ffe25d", 0.55))
+			draw_string(ui_font, center + Vector2(-80.0, -42.0) * unit, "← PULL", HORIZONTAL_ALIGNMENT_CENTER, 90.0 * unit, int(14.0 * unit), Color.WHITE)
+		"goal":
+			var board := Rect2(center + Vector2(-88.0, -48.0) * unit, Vector2(176.0, 176.0) * unit)
+			draw_style_box(make_box(Color("5d7f4f"), 12.0 * unit), board)
+			for corner in [board.position, board.position + Vector2(board.size.x, 0.0), board.end - board.size, board.end]:
+				draw_circle(corner, 14.0 * unit, Color("173249"))
+			draw_circle(board.get_center(), 12.0 * unit, Color("ef3340"))
+			draw_circle(board.get_center() + Vector2(34.0, -18.0) * unit, 12.0 * unit, Color("1677ff"))
+		"weapons":
+			var icons := [Color("ef3340"), Color("9d59e8"), Color("ff8a00"), Color("12c95b")]
+			for i in icons.size():
+				var pos := center + Vector2(-54.0 + float(i) * 36.0, float((i % 2) * 20 - 10)) * unit
+				draw_circle(pos, 16.0 * unit, icons[i])
+		"turns":
+			var left_card := Rect2(center + Vector2(-92.0, -34.0) * unit, Vector2(84.0, 68.0) * unit)
+			var right_card := Rect2(center + Vector2(8.0, -34.0) * unit, Vector2(84.0, 68.0) * unit)
+			draw_style_box(make_box(Color("ffe25d"), 10.0 * unit), left_card.grow(4.0 * unit))
+			draw_style_box(make_box(Color("173249"), 8.0 * unit), left_card)
+			draw_style_box(make_box(Color("244d70"), 8.0 * unit), right_card)
+			draw_string(ui_font, left_card.position + Vector2(0.0, 42.0) * unit, "YOU", HORIZONTAL_ALIGNMENT_CENTER, left_card.size.x, int(12.0 * unit), Color.WHITE)
+		"modes":
+			var labels := ["PC", "FR", "AR"]
+			var colors := [Color("f6aa20"), Color("315fd0"), Color("7258df")]
+			for i in 3:
+				var chip := Rect2(center + Vector2(-78.0 + float(i) * 52.0, -18.0) * unit, Vector2(44.0, 44.0) * unit)
+				draw_style_box(make_box(colors[i], 10.0 * unit), chip)
+				draw_string(ui_font, chip.position + Vector2(0.0, 28.0) * unit, labels[i], HORIZONTAL_ALIGNMENT_CENTER, chip.size.x, int(11.0 * unit), Color.WHITE)
+		"hub":
+			draw_style_box(make_box(Color("315fd0"), 12.0 * unit), Rect2(center + Vector2(-70.0, -30.0) * unit, Vector2(140.0, 60.0) * unit))
+			draw_circle(center + Vector2(-48.0, 42.0) * unit, 14.0 * unit, Color("6965d8"))
+			draw_circle(center + Vector2(-16.0, 42.0) * unit, 14.0 * unit, Color("51d995"))
+			draw_circle(center + Vector2(16.0, 42.0) * unit, 14.0 * unit, Color("ffe25d"))
+		"ready":
+			draw_circle(center, 42.0 * unit, Color("6fda18", 0.25))
+			draw_string(ui_font, center + Vector2(-28.0, 12.0) * unit, "GO!", HORIZONTAL_ALIGNMENT_CENTER, 56.0 * unit, int(34.0 * unit), Color("6fda18"))
+
+func draw_tutorial_overlay(viewport_size: Vector2) -> void:
+	if not tutorial_open:
+		return
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var highlight := tutorial_highlight_rect(tutorial_step, viewport_size)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.72))
+	if highlight.size.x > 0.0:
+		var pulse := 0.55 + sin(menu_elapsed * 5.0) * 0.2
+		draw_style_box(make_box(Color("ffe25d", pulse), 18.0 * unit), highlight.grow(6.0 * unit))
+	var panel := tutorial_panel_rect(viewport_size)
+	draw_style_box(make_box(Color(0.02, 0.07, 0.13, 0.96), 26.0 * unit), panel.grow(6.0 * unit))
+	draw_style_box(make_box(Color("eaf8f1"), 24.0 * unit), panel)
+	var step_data := tutorial_step_data(tutorial_step)
+	draw_string(ui_font, panel.position + Vector2(0.0, 42.0) * unit, ui_text("tutorial_title"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(14.0 * unit), Color("2982a6"))
+	draw_string(ui_font, panel.position + Vector2(24.0 * unit, 78.0) * unit, str(step_data.get("title", "")), HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 48.0 * unit, int(26.0 * unit), Color("173249"))
+	var art_rect := Rect2(panel.position + Vector2(panel.size.x * 0.5 - 100.0 * unit, 112.0 * unit), Vector2(200.0, 120.0) * unit)
+	draw_tutorial_art(str(step_data.get("art", "")), art_rect, unit)
+	var body_y := 250.0 * unit
+	var body_lines := str(step_data.get("body", "")).split("\n")
+	for line in body_lines:
+		draw_string(ui_font, panel.position + Vector2(28.0 * unit, body_y), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 56.0 * unit, int(16.0 * unit), Color("354522"))
+		body_y += 28.0 * unit
+	var dots_x := panel.position.x + panel.size.x * 0.5 - float(TUTORIAL_STEP_COUNT - 1) * 10.0 * unit
+	for i in TUTORIAL_STEP_COUNT:
+		var dot_center := Vector2(dots_x + float(i) * 20.0 * unit, panel.end.y - 78.0 * unit)
+		draw_circle(dot_center, 5.0 * unit, Color("ffe25d") if i == tutorial_step else Color("9ab0c2"))
+	if tutorial_step > 0:
+		draw_style_box(make_box(Color("244d70"), 12.0 * unit), tutorial_prev_rect(viewport_size))
+		draw_string(ui_font, tutorial_prev_rect(viewport_size).position + Vector2(0.0, 29.0) * unit, ui_text("tutorial_prev"), HORIZONTAL_ALIGNMENT_CENTER, tutorial_prev_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
+	var next_label := ui_text("tutorial_done") if tutorial_step >= TUTORIAL_STEP_COUNT - 1 else ui_text("tutorial_next")
+	draw_style_box(make_box(Color("35b96f"), 12.0 * unit), tutorial_next_rect(viewport_size))
+	draw_string(ui_font, tutorial_next_rect(viewport_size).position + Vector2(0.0, 29.0) * unit, next_label, HORIZONTAL_ALIGNMENT_CENTER, tutorial_next_rect(viewport_size).size.x, int(15.0 * unit), Color.WHITE)
+	draw_string(ui_font, tutorial_skip_rect(viewport_size).position + Vector2(0.0, 26.0) * unit, "×", HORIZONTAL_ALIGNMENT_CENTER, tutorial_skip_rect(viewport_size).size.x, int(22.0 * unit), Color("607080"))
+
+func home_nav_rect(index: int, viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		var nav_width := viewport_size.x * 0.135
+		var start_x := viewport_size.x * 0.245
+		return Rect2(start_x + float(index) * nav_width, viewport_size.y * 0.858, nav_width, viewport_size.y * 0.132)
+	var layout := home_layout(viewport_size)
+	var y: float = layout.rail_start_y + (layout.rail_button_h + layout.rail_gap) * float(index)
+	return Rect2(layout.left_x, y, layout.left_w, layout.rail_button_h)
+
+func home_character_rect(viewport_size: Vector2) -> Rect2:
+	if battle_gates_home_texture != null:
+		return home_nav_rect(0, viewport_size)
+	var layout := home_layout(viewport_size)
+	var unit: float = layout.unit
+	var center_left: float = layout.center_left
+	var center_w: float = layout.center_w
+	var content_top: float = layout.content_top
+	var content_bottom: float = layout.content_bottom
+	var char_w: float = minf(300.0 * unit, center_w * 0.88)
+	var char_h: float = minf(390.0 * unit, (content_bottom - content_top) * 0.72)
+	var char_x: float = center_left + (center_w - char_w) * 0.5
+	var char_y: float = content_top + 6.0 * unit
+	return Rect2(char_x, char_y, char_w, char_h)
+
+func draw_home_ambient_effects(viewport_size: Vector2) -> void:
+	init_home_ambient_particles()
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	for particle in home_ambient_particles:
+		var px: float = float(particle.x) * viewport_size.x
+		var py: float = fmod(float(particle.y) + menu_elapsed * float(particle.speed), 1.08) * viewport_size.y - viewport_size.y * 0.04
+		var pulse := 0.55 + sin(menu_elapsed * 2.2 + float(particle.phase)) * 0.25
+		var size: float = float(particle.size) * unit * pulse
+		var color := Color("8cecff", 0.10 + pulse * 0.08) if int(particle.kind) == 0 else Color("ffe25d", 0.08 + pulse * 0.07)
+		if int(particle.kind) == 2:
+			color = Color("c77dff", 0.07 + pulse * 0.06)
+		draw_circle(Vector2(px, py), size, color)
+	var ray_alpha := 0.05 + sin(menu_elapsed * 0.7) * 0.02
+	draw_rect(Rect2(viewport_size.x * 0.18, 0.0, viewport_size.x * 0.22, viewport_size.y), Color(1.0, 1.0, 1.0, ray_alpha))
+	draw_rect(Rect2(viewport_size.x * 0.62, 0.0, viewport_size.x * 0.16, viewport_size.y), Color("8cecff", ray_alpha * 0.8))
+
+func draw_pending_invite_banner(viewport_size: Vector2) -> void:
+	if pending_friend_invite.is_empty():
+		return
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var banner := Rect2(viewport_size.x * 0.28, 102.0 * unit, viewport_size.x * 0.44, 54.0 * unit)
+	draw_style_box(make_box(Color("e94f78"), 16.0 * unit), banner)
+	var text := ui_text("invite_received") + str(pending_friend_invite.get("fromName", ""))
+	draw_string(ui_font, banner.position + Vector2(16.0 * unit, 22.0 * unit), text, HORIZONTAL_ALIGNMENT_LEFT, banner.size.x - 130.0 * unit, int(14.0 * unit), Color.WHITE)
+	var join_rect := Rect2(banner.end.x - 112.0 * unit, banner.position.y + 10.0 * unit, 96.0 * unit, 34.0 * unit)
+	draw_style_box(make_box(Color("35b96f"), 12.0 * unit), join_rect)
+	draw_string(ui_font, join_rect.position + Vector2(0.0, 23.0) * unit, ui_text("join_invite"), HORIZONTAL_ALIGNMENT_CENTER, join_rect.size.x, int(14.0 * unit), Color.WHITE)
+
+func home_invite_join_rect(viewport_size: Vector2) -> Rect2:
+	if pending_friend_invite.is_empty():
+		return Rect2()
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var banner := Rect2(viewport_size.x * 0.28, 102.0 * unit, viewport_size.x * 0.44, 54.0 * unit)
+	return Rect2(banner.end.x - 112.0 * unit, banner.position.y + 10.0 * unit, 96.0 * unit, 34.0 * unit)
+
+func accept_pending_friend_invite() -> void:
+	if pending_friend_invite.is_empty():
+		return
+	var code := str(pending_friend_invite.get("roomCode", ""))
+	pending_friend_invite = {}
+	if code.is_empty():
+		return
+	app_screen = APP_FRIEND
+	room_code_input.text = code
+	connect_multiplayer()
+	if multiplayer_state == "connected":
+		join_multiplayer_room()
+	else:
+		pending_shared_room_code = code
+	play_sound("ui")
+
+func friend_room_chat_rect(viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(1040.0, 658.0) * scale, Vector2(190.0, 44.0) * scale)
+
+func home_social_panel_rect(viewport_size: Vector2) -> Rect2:
+	var layout := home_layout(viewport_size)
+	return Rect2(layout.right_x, layout.content_top, layout.right_w, layout.content_bottom - layout.content_top)
+
+func home_social_tab_rect(tab: int, viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var width := (panel.size.x - 22.0 * unit) / 3.0
+	return Rect2(panel.position + Vector2(9.0 * unit + float(tab) * (width + 2.0 * unit), 14.0 * unit), Vector2(width, 38.0 * unit))
+
+func home_add_friend_rect(viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 98.0 * unit), Vector2(panel.size.x - 28.0 * unit, 38.0 * unit))
+
+func home_add_friend_button_rect(viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 28.0 * unit, 36.0 * unit))
+
+func home_friend_row_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var start_y := home_friends_content_top(viewport_size)
+	return Rect2(panel.position + Vector2(14.0 * unit, start_y + float(index) * 58.0 * unit), Vector2(panel.size.x - 28.0 * unit, 52.0 * unit))
+
+func home_friends_content_top(viewport_size: Vector2) -> float:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var incoming_count := mini(2, incoming_friend_requests.size())
+	var header_h := 18.0 * unit if incoming_count > 0 else 0.0
+	return 72.0 * unit + header_h + float(incoming_count) * 58.0 * unit
+
+func home_incoming_request_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var start_y := 90.0 * unit + float(index) * 58.0 * unit
+	return Rect2(panel.position + Vector2(14.0 * unit, start_y), Vector2(panel.size.x - 28.0 * unit, 48.0 * unit))
+
+func home_incoming_accept_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var row := home_incoming_request_rect(index, viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(row.position + Vector2(row.size.x - 150.0 * unit, 8.0 * unit), Vector2(68.0, 32.0) * unit)
+
+func home_incoming_decline_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var row := home_incoming_request_rect(index, viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(row.position + Vector2(row.size.x - 76.0 * unit, 8.0 * unit), Vector2(68.0, 32.0) * unit)
+
+func home_friend_invite_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var row := home_friend_row_rect(index, viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(row.position + Vector2(row.size.x - 86.0 * unit, 10.0 * unit), Vector2(72.0, 32.0) * unit)
+
+func home_friend_profile_modal_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var width := minf(420.0 * unit, viewport_size.x - 80.0 * unit)
+	var height := minf(360.0 * unit, viewport_size.y - 120.0 * unit)
+	return Rect2(Vector2((viewport_size.x - width) * 0.5, (viewport_size.y - height) * 0.5), Vector2(width, height))
+
+func home_friend_profile_close_rect(viewport_size: Vector2) -> Rect2:
+	var modal := home_friend_profile_modal_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(modal.end - Vector2(42.0 * unit, modal.size.y - 10.0 * unit), Vector2(32.0 * unit, 32.0 * unit))
+
+func home_friend_profile_invite_rect(viewport_size: Vector2) -> Rect2:
+	var modal := home_friend_profile_modal_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(modal.position + Vector2(24.0 * unit, modal.size.y - 64.0 * unit), Vector2((modal.size.x - 58.0 * unit) * 0.5, 40.0 * unit))
+
+func home_friend_profile_remove_rect(viewport_size: Vector2) -> Rect2:
+	var modal := home_friend_profile_modal_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(modal.position + Vector2(modal.size.x * 0.5 + 5.0 * unit, modal.size.y - 64.0 * unit), Vector2((modal.size.x - 58.0 * unit) * 0.5, 40.0 * unit))
+
+func home_lobby_send_rect(viewport_size: Vector2) -> Rect2:
+	var panel := home_social_panel_rect(viewport_size)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(panel.position + Vector2(panel.size.x - 96.0 * unit, panel.size.y - 52.0 * unit), Vector2(82.0 * unit, 36.0 * unit))
+
+func ensure_home_connected() -> void:
+	if app_screen != APP_HOME:
+		return
+	if multiplayer_state in ["connected", "connecting"]:
+		return
+	connect_multiplayer()
+
+func park_line_edit(control: LineEdit) -> void:
+	if control == null:
+		return
+	control.visible = false
+	if control.has_focus():
+		control.release_focus()
+	control.position = Vector2(-4000.0, -4000.0)
+	control.size = Vector2(1.0, 1.0)
+
+func update_home_social_inputs() -> void:
+	var viewport_size := get_viewport_rect().size
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var panel := home_social_panel_rect(viewport_size)
+	var show_social_inputs := app_screen == APP_HOME and battle_gates_home_texture == null and not tutorial_open and not customizer_open and not friend_customizer_open
+	if friend_id_input != null:
+		var show_friend_input := show_social_inputs and home_social_tab == 0
+		if show_friend_input:
+			friend_id_input.visible = true
+			friend_id_input.position = home_add_friend_rect(viewport_size).position
+			friend_id_input.size = home_add_friend_rect(viewport_size).size
+			friend_id_input.placeholder_text = ui_text("friend_id_hint")
+		else:
+			park_line_edit(friend_id_input)
+	if lobby_chat_input != null:
+		var show_chat_input := show_social_inputs and home_social_tab == 1
+		if show_chat_input:
+			var input_rect := Rect2(panel.position + Vector2(14.0 * unit, panel.size.y - 52.0 * unit), Vector2(panel.size.x - 118.0 * unit, 36.0 * unit))
+			lobby_chat_input.visible = true
+			lobby_chat_input.position = input_rect.position
+			lobby_chat_input.size = input_rect.size
+			lobby_chat_input.placeholder_text = ui_text("lobby_chat_hint")
+		else:
+			park_line_edit(lobby_chat_input)
+
+func send_lobby_chat_message() -> void:
+	if lobby_chat_input == null:
+		return
+	var message := lobby_chat_input.text.strip_edges()
+	if message.is_empty():
+		return
+	if multiplayer_state == "connected":
+		send_multiplayer({"type": "lobby_chat", "name": profile_name, "message": message.left(80)})
+	else:
+		lobby_chat_messages.append({"name": profile_name, "message": message.left(80)})
+		while lobby_chat_messages.size() > 30:
+			lobby_chat_messages.pop_front()
+	lobby_chat_input.clear()
+	lobby_chat_input.grab_focus()
+	queue_redraw()
+
+func _on_lobby_chat_submitted(_text: String) -> void:
+	send_lobby_chat_message()
+
+func normalize_friend_public_id(raw: String) -> String:
+	var clean := raw.strip_edges().to_upper().replace(" ", "")
+	if clean.is_empty():
+		return ""
+	if not clean.begins_with("ZP-"):
+		clean = "ZP-" + clean.trim_prefix("ZP")
+	return clean.left(12)
+
+func friend_already_added(public_id: String) -> bool:
+	for entry in friends_list:
+		if typeof(entry) == TYPE_DICTIONARY and str(entry.get("id", "")) == public_id:
+			return true
+	return false
+
+func friend_display_name(entry: Dictionary) -> String:
+	var pid := str(entry.get("id", ""))
+	var name := str(entry.get("name", "")).strip_edges()
+	if not name.is_empty() and name != pid and not name.begins_with("ZP-"):
+		return name.left(20)
+	for lb_entry in global_leaderboard:
+		if typeof(lb_entry) == TYPE_DICTIONARY and str(lb_entry.get("publicId", "")) == pid:
+			var lb_name := str(lb_entry.get("name", "")).strip_edges()
+			if not lb_name.is_empty():
+				return lb_name.left(20)
+	return pid
+
+func upsert_local_friend(entry: Dictionary) -> void:
+	var pid := normalize_friend_public_id(str(entry.get("id", "")))
+	if pid.is_empty():
+		return
+	var normalized := {
+		"id": pid,
+		"name": str(entry.get("name", "")).strip_edges().left(20),
+		"rating": int(entry.get("rating", 1000)),
+		"wins": int(entry.get("wins", 0)),
+		"losses": int(entry.get("losses", 0)),
+		"leagueTier": int(entry.get("leagueTier", 0)),
+		"online": bool(entry.get("online", false))
+	}
+	normalized.name = friend_display_name(normalized)
+	for i in friends_list.size():
+		if str(friends_list[i].get("id", "")) == pid:
+			friends_list[i] = normalized
+			save_player_profile()
+			queue_redraw()
+			return
+	friends_list.append(normalized)
+	save_player_profile()
+	queue_redraw()
+
+func apply_friends_list_from_server(friends: Array) -> void:
+	var merged: Array = []
+	for item in friends:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var pid := normalize_friend_public_id(str(item.get("id", "")))
+		if pid.is_empty():
+			continue
+		merged.append({
+			"id": pid,
+			"name": str(item.get("name", pid)).strip_edges().left(20),
+			"rating": int(item.get("rating", 1000)),
+			"wins": int(item.get("wins", 0)),
+			"losses": int(item.get("losses", 0)),
+			"leagueTier": int(item.get("leagueTier", 0)),
+			"online": bool(item.get("online", false))
+		})
+	for i in merged.size():
+		var entry: Dictionary = merged[i]
+		if str(entry.get("name", "")).begins_with("ZP-"):
+			entry.name = friend_display_name(entry)
+	if merged.is_empty():
+		# The match server keeps friends in memory; an empty response must not
+		# wipe friends that are still saved locally on the device.
+		return
+	friends_list = merged
+	save_player_profile()
+	queue_redraw()
+
+func refresh_friend_names_from_leaderboard() -> void:
+	var changed := false
+	for i in friends_list.size():
+		var entry: Dictionary = friends_list[i]
+		var display := friend_display_name(entry)
+		if display != str(entry.get("name", "")):
+			entry.name = display
+			friends_list[i] = entry
+			changed = true
+	if changed:
+		save_player_profile()
+
+func friend_request_display_name(entry: Dictionary) -> String:
+	var pid := str(entry.get("id", ""))
+	var name := str(entry.get("name", "")).strip_edges()
+	if not name.is_empty() and name != pid and not name.begins_with("ZP-"):
+		return name.left(20)
+	return friend_display_name(entry)
+
+func apply_social_state_from_server(payload: Dictionary) -> void:
+	apply_friends_list_from_server(payload.get("friends", []))
+	incoming_friend_requests = []
+	for item in payload.get("incoming", []):
+		if typeof(item) == TYPE_DICTIONARY:
+			incoming_friend_requests.append(item)
+	outgoing_friend_requests = []
+	for item in payload.get("outgoing", []):
+		if typeof(item) == TYPE_DICTIONARY:
+			outgoing_friend_requests.append(item)
+	save_player_profile()
+	queue_redraw()
+
+func friend_request_already_sent(public_id: String) -> bool:
+	for entry in outgoing_friend_requests:
+		if typeof(entry) == TYPE_DICTIONARY and str(entry.get("id", "")) == public_id:
+			return true
+	return false
+
+func send_friend_request_by_id(raw_id: String) -> void:
+	var public_id := normalize_friend_public_id(raw_id)
+	if public_id.length() < 5:
+		show_menu_notice(ui_text("friend_not_found"))
+		return
+	if public_id == firebase_public_id:
+		show_menu_notice(ui_text("friend_exists"))
+		return
+	if friend_already_added(public_id):
+		show_menu_notice(ui_text("friend_exists"))
+		return
+	if friend_request_already_sent(public_id):
+		show_menu_notice(ui_text("friend_request_exists"))
+		return
+	for entry in incoming_friend_requests:
+		if str(entry.get("id", "")) == public_id:
+			accept_friend_request_from(str(entry.get("id", "")))
+			return
+	if multiplayer_state == "connected" and not firebase_public_id.is_empty():
+		send_multiplayer({
+			"type": "send_friend_request",
+			"fromPublicId": firebase_public_id,
+			"targetPublicId": public_id,
+			"fromName": profile_name,
+			"rating": player_rating,
+			"wins": player_wins,
+			"losses": player_losses,
+			"leagueTier": player_league_tier
+		})
+		if friend_id_input != null:
+			friend_id_input.clear()
+		return
+	outgoing_friend_requests.append({"id": public_id, "name": public_id})
+	save_player_profile()
+	show_menu_notice(ui_text("friend_request_sent"))
+	if friend_id_input != null:
+		friend_id_input.clear()
+	queue_redraw()
+
+func accept_friend_request_from(from_public_id: String) -> void:
+	var public_id := normalize_friend_public_id(from_public_id)
+	if public_id.is_empty():
+		return
+	if multiplayer_state == "connected" and not firebase_public_id.is_empty():
+		send_multiplayer({
+			"type": "accept_friend_request",
+			"publicId": firebase_public_id,
+			"fromPublicId": public_id,
+			"name": profile_name,
+			"rating": player_rating,
+			"wins": player_wins,
+			"losses": player_losses,
+			"leagueTier": player_league_tier
+		})
+		return
+	for i in incoming_friend_requests.size():
+		if str(incoming_friend_requests[i].get("id", "")) == public_id:
+			upsert_local_friend(incoming_friend_requests[i])
+			incoming_friend_requests.remove_at(i)
+			break
+	show_menu_notice(ui_text("friend_accepted"))
+	queue_redraw()
+
+func decline_friend_request_at(index: int) -> void:
+	if index < 0 or index >= incoming_friend_requests.size():
+		return
+	var public_id := str(incoming_friend_requests[index].get("id", ""))
+	incoming_friend_requests.remove_at(index)
+	if multiplayer_state == "connected" and not firebase_public_id.is_empty() and not public_id.is_empty():
+		send_multiplayer({
+			"type": "decline_friend_request",
+			"publicId": firebase_public_id,
+			"fromPublicId": public_id
+		})
+	save_player_profile()
+	queue_redraw()
+
+func add_friend_by_public_id(raw_id: String) -> void:
+	send_friend_request_by_id(raw_id)
+
+func _on_friend_lookup_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var public_id := pending_friend_lookup_id
+	pending_friend_lookup_id = ""
+	if public_id.is_empty():
+		return
+	var friend_name := public_id
+	if response_code >= 200 and response_code < 300:
+		var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+		if data is Dictionary:
+			var fields: Dictionary = data.get("fields", {})
+			if fields.has("name"):
+				friend_name = str(fields.name.get("stringValue", friend_name)).strip_edges().left(20)
+	if response_code == 404:
+		show_menu_notice(ui_text("friend_not_found"))
+		queue_redraw()
+		return
+	if friend_already_added(public_id):
+		show_menu_notice(ui_text("friend_exists"))
+		return
+	upsert_local_friend({
+		"id": public_id,
+		"name": friend_name,
+		"rating": 1000,
+		"wins": 0,
+		"losses": 0,
+		"leagueTier": 0,
+		"online": false
+	})
+	show_menu_notice(ui_text("friend_added"))
+	if friend_id_input != null:
+		friend_id_input.clear()
+	queue_redraw()
+
+func remove_friend_at(index: int) -> void:
+	if index < 0 or index >= friends_list.size():
+		return
+	var target_id := str(friends_list[index].get("id", ""))
+	friends_list.remove_at(index)
+	if home_friend_profile_index == index:
+		home_friend_profile_index = -1
+	elif home_friend_profile_index > index:
+		home_friend_profile_index -= 1
+	save_player_profile()
+	if multiplayer_state == "connected" and not target_id.is_empty() and not firebase_public_id.is_empty():
+		send_multiplayer({
+			"type": "remove_friend",
+			"fromPublicId": firebase_public_id,
+			"targetPublicId": target_id
+		})
+	queue_redraw()
+
+func maybe_send_pending_friend_invite() -> void:
+	if pending_friend_invite_send.is_empty():
+		return
+	if multiplayer_state != "connected":
+		connect_multiplayer()
+		return
+	if multiplayer_room_code.is_empty():
+		create_multiplayer_room()
+		return
+	flush_pending_friend_invite_send()
+
+func flush_pending_friend_invite_send() -> void:
+	if pending_friend_invite_send.is_empty():
+		return
+	if multiplayer_state != "connected" or multiplayer_room_code.is_empty():
+		return
+	var target_id := normalize_friend_public_id(str(pending_friend_invite_send.get("targetPublicId", "")))
+	if target_id.is_empty():
+		pending_friend_invite_send = {}
+		return
+	pending_friend_invite_target_name = str(pending_friend_invite_send.get("targetName", ""))
+	pending_friend_invite_send = {}
+	send_multiplayer({
+		"type": "invite_friend",
+		"targetPublicId": target_id,
+		"roomCode": multiplayer_room_code,
+		"fromName": profile_name,
+		"fromPublicId": firebase_public_id
+	})
+
+func invite_friend_to_play(index: int) -> void:
+	if index < 0 or index >= friends_list.size():
+		return
+	var friend_entry: Dictionary = friends_list[index]
+	if not bool(friend_entry.get("online", false)):
+		show_menu_notice(ui_text("friend_invite_offline"))
+		return
+	play_sound("ui")
+	var target_id := normalize_friend_public_id(str(friend_entry.get("id", "")))
+	if target_id.is_empty():
+		return
+	pending_friend_invite_send = {
+		"targetPublicId": target_id,
+		"targetName": str(friend_entry.get("name", ""))
+	}
+	app_screen = APP_FRIEND
+	maybe_send_pending_friend_invite()
+
+func character_card_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(515.0 + float(index) * 98.0, 226.0) * unit, Vector2(88.0, 88.0) * unit)
+
+func character_ring_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(515.0 + float(index) * 98.0, 420.0) * unit, Vector2(88.0, 88.0) * unit)
+
+func character_save_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(615.0, 482.0) * unit, Vector2(520.0, 76.0) * unit)
+
+func frontend_back_rect(viewport_size: Vector2) -> Rect2:
+	return Rect2(24.0, 22.0, 116.0, 48.0)
+
+func friend_create_rect(viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(188.0, 477.0) * scale, Vector2(388.0, 88.0) * scale)
+
+func friend_join_rect(viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(730.0, 477.0) * scale, Vector2(382.0, 88.0) * scale)
+
+func friend_ready_rect(viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(412.0, 548.0) * scale, Vector2(456.0, 104.0) * scale)
+
+func friend_share_rect(viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(735.0, 166.0) * scale, Vector2(185.0, 52.0) * scale)
+
+func friend_leave_rect(viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(735.0, 222.0) * scale, Vector2(185.0, 48.0) * scale)
+
+func friend_player_rect(slot: int, viewport_size: Vector2) -> Rect2:
+	var scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(155.0 + float(slot) * 620.0, 155.0) * scale, Vector2(350.0, 375.0) * scale)
+
+func friend_edit_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var card := friend_player_rect(multiplayer_slot if multiplayer_slot >= 0 else 0, viewport_size)
+	return Rect2(card.position + Vector2(card.size.x - 125.0 * unit, card.size.y - 44.0 * unit), Vector2(112.0, 34.0) * unit)
+
+func friend_choice_rect(index: int, colors: bool, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2((318.0 + float(index) * 110.0) * unit, (330.0 if colors else 220.0) * unit), Vector2(92.0, 92.0) * unit)
+
+func friend_board_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var gap := 12.0 * unit
+	var card_w := minf(158.0 * unit, (viewport_size.x - 90.0 * unit - gap * float(BOARD_THEME_COUNT - 1)) / float(BOARD_THEME_COUNT))
+	var total_w := card_w * float(BOARD_THEME_COUNT) + gap * float(BOARD_THEME_COUNT - 1)
+	var start_x := (viewport_size.x - total_w) * 0.5
+	return Rect2(Vector2(start_x + float(index) * (card_w + gap), 418.0 * unit), Vector2(card_w, 82.0 * unit))
+
+func friend_modal_close_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(935.0, 155.0) * unit, Vector2(65.0, 48.0) * unit)
+
+func _on_room_code_changed(value: String) -> void:
+	var clean := ""
+	for character in value.to_upper():
+		if "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(character):
+			clean += character
+	if clean != value:
+		room_code_input.text = clean.left(4)
+		room_code_input.caret_column = room_code_input.text.length()
+
+func sync_web_auth_storage() -> void:
+	if not OS.has_feature("web"):
+		return
+	var saved_refresh := str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseRefreshToken') || ''", true))
+	if not saved_refresh.is_empty():
+		firebase_refresh_token = saved_refresh
+	var saved_provider := str(JavaScriptBridge.eval("localStorage.getItem('zpFirebaseProvider') || ''", true))
+	if not saved_provider.is_empty():
+		firebase_provider = saved_provider
+
+func persist_web_auth_storage() -> void:
+	if not OS.has_feature("web"):
+		return
+	var script := """
+localStorage.setItem('zpFirebaseRefreshToken', __REFRESH__);
+localStorage.setItem('zpFirebaseProvider', __PROVIDER__);
+"""
+	script = script.replace("__REFRESH__", JSON.stringify(firebase_refresh_token)).replace("__PROVIDER__", JSON.stringify(firebase_provider))
+	JavaScriptBridge.eval(script, true)
+
+func clear_saved_auth_session() -> void:
+	firebase_uid = ""
+	firebase_public_id = ""
+	firebase_id_token = ""
+	firebase_refresh_token = ""
+	firebase_token_expires_at = 0
+	firebase_email = ""
+	firebase_provider = "guest"
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken'); localStorage.removeItem('zpFirebaseProvider');", true)
+	save_player_profile(false)
+
+func auth_token_is_unrecoverable(message: String) -> bool:
+	var upper := message.to_upper()
+	return upper.contains("INVALID_REFRESH_TOKEN") or upper.contains("USER_DISABLED") or upper.contains("USER_NOT_FOUND") or upper.contains("INVALID_GRANT")
+
+func begin_silent_session_restore() -> void:
+	session_restore_pending = false
+	app_screen = APP_HOME
+	firebase_auth_mode = "resume"
+	firebase_status = ui_text("restoring_session")
+	start_firebase_auth()
+
+func initialize_saved_session() -> void:
+	if OS.has_feature("web"):
+		var shared_value: String = str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('room') || ''", true))
+		for character in shared_value.to_upper():
+			if "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(character):
+				pending_shared_room_code += character
+		pending_shared_room_code = pending_shared_room_code.left(4)
+		var handoff_value: String = str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('androidAuth') || ''", true))
+		for character in handoff_value.to_lower():
+			if "0123456789abcdef".contains(character):
+				pending_android_auth_handoff += character
+		pending_android_auth_handoff = pending_android_auth_handoff.left(64)
+	sync_web_auth_storage()
+	if firebase_refresh_token.is_empty():
+		if OS.has_feature("web"):
+			session_restore_pending = true
+			session_restore_deadline = menu_elapsed + SESSION_RESTORE_WAIT_SEC
+			firebase_status = ui_text("restoring_session")
+		return
+	begin_silent_session_restore()
+
+func open_pending_shared_room() -> void:
+	if pending_shared_room_code.is_empty() or room_code_input == null:
+		return
+	app_screen = APP_FRIEND
+	room_code_input.text = pending_shared_room_code
+	connect_multiplayer()
+	if multiplayer_state == "connected":
+		var shared_code: String = pending_shared_room_code
+		pending_shared_room_code = ""
+		room_code_input.text = shared_code
+		join_multiplayer_room()
+
+func share_friend_room() -> void:
+	if multiplayer_room_code.is_empty():
+		return
+	if OS.has_feature("web"):
+		var share_text: String = "בואו לשחק איתי Zoopaloola!" if ui_language == "he" else "Join my Zoopaloola game!"
+		var script := """
+(() => {
+  const url = new URL(window.location.href);
+  url.searchParams.set('room', __ROOM__);
+  const data = {title: 'Zoopaloola', text: __TEXT__, url: url.toString()};
+  if (navigator.share) navigator.share(data).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(data.text + ' ' + data.url);
+})();
+"""
+		script = script.replace("__ROOM__", JSON.stringify(multiplayer_room_code)).replace("__TEXT__", JSON.stringify(share_text))
+		JavaScriptBridge.eval(script, true)
+		show_menu_notice("נפתח תפריט השיתוף" if ui_language == "he" else "SHARE MENU OPENED")
+	else:
+		DisplayServer.clipboard_set(multiplayer_room_code)
+		show_menu_notice("קוד החדר הועתק" if ui_language == "he" else "ROOM CODE COPIED")
+
+func update_room_code_input() -> void:
+	if room_code_input == null:
+		return
+	var show_input := app_screen == APP_FRIEND and multiplayer_room_code.is_empty()
+	room_code_input.visible = show_input
+	if show_input:
+		var viewport_size := get_viewport_rect().size
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		room_code_input.position = Vector2(746.0, 398.0) * unit
+		room_code_input.size = Vector2(320.0, 78.0) * unit
+		room_code_input.self_modulate = Color(1.0, 1.0, 1.0, 0.0)
+
+func team_ring_color_index(team: int) -> int:
+	if game_mode == "online" and team >= 0 and team < multiplayer_players.size():
+		return int(multiplayer_players[team].get("ringColor", 0))
+	return player_ring_color if team == 0 else ai_ring_color
+
+func teams_share_ring_color() -> bool:
+	return team_ring_color_index(0) == team_ring_color_index(1)
+
+func team_marker_color(team: int) -> Color:
+	return Color("ffd447") if team == 0 else Color("4ad9ff")
+
+func active_board_theme() -> int:
+	if game_mode == "online":
+		return match_board_theme
+	return selected_board_theme
+
+func is_friend_room_host() -> bool:
+	return multiplayer_slot == 0
+
+func sync_match_board_from_payload(payload: Dictionary) -> void:
+	if not payload.has("boardTheme"):
+		return
+	var theme := clampi(int(payload.boardTheme), 0, BOARD_THEME_COUNT - 1)
+	room_board_theme = theme
+	match_board_theme = theme
+	if multiplayer_slot == 0:
+		selected_board_theme = theme
+
+func update_match_board(theme_index: int) -> void:
+	if multiplayer_slot != 0:
+		show_menu_notice(ui_text("guest_board_locked"))
+		return
+	var theme := clampi(theme_index, 0, BOARD_THEME_COUNT - 1)
+	selected_board_theme = theme
+	room_board_theme = theme
+	match_board_theme = theme
+	save_player_profile()
+	send_multiplayer({"type": "update_profile", "boardTheme": theme})
+	play_sound("ui")
+	queue_redraw()
+
+func arena_board_theme_for_level(arena_index: int) -> int:
+	return ARENA_BOARD_THEMES[clampi(arena_index, 0, ARENA_BOARD_THEMES.size() - 1)]
+
+func initialize_owned_collections() -> void:
+	owned_animals.clear()
+	owned_rings.clear()
+	for i in ANIMAL_NAMES.size():
+		owned_animals.append(animal_unlock_price(i) <= 0)
+	for i in RING_COLORS.size():
+		owned_rings.append(ring_unlock_price(i) <= 0)
+
+func is_animal_unlocked(index: int) -> bool:
+	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
+	return i < owned_animals.size() and bool(owned_animals[i])
+
+func is_ring_unlocked(index: int) -> bool:
+	var i := clampi(index, 0, RING_COLORS.size() - 1)
+	return i < owned_rings.size() and bool(owned_rings[i])
+
+func animal_unlock_price(index: int) -> int:
+	var i := clampi(index, 0, ANIMAL_UNLOCK_PRICES.size() - 1)
+	if i < FREE_UNLOCK_COUNT:
+		return 0
+	return ANIMAL_UNLOCK_PRICES[i]
+
+func ring_unlock_price(index: int) -> int:
+	var i := clampi(index, 0, RING_UNLOCK_PRICES.size() - 1)
+	if i < FREE_UNLOCK_COUNT:
+		return 0
+	return RING_UNLOCK_PRICES[i]
+
+func first_unlocked_animal() -> int:
+	for i in ANIMAL_NAMES.size():
+		if is_animal_unlocked(i):
+			return i
+	return 0
+
+func first_unlocked_ring() -> int:
+	for i in RING_COLORS.size():
+		if is_ring_unlocked(i):
+			return i
+	return 0
+
+func ensure_valid_loadout() -> void:
+	if not is_animal_unlocked(player_animal):
+		player_animal = first_unlocked_animal()
+	if not is_ring_unlocked(player_ring_color):
+		player_ring_color = first_unlocked_ring()
+	rebuild_team_piece_textures()
+
+func load_owned_collections(config: ConfigFile) -> void:
+	initialize_owned_collections()
+	var saved_animals: Variant = config.get_value("player", "owned_animals", [])
+	var saved_rings: Variant = config.get_value("player", "owned_rings", [])
+	if typeof(saved_animals) == TYPE_ARRAY:
+		for i in mini(saved_animals.size(), owned_animals.size()):
+			owned_animals[i] = bool(saved_animals[i]) or animal_unlock_price(i) <= 0
+	if typeof(saved_rings) == TYPE_ARRAY:
+		for i in mini(saved_rings.size(), owned_rings.size()):
+			owned_rings[i] = bool(saved_rings[i]) or ring_unlock_price(i) <= 0
+
+func apply_economy_migration(config: ConfigFile) -> void:
+	var saved_version := int(config.get_value("player", "economy_version", 0))
+	if saved_version >= ECONOMY_VERSION:
+		return
+	player_coins = 0
+	initialize_owned_collections()
+	ensure_valid_loadout()
+	config.set_value("player", "economy_version", ECONOMY_VERSION)
+	config.set_value("player", "coins", player_coins)
+	config.set_value("player", "owned_animals", owned_animals)
+	config.set_value("player", "owned_rings", owned_rings)
+	config.save(PLAYER_PROFILE_PATH)
+
+func apply_tiger_lock_migration(config: ConfigFile) -> void:
+	var saved_version := int(config.get_value("player", "tiger_unlock_fix_version", 0))
+	if saved_version >= TIGER_UNLOCK_FIX_VERSION:
+		return
+	# The tiger previously had a zero price, which accidentally marked it as
+	# owned for every existing profile. Relock it once without touching coins or
+	# any character that the player legitimately purchased.
+	if TIGER_ANIMAL_INDEX < owned_animals.size():
+		owned_animals[TIGER_ANIMAL_INDEX] = false
+	if player_animal == TIGER_ANIMAL_INDEX:
+		player_animal = first_unlocked_animal()
+	config.set_value("player", "animal", player_animal)
+	config.set_value("player", "owned_animals", owned_animals)
+	config.set_value("player", "tiger_unlock_fix_version", TIGER_UNLOCK_FIX_VERSION)
+	config.save(PLAYER_PROFILE_PATH)
+
+func try_select_animal(index: int) -> bool:
+	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
+	if not is_animal_unlocked(i):
+		show_menu_notice(ui_text("unlock_in_shop"))
+		return false
+	player_animal = i
+	rebuild_team_piece_textures()
+	save_player_profile()
+	return true
+
+func try_select_ring(index: int) -> bool:
+	var i := clampi(index, 0, RING_COLORS.size() - 1)
+	if not is_ring_unlocked(i):
+		show_menu_notice(ui_text("unlock_in_shop"))
+		return false
+	player_ring_color = i
+	rebuild_team_piece_textures()
+	save_player_profile()
+	return true
+
+func try_purchase_animal(index: int) -> bool:
+	var i := clampi(index, 0, ANIMAL_NAMES.size() - 1)
+	if is_animal_unlocked(i):
+		return try_select_animal(i)
+	var price := animal_unlock_price(i)
+	if price <= 0:
+		return try_select_animal(i)
+	if player_coins < price:
+		show_menu_notice(ui_text("not_enough_coins"))
+		return false
+	player_coins -= price
+	owned_animals[i] = true
+	player_animal = i
+	rebuild_team_piece_textures()
+	save_player_profile()
+	show_menu_notice(ui_text("purchase_success"))
+	play_sound("ui")
+	return true
+
+func try_purchase_ring(index: int) -> bool:
+	var i := clampi(index, 0, RING_COLORS.size() - 1)
+	if is_ring_unlocked(i):
+		return try_select_ring(i)
+	var price := ring_unlock_price(i)
+	if price <= 0:
+		return try_select_ring(i)
+	if player_coins < price:
+		show_menu_notice(ui_text("not_enough_coins"))
+		return false
+	player_coins -= price
+	owned_rings[i] = true
+	player_ring_color = i
+	rebuild_team_piece_textures()
+	save_player_profile()
+	show_menu_notice(ui_text("purchase_success"))
+	play_sound("ui")
+	return true
+
+func collection_item_price_label(index: int, is_ring: bool) -> String:
+	if is_ring:
+		if is_ring_unlocked(index):
+			return ui_text("owned_item")
+		var price := ring_unlock_price(index)
+		return ui_text("free_item") if price <= 0 else str(price) + ui_text("coins")
+	if is_animal_unlocked(index):
+		return ui_text("owned_item")
+	var animal_price := animal_unlock_price(index)
+	return ui_text("free_item") if animal_price <= 0 else str(animal_price) + ui_text("coins")
+
+func draw_collection_lock_overlay(rect: Rect2, index: int, is_ring: bool, unit: float) -> void:
+	var unlocked := is_ring_unlocked(index) if is_ring else is_animal_unlocked(index)
+	if unlocked:
+		return
+	var center := rect.get_center()
+	var radius := minf(rect.size.x, rect.size.y) * 0.47
+	draw_circle(center, radius, Color(0.01, 0.025, 0.07, 0.54))
+	# Draw the lock geometrically: emoji glyphs are not supported by every
+	# Godot font and previously appeared as destructive black squares.
+	var lock_body := Rect2(center - Vector2(13.0, 3.0) * unit, Vector2(26.0, 22.0) * unit)
+	draw_arc(center + Vector2(0.0, -4.0) * unit, 10.0 * unit, PI, TAU, 18, Color("fff1a8"), 4.0 * unit, true)
+	draw_style_box(make_box(Color("d99b24"), 5.0 * unit), lock_body)
+	draw_circle(center + Vector2(0.0, 7.0) * unit, 3.0 * unit, Color("70420b"))
+	var price_text := collection_item_price_label(index, is_ring)
+	draw_string(ui_font, rect.position + Vector2(0.0, rect.size.y + 16.0 * unit), price_text, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, int(10.0 * unit), Color("ffe25d"))
+
+func load_player_profile() -> void:
+	var config := ConfigFile.new()
+	initialize_owned_collections()
+	if config.load(PLAYER_PROFILE_PATH) != OK:
+		ensure_valid_loadout()
+		return
+	profile_name = str(config.get_value("player", "name", profile_name)).strip_edges().left(20)
+	if profile_name.is_empty():
+		profile_name = "PLAYER 1"
+	player_animal = clampi(int(config.get_value("player", "animal", player_animal)), 0, ANIMAL_NAMES.size() - 1)
+	player_ring_color = clampi(int(config.get_value("player", "ring_color", player_ring_color)), 0, RING_COLORS.size() - 1)
+	player_coins = maxi(0, int(config.get_value("player", "coins", player_coins)))
+	player_gems = maxi(0, int(config.get_value("player", "gems", player_gems)))
+	player_level = clampi(int(config.get_value("player", "level", player_level)), 1, 999)
+	player_xp = maxi(0, int(config.get_value("player", "xp", player_xp)))
+	player_wins = maxi(0, int(config.get_value("player", "wins", player_wins)))
+	player_losses = maxi(0, int(config.get_value("player", "losses", player_losses)))
+	player_best_streak = maxi(0, int(config.get_value("player", "best_streak", player_best_streak)))
+	player_current_streak = maxi(0, int(config.get_value("player", "current_streak", player_current_streak)))
+	player_rating = clampi(int(config.get_value("player", "rating", player_rating)), 100, 9999)
+	player_league_tier = clampi(int(config.get_value("player", "league_tier", player_league_tier)), 0, LEAGUE_NAME_KEYS.size() - 1)
+	sound_enabled = bool(config.get_value("settings", "sound_enabled", sound_enabled))
+	tutorial_completed = bool(config.get_value("settings", "tutorial_completed", tutorial_completed))
+	computer_difficulty = clampi(int(config.get_value("settings", "computer_difficulty", computer_difficulty)), 0, 2)
+	selected_board_theme = clampi(int(config.get_value("settings", "board_theme", selected_board_theme)), 0, BOARD_THEME_COUNT - 1)
+	last_daily_claim = str(config.get_value("player", "last_daily_claim", last_daily_claim))
+	daily_login_streak = maxi(0, int(config.get_value("player", "daily_login_streak", daily_login_streak)))
+	ui_language = str(config.get_value("settings", "language", ui_language))
+	friends_list = config.get_value("social", "friends", [])
+	if typeof(friends_list) != TYPE_ARRAY:
+		friends_list = []
+	incoming_friend_requests = config.get_value("social", "incoming_requests", [])
+	if typeof(incoming_friend_requests) != TYPE_ARRAY:
+		incoming_friend_requests = []
+	outgoing_friend_requests = config.get_value("social", "outgoing_requests", [])
+	if typeof(outgoing_friend_requests) != TYPE_ARRAY:
+		outgoing_friend_requests = []
+	update_player_league_tier()
+	firebase_uid = str(config.get_value("firebase", "uid", ""))
+	firebase_public_id = str(config.get_value("firebase", "public_id", ""))
+	firebase_id_token = str(config.get_value("firebase", "id_token", ""))
+	firebase_refresh_token = str(config.get_value("firebase", "refresh_token", ""))
+	firebase_token_expires_at = int(config.get_value("firebase", "expires_at", 0))
+	firebase_provider = str(config.get_value("firebase", "provider", firebase_provider))
+	firebase_email = str(config.get_value("firebase", "email", firebase_email))
+	load_owned_collections(config)
+	apply_economy_migration(config)
+	apply_tiger_lock_migration(config)
+	ensure_valid_loadout()
+
+func save_player_profile(sync_cloud: bool = true) -> void:
+	var config := ConfigFile.new()
+	config.set_value("player", "name", profile_name)
+	config.set_value("player", "animal", player_animal)
+	config.set_value("player", "ring_color", player_ring_color)
+	config.set_value("player", "coins", player_coins)
+	config.set_value("player", "gems", player_gems)
+	config.set_value("player", "economy_version", ECONOMY_VERSION)
+	config.set_value("player", "tiger_unlock_fix_version", TIGER_UNLOCK_FIX_VERSION)
+	config.set_value("player", "owned_animals", owned_animals)
+	config.set_value("player", "owned_rings", owned_rings)
+	config.set_value("player", "level", player_level)
+	config.set_value("player", "xp", player_xp)
+	config.set_value("player", "wins", player_wins)
+	config.set_value("player", "losses", player_losses)
+	config.set_value("player", "best_streak", player_best_streak)
+	config.set_value("player", "current_streak", player_current_streak)
+	config.set_value("player", "rating", player_rating)
+	config.set_value("player", "league_tier", player_league_tier)
+	config.set_value("player", "last_daily_claim", last_daily_claim)
+	config.set_value("player", "daily_login_streak", daily_login_streak)
+	config.set_value("settings", "sound_enabled", sound_enabled)
+	config.set_value("settings", "tutorial_completed", tutorial_completed)
+	config.set_value("settings", "computer_difficulty", computer_difficulty)
+	config.set_value("settings", "board_theme", selected_board_theme)
+	config.set_value("settings", "language", ui_language)
+	config.set_value("social", "friends", friends_list)
+	config.set_value("social", "incoming_requests", incoming_friend_requests)
+	config.set_value("social", "outgoing_requests", outgoing_friend_requests)
+	config.set_value("firebase", "uid", firebase_uid)
+	config.set_value("firebase", "public_id", firebase_public_id)
+	config.set_value("firebase", "id_token", firebase_id_token)
+	config.set_value("firebase", "refresh_token", firebase_refresh_token)
+	config.set_value("firebase", "expires_at", firebase_token_expires_at)
+	config.set_value("firebase", "provider", firebase_provider)
+	config.set_value("firebase", "email", firebase_email)
+	config.save(PLAYER_PROFILE_PATH)
+	if sync_cloud and not firebase_uid.is_empty():
+		firebase_profile_dirty = true
+		firebase_sync_delay = 0.8
+
+func setup_firebase() -> void:
+	firebase_auth_request = HTTPRequest.new()
+	firebase_auth_request.request_completed.connect(_on_firebase_auth_completed)
+	add_child(firebase_auth_request)
+	firebase_profile_request = HTTPRequest.new()
+	firebase_profile_request.request_completed.connect(_on_firebase_profile_completed)
+	add_child(firebase_profile_request)
+	firebase_public_id_request = HTTPRequest.new()
+	firebase_public_id_request.request_completed.connect(_on_firebase_public_id_completed)
+	add_child(firebase_public_id_request)
+	firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
+	if OS.has_feature("web"):
+		setup_firebase_google_web()
+
+func start_firebase_auth() -> void:
+	if firebase_auth_busy or firebase_auth_request == null:
+		return
+	firebase_auth_busy = true
+	firebase_status = "מתחבר..." if ui_language == "he" else "CONNECTING..."
+	if OS.has_feature("web"):
+		start_firebase_web_auth()
+		return
+	var error := OK
+	if not firebase_refresh_token.is_empty():
+		var refresh_url := "https://securetoken.googleapis.com/v1/token?key=" + FIREBASE_API_KEY
+		var refresh_body := "grant_type=refresh_token&refresh_token=" + firebase_refresh_token.uri_encode()
+		error = firebase_auth_request.request(refresh_url, ["Content-Type: application/x-www-form-urlencoded", "Accept: application/json"], HTTPClient.METHOD_POST, refresh_body)
+	else:
+		var signup_url := "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + FIREBASE_API_KEY
+		error = firebase_auth_request.request(signup_url, ["Content-Type: application/json", "Accept: application/json"], HTTPClient.METHOD_POST, "{\"returnSecureToken\":true}")
+	if error != OK:
+		firebase_auth_busy = false
+		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
+
+func begin_guest_sign_in() -> void:
+	if not firebase_refresh_token.is_empty():
+		firebase_auth_mode = "resume"
+		firebase_status = ui_text("restoring_session")
+		start_firebase_auth()
+		return
+	firebase_auth_mode = "guest"
+	firebase_provider = "guest"
+	firebase_email = ""
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("localStorage.removeItem('zpFirebaseRefreshToken'); localStorage.removeItem('zpFirebaseProvider');", true)
+	firebase_uid = ""
+	firebase_public_id = ""
+	firebase_id_token = ""
+	firebase_refresh_token = ""
+	firebase_token_expires_at = 0
+	profile_name = ("אורח-" if ui_language == "he" else "Guest-") + str(randi_range(1000, 9999))
+	if profile_name_input != null:
+		profile_name_input.text = profile_name
+	start_firebase_auth()
+
+func start_email_auth(register_account: bool) -> void:
+	if firebase_auth_busy or auth_email_input == null or auth_password_input == null:
+		return
+	var email := auth_email_input.text.strip_edges()
+	var password := auth_password_input.text
+	if not email.contains("@"):
+		firebase_status = "יש להזין כתובת מייל תקינה" if ui_language == "he" else "ENTER A VALID EMAIL"
+		return
+	if password.length() < 6:
+		firebase_status = "הסיסמה חייבת להכיל לפחות 6 תווים" if ui_language == "he" else "PASSWORD MUST HAVE 6 CHARACTERS"
+		return
+	firebase_auth_busy = true
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.zpManualAuth = 'active';", true)
+	firebase_auth_mode = "register" if register_account else "email"
+	firebase_status = "יוצר חשבון..." if register_account else "מתחבר..."
+	var action := "signUp" if register_account else "signInWithPassword"
+	var url := "https://identitytoolkit.googleapis.com/v1/accounts:%s?key=%s" % [action, FIREBASE_API_KEY]
+	var payload := JSON.stringify({"email": email, "password": password, "returnSecureToken": true})
+	if OS.has_feature("web"):
+		var script := """
+window.zpAuthState = {status: 'loading'};
+(async () => {
+  try {
+    const response = await fetch(__URL__, {method:'POST', mode:'cors', credentials:'omit', headers:{'Content-Type':'application/json'}, body:__BODY__});
+    const data = await response.json();
+    if (!response.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
+    localStorage.setItem('zpFirebaseRefreshToken', data.refreshToken || '');
+    localStorage.setItem('zpFirebaseProvider', 'email');
+    window.zpAuthState = {status:'done', localId:data.localId, idToken:data.idToken, refreshToken:data.refreshToken, expiresIn:data.expiresIn || '3600', provider:'email', email:data.email || __EMAIL__};
+  } catch (error) { window.zpAuthState = {status:'error', message:String(error && error.message || error)}; }
+})();
+"""
+		script = script.replace("__URL__", JSON.stringify(url)).replace("__BODY__", JSON.stringify(payload)).replace("__EMAIL__", JSON.stringify(email))
+		JavaScriptBridge.eval(script, true)
+		firebase_web_poll_delay = 0.15
+	else:
+		var error := firebase_auth_request.request(url, ["Content-Type: application/json", "Accept: application/json"], HTTPClient.METHOD_POST, payload)
+		if error != OK:
+			firebase_auth_busy = false
+			firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
+
+func _on_auth_password_submitted(_value: String) -> void:
+	start_email_auth(auth_email_mode == "register")
+
+func start_firebase_web_auth() -> void:
+	var script := """
+window.zpAuthState = {status: 'loading'};
+(async () => {
+  try {
+    const key = '__API_KEY__';
+    const savedRefresh = __USE_REFRESH__ ? (localStorage.getItem('zpFirebaseRefreshToken') || '') : '';
+    let response;
+    if (savedRefresh) {
+      response = await fetch('https://securetoken.googleapis.com/v1/token?key=' + key, {
+        method: 'POST', mode: 'cors', credentials: 'omit',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(savedRefresh)
+      });
+    } else {
+      response = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + key, {
+        method: 'POST', mode: 'cors', credentials: 'omit',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({returnSecureToken: true})
+      });
+    }
+    const data = await response.json();
+    if (!response.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + response.status));
+    const refreshToken = data.refreshToken || data.refresh_token || savedRefresh;
+    localStorage.setItem('zpFirebaseRefreshToken', refreshToken);
+    if (!savedRefresh) {
+      localStorage.setItem('zpFirebaseProvider', 'guest');
+    }
+    window.zpAuthState = {
+      status: 'done', localId: data.localId || data.user_id,
+      idToken: data.idToken || data.id_token, refreshToken: refreshToken,
+      expiresIn: data.expiresIn || data.expires_in || '3600'
+    };
+  } catch (error) {
+    window.zpAuthState = {status: 'error', message: String(error && error.message || error)};
+  }
+})();
+""".replace("__API_KEY__", FIREBASE_API_KEY).replace("__USE_REFRESH__", "true" if firebase_auth_mode != "guest" else "false")
+	JavaScriptBridge.eval(script, true)
+	firebase_web_poll_delay = 0.15
+
+func setup_firebase_google_web() -> void:
+	var script := """
+    window.zpGoogleState = {status: 'loading-sdk'};
+    window.zpManualAuth = 'idle';
+(async () => {
+  try {
+    const appSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js');
+    const authSdk = await import('https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js');
+    const config = {
+      apiKey: '__API_KEY__', authDomain: 'zoopaloola-online.firebaseapp.com',
+      projectId: 'zoopaloola-online', storageBucket: 'zoopaloola-online.firebasestorage.app',
+      messagingSenderId: '386401966312', appId: '1:386401966312:web:0e781cb13c98fd6dc3515d'
+    };
+    const app = appSdk.getApps().length ? appSdk.getApps()[0] : appSdk.initializeApp(config);
+    const auth = authSdk.getAuth(app);
+    await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
+    const provider = new authSdk.GoogleAuthProvider();
+    const resolveProvider = (user) => {
+      if (!user) return 'guest';
+      if (user.isAnonymous) return 'guest';
+      const providerId = (user.providerData && user.providerData[0] && user.providerData[0].providerId) || '';
+      if (providerId === 'google.com') return 'google';
+      if (providerId === 'password') return 'email';
+      return 'google';
+    };
+    authSdk.onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.zpSessionRestoreChecked = true;
+        return;
+      }
+      if (window.zpManualAuth === 'active') return;
+      try {
+        const idToken = await user.getIdToken();
+        const refreshToken = user.refreshToken || '';
+        const provider = resolveProvider(user);
+        localStorage.setItem('zpFirebaseRefreshToken', refreshToken);
+        localStorage.setItem('zpFirebaseProvider', provider);
+        window.zpAuthState = {
+          status: 'done', localId: user.uid, idToken: idToken,
+          refreshToken: refreshToken, expiresIn: '3600',
+          provider: provider, email: user.email || '',
+          displayName: user.displayName || ''
+        };
+      } catch (error) {
+        window.zpAuthState = {status: 'error', message: String(error && (error.code || error.message) || error)};
+      } finally {
+        window.zpSessionRestoreChecked = true;
+      }
+    });
+    window.zpBeginGoogleLink = (oldToken, publicUrl, playerName) => {
+      window.zpManualAuth = 'active';
+      window.zpGoogleState = {status: 'opening'};
+      authSdk.signInWithPopup(auth, provider).then(async (result) => {
+        const user = result.user;
+        const idToken = await user.getIdToken(true);
+        localStorage.setItem('zpFirebaseRefreshToken', user.refreshToken || '');
+        localStorage.setItem('zpFirebaseProvider', 'google');
+        window.zpGoogleState = {
+          status: 'done', localId: user.uid, idToken: idToken,
+          refreshToken: user.refreshToken || '', expiresIn: '3600',
+          provider: 'google', email: user.email || '', displayName: user.displayName || ''
+        };
+      }).catch((error) => {
+        window.zpGoogleState = {status: 'error', message: String(error && (error.code || error.message) || error)};
+      }).finally(() => {
+        window.zpManualAuth = 'idle';
+      });
+    };
+    window.zpGoogleState = {status: 'ready'};
+  } catch (error) {
+    window.zpGoogleState = {status: 'error', message: String(error && error.message || error)};
+  }
+})();
+""".replace("__API_KEY__", FIREBASE_API_KEY)
+	JavaScriptBridge.eval(script, true)
+
+func begin_google_sign_in() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.zpManualAuth = 'active';", true)
+	if OS.has_feature("android"):
+		firebase_status = "פותח כניסה מאובטחת ל-Google..." if ui_language == "he" else "OPENING SECURE GOOGLE SIGN-IN..."
+		pending_google_handoff_request = true
+		connect_multiplayer()
+		if multiplayer_state == "connected":
+			send_multiplayer({"type":"create_auth_handoff"})
+			pending_google_handoff_request = false
+		queue_redraw()
+		return
+	if not OS.has_feature("web"):
+		show_menu_notice("Google login is unavailable on this device")
+		return
+	var public_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
+	var call_script := "window.zpBeginGoogleLink && window.zpBeginGoogleLink(%s, %s, %s)" % [JSON.stringify(firebase_id_token), JSON.stringify(public_url), JSON.stringify(profile_name)]
+	JavaScriptBridge.eval(call_script, true)
+	firebase_status = "פותח Google..." if ui_language == "he" else "OPENING GOOGLE..."
+	queue_redraw()
+
+func _on_firebase_auth_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	firebase_auth_busy = false
+	if response_code < 200 or response_code >= 300:
+		firebase_status = "אין חיבור לענן" if ui_language == "he" else "CLOUD OFFLINE"
+		if firebase_auth_mode == "resume" and response_code >= 400 and response_code < 500:
+			clear_saved_auth_session()
+			app_screen = APP_AUTH
+			firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
+		return
+	var response_text := body.get_string_from_utf8().strip_edges()
+	var json := JSON.new()
+	var parse_error := json.parse(response_text)
+	if parse_error != OK or typeof(json.data) != TYPE_DICTIONARY:
+		var diagnostic := response_text.left(32).replace("\n", " ")
+		firebase_status = (("שגיאת חשבון: " if ui_language == "he" else "ACCOUNT ERROR: ") + diagnostic).strip_edges()
+		push_error("Firebase auth response could not be parsed (HTTP %d): %s" % [response_code, response_text.left(240)])
+		queue_redraw()
+		return
+	var response: Dictionary = json.data
+	apply_firebase_auth_response(response)
+
+func apply_firebase_auth_response(response: Dictionary) -> void:
+	firebase_auth_busy = false
+	session_restore_pending = false
+	var previous_uid := firebase_uid
+	firebase_uid = str(response.get("localId", response.get("user_id", firebase_uid)))
+	if response.has("provider"):
+		firebase_provider = str(response.provider)
+	if response.has("email"):
+		firebase_email = str(response.email)
+	elif firebase_auth_mode == "email" or firebase_auth_mode == "register":
+		firebase_provider = "email"
+		firebase_email = auth_email_input.text.strip_edges() if auth_email_input != null else ""
+	elif firebase_auth_mode == "guest" or firebase_auth_mode == "guest_resume":
+		firebase_provider = "guest"
+		firebase_email = ""
+	firebase_id_token = str(response.get("idToken", response.get("id_token", "")))
+	firebase_refresh_token = str(response.get("refreshToken", response.get("refresh_token", firebase_refresh_token)))
+	persist_web_auth_storage()
+	var expires_in := int(str(response.get("expiresIn", response.get("expires_in", "3600"))))
+	firebase_token_expires_at = int(Time.get_unix_time_from_system()) + maxi(60, expires_in)
+	if not firebase_uid.is_empty():
+		# The public ID is deterministic per Firebase user. This also repairs older
+		# profiles whose anonymous ID was carried into a Google account and caused
+		# Firestore ownership rules to return HTTP 403.
+		var expected_public_id := "ZP-" + firebase_uid.sha256_text().substr(0, 8).to_upper()
+		if firebase_public_id != expected_public_id or previous_uid != firebase_uid:
+			firebase_public_id = expected_public_id
+	save_player_profile(false)
+	firebase_status = "מסונכרן" if ui_language == "he" else "SYNCED"
+	sync_firebase_profile()
+	sync_firebase_public_id()
+	if app_screen == APP_AUTH:
+		auth_email_mode = ""
+		app_screen = APP_HOME
+	maybe_start_tutorial()
+	if not pending_shared_room_code.is_empty():
+		open_pending_shared_room()
+	if OS.has_feature("web") and not pending_android_auth_handoff.is_empty() and firebase_provider == "google":
+		pending_auth_handoff_payload = {
+			"type":"complete_auth_handoff",
+			"handoffToken":pending_android_auth_handoff,
+			"localId":firebase_uid,
+			"idToken":firebase_id_token,
+			"refreshToken":firebase_refresh_token,
+			"expiresIn":str(maxi(60, firebase_token_expires_at - int(Time.get_unix_time_from_system()))),
+			"provider":"google",
+			"email":firebase_email,
+			"displayName":profile_name
+		}
+		connect_multiplayer()
+		if multiplayer_state == "connected":
+			send_multiplayer(pending_auth_handoff_payload)
+			pending_auth_handoff_payload = {}
+			pending_android_auth_handoff = ""
+			show_menu_notice("החשבון נשלח לאפליקציה" if ui_language == "he" else "ACCOUNT SENT TO THE APP")
+	queue_redraw()
+
+func update_firebase(delta: float) -> void:
+	if session_restore_pending:
+		session_restore_deadline -= delta
+		if session_restore_deadline <= 0.0:
+			session_restore_pending = false
+			if firebase_refresh_token.is_empty() and app_screen != APP_HOME:
+				app_screen = APP_AUTH
+				firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
+	if OS.has_feature("web"):
+		firebase_web_poll_delay -= delta
+		if firebase_web_poll_delay <= 0.0:
+			firebase_web_poll_delay = 0.25
+			poll_firebase_web_state()
+	if app_screen != APP_AUTH and not firebase_refresh_token.is_empty() and not firebase_auth_busy:
+		if firebase_token_expires_at <= int(Time.get_unix_time_from_system()) + 120:
+			start_firebase_auth()
+	if firebase_profile_dirty:
+		firebase_sync_delay -= delta
+		if firebase_sync_delay <= 0.0:
+				sync_firebase_profile()
+
+func poll_firebase_web_state() -> void:
+	if firebase_auth_busy:
+		var auth_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpAuthState || {})", true))
+		var auth_data: Variant = JSON.parse_string(auth_text)
+		if auth_data is Dictionary:
+			var auth_state := auth_data as Dictionary
+			var auth_status := str(auth_state.get("status", ""))
+			if auth_status == "done":
+				apply_firebase_auth_response(auth_state)
+			elif auth_status == "error":
+				firebase_auth_busy = false
+				var auth_error := str(auth_state.get("message", "Unknown error"))
+				firebase_status = ("שגיאת חיבור: " if ui_language == "he" else "SIGN-IN ERROR: ") + auth_error.left(34)
+				if firebase_auth_mode == "resume" and auth_token_is_unrecoverable(auth_error):
+					clear_saved_auth_session()
+					app_screen = APP_AUTH
+					firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
+				queue_redraw()
+		if session_restore_pending:
+			var restore_checked := str(JavaScriptBridge.eval("window.zpSessionRestoreChecked ? '1' : '0'", true)) == "1"
+			if restore_checked and firebase_refresh_token.is_empty() and not firebase_auth_busy:
+				session_restore_pending = false
+				app_screen = APP_AUTH
+				firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
+	var google_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpGoogleState || {})", true))
+	var google_data: Variant = JSON.parse_string(google_text)
+	if google_data is Dictionary:
+		var google_state := google_data as Dictionary
+		var google_status := str(google_state.get("status", ""))
+		if google_status == "done":
+			firebase_provider = "google"
+			firebase_email = str(google_state.get("email", ""))
+			var google_name: String = str(google_state.get("displayName", "")).strip_edges().left(20)
+			if not google_name.is_empty():
+				profile_name = google_name
+				if profile_name_input != null:
+					profile_name_input.text = profile_name
+			apply_firebase_auth_response(google_state)
+			JavaScriptBridge.eval("window.zpGoogleState = {status: 'connected'}", true)
+		elif google_status == "error":
+			firebase_status = ("שגיאת Google: " if ui_language == "he" else "GOOGLE ERROR: ") + str(google_state.get("message", "Unknown error")).left(34)
+			JavaScriptBridge.eval("window.zpGoogleState = {status: 'ready'}", true)
+			queue_redraw()
+	var profile_text := str(JavaScriptBridge.eval("JSON.stringify(window.zpProfileState || {})", true))
+	var profile_data: Variant = JSON.parse_string(profile_text)
+	if profile_data is Dictionary:
+		var profile_state := profile_data as Dictionary
+		var profile_status := str(profile_state.get("status", ""))
+		if profile_status == "done":
+			firebase_status = "מסונכרן" if ui_language == "he" else "SYNCED"
+			JavaScriptBridge.eval("window.zpProfileState = {}", true)
+			queue_redraw()
+		elif profile_status == "error":
+			firebase_status = ("שגיאת סנכרון: " if ui_language == "he" else "SYNC ERROR: ") + str(profile_state.get("message", "Unknown error")).left(28)
+			JavaScriptBridge.eval("window.zpProfileState = {}", true)
+			queue_redraw()
+
+func firestore_fields(include_public_id: bool = true) -> Dictionary:
+	var fields := {
+		"name": {"stringValue": profile_name},
+		"animal": {"integerValue": str(player_animal)},
+		"ringColor": {"integerValue": str(player_ring_color)},
+		"coins": {"integerValue": str(player_coins)},
+		"gems": {"integerValue": str(player_gems)},
+		"economyVersion": {"integerValue": str(ECONOMY_VERSION)},
+		"ownedAnimals": {"stringValue": JSON.stringify(owned_animals)},
+		"ownedRings": {"stringValue": JSON.stringify(owned_rings)},
+		"level": {"integerValue": str(player_level)},
+		"xp": {"integerValue": str(player_xp)},
+		"wins": {"integerValue": str(player_wins)},
+		"losses": {"integerValue": str(player_losses)},
+		"bestStreak": {"integerValue": str(player_best_streak)},
+		"currentStreak": {"integerValue": str(player_current_streak)},
+		"rating": {"integerValue": str(player_rating)},
+		"leagueTier": {"integerValue": str(player_league_tier)}
+	}
+	if include_public_id:
+		fields["publicId"] = {"stringValue": firebase_public_id}
+	return fields
+
+func sync_firebase_profile() -> void:
+	if firebase_uid.is_empty() or firebase_id_token.is_empty() or firebase_profile_request == null:
+		return
+	if OS.has_feature("web"):
+		firebase_profile_dirty = false
+		firebase_status = "מסנכרן..." if ui_language == "he" else "SYNCING..."
+		var profile_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/users/%s" % [FIREBASE_PROJECT_ID, firebase_uid]
+		var public_url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
+		var profile_payload := JSON.stringify({"fields": firestore_fields()})
+		var public_fields := {"uid": {"stringValue": firebase_uid}, "name": {"stringValue": profile_name}}
+		var public_payload := JSON.stringify({"fields": public_fields})
+		var web_script := """
+window.zpProfileState = {status: 'loading'};
+(async () => {
+  try {
+    const headers = {'Authorization': 'Bearer ' + __TOKEN__, 'Content-Type': 'application/json'};
+    const responses = await Promise.all([
+      fetch(__PROFILE_URL__, {method: 'PATCH', mode: 'cors', credentials: 'omit', headers, body: __PROFILE_BODY__}),
+      fetch(__PUBLIC_URL__, {method: 'PATCH', mode: 'cors', credentials: 'omit', headers, body: __PUBLIC_BODY__})
+    ]);
+    for (const response of responses) {
+      if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text()).slice(0, 80));
+    }
+    window.zpProfileState = {status: 'done'};
+  } catch (error) {
+    window.zpProfileState = {status: 'error', message: String(error && error.message || error)};
+  }
+})();
+"""
+		web_script = web_script.replace("__TOKEN__", JSON.stringify(firebase_id_token))
+		web_script = web_script.replace("__PROFILE_URL__", JSON.stringify(profile_url))
+		web_script = web_script.replace("__PUBLIC_URL__", JSON.stringify(public_url))
+		web_script = web_script.replace("__PROFILE_BODY__", JSON.stringify(profile_payload))
+		web_script = web_script.replace("__PUBLIC_BODY__", JSON.stringify(public_payload))
+		JavaScriptBridge.eval(web_script, true)
+		return
+	if firebase_profile_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	firebase_profile_dirty = false
+	firebase_status = "מסנכרן..." if ui_language == "he" else "SYNCING..."
+	var url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/users/%s" % [FIREBASE_PROJECT_ID, firebase_uid]
+	var payload := JSON.stringify({"fields": firestore_fields()})
+	var error := firebase_profile_request.request(url, ["Authorization: Bearer " + firebase_id_token, "Content-Type: application/json"], HTTPClient.METHOD_PATCH, payload)
+	if error != OK:
+		firebase_profile_dirty = true
+		firebase_sync_delay = 5.0
+
+func sync_firebase_public_id() -> void:
+	if firebase_public_id.is_empty() or firebase_id_token.is_empty() or firebase_public_id_request == null:
+		return
+	if firebase_public_id_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	var url := "https://firestore.googleapis.com/v1/projects/%s/databases/(default)/documents/publicIds/%s" % [FIREBASE_PROJECT_ID, firebase_public_id]
+	var fields := {"uid": {"stringValue": firebase_uid}, "name": {"stringValue": profile_name}}
+	firebase_public_id_request.request(url, ["Authorization: Bearer " + firebase_id_token, "Content-Type: application/json"], HTTPClient.METHOD_PATCH, JSON.stringify({"fields": fields}))
+
+func _on_firebase_profile_completed(_result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	if response_code >= 200 and response_code < 300:
+		firebase_status = "מסונכרן" if ui_language == "he" else "SYNCED"
+	else:
+		firebase_status = "ממתין לסנכרון" if ui_language == "he" else "SYNC PENDING"
+		firebase_profile_dirty = true
+		firebase_sync_delay = 8.0
+	queue_redraw()
+
+func _on_firebase_public_id_completed(_result: int, _response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	pass
+
+func _on_profile_name_changed(value: String) -> void:
+	var clean := value.strip_edges().left(20)
+	if clean.is_empty():
+		return
+	profile_name = clean
+	save_player_profile()
+	queue_redraw()
+
+func _on_profile_name_submitted(_value: String) -> void:
+	commit_profile_name()
+	profile_name_input.release_focus()
+
+func commit_profile_name() -> void:
+	if profile_name_input == null:
+		return
+	var clean := profile_name_input.text.strip_edges().left(20)
+	if clean.is_empty():
+		profile_name_input.text = profile_name
+		return
+	profile_name = clean
+	save_player_profile()
+	queue_redraw()
+
+func update_profile_name_input() -> void:
+	if profile_name_input == null:
+		return
+	var should_show := app_screen == APP_PLAYER_PROFILE
+	profile_name_input.visible = should_show
+	if should_show:
+		var viewport_size := get_viewport_rect().size
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		profile_name_input.position = Vector2(654.0, 137.0) * unit
+		profile_name_input.size = Vector2(350.0, 46.0) * unit
+
+func update_auth_inputs() -> void:
+	if auth_email_input == null or auth_password_input == null:
+		return
+	var should_show := app_screen == APP_AUTH and not auth_email_mode.is_empty()
+	auth_email_input.visible = should_show
+	auth_password_input.visible = should_show
+	if should_show:
+		var viewport_size := get_viewport_rect().size
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		auth_email_input.position = Vector2(430.0, 278.0) * unit
+		auth_email_input.size = Vector2(420.0, 58.0) * unit
+		auth_password_input.position = Vector2(430.0, 355.0) * unit
+		auth_password_input.size = Vector2(420.0, 58.0) * unit
+
+func auth_choice_rect(index: int, viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(430.0, 230.0 + float(index) * 78.0) * unit, Vector2(420.0, 62.0) * unit)
+
+func auth_submit_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(430.0, 445.0) * unit, Vector2(420.0, 64.0) * unit)
+
+func auth_cancel_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(500.0, 530.0) * unit, Vector2(280.0, 52.0) * unit)
+
+func chat_panel(viewport_size: Vector2) -> Rect2:
+	return Rect2((viewport_size - Vector2(650.0, 390.0)) * 0.5, Vector2(650.0, 390.0))
+
+func chat_close_rect(viewport_size: Vector2) -> Rect2:
+	var panel := chat_panel(viewport_size)
+	return Rect2(panel.end.x - 55.0, panel.position.y + 12.0, 42.0, 42.0)
+
+func chat_send_rect(viewport_size: Vector2) -> Rect2:
+	var panel := chat_panel(viewport_size)
+	return Rect2(panel.end.x - 135.0, panel.end.y - 72.0, 112.0, 50.0)
+
+func update_chat_input() -> void:
+	if chat_input == null:
+		return
+	var should_show := (app_screen == APP_GAME and game_mode == "online" and chat_open and not exit_confirm_open) or (app_screen == APP_FRIEND and friend_room_chat_open and not multiplayer_room_code.is_empty())
+	chat_input.visible = should_show
+	if should_show:
+		var panel := chat_panel(get_viewport_rect().size)
+		chat_input.position = panel.position + Vector2(24.0, panel.size.y - 72.0)
+		chat_input.size = Vector2(panel.size.x - 174.0, 50.0)
+
+func _on_chat_submitted(_value: String) -> void:
+	send_chat_message()
+
+func send_chat_message() -> void:
+	if chat_input == null:
+		return
+	var message := chat_input.text.strip_edges()
+	if message.is_empty():
+		return
+	send_multiplayer({"type":"chat", "message":message.left(80)})
+	chat_input.clear()
+	chat_input.grab_focus()
+	play_sound("ui")
+
+func draw_match_chat(viewport_size: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.06, 0.68))
+	var panel := chat_panel(viewport_size)
+	draw_style_box(make_box(Color("10283b"), 24.0), panel)
+	draw_string(ui_font, panel.position + Vector2(0.0, 48.0), "צ׳אט עם החבר" if ui_language == "he" else "FRIEND CHAT", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 25, Color("f6d365"))
+	var close := chat_close_rect(viewport_size)
+	draw_style_box(make_box(Color("ef5350"), 12.0), close)
+	draw_string(ui_font, close.position + Vector2(0.0, 29.0), "×", HORIZONTAL_ALIGNMENT_CENTER, close.size.x, 24, Color.WHITE)
+	var first_index: int = maxi(0, match_chat_messages.size() - 6)
+	var row := 0
+	for i in range(first_index, match_chat_messages.size()):
+		var message: Dictionary = match_chat_messages[i]
+		var sender_slot := int(message.get("slot", -1))
+		var sender := str(message.get("name", ""))
+		var line := sender + ": " + str(message.get("message", ""))
+		var ring_index := player_ring_color
+		for player_data in multiplayer_players:
+			if int(player_data.get("slot", -1)) == sender_slot:
+				ring_index = int(player_data.get("ringColor", ring_index))
+				break
+		var color: Color = RING_COLORS[clampi(ring_index, 0, RING_COLORS.size() - 1)].lightened(0.35)
+		draw_string(ui_font, panel.position + Vector2(28.0, 92.0 + row * 38.0), line, HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 56.0, 18, color)
+		row += 1
+	var send_rect := chat_send_rect(viewport_size)
+	draw_style_box(make_box(Color("12a96b"), 14.0), send_rect)
+	draw_string(ui_font, send_rect.position + Vector2(0.0, 32.0), "שליחה" if ui_language == "he" else "SEND", HORIZONTAL_ALIGNMENT_CENTER, send_rect.size.x, 17, Color.WHITE)
+
+func connect_multiplayer() -> void:
+	if multiplayer_socket.get_ready_state() in [WebSocketPeer.STATE_OPEN, WebSocketPeer.STATE_CONNECTING]:
+		return
+	multiplayer_socket = WebSocketPeer.new()
+	var error := multiplayer_socket.connect_to_url(MATCH_SERVER_URL)
+	if error != OK:
+		multiplayer_state = "error"
+		multiplayer_error = "לא ניתן להתחבר לשרת" if ui_language == "he" else "Could not connect to server"
+	else:
+		multiplayer_state = "connecting"
+		multiplayer_error = ""
+
+func poll_multiplayer() -> void:
+	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_CLOSED:
+		if multiplayer_state not in ["disconnected", "error"]:
+			multiplayer_state = "disconnected"
+			multiplayer_error = "החיבור לשרת נותק" if ui_language == "he" else "Server connection closed"
+			if matchmaking_searching:
+				matchmaking_searching = false
+				pending_find_match = false
+				arena_fx_phase = "idle"
+				arena_fx_elapsed = 0.0
+				pending_arena_match = {}
+				arena_matched_opponent = {}
+		return
+	multiplayer_socket.poll()
+	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN and multiplayer_state == "connecting":
+		multiplayer_state = "connected"
+	while multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN and multiplayer_socket.get_available_packet_count() > 0:
+		var payload = JSON.parse_string(multiplayer_socket.get_packet().get_string_from_utf8())
+		if typeof(payload) == TYPE_DICTIONARY:
+			handle_multiplayer_message(payload)
+
+func send_multiplayer(payload: Dictionary) -> void:
+	if multiplayer_socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		multiplayer_socket.send_text(JSON.stringify(payload))
+
+func send_find_match() -> void:
+	commit_profile_name()
+	pending_find_match = false
+	matchmaking_searching = true
+	multiplayer_local_animal = player_animal
+	multiplayer_local_ring_color = player_ring_color
+	send_multiplayer({
+		"type": "find_match",
+		"name": profile_name,
+		"animal": player_animal,
+		"ringColor": player_ring_color,
+		"level": player_level,
+		"wins": player_wins,
+		"losses": player_losses,
+		"arena": selected_arena,
+		"rating": player_rating,
+		"leagueTier": player_league_tier,
+		"publicId": firebase_public_id
+	})
+
+func start_arena_search() -> void:
+	var entry: int = int(ARENA_ENTRY_COSTS[clampi(selected_arena, 0, ARENA_ENTRY_COSTS.size() - 1)])
+	if player_coins < entry:
+		show_menu_notice(ui_text("not_enough_coins"))
+		return
+	pending_find_match = true
+	matchmaking_searching = true
+	match_source = "arena"
+	arena_fx_phase = "searching"
+	arena_fx_elapsed = 0.0
+	multiplayer_error = ""
+	if multiplayer_state != "connected":
+		connect_multiplayer()
+		multiplayer_error = "השרת מתעורר, נסו שוב בעוד כמה שניות" if ui_language == "he" else "Server is waking up, try again shortly"
+		return
+	send_find_match()
+
+func cancel_matchmaking() -> void:
+	pending_find_match = false
+	matchmaking_searching = false
+	arena_fx_phase = "idle"
+	arena_fx_elapsed = 0.0
+	pending_arena_match = {}
+	arena_matched_opponent = {}
+	send_multiplayer({"type": "cancel_match"})
+
+func create_multiplayer_room() -> void:
+	commit_profile_name()
+	if multiplayer_state != "connected":
+		connect_multiplayer()
+		multiplayer_error = "השרת מתעורר, נסו שוב בעוד כמה שניות" if ui_language == "he" else "Server is waking up, try again shortly"
+		return
+	multiplayer_local_animal = player_animal
+	multiplayer_local_ring_color = player_ring_color
+	send_multiplayer({
+		"type":"create_room",
+		"name":profile_name,
+		"animal":player_animal,
+		"ringColor":player_ring_color,
+		"boardTheme":selected_board_theme,
+		"level":player_level,
+		"wins":player_wins,
+		"losses":player_losses,
+		"rating":player_rating,
+		"leagueTier":player_league_tier,
+		"publicId":firebase_public_id
+	})
+
+func join_multiplayer_room() -> void:
+	commit_profile_name()
+	var code := room_code_input.text.strip_edges().to_upper()
+	if code.length() != 4:
+		multiplayer_error = "הכניסו קוד חדר בן 4 תווים" if ui_language == "he" else "Enter a 4-character room code"
+		return
+	if multiplayer_state != "connected":
+		connect_multiplayer()
+		multiplayer_error = "השרת מתעורר, נסו שוב בעוד כמה שניות" if ui_language == "he" else "Server is waking up, try again shortly"
+		return
+	multiplayer_local_animal = player_animal
+	multiplayer_local_ring_color = player_ring_color
+	send_multiplayer({
+		"type":"join_room",
+		"roomCode":code,
+		"name":profile_name,
+		"animal":player_animal,
+		"ringColor":player_ring_color,
+		"level":player_level,
+		"wins":player_wins,
+		"losses":player_losses,
+		"rating":player_rating,
+		"leagueTier":player_league_tier,
+		"publicId":firebase_public_id
+	})
+
+func update_match_character(animal: int = -1, ring_color: int = -1) -> void:
+	if multiplayer_slot < 0:
+		return
+	var current_animal: int = player_animal if multiplayer_slot == 0 else ai_animal
+	var current_ring: int = player_ring_color if multiplayer_slot == 0 else ai_ring_color
+	if animal >= 0:
+		if not is_animal_unlocked(animal):
+			show_menu_notice(ui_text("unlock_in_shop"))
+			return
+		current_animal = animal
+	if ring_color >= 0:
+		if not is_ring_unlocked(ring_color):
+			show_menu_notice(ui_text("unlock_in_shop"))
+			return
+		current_ring = ring_color
+	if multiplayer_slot == 0:
+		player_animal = current_animal
+		player_ring_color = current_ring
+	else:
+		ai_animal = current_animal
+		ai_ring_color = current_ring
+	rebuild_team_piece_textures()
+	send_multiplayer({"type":"update_profile", "animal":current_animal, "ringColor":current_ring})
+
+func toggle_multiplayer_ready() -> void:
+	multiplayer_ready = not multiplayer_ready
+	send_multiplayer({"type":"ready", "ready":multiplayer_ready})
+
+func leave_multiplayer_room() -> void:
+	if multiplayer_room_code != "":
+		send_multiplayer({"type":"leave_room"})
+	multiplayer_room_code = ""
+	multiplayer_players.clear()
+	multiplayer_slot = -1
+	multiplayer_ready = false
+	friend_customizer_open = false
+	friend_opponent_profile_open = false
+	matchmaking_searching = false
+	pending_find_match = false
+	if multiplayer_local_animal >= 0:
+		player_animal = multiplayer_local_animal
+		player_ring_color = multiplayer_local_ring_color
+		rebuild_team_piece_textures()
+	multiplayer_local_animal = -1
+	multiplayer_local_ring_color = -1
+
+func handle_multiplayer_message(payload: Dictionary) -> void:
+	match str(payload.get("type", "")):
+		"connected":
+			multiplayer_state = "connected"
+			multiplayer_error = ""
+			var history = payload.get("lobbyChat", [])
+			if typeof(history) == TYPE_ARRAY and history.size() > 0:
+				lobby_chat_messages = history
+				while lobby_chat_messages.size() > 30:
+					lobby_chat_messages.pop_front()
+			if pending_google_handoff_request:
+				send_multiplayer({"type":"create_auth_handoff"})
+				pending_google_handoff_request = false
+			if not pending_auth_handoff_payload.is_empty():
+				send_multiplayer(pending_auth_handoff_payload)
+				pending_auth_handoff_payload = {}
+				pending_android_auth_handoff = ""
+			if not pending_shared_room_code.is_empty():
+				var shared_code: String = pending_shared_room_code
+				pending_shared_room_code = ""
+				room_code_input.text = shared_code
+				join_multiplayer_room()
+			elif pending_find_match:
+				send_find_match()
+			elif not pending_friend_invite_send.is_empty():
+				maybe_send_pending_friend_invite()
+			sync_player_presence()
+			register_fcm_token_with_server()
+		"fcm_registered":
+			pass
+		"leaderboard":
+			global_leaderboard = payload.get("entries", [])
+			refresh_friend_names_from_leaderboard()
+			for i in global_leaderboard.size():
+				var entry: Dictionary = global_leaderboard[i]
+				if str(entry.get("publicId", "")) == firebase_public_id:
+					player_world_rank = int(entry.get("rank", 0))
+					break
+		"friends_list", "social_state":
+			if str(payload.get("type", "")) == "social_state":
+				apply_social_state_from_server(payload)
+			else:
+				apply_friends_list_from_server(payload.get("friends", []))
+		"friend_request_result":
+			if bool(payload.get("ok", false)):
+				show_menu_notice(ui_text("friend_request_sent"))
+			else:
+				var code := str(payload.get("code", ""))
+				if code == "EXISTS":
+					show_menu_notice(ui_text("friend_exists"))
+				elif code == "PENDING":
+					show_menu_notice(ui_text("friend_request_exists"))
+				elif code == "INCOMING":
+					accept_friend_request_from(str(payload.get("targetPublicId", "")))
+				else:
+					show_menu_notice(ui_text("friend_not_found"))
+		"friend_accept_result":
+			if bool(payload.get("ok", false)):
+				show_menu_notice(ui_text("friend_accepted"))
+			else:
+				show_menu_notice(ui_text("friend_not_found"))
+		"friend_request_notify":
+			home_social_tab = 0
+			var request_name := str(payload.get("request", {}).get("name", ""))
+			show_menu_notice(ui_text("friend_request_incoming") % request_name)
+			play_sound("invite")
+		"friend_accepted_notify":
+			home_social_tab = 0
+			var accepted_name := str(payload.get("fromName", payload.get("friend", {}).get("name", "")))
+			show_menu_notice(ui_text("friend_added_you") % accepted_name)
+			play_sound("invite")
+		"friend_add_result":
+			pass
+		"friend_added_notify":
+			pass
+		"friend_invite":
+			pending_friend_invite = {
+				"fromName": str(payload.get("fromName", "")),
+				"fromPublicId": str(payload.get("fromPublicId", "")),
+				"roomCode": str(payload.get("roomCode", ""))
+			}
+			play_sound("invite")
+			show_menu_notice(ui_text("invite_received") + pending_friend_invite.fromName)
+			show_web_notification(
+				"Zoopaloola",
+				ui_text("invite_received") + str(pending_friend_invite.get("fromName", "")),
+				{"roomCode": str(pending_friend_invite.get("roomCode", "")), "type": "friend_invite"}
+			)
+		"invite_sent":
+			var online := bool(payload.get("online", false))
+			var target_name := pending_friend_invite_target_name
+			pending_friend_invite_target_name = ""
+			if not target_name.is_empty():
+				show_menu_notice(("הזמנה ל" if ui_language == "he" else "Invite sent to ") + target_name)
+			else:
+				show_menu_notice(ui_text("invite_sent_online") if online else ui_text("invite_sent_offline"))
+		"auth_handoff":
+			var auth_url: String = str(payload.get("url", ""))
+			if OS.has_feature("android") and auth_url.begins_with("https://moshe2060.github.io/zoopaloola-mobile/"):
+				firebase_status = "השלימו את הכניסה בדפדפן" if ui_language == "he" else "FINISH SIGN-IN IN YOUR BROWSER"
+				OS.shell_open(auth_url)
+		"auth_handoff_complete":
+			var google_name: String = str(payload.get("displayName", "")).strip_edges().left(20)
+			if not google_name.is_empty():
+				profile_name = google_name
+				if profile_name_input != null:
+					profile_name_input.text = profile_name
+			apply_firebase_auth_response(payload)
+			show_menu_notice("התחברת עם Google" if ui_language == "he" else "SIGNED IN WITH GOOGLE")
+		"joined":
+			multiplayer_room_code = str(payload.get("roomCode", ""))
+			multiplayer_slot = int(payload.get("slot", -1))
+			multiplayer_ready = false
+			if str(payload.get("source", "")) == "arena":
+				match_source = "arena"
+			maybe_send_pending_friend_invite()
+		"searching":
+			matchmaking_searching = true
+			multiplayer_error = ""
+		"search_cancelled":
+			if arena_bot_cancel_ack_pending:
+				arena_bot_cancel_ack_pending = false
+				return
+			matchmaking_searching = false
+			pending_find_match = false
+			arena_fx_phase = "idle"
+			arena_fx_elapsed = 0.0
+			pending_arena_match = {}
+			arena_matched_opponent = {}
+			if str(payload.get("reason", "")) == "timeout":
+				show_menu_notice(ui_text("search_timeout"))
+		"room_state":
+			multiplayer_players = payload.get("players", [])
+			turn = int(payload.get("turn", 0))
+			sync_match_board_from_payload(payload)
+			if arena_fx_phase == "found":
+				arena_matched_opponent = arena_opponent_data()
+			if multiplayer_players.size() > 0:
+				var first_player: Dictionary = multiplayer_players[0]
+				player_animal = int(first_player.get("animal", player_animal))
+				player_ring_color = int(first_player.get("ringColor", player_ring_color))
+			if multiplayer_players.size() > 1:
+				var second_player: Dictionary = multiplayer_players[1]
+				ai_animal = int(second_player.get("animal", ai_animal))
+				ai_ring_color = int(second_player.get("ringColor", ai_ring_color))
+			rebuild_team_piece_textures()
+		"match_started":
+			if str(payload.get("source", "friend")) == "arena":
+				begin_arena_match_found(payload)
+			else:
+				apply_match_started(payload)
+		"shot":
+			var ball_index := int(payload.get("ballIndex", -1))
+			if ball_index >= 0 and ball_index < balls.size() and balls[ball_index].alive:
+				var pull := Vector2(float(payload.get("pullX", 0.0)), float(payload.get("pullY", 0.0)))
+				var strength := float(payload.get("strength", 0.0))
+				if pull.length_squared() > 0.0:
+					balls[ball_index].v = pull.normalized() * (strength * 0.078)
+					turn_shot_committed = true
+					turn_pending_resolve = true
+					turn_opponent_scored = false
+		"turn":
+			turn = int(payload.get("turn", 0))
+			turn_shot_committed = false
+			turn_pending_resolve = false
+			turn_opponent_scored = false
+			update_turn_status_from_server(bool(payload.get("continueTurn", false)))
+		"chat":
+			match_chat_messages.append({
+				"slot": int(payload.get("playerSlot", -1)),
+				"name": str(payload.get("name", "")),
+				"message": str(payload.get("message", ""))
+			})
+			while match_chat_messages.size() > 20:
+				match_chat_messages.pop_front()
+		"lobby_chat":
+			lobby_chat_messages.append({
+				"name": str(payload.get("name", "Player")),
+				"message": str(payload.get("message", ""))
+			})
+			while lobby_chat_messages.size() > 30:
+				lobby_chat_messages.pop_front()
+		"match_over":
+			var winner_slot := int(payload.get("winnerSlot", -1))
+			if winner_slot >= 0:
+				finish_match(winner_slot)
+		"opponent_left":
+			if match_finished:
+				pass
+			else:
+				if match_source == "arena":
+					app_screen = APP_ARENA
+					matchmaking_searching = false
+				else:
+					app_screen = APP_FRIEND
+				multiplayer_ready = false
+				multiplayer_error = "היריב יצא מהחדר" if ui_language == "he" else "Opponent left the room"
+		"error":
+			multiplayer_error = str(payload.get("message", "Server error"))
+	queue_redraw()
+
+func start_selected_mode(mode: String) -> void:
+	game_mode = mode
+	match_source = mode
+	customizer_open = false
+	effect_editor_enabled = false
+	exit_confirm_open = false
+	chat_open = false
+	match_chat_messages.clear()
+	matchmaking_searching = false
+	pending_find_match = false
+	app_screen = APP_GAME
+	new_game()
+	if game_mode == "friend":
+		status = "Red player's turn - local match"
+	else:
+		status = "Your turn - touch a red ball, pull back and release"
+
+func start_computer_setup() -> void:
+	# Pick the computer preview once. It stays unchanged between setup and play,
+	# so the rival shown in the portal is the rival that enters the match.
+	ai_animal = randi() % ANIMAL_NAMES.size()
+	ai_ring_color = randi() % RING_COLOR_NAMES.size()
+	# Prepare the board behind the setup screen, but do not allow a shot until
+	# the player confirms the pilot, arena and difficulty.
+	start_selected_mode("computer")
+	customizer_open = true
+	status = ui_text("choose_setup")
+	queue_redraw()
+
+func show_menu_notice(text: String) -> void:
+	menu_notice = text
+	menu_notice_time = 2.4
+
+func player_level_label() -> String:
+	if ui_language == "he":
+		return "רמה %d" % player_level
+	return "LEVEL %d" % player_level
+
+func daily_claim_rect(viewport_size: Vector2) -> Rect2:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	return Rect2(Vector2(63.0, 577.0) * unit, Vector2(270.0, 66.0) * unit)
+
+func draw_league_rewards_screen(viewport_size: Vector2, unit: float) -> void:
+	draw_frontend_header(viewport_size, "פרסי הליגה" if ui_language == "he" else "LEAGUE REWARDS", "התקדמו בדירוג ופתחו פרסים גדולים יותר" if ui_language == "he" else "CLIMB THE RANKS TO UNLOCK BIGGER REWARDS")
+	var rewards := [100, 250, 500, 900, 1500]
+	for i in 5:
+		var card := Rect2(Vector2(58.0 + float(i) * 244.0, 176.0) * unit, Vector2(218.0, 350.0) * unit)
+		var reached := i <= mini(player_league_tier, 4)
+		var current := i == mini(player_league_tier, 4)
+		var accent: Color = Color("ffe25d") if current else league_color(i)
+		draw_gate_panel(card, accent, unit, 0.94 if reached else 0.76)
+		draw_league_badge(card.position + Vector2(109.0, 78.0) * unit, i, (48.0 if current else 40.0) * unit, current, unit)
+		draw_string(ui_font, card.position + Vector2(0.0, 155.0) * unit, league_name(i), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(21.0 * unit), Color("ffe25d") if current else Color.WHITE)
+		draw_string(ui_font, card.position + Vector2(0.0, 191.0) * unit, ("פרס עונתי" if ui_language == "he" else "SEASON REWARD"), HORIZONTAL_ALIGNMENT_CENTER, card.size.x, int(13.0 * unit), Color("9edff5"))
+		draw_circle(card.position + Vector2(78.0, 241.0) * unit, 20.0 * unit, Color("ffc83d"))
+		draw_circle(card.position + Vector2(78.0, 241.0) * unit, 12.0 * unit, Color("e9971b"), false, 4.0 * unit, true)
+		draw_string(ui_font, card.position + Vector2(104.0, 250.0) * unit, str(rewards[i]), HORIZONTAL_ALIGNMENT_LEFT, 90.0 * unit, int(23.0 * unit), Color.WHITE)
+		var status := "הליגה הנוכחית" if current and ui_language == "he" else ("CURRENT LEAGUE" if current else ("נפתח" if reached and ui_language == "he" else ("UNLOCKED" if reached else ("נעול" if ui_language == "he" else "LOCKED"))))
+		draw_style_box(make_box(Color("2bbf82") if reached else Color("273a53"), 12.0 * unit), Rect2(card.position + Vector2(25.0, 289.0) * unit, Vector2(168.0, 42.0) * unit))
+		draw_string(ui_font, card.position + Vector2(25.0, 317.0) * unit, status, HORIZONTAL_ALIGNMENT_CENTER, 168.0 * unit, int(13.0 * unit), Color.WHITE)
+	var info := Rect2(Vector2(268.0, 565.0) * unit, Vector2(744.0, 76.0) * unit)
+	draw_gate_panel(info, Color("58dcff"), unit, 0.90)
+	draw_string(ui_font, info.position + Vector2(20.0, 31.0) * unit, "הפרסים מחולקים בסיום עונת הליגה בהתאם לדרגה הגבוהה ביותר" if ui_language == "he" else "REWARDS ARE GRANTED AT SEASON END BASED ON YOUR HIGHEST LEAGUE", HORIZONTAL_ALIGNMENT_CENTER, info.size.x - 40.0 * unit, int(16.0 * unit), Color.WHITE)
+	draw_string(ui_font, info.position + Vector2(20.0, 57.0) * unit, ("הדירוג הנוכחי שלכם: %d" if ui_language == "he" else "YOUR CURRENT RATING: %d") % player_rating, HORIZONTAL_ALIGNMENT_CENTER, info.size.x - 40.0 * unit, int(14.0 * unit), Color("ffe25d"))
+
+func draw_rewards_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.08, 0.06))
+	if rewards_league_mode:
+		draw_league_rewards_screen(viewport_size, unit)
+		return
+	draw_frontend_header(viewport_size, "מרכז הפרסים" if ui_language == "he" else "REWARDS CENTER", "חוזרים בכל יום ומתקדמים לעוד מתנות" if ui_language == "he" else "RETURN DAILY AND PROGRESS TOWARD MORE GIFTS")
+	draw_shop_coin_box(viewport_size, unit)
+	var rewards := [50, 60, 70, 80, 100, 120, 200]
+	var reward_day := daily_login_streak % 7 if can_claim_daily() else maxi(0, (daily_login_streak - 1) % 7)
+	var left := Rect2(Vector2(28.0, 142.0) * unit, Vector2(340.0, 532.0) * unit)
+	draw_gate_panel(left, Color("f6d365"), unit, 0.82)
+	draw_string(ui_font, left.position + Vector2(0.0, 52.0) * unit, "הפרס היומי" if ui_language == "he" else "DAILY REWARD", HORIZONTAL_ALIGNMENT_CENTER, left.size.x, int(28.0 * unit), Color.WHITE)
+	draw_circle(left.position + Vector2(170.0, 112.0) * unit, 28.0 * unit, Color("ffc83d"))
+	draw_string(ui_font, left.position + Vector2(205.0, 122.0) * unit, str(rewards[reward_day]), HORIZONTAL_ALIGNMENT_LEFT, 90.0 * unit, int(31.0 * unit), Color("ffe25d"))
+	var chest := Rect2(left.position + Vector2(55.0, 168.0) * unit, Vector2(230.0, 190.0) * unit)
+	draw_circle(chest.get_center() + Vector2(0.0, 20.0) * unit, 112.0 * unit, Color("ffd43b", 0.13))
+	draw_style_box(make_box(Color("5b2a9a"), 22.0 * unit), Rect2(chest.position + Vector2(8.0, 38.0) * unit, Vector2(214.0, 66.0) * unit))
+	draw_style_box(make_box(Color("173d91"), 16.0 * unit), Rect2(chest.position + Vector2(0.0, 92.0) * unit, Vector2(230.0, 92.0) * unit))
+	draw_rect(Rect2(chest.position + Vector2(98.0, 38.0) * unit, Vector2(34.0, 146.0) * unit), Color("f3b82e"))
+	draw_circle(chest.position + Vector2(115.0, 112.0) * unit, 25.0 * unit, Color("ffe25d"))
+	draw_colored_polygon(PackedVector2Array([chest.position + Vector2(115.0, 94.0) * unit, chest.position + Vector2(128.0, 112.0) * unit, chest.position + Vector2(115.0, 132.0) * unit, chest.position + Vector2(102.0, 112.0) * unit]), Color("2954a7"))
+	draw_string(ui_font, left.position + Vector2(30.0, 390.0) * unit, ("רצף נוכחי: %d ימים" if ui_language == "he" else "CURRENT STREAK: %d DAYS") % daily_login_streak, HORIZONTAL_ALIGNMENT_CENTER, left.size.x - 60.0 * unit, int(17.0 * unit), Color("d7f6ff"))
+	var claim := daily_claim_rect(viewport_size)
+	var ready := can_claim_daily()
+	draw_style_box(make_box(Color("70420b") if ready else Color("1c2c42"), 18.0 * unit), claim.grow(5.0 * unit))
+	draw_style_box(make_box(Color("20ae62") if ready else Color("31485d"), 15.0 * unit), claim)
+	draw_string(ui_font, claim.position + Vector2(0.0, 43.0 * unit), ("אספו עכשיו" if ui_language == "he" else "CLAIM NOW") if ready else ui_text("claimed"), HORIZONTAL_ALIGNMENT_CENTER, claim.size.x, int(22.0 * unit), Color.WHITE)
+
+	var panel := Rect2(Vector2(394.0, 142.0) * unit, Vector2(858.0, 532.0) * unit)
+	draw_gate_panel(panel, Color("58dcff"), unit, 0.94)
+	draw_string(ui_font, panel.position + Vector2(0.0, 42.0) * unit, "רצף יומי" if ui_language == "he" else "DAILY STREAK", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(24.0 * unit), Color.WHITE)
+	for i in 7:
+		var tile := Rect2(panel.position + Vector2(25.0 + float(i) * 116.0, 62.0) * unit, Vector2(102.0, 166.0) * unit)
+		var claimed := i < reward_day or (not can_claim_daily() and i == reward_day)
+		var today := can_claim_daily() and i == reward_day
+		draw_gate_panel(tile, Color("ffe25d") if today else (Color("35c98b") if claimed else Color("467ce8")), unit, 0.94)
+		draw_string(ui_font, tile.position + Vector2(0.0, 29.0) * unit, ("יום %d" if ui_language == "he" else "DAY %d") % (i + 1), HORIZONTAL_ALIGNMENT_CENTER, tile.size.x, int(14.0 * unit), Color.WHITE)
+		if i == 6:
+			draw_style_box(make_box(Color("6f3cb5"), 11.0 * unit), Rect2(tile.position + Vector2(22.0, 53.0) * unit, Vector2(58.0, 52.0) * unit))
+		else:
+			draw_circle(tile.position + Vector2(51.0, 79.0) * unit, 25.0 * unit, Color("ffc83d"))
+		draw_string(ui_font, tile.position + Vector2(0.0, 139.0) * unit, str(rewards[i]), HORIZONTAL_ALIGNMENT_CENTER, tile.size.x, int(18.0 * unit), Color("ffe25d"))
+		if claimed:
+			draw_circle(tile.position + Vector2(82.0, 20.0) * unit, 12.0 * unit, Color("20c982"))
+			draw_string(ui_font, tile.position + Vector2(70.0, 26.0) * unit, "✓", HORIZONTAL_ALIGNMENT_CENTER, 24.0 * unit, int(14.0 * unit), Color.WHITE)
+	draw_string(ui_font, panel.position + Vector2(0.0, 276.0) * unit, "מסלול העונה" if ui_language == "he" else "SEASON PATH", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(24.0 * unit), Color.WHITE)
+	var milestones: Array[int] = [5, 10, 20, 30]
+	var path_start := panel.position + Vector2(105.0, 355.0) * unit
+	var path_end := panel.position + Vector2(753.0, 355.0) * unit
+	draw_line(path_start, path_end, Color("3978bd"), 10.0 * unit, true)
+	var season_progress := clampf(float(player_wins) / 30.0, 0.0, 1.0)
+	draw_line(path_start, path_start.lerp(path_end, season_progress), Color("ffe25d"), 10.0 * unit, true)
+	for i in 4:
+		var node := path_start.lerp(path_end, float(i) / 3.0)
+		var reached: bool = player_wins >= milestones[i]
+		draw_circle(node, 31.0 * unit, Color("ffe25d") if reached else Color("173d72"))
+		draw_circle(node, 24.0 * unit, Color("70420b") if reached else Color("081b3c"))
+		draw_string(ui_font, node + Vector2(-24.0, 8.0) * unit, str(milestones[i]), HORIZONTAL_ALIGNMENT_CENTER, 48.0 * unit, int(18.0 * unit), Color.WHITE)
+		draw_string(ui_font, node + Vector2(-48.0, 70.0) * unit, ("תיבה" if i >= 2 and ui_language == "he" else ("CHEST" if i >= 2 else ("מטבעות" if ui_language == "he" else "COINS"))), HORIZONTAL_ALIGNMENT_CENTER, 96.0 * unit, int(12.0 * unit), Color("d7f6ff"))
+	draw_string(ui_font, panel.position + Vector2(0.0, 487.0) * unit, ("ניצחונות העונה: %d" if ui_language == "he" else "SEASON WINS: %d") % player_wins, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(16.0 * unit), Color("ffe25d"))
+
+func ui_text(key: String) -> String:
+	if ui_language == "he":
+		return str(UI_TEXT_HE.get(key, UI_TEXT_EN.get(key, key)))
+	return str(UI_TEXT_EN.get(key, key))
+
+func ui_animal_name(index: int) -> String:
+	var keys := ["elephant", "zebra", "monkey", "hippo", "rhino", "giraffe", "tiger"]
+	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
+
+func ui_ring_name(index: int) -> String:
+	var keys := ["red", "orange", "blue", "green", "purple", "turquoise", "pink"]
+	return ui_text(keys[clampi(index, 0, keys.size() - 1)])
+
+func profile_initial() -> String:
+	var clean := profile_name.strip_edges()
+	return clean.left(1).to_upper() if not clean.is_empty() else "P"
+
+func handle_frontend_touch(screen_pos: Vector2) -> void:
+	var viewport_size := get_viewport_rect().size
+	if home_invite_join_rect(viewport_size).has_point(screen_pos):
+		accept_pending_friend_invite()
+		return
+	if app_screen == APP_SPLASH:
+		app_screen = APP_AUTH
+		return
+	if app_screen == APP_AUTH:
+		if session_restore_pending:
+			return
+		if auth_email_mode.is_empty():
+			if auth_choice_rect(0, viewport_size).has_point(screen_pos):
+				firebase_auth_mode = "google"
+				begin_google_sign_in()
+			elif auth_choice_rect(1, viewport_size).has_point(screen_pos):
+				auth_email_mode = "login"
+				firebase_status = "הזינו מייל וסיסמה" if ui_language == "he" else "ENTER EMAIL AND PASSWORD"
+			elif auth_choice_rect(2, viewport_size).has_point(screen_pos):
+				begin_guest_sign_in()
+			elif auth_choice_rect(3, viewport_size).has_point(screen_pos):
+				auth_email_mode = "register"
+				firebase_status = "צרו חשבון חדש" if ui_language == "he" else "CREATE A NEW ACCOUNT"
+		else:
+			if auth_submit_rect(viewport_size).has_point(screen_pos):
+				start_email_auth(auth_email_mode == "register")
+			elif auth_cancel_rect(viewport_size).has_point(screen_pos):
+				auth_email_mode = ""
+				firebase_status = "בחרו דרך כניסה" if ui_language == "he" else "CHOOSE HOW TO SIGN IN"
+		queue_redraw()
+		return
+	if app_screen == APP_HOME:
+		if tutorial_open:
+			handle_tutorial_touch(screen_pos, viewport_size)
+			return
+		if battle_gates_league_open:
+			if league_rewards_rect(viewport_size).has_point(screen_pos):
+				battle_gates_league_open = false
+				rewards_league_mode = true
+				app_screen = APP_REWARDS
+				play_sound("ui")
+				queue_redraw()
+				return
+			if frontend_back_rect(viewport_size).has_point(screen_pos):
+				battle_gates_league_open = false
+				play_sound("ui")
+				queue_redraw()
+			return
+		if home_friend_profile_index >= 0:
+			if home_friend_profile_close_rect(viewport_size).has_point(screen_pos):
+				home_friend_profile_index = -1
+				queue_redraw()
+				return
+			if home_friend_profile_invite_rect(viewport_size).has_point(screen_pos):
+				var invite_index := home_friend_profile_index
+				var friend_entry: Dictionary = friends_list[invite_index] if invite_index >= 0 and invite_index < friends_list.size() else {}
+				if bool(friend_entry.get("online", false)):
+					home_friend_profile_index = -1
+					invite_friend_to_play(invite_index)
+				else:
+					show_menu_notice(ui_text("friend_invite_offline"))
+				return
+			if home_friend_profile_remove_rect(viewport_size).has_point(screen_pos):
+				remove_friend_at(home_friend_profile_index)
+				return
+			if not home_friend_profile_modal_rect(viewport_size).has_point(screen_pos):
+				home_friend_profile_index = -1
+				queue_redraw()
+			return
+		var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		if home_help_rect(viewport_size).has_point(screen_pos):
+			open_tutorial()
+			return
+		if home_social_tab_rect(0, viewport_size).has_point(screen_pos):
+			home_social_tab = 0
+			if lobby_chat_input != null:
+				lobby_chat_input.release_focus()
+			queue_redraw()
+			return
+		if home_social_tab_rect(1, viewport_size).has_point(screen_pos):
+			home_social_tab = 1
+			if friend_id_input != null:
+				friend_id_input.release_focus()
+			queue_redraw()
+			return
+		if home_social_tab_rect(2, viewport_size).has_point(screen_pos):
+			home_social_tab = 2
+			send_multiplayer({"type": "get_leaderboard"})
+			queue_redraw()
+			return
+		if home_invite_join_rect(viewport_size).has_point(screen_pos):
+			accept_pending_friend_invite()
+			return
+		if home_sound_toggle_rect(viewport_size).has_point(screen_pos):
+			sound_enabled = not sound_enabled
+			save_player_profile()
+			play_sound("ui")
+			queue_redraw()
+			return
+		if home_social_tab == 0:
+			for i in mini(2, incoming_friend_requests.size()):
+				if home_incoming_accept_rect(i, viewport_size).has_point(screen_pos):
+					accept_friend_request_from(str(incoming_friend_requests[i].get("id", "")))
+					return
+				if home_incoming_decline_rect(i, viewport_size).has_point(screen_pos):
+					decline_friend_request_at(i)
+					return
+			if home_add_friend_button_rect(viewport_size).has_point(screen_pos):
+				if friend_id_input != null:
+					send_friend_request_by_id(friend_id_input.text)
+				return
+			for i in mini(3, friends_list.size()):
+				var row := home_friend_row_rect(i, viewport_size)
+				var invite_rect := home_friend_invite_rect(i, viewport_size)
+				if invite_rect.has_point(screen_pos):
+					invite_friend_to_play(i)
+					return
+				if row.has_point(screen_pos):
+					home_friend_profile_index = i
+					play_sound("ui")
+					queue_redraw()
+					return
+		elif home_social_tab == 1:
+			if home_lobby_send_rect(viewport_size).has_point(screen_pos):
+				send_lobby_chat_message()
+				return
+		if home_character_rect(viewport_size).has_point(screen_pos):
+			app_screen = APP_PROFILE
+			return
+		if battle_gates_home_texture != null and player_id_copy_rect(viewport_size).has_point(screen_pos):
+			if not firebase_public_id.is_empty():
+				DisplayServer.clipboard_set(firebase_public_id)
+				show_menu_notice("המזהה הועתק" if ui_language == "he" else "PLAYER ID COPIED")
+			return
+		if home_profile_rect(viewport_size).has_point(screen_pos):
+			app_screen = APP_PLAYER_PROFILE
+			return
+		if home_settings_rect(viewport_size).has_point(screen_pos):
+			ui_language = "en" if ui_language == "he" else "he"
+			save_player_profile()
+			show_menu_notice("English interface" if ui_language == "en" else "הממשק הוחלף לעברית")
+			return
+		for i in (4 if battle_gates_home_texture != null else 2):
+			if not home_nav_rect(i, viewport_size).has_point(screen_pos):
+				continue
+			if battle_gates_home_texture != null and i == 0:
+				app_screen = APP_PROFILE
+			elif battle_gates_home_texture != null and i == 1:
+				battle_gates_league_open = true
+				send_multiplayer({"type": "get_leaderboard"})
+			elif (battle_gates_home_texture != null and i == 2) or (battle_gates_home_texture == null and i == 0):
+				app_screen = APP_SHOP
+				shop_page = SHOP_PAGE_HUB
+				shop_preview_animal = player_animal
+				shop_preview_ring = player_ring_color
+				shop_preview_board = selected_board_theme
+			else:
+				app_screen = APP_REWARDS
+				rewards_league_mode = false
+			play_sound("ui")
+			queue_redraw()
+			return
+		if home_mode_rect(0, viewport_size).has_point(screen_pos):
+			app_screen = APP_ARENA
+			return
+		if home_mode_rect(1, viewport_size).has_point(screen_pos):
+			app_screen = APP_FRIEND
+			connect_multiplayer()
+			return
+		if home_mode_rect(2, viewport_size).has_point(screen_pos):
+			play_sound("ui")
+			start_computer_setup()
+			return
+	else:
+		if frontend_back_rect(viewport_size).has_point(screen_pos):
+			if app_screen == APP_REWARDS and rewards_league_mode:
+				rewards_league_mode = false
+				app_screen = APP_HOME
+				battle_gates_league_open = true
+				play_sound("ui")
+				queue_redraw()
+				return
+			if app_screen == APP_SHOP:
+				shop_page = SHOP_PAGE_ANIMALS
+			if app_screen == APP_PLAYER_PROFILE:
+				commit_profile_name()
+			if app_screen == APP_FRIEND:
+				leave_multiplayer_room()
+			if app_screen == APP_ARENA:
+				cancel_matchmaking()
+			app_screen = APP_HOME
+			return
+		if app_screen == APP_PROFILE:
+			if character_save_rect(viewport_size).has_point(screen_pos):
+				save_player_profile()
+				play_sound("ui")
+				show_menu_notice("הבחירה נשמרה" if ui_language == "he" else "SELECTION SAVED")
+				app_screen = APP_HOME
+				queue_redraw()
+				return
+			for i in ANIMAL_NAMES.size():
+				if character_card_rect(i, viewport_size).has_point(screen_pos):
+					try_select_animal(i)
+					queue_redraw()
+					return
+		elif app_screen == APP_SHOP:
+			for i in 3:
+				if shop_category_rect(i, viewport_size).has_point(screen_pos):
+					shop_page = [SHOP_PAGE_ANIMALS, SHOP_PAGE_BOARDS, SHOP_PAGE_EFFECTS][i]
+					play_sound("ui")
+					queue_redraw()
+					return
+			if shop_page == SHOP_PAGE_ANIMALS:
+				for i in ANIMAL_NAMES.size():
+					if shop_detail_grid_rect(i, viewport_size, ANIMAL_NAMES.size()).has_point(screen_pos):
+						shop_preview_animal = i
+						queue_redraw()
+						return
+			elif shop_page == SHOP_PAGE_BOARDS:
+				for i in BOARD_THEME_COUNT:
+					if shop_detail_grid_rect(i, viewport_size, BOARD_THEME_COUNT).has_point(screen_pos):
+						shop_preview_board = i
+						queue_redraw()
+						return
+			if shop_action_rect(viewport_size).has_point(screen_pos):
+				if shop_page == SHOP_PAGE_ANIMALS:
+					try_purchase_animal(shop_preview_animal)
+				elif shop_page == SHOP_PAGE_BOARDS:
+					selected_board_theme = shop_preview_board
+					room_board_theme = shop_preview_board
+					match_board_theme = shop_preview_board
+					save_player_profile()
+					play_sound("ui")
+					show_menu_notice("השולחן נבחר" if ui_language == "he" else "TABLE EQUIPPED")
+				queue_redraw()
+				return
+		elif app_screen == APP_ARENA:
+			for i in 3:
+				if arena_card_rect(i, viewport_size).has_point(screen_pos):
+					selected_arena = i
+					return
+			if arena_play_rect(viewport_size).has_point(screen_pos):
+				if matchmaking_searching:
+					cancel_matchmaking()
+				else:
+					start_arena_search()
+				return
+		elif app_screen == APP_REWARDS:
+			if not rewards_league_mode and daily_claim_rect(viewport_size).has_point(screen_pos):
+				claim_daily_reward()
+				return
+		elif app_screen == APP_PLAYER_PROFILE:
+			if player_edit_profile_rect(viewport_size).has_point(screen_pos):
+				commit_profile_name()
+				play_sound("ui")
+				app_screen = APP_PROFILE
+				queue_redraw()
+				return
+			if player_id_copy_rect(viewport_size).has_point(screen_pos):
+				if not firebase_public_id.is_empty():
+					DisplayServer.clipboard_set(firebase_public_id)
+					show_menu_notice("המזהה הועתק" if ui_language == "he" else "PLAYER ID COPIED")
+				return
+		elif app_screen == APP_FRIEND:
+			if friend_room_chat_open:
+				if chat_close_rect(viewport_size).has_point(screen_pos):
+					friend_room_chat_open = false
+					if chat_input != null:
+						chat_input.release_focus()
+					return
+				if chat_send_rect(viewport_size).has_point(screen_pos):
+					send_chat_message()
+					return
+			if friend_customizer_open or friend_opponent_profile_open:
+				if friend_modal_close_rect(viewport_size).has_point(screen_pos):
+					friend_customizer_open = false
+					friend_opponent_profile_open = false
+					return
+				if friend_customizer_open:
+					for i in ANIMAL_NAMES.size():
+						if friend_choice_rect(i, false, viewport_size).has_point(screen_pos):
+							if try_select_animal(i):
+								update_match_character(i, -1)
+							return
+						if friend_choice_rect(i, true, viewport_size).has_point(screen_pos):
+							if try_select_ring(i):
+								update_match_character(-1, i)
+							return
+					for i in BOARD_THEME_COUNT:
+						if friend_board_rect(i, viewport_size).has_point(screen_pos):
+							update_match_board(i)
+							return
+				return
+			if multiplayer_room_code.is_empty():
+				if friend_create_rect(viewport_size).has_point(screen_pos):
+					create_multiplayer_room()
+					return
+				if friend_join_rect(viewport_size).has_point(screen_pos):
+					join_multiplayer_room()
+					return
+			else:
+				if friend_leave_rect(viewport_size).has_point(screen_pos):
+					leave_multiplayer_room()
+					app_screen = APP_HOME
+					play_sound("ui")
+					return
+				if friend_share_rect(viewport_size).has_point(screen_pos):
+					share_friend_room()
+					return
+				if friend_room_chat_rect(viewport_size).has_point(screen_pos):
+					friend_room_chat_open = true
+					if chat_input != null:
+						chat_input.grab_focus()
+					play_sound("ui")
+					return
+				var local_slot := multiplayer_slot if multiplayer_slot >= 0 else 0
+				if friend_player_rect(local_slot, viewport_size).has_point(screen_pos):
+					friend_customizer_open = true
+					return
+				var opponent_slot := 1 - multiplayer_slot
+				if opponent_slot >= 0 and opponent_slot < multiplayer_players.size() and friend_player_rect(opponent_slot, viewport_size).has_point(screen_pos):
+					friend_opponent_profile_open = true
+					return
+				if friend_ready_rect(viewport_size).has_point(screen_pos):
+					toggle_multiplayer_ready()
+					return
+
+func draw_menu_background(viewport_size: Vector2) -> void:
+	if battle_gates_home_texture != null:
+		draw_battle_gates_secondary_background(viewport_size)
+		return
+	var overlay := Color(0.015, 0.055, 0.11, 0.62)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), overlay)
+	for i in 18:
+		var phase := fmod(menu_elapsed * (10.0 + float(i % 4) * 3.0) + float(i * 67), viewport_size.y + 120.0)
+		var x := fmod(float(i * 149 + 71), viewport_size.x)
+		var y := viewport_size.y + 40.0 - phase
+		var radius := 3.0 + float(i % 5) * 1.6
+		draw_circle(Vector2(x, y), radius, Color(0.65, 0.94, 1.0, 0.16), false, 2.0, true)
+	var horizon := Rect2(0.0, viewport_size.y * 0.76, viewport_size.x, viewport_size.y * 0.24)
+	draw_rect(horizon, Color(0.0, 0.20, 0.31, 0.35))
+
+func draw_battle_gates_secondary_background(viewport_size: Vector2) -> void:
+	var background := battle_background_texture if battle_background_texture != null else battle_gates_home_texture
+	if background != null:
+		draw_texture_rect(background, Rect2(Vector2.ZERO, viewport_size), false)
+	# Keep the shared floating-islands world visible while preserving contrast.
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.012, 0.035, 0.10, 0.38))
+	var glow := 0.045 + sin(menu_elapsed * 1.6) * 0.012
+	draw_circle(Vector2(viewport_size.x * 0.50, viewport_size.y * 0.47), viewport_size.y * 0.43, Color(0.16, 0.76, 1.0, glow))
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, viewport_size.y * 0.125), Color(0.015, 0.055, 0.14, 0.76))
+	draw_rect(Rect2(0.0, viewport_size.y * 0.118, viewport_size.x, maxf(3.0, viewport_size.y * 0.006)), Color("53d8ff", 0.72))
+
+func draw_screen_background(texture: Texture2D, viewport_size: Vector2, shade: float = 0.22) -> void:
+	if texture != null:
+		draw_texture_rect(texture, Rect2(Vector2.ZERO, viewport_size), false)
+	else:
+		draw_battle_gates_secondary_background(viewport_size)
+	if shade > 0.0:
+		draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.005, 0.018, 0.06, shade))
+	# A restrained top veil keeps live account data legible without hiding the artwork.
+	draw_rect(Rect2(0.0, 0.0, viewport_size.x, viewport_size.y * 0.12), Color(0.005, 0.025, 0.08, 0.48))
+
+func draw_gate_panel(rect: Rect2, accent: Color, unit: float, fill_alpha: float = 0.94) -> void:
+	var pulse := 0.82 + sin(menu_elapsed * 2.2) * 0.08
+	draw_style_box(make_box(Color(0.01, 0.025, 0.075, 0.88), 30.0 * unit), rect.grow(10.0 * unit))
+	draw_style_box(make_box(Color(accent.r, accent.g, accent.b, 0.88), 27.0 * unit), rect.grow(5.0 * unit))
+	draw_style_box(make_box(Color(0.025, 0.075, 0.17, fill_alpha), 23.0 * unit), rect)
+	draw_line(rect.position + Vector2(34.0, 8.0) * unit, Vector2(rect.end.x - 34.0 * unit, rect.position.y + 8.0 * unit), Color(accent.r, accent.g, accent.b, pulse), 3.0 * unit, true)
+	for corner in [rect.position + Vector2(17.0, 17.0) * unit, Vector2(rect.end.x - 17.0 * unit, rect.position.y + 17.0 * unit), Vector2(rect.position.x + 17.0 * unit, rect.end.y - 17.0 * unit), rect.end - Vector2(17.0, 17.0) * unit]:
+		draw_circle(corner, 6.0 * unit, accent.lightened(0.28))
+		draw_circle(corner, 2.5 * unit, Color.WHITE)
+
+func draw_zoopaloola_logo(center: Vector2, scale: float, reveal: float = 1.0) -> void:
+	var bob := sin(menu_elapsed * 2.5) * 5.0 * scale
+	var c := center + Vector2(0.0, bob)
+	var ring_radius := 66.0 * scale
+	draw_circle(c, ring_radius * 1.18, Color(0.15, 0.90, 1.0, 0.16 * reveal))
+	draw_circle(c, ring_radius, Color("ff5a55"), false, 20.0 * scale, true)
+	draw_arc(c, ring_radius, -2.35, -0.78, 30, Color.WHITE, 20.0 * scale, true)
+	draw_arc(c, ring_radius, 0.78, 2.35, 30, Color.WHITE, 20.0 * scale, true)
+	var ear := 24.0 * scale
+	draw_circle(c + Vector2(-31.0, -34.0) * scale, ear, Color("607d8b"))
+	draw_circle(c + Vector2(31.0, -34.0) * scale, ear, Color("607d8b"))
+	draw_circle(c + Vector2.ZERO, 43.0 * scale, Color("93aeb8"))
+	draw_circle(c + Vector2(-14.0, -7.0) * scale, 6.0 * scale, Color("102338"))
+	draw_circle(c + Vector2(14.0, -7.0) * scale, 6.0 * scale, Color("102338"))
+	draw_line(c + Vector2(0.0, 3.0) * scale, c + Vector2(4.0, 29.0) * scale, Color("667f8b"), 12.0 * scale, true)
+	draw_string(ui_font, c + Vector2(-225.0, 118.0) * scale, "ZOOPALOOLA", HORIZONTAL_ALIGNMENT_CENTER, 450.0 * scale, int(54.0 * scale), Color(1.0, 0.86, 0.25, reveal))
+
+func draw_splash_screen(viewport_size: Vector2) -> void:
+	if loading_team_texture != null:
+		draw_texture_rect(loading_team_texture, Rect2(Vector2.ZERO, viewport_size), false)
+	else:
+		draw_menu_background(viewport_size)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.03, 0.08, 0.08))
+	var entrance := smooth_step(splash_elapsed / 0.75)
+	var exit_alpha := 1.0 - smooth_step((splash_elapsed - 2.65) / 0.55)
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	var logo_width := 510.0 * unit * (0.92 + entrance * 0.08)
+	var logo_height := logo_width * 174.0 / 540.0
+	var logo_rect := Rect2(Vector2((viewport_size.x - logo_width) * 0.5, 14.0 * unit), Vector2(logo_width, logo_height))
+	if zoopaloola_logo_texture != null:
+		draw_texture_rect(zoopaloola_logo_texture, logo_rect, false, Color(1.0, 1.0, 1.0, entrance * exit_alpha))
+	else:
+		draw_zoopaloola_logo(Vector2(viewport_size.x * 0.5, 102.0 * unit), (0.50 + entrance * 0.10) * unit, entrance * exit_alpha)
+	var loading_width := minf(620.0 * unit, viewport_size.x * 0.52)
+	var loading_rect := Rect2((viewport_size.x - loading_width) * 0.5, viewport_size.y - 58.0 * unit, loading_width, 23.0 * unit)
+	draw_style_box(make_box(Color(0.015, 0.035, 0.07, 0.92), 12.0), loading_rect.grow(5.0 * unit))
+	draw_style_box(make_box(Color("25385d"), 10.0), loading_rect)
+	var progress := clampf(splash_elapsed / 2.85, 0.0, 1.0)
+	var fill_rect := Rect2(loading_rect.position, Vector2(maxf(12.0 * unit, loading_rect.size.x * progress), loading_rect.size.y))
+	draw_style_box(make_box(Color("ffd83d"), 10.0), fill_rect)
+	draw_string(ui_font, Vector2(0.0, loading_rect.position.y - 12.0 * unit), "פותחים את המערבולת..." if ui_language == "he" else "OPENING THE VORTEX...", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(15.0 * unit), Color.WHITE)
+
+func draw_frontend(viewport_size: Vector2) -> void:
+	if app_screen == APP_AUTH:
+		draw_screen_background(auth_gates_background_texture, viewport_size, 0.12)
+		draw_auth_screen(viewport_size)
+	elif app_screen == APP_HOME:
+		if lobby_background_texture != null:
+			draw_texture_rect(lobby_background_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		else:
+			draw_menu_background(viewport_size)
+		draw_home_screen(viewport_size)
+	elif app_screen == APP_PROFILE:
+		draw_screen_background(character_gates_background_texture, viewport_size, 0.16)
+		draw_profile_screen(viewport_size)
+	elif app_screen == APP_SHOP:
+		draw_screen_background(shop_gates_background_texture, viewport_size, 0.16)
+		draw_shop_screen(viewport_size)
+	elif app_screen == APP_ARENA:
+		draw_screen_background(arena_gates_background_texture, viewport_size, 0.10)
+		draw_arena_screen(viewport_size)
+	elif app_screen == APP_PLAYER_PROFILE:
+		draw_screen_background(player_profile_gates_background_texture, viewport_size, 0.12)
+		draw_player_profile_screen(viewport_size)
+	elif app_screen == APP_FRIEND:
+		if multiplayer_room_code.is_empty() and friend_room_concept_texture != null:
+			draw_texture_rect(friend_room_concept_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		elif not multiplayer_room_code.is_empty() and friend_lobby_concept_texture != null:
+			draw_texture_rect(friend_lobby_concept_texture, Rect2(Vector2.ZERO, viewport_size), false)
+		else:
+			draw_screen_background(friend_gates_background_texture, viewport_size, 0.14)
+		draw_friend_screen(viewport_size)
+	elif app_screen == APP_REWARDS:
+		draw_screen_background(rewards_gates_background_texture, viewport_size, 0.08)
+		draw_rewards_screen(viewport_size)
+	draw_pending_invite_banner(viewport_size)
+	if menu_notice_time > 0.0:
+		var toast := Rect2(viewport_size.x * 0.31, viewport_size.y - 68.0, viewport_size.x * 0.38, 46.0)
+		draw_style_box(make_box(Color(0.04, 0.08, 0.14, 0.94), 14.0), toast)
+		draw_string(ui_font, toast.position + Vector2(0.0, 29.0), menu_notice, HORIZONTAL_ALIGNMENT_CENTER, toast.size.x, 14, Color("f6d365"))
+
+func draw_auth_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.04, 0.09, 0.16))
+	var panel := Rect2(Vector2(350.0, 72.0) * unit, Vector2(580.0, 580.0) * unit)
+	draw_gate_panel(panel, Color("58dcff"), unit, 0.60)
+	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 70.0 * unit), "ברוכים הבאים לשערי הקרב" if ui_language == "he" else "WELCOME TO BATTLE GATES", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(30.0 * unit), Color("ffd83d"))
+	draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 110.0 * unit), ("בחרו איך להיכנס למשחק" if auth_email_mode.is_empty() else ("הרשמה חדשה" if auth_email_mode == "register" else "כניסה עם מייל")) if ui_language == "he" else ("CHOOSE HOW TO SIGN IN" if auth_email_mode.is_empty() else ("CREATE ACCOUNT" if auth_email_mode == "register" else "EMAIL SIGN IN")), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(20.0 * unit), Color.WHITE)
+	if session_restore_pending and auth_email_mode.is_empty():
+		draw_string(ui_font, Vector2(panel.position.x, panel.position.y + 300.0 * unit), ui_text("restoring_session"), HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(22.0 * unit), Color("9fd9ef"))
+	elif auth_email_mode.is_empty():
+		var labels := ["כניסה עם Gmail", "כניסה עם מייל", "כניסה כאורח", "הרשמה"] if ui_language == "he" else ["CONTINUE WITH GOOGLE", "SIGN IN WITH EMAIL", "CONTINUE AS GUEST", "REGISTER"]
+		var colors := [Color("4285f4"), Color("2f9ed1"), Color("35bd78"), Color("ff9f2e")]
+		var icons := ["G", "@", "☺", "+"]
+		for i in 4:
+			var rect := auth_choice_rect(i, viewport_size)
+			draw_style_box(make_box(colors[i], 16.0 * unit), rect)
+			draw_circle(rect.position + Vector2(37.0, 31.0) * unit, 21.0 * unit, Color(1, 1, 1, 0.22))
+			draw_string(ui_font, rect.position + Vector2(16.0, 40.0) * unit, icons[i], HORIZONTAL_ALIGNMENT_CENTER, 42.0 * unit, int(22.0 * unit), Color.WHITE)
+			draw_string(ui_font, rect.position + Vector2(58.0, 40.0) * unit, labels[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 78.0 * unit, int(22.0 * unit), Color.WHITE)
+	else:
+		draw_string(ui_font, Vector2(panel.position.x, 248.0 * unit), "כתובת מייל" if ui_language == "he" else "EMAIL ADDRESS", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(15.0 * unit), Color("9fd9ef"))
+		draw_string(ui_font, Vector2(panel.position.x, 326.0 * unit), "סיסמה" if ui_language == "he" else "PASSWORD", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(15.0 * unit), Color("9fd9ef"))
+		var submit := auth_submit_rect(viewport_size)
+		draw_style_box(make_box(Color("35bd78"), 17.0 * unit), submit)
+		draw_string(ui_font, submit.position + Vector2(0.0, 41.0) * unit, ("יצירת חשבון" if auth_email_mode == "register" else "כניסה") if ui_language == "he" else ("CREATE ACCOUNT" if auth_email_mode == "register" else "SIGN IN"), HORIZONTAL_ALIGNMENT_CENTER, submit.size.x, int(23.0 * unit), Color.WHITE)
+		var cancel := auth_cancel_rect(viewport_size)
+		draw_style_box(make_box(Color("203a59"), 14.0 * unit), cancel)
+		draw_string(ui_font, cancel.position + Vector2(0.0, 34.0) * unit, "חזרה לאפשרויות" if ui_language == "he" else "BACK TO OPTIONS", HORIZONTAL_ALIGNMENT_CENTER, cancel.size.x, int(18.0 * unit), Color.WHITE)
+	var status_color := Color("7ee4ae") if not ("שגיא" in firebase_status or "ERROR" in firebase_status) else Color("ff7777")
+	draw_string(ui_font, Vector2(panel.position.x + 20.0 * unit, panel.end.y - 25.0 * unit), firebase_status, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 40.0 * unit, int(15.0 * unit), status_color)
+
+func draw_friend_screen(viewport_size: Vector2) -> void:
+	var unit := minf(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+	if multiplayer_room_code.is_empty() and friend_room_concept_texture != null:
+		var concept_scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		draw_set_transform(Vector2.ZERO, 0.0, concept_scale)
+		draw_friend_room_concept_overlay(Vector2(1280.0, 720.0), 1.0)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
+	if not multiplayer_room_code.is_empty() and friend_lobby_concept_texture != null:
+		var concept_scale := Vector2(viewport_size.x / 1280.0, viewport_size.y / 720.0)
+		draw_set_transform(Vector2.ZERO, 0.0, concept_scale)
+		draw_friend_lobby_concept_overlay(Vector2(1280.0, 720.0), 1.0)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if friend_customizer_open:
+			draw_friend_customizer(viewport_size)
+		elif friend_opponent_profile_open:
+			draw_friend_opponent_profile(viewport_size)
+		elif friend_room_chat_open:
+			draw_match_chat(viewport_size)
+		return
+	draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.01, 0.05, 0.10, 0.12))
+	draw_frontend_header(viewport_size, "משחק מול חבר" if ui_language == "he" else "PLAY A FRIEND", "צרו חדר או הצטרפו באמצעות קוד" if ui_language == "he" else "Create a room or join with a code")
+	var panel := Rect2(Vector2(175.0, 125.0) * unit, Vector2(930.0, 535.0) * unit)
+	draw_gate_panel(panel, Color("a868ff"), unit, 0.72)
+	var connection_text := "מחובר לשרת" if multiplayer_state == "connected" else ("מתחבר לשרת..." if multiplayer_state == "connecting" else "השרת לא מחובר")
+	if ui_language != "he":
+		connection_text = "Connected" if multiplayer_state == "connected" else ("Connecting..." if multiplayer_state == "connecting" else "Disconnected")
+	var connection_color := Color("51d995") if multiplayer_state == "connected" else Color("ffd05a")
+	var status_pill := Rect2(panel.position + Vector2(330.0, 20.0) * unit, Vector2(270.0, 55.0) * unit)
+	draw_style_box(make_box(Color(0.04, 0.20, 0.24, 0.96), 20.0 * unit), status_pill)
+	draw_circle(status_pill.position + Vector2(35.0, 27.0) * unit, 10.0 * unit, connection_color)
+	draw_string(ui_font, status_pill.position + Vector2(0.0, 36.0) * unit, connection_text, HORIZONTAL_ALIGNMENT_CENTER, status_pill.size.x, int(23.0 * unit), Color.WHITE)
+	if multiplayer_room_code.is_empty():
+		var create_rect := friend_create_rect(viewport_size)
+		draw_style_box(make_box(Color("7655df"), 18.0 * unit), create_rect)
+		draw_string(ui_font, create_rect.position + Vector2(0.0, 50.0) * unit, "יצירת חדר חדש" if ui_language == "he" else "CREATE ROOM", HORIZONTAL_ALIGNMENT_CENTER, create_rect.size.x, int(23.0 * unit), Color.WHITE)
+		draw_string(ui_font, Vector2(0.0, 222.0 * unit), "או" if ui_language == "he" else "OR", HORIZONTAL_ALIGNMENT_CENTER, viewport_size.x, int(19.0 * unit), Color("a9cde2"))
+		draw_string(ui_font, Vector2(700.0, 245.0) * unit, "קוד החדר" if ui_language == "he" else "ROOM CODE", HORIZONTAL_ALIGNMENT_CENTER, 330.0 * unit, int(16.0 * unit), Color("d7f6ff"))
+		var join_rect := friend_join_rect(viewport_size)
+		draw_style_box(make_box(Color("ff7b43"), 18.0 * unit), join_rect)
+		draw_string(ui_font, join_rect.position + Vector2(0.0, 45.0) * unit, "הצטרפות לחדר" if ui_language == "he" else "JOIN ROOM", HORIZONTAL_ALIGNMENT_CENTER, join_rect.size.x, int(22.0 * unit), Color.WHITE)
+	else:
+		draw_string(ui_font, panel.position + Vector2(0.0, 125.0) * unit, "קוד החדר" if ui_language == "he" else "ROOM CODE", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(18.0 * unit), Color("a9cde2"))
+		draw_string(ui_font, panel.position + Vector2(0.0, 190.0) * unit, multiplayer_room_code, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, int(48.0 * unit), Color("ffe25d"))
+		var share_rect := friend_share_rect(viewport_size)
+		draw_style_box(make_box(Color("1f9fd0"), 16.0 * unit), share_rect)
+		draw_string(ui_font, share_rect.position + Vector2(0.0, 40.0) * unit, "שיתוף לחבר" if ui_language == "he" else "SHARE INVITE", HORIZONTAL_ALIGNMENT_CENTER, share_rect.size.x, int(18.0 * unit), Color.WHITE)
+		for i in 2:
+			var player_rect := friend_player_rect(i, viewport_size)
+			draw_style_box(make_box(Color("1d405b"), 17.0 * unit), player_rect)
+			var player_label := "ממתין לשחקן..." if ui_language == "he" else "Waiting for player..."
+			var ready_label := ""
+			var is_ready := false
+			if i < multiplayer_players.size():
+				var player_data: Dictionary = multiplayer_players[i]
+				player_label = str(player_data.get("name", "Player"))
+				is_ready = bool(player_data.get("ready", false))
+				ready_label = ("מוכן" if ui_language == "he" else "READY") if is_ready else ("לא מוכן" if ui_language == "he" else "NOT READY")
+				var avatar_index := int(player_data.get("animal", 0))
+				if avatar_index >= 0 and avatar_index < full_body_animal_textures.size():
+					draw_texture_rect(full_body_animal_textures[avatar_index], Rect2(player_rect.position + Vector2(12.0, 12.0) * unit, Vector2(105.0, 130.0) * unit), false)
+				draw_string(ui_font, player_rect.position + Vector2(125.0, 39.0) * unit, player_label, HORIZONTAL_ALIGNMENT_LEFT, 125.0 * unit, int(21.0 * unit), Color.WHITE)
+				draw_string(ui_font, player_rect.position + Vector2(125.0, 70.0) * unit, ("רמה %d" if ui_language == "he" else "LEVEL %d") % int(player_data.get("level", 1)), HORIZONTAL_ALIGNMENT_LEFT, 125.0 * unit, int(14.0 * unit), Color("a9cde2"))
+				draw_string(ui_font, player_rect.position + Vector2(125.0, 96.0) * unit, ui_animal_name(avatar_index), HORIZONTAL_ALIGNMENT_LEFT, 125.0 * unit, int(14.0 * unit), Color("ffe25d"))
+				draw_small_lifebuoy(player_rect.position + Vector2(302.0, 78.0) * unit, int(player_data.get("ringColor", 0)), 35.0 * unit)
+			else:
+				draw_string(ui_font, player_rect.position + Vector2(0.0, 72.0) * unit, player_label, HORIZONTAL_ALIGNMENT_CENTER, player_rect.size.x, int(21.0 * unit), Color.WHITE)
+			draw_string(ui_font, player_rect.position + Vector2(125.0, 127.0) * unit, ready_label, HORIZONTAL_ALIGNMENT_LEFT, 125.0 * unit, int(15.0 * unit), Color("51d995") if is_ready else Color("a9cde2"))
+			if i == multiplayer_slot:
+				draw_string(ui_font, player_rect.position + Vector2(250.0, 145.0) * unit, "לחצו לשינוי" if ui_language == "he" else "TAP TO CHANGE", HORIZONTAL_ALIGNMENT_CENTER, 104.0 * unit, int(11.0 * unit), Color("70dfff"))
+			elif i < multiplayer_players.size():
+				draw_string(ui_font, player_rect.position + Vector2(125.0, 151.0) * unit, "לחצו לפרופיל" if ui_language == "he" else "TAP FOR PROFILE", HORIZONTAL_ALIGNMENT_LEFT, 210.0 * unit, int(12.0 * unit), Color("70dfff"))
+		var ready_rect := friend_ready_rect(viewport_size)
+		draw_style_box(make_box(Color("35b96f") if not multiplayer_ready else Color("d49b2f"), 18.0 * unit), ready_rect)
+		draw_string(ui_font, ready_rect.position + Vector2(0.0, 45.0) * unit, ("ביטול מוכנות" if multiplayer_ready else "אני מוכן") if ui_language == "he" else ("NOT READY" if multiplayer_ready else "I'M READY"), HORIZONTAL_ALIGNMENT_CENTER, ready_rect.size.x, int(22.0 * unit), Color.WHITE)
+		var chat_rect := friend_room_chat_rect(viewport_size)
+		draw_style_box(make_box(Color("1b91a8"), 14.0 * unit), chat_rect)
+		draw_string(ui_font, chat_rect.position + Vector2(0.0, 31.0) * unit, ui_text("room_chat"), HORIZONTAL_ALIGNMENT_CENTER, chat_rect.size.x, int(15.0 * unit), Color.WHITE)
+	if multiplayer_error != "":
+		draw_string(ui_font, panel.position + Vector2(35.0, panel.size.y - 25.0) * unit, multiplayer_error, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x - 70.0 * unit, int(15.0 * unit), Color("ff8c7a"))
+	if friend_customizer_open:
+		draw_friend_customizer(viewport_size)
+	elif friend_opponent_profile_open:
+		draw_friend_opponent_profile(viewport_size)
+	elif friend_room_chat_open:
+		draw_match_chat(viewport_size)
+
+func draw_friend_room_concept_overlay(viewport_size: Vector2, unit: float) -> void:
+	# All live copy stays outside the artwork so language, server state and room
+	# input can change without regenerating or hard-coding a screenshot.
+	draw_centered_ui_text(Vector2(405.0, 78.0) * unit, "משחק מול חבר" if ui_language == "he" else "PLAY A FRIEND", 480.0 * unit, int(36.0 * unit), Color("fff1c4"))
+	draw_centered_ui_text(Vector2(405.0, 118.0) * unit, "צרו חדר או הצטרפו באמצעות קוד" if ui_language == "he" else "CREATE A ROOM OR JOIN WITH A CODE", 480.0 * unit, int(18.0 * unit), Color("d9f4ff"))
+	draw_centered_ui_text(Vector2(28.0, 82.0) * unit, ("חזרה  ❮" if ui_language == "he" else "❮  BACK"), 144.0 * unit, int(22.0 * unit), Color.WHITE)
+
+	var create_rect := Rect2(188.0, 477.0, 388.0, 88.0)
+	draw_centered_ui_text(create_rect.position + Vector2(0.0, 57.0) * unit, "יצירת חדר חדש" if ui_language == "he" else "CREATE NEW ROOM", create_rect.size.x, int(27.0 * unit), Color.WHITE)
+	var join_rect := Rect2(730.0, 477.0, 382.0, 88.0)
+	draw_centered_ui_text(join_rect.position + Vector2(0.0, 57.0) * unit, "הצטרפות לחדר" if ui_language == "he" else "JOIN ROOM", join_rect.size.x, int(27.0 * unit), Color.WHITE)
+
+	draw_centered_ui_text(Vector2(746.0, 392.0) * unit, "קוד החדר" if ui_language == "he" else "ROOM CODE", 320.0 * unit, int(18.0 * unit), Color.WHITE)
+	var clean_code := room_code_input.text.strip_edges().to_upper() if room_code_input != null else ""
+	for i in 4:
+		var character := clean_code.substr(i, 1) if i < clean_code.length() else "•"
 		var slot_x := 760.0 + float(i) * 79.0
 		draw_string(ui_font, Vector2(slot_x, 458.0) * unit, character, HORIZONTAL_ALIGNMENT_CENTER, 62.0 * unit, int(31.0 * unit), Color.WHITE if i < clean_code.length() else Color("7b69a5"), 0, TextServer.DIRECTION_LTR)
 
