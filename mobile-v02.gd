@@ -50,6 +50,7 @@ const HAMMER_EFFECT_DURATION := TRAP_CAPTURE_TIME + TRAP_FALL_TIME
 const RUBBER_CAPTURE_TIME := TRAP_CAPTURE_TIME
 const RUBBER_FALL_TIME := TRAP_FALL_TIME
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
+const ABYSS_EFFECT_DURATION := 2.65
 const WATER_FLOAT_TIME := 5.8
 const WATER_DRIFT_DELAY := 1.8
 const ANIMAL_NAMES := ["ELEPHANT", "ZEBRA", "MONKEY", "HIPPO", "RHINO", "GIRAFFE", "TIGER"]
@@ -281,6 +282,7 @@ var rubber_ball_texture: Texture2D
 var rubber_hand_textures: Array[Texture2D] = []
 var rubber_launcher_texture: Texture2D
 var rubber_wrap_texture: Texture2D
+var abyss_bloom_texture: Texture2D
 var press_machine_texture: Texture2D
 var fire_launcher_texture: Texture2D
 var hammer_texture: Texture2D
@@ -941,6 +943,7 @@ func _ready() -> void:
 		rubber_hand_textures.append(load("res://assets/rubber_trap/hands/pose-%d.png" % i))
 	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
 	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
+	abyss_bloom_texture = load("res://assets/abyss_bloom/abyss-bloom.png") as Texture2D
 	press_machine_texture = load("res://assets/press_trap/industrial-press.svg") as Texture2D
 	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
 	hammer_texture = load("res://assets/hammer_trap/mechanical-hammer-v2.svg") as Texture2D
@@ -1215,7 +1218,7 @@ func update_effects(delta: float) -> void:
 	for i in range(active_effects.size() - 1, -1, -1):
 		var duration := EFFECT_DURATION
 		if active_effects[i].hole == RUBBER_TRAP_HOLE:
-			duration = RUBBER_EFFECT_DURATION
+			duration = ABYSS_EFFECT_DURATION
 		elif active_effects[i].hole == PRESS_TRAP_HOLE:
 			duration = PRESS_EFFECT_DURATION
 		elif active_effects[i].hole == ICE_TRAP_HOLE:
@@ -1227,7 +1230,10 @@ func update_effects(delta: float) -> void:
 		elif active_effects[i].hole == HAMMER_TRAP_HOLE:
 			duration = HAMMER_EFFECT_DURATION
 		if active_effects[i].elapsed >= duration:
-			spawn_water_floater(active_effects[i])
+			# Abyss Bloom consumes the piece inside the hole. Unlike the old
+			# rubber weapon, it never throws or respawns the piece in the water.
+			if active_effects[i].hole != RUBBER_TRAP_HOLE:
+				spawn_water_floater(active_effects[i])
 			active_effects.remove_at(i)
 
 func spawn_water_floater(effect: Dictionary) -> void:
@@ -1781,7 +1787,7 @@ func _draw() -> void:
 	if active_board_texture != null:
 		draw_texture_rect(active_board_texture, board_rect, false)
 	draw_scoreboards()
-	draw_rubber_launchers_idle()
+	draw_abyss_bloom_idle()
 	draw_press_weapons_idle()
 	draw_electric_weapons_idle()
 	draw_ice_weapons_idle()
@@ -1802,7 +1808,7 @@ func _draw() -> void:
 
 	for effect in active_effects:
 		if effect.hole == RUBBER_TRAP_HOLE:
-			draw_rubber_trap(effect)
+			draw_abyss_bloom_trap(effect)
 		elif effect.hole == PRESS_TRAP_HOLE:
 			draw_press_trap(effect)
 		elif effect.hole == ICE_TRAP_HOLE:
@@ -3351,6 +3357,60 @@ func draw_quick_battle_setup(viewport_size: Vector2) -> void:
 
 	draw_centered_ui_text(Vector2(455.0, 662.0), "התחלת הקרב" if ui_language == "he" else "START BATTLE", 370.0, 29, Color.WHITE)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func abyss_bloom_center() -> Vector2:
+	# Use the calibrated capture point, not the decorative corner artwork. This
+	# makes the dark core sit exactly where the physics accepts a scored ball.
+	return trap_ball_position(RUBBER_TRAP_HOLE, rubber_point(128.0, 104.0))
+
+func draw_abyss_bloom_sprite(center: Vector2, size: float, rotation: float = 0.0, alpha: float = 1.0) -> void:
+	if abyss_bloom_texture == null:
+		return
+	draw_set_transform(center, rotation, Vector2.ONE)
+	draw_texture_rect(abyss_bloom_texture, Rect2(Vector2.ONE * -size * 0.5, Vector2.ONE * size), false, Color(1.0, 1.0, 1.0, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_abyss_bloom_idle() -> void:
+	if customizer_open or rubber_trap_is_active():
+		return
+	var scale_y := board_rect.size.y / 600.0
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
+	var center := abyss_bloom_center()
+	var size := (118.0 + pulse * 3.0) * scale_y
+	draw_circle(center, 31.0 * scale_y, Color(0.18, 0.02, 0.38, 0.32 + pulse * 0.10))
+	draw_abyss_bloom_sprite(center, size, sin(float(Time.get_ticks_msec()) * 0.0015) * 0.018)
+
+func draw_abyss_bloom_trap(effect: Dictionary) -> void:
+	var elapsed: float = effect.elapsed
+	var progress := clampf(elapsed / ABYSS_EFFECT_DURATION, 0.0, 1.0)
+	var scale_y := board_rect.size.y / 600.0
+	var center := abyss_bloom_center()
+	var opening := smooth_step(progress / 0.22) * (1.0 - smooth_step((progress - 0.78) / 0.20))
+	var sprite_size := (118.0 + opening * 13.0) * scale_y
+	draw_circle(center, (31.0 + opening * 9.0) * scale_y, Color(0.33, 0.02, 0.65, 0.38 + opening * 0.24))
+	draw_abyss_bloom_sprite(center, sprite_size, progress * 0.08)
+
+	# Compact gravity ribbons remain inside the weapon footprint. They guide
+	# the eye inward and never imply that the piece can be launched back out.
+	var ribbon_power := smooth_step(progress / 0.20) * (1.0 - smooth_step((progress - 0.72) / 0.18))
+	for ring_index in range(3):
+		var radius := (20.0 + float(ring_index) * 8.0 - progress * 7.0) * scale_y
+		var phase := elapsed * (3.4 + float(ring_index) * 0.55) + float(ring_index) * 1.7
+		draw_arc(center, radius, phase, phase + PI * 1.25, 30, Color(0.45, 0.18 + float(ring_index) * 0.10, 1.0, ribbon_power * 0.82), maxf(1.5, 3.2 * scale_y), true)
+
+	var consume := smooth_step((progress - 0.10) / 0.66)
+	if consume < 0.985:
+		var orbit_radius := (18.0 * (1.0 - consume)) * scale_y
+		var orbit_angle := elapsed * (5.0 + consume * 8.0)
+		var ball_center := center + Vector2(cos(orbit_angle), sin(orbit_angle) * 0.58) * orbit_radius
+		var ball_radius := trap_ball_radius(RUBBER_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale) * (1.0 - consume * 0.94)
+		draw_rubber_game_ball(ball_center, ball_radius, effect.team, effect.piece, 1.0 - smooth_step((consume - 0.76) / 0.22))
+
+	# Final inward flash marks deletion; it collapses toward the center rather
+	# than exploding outward.
+	if progress > 0.68:
+		var collapse := smooth_step((progress - 0.68) / 0.32)
+		draw_circle(center, (15.0 * (1.0 - collapse) + 2.0) * scale_y, Color(0.72, 0.35, 1.0, (1.0 - collapse) * 0.72))
 
 func draw_rubber_hand(texture: Texture2D, anchor: Vector2, target: Vector2, width: float, mirror: bool, alpha: float = 1.0, rotation_offset: float = 0.0) -> void:
 	if texture == null: return
