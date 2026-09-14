@@ -660,7 +660,7 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	collision.shape = shape
 	body.add_child(collision)
 	var model_paths := {
-		"Elephant": "res://models/combatants/meshy_elephant/elephant_vanguard.obj",
+		"Elephant": "res://models/combatants/meshy_elephant/elephant_vanguard.glb",
 		"ElephantAlly": "res://models/combatants/elephant_guardian.obj",
 		"Monkey": "res://models/combatants/monkey_raider.obj",
 		"MonkeyTwo": "res://models/combatants/monkey_brute.obj"
