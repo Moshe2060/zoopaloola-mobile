@@ -405,7 +405,7 @@ func _damage_body(body: CharacterBody3D, amount: float, color: Color) -> void:
 	_play_tone(145.0 + minf(amount, 14.0) * 7.0, 0.07, 0.1)
 
 func _animate_combatant_hit(body: CharacterBody3D, color: Color) -> void:
-	var model := body.get_node_or_null("CombatantModel") as MeshInstance3D
+	var model := body.get_node_or_null("CombatantModel") as Node3D
 	if model == null:
 		return
 	var original_rotation := model.rotation
@@ -665,7 +665,7 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 		"Monkey": "res://models/combatants/monkey_raider.obj",
 		"MonkeyTwo": "res://models/combatants/monkey_brute.obj"
 	}
-	var combatant_model := _environment_mesh(model_paths[title])
+	var combatant_model := _combatant_visual(model_paths[title])
 	combatant_model.name = "CombatantModel"
 	if title == "Elephant":
 		# Meshy assets use normalized model-space units; scale and lift the
@@ -685,6 +685,14 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	body.add_child(team_marker)
 	add_child(body)
 	return body
+
+func _combatant_visual(path: String) -> Node3D:
+	var resource := load(path)
+	if resource is PackedScene:
+		return (resource as PackedScene).instantiate()
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.mesh = resource as Mesh
+	return mesh_instance
 
 func _add_elephant_pilot(body: Node3D) -> void:
 	var skin := _material(Color("7f899c"), Color("3e4863"), 0.18)
