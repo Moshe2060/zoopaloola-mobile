@@ -885,10 +885,9 @@ func _ready() -> void:
 	friend_lookup_request = HTTPRequest.new()
 	friend_lookup_request.request_completed.connect(_on_friend_lookup_completed)
 	add_child(friend_lookup_request)
-	# Keep the gameplay artwork aligned with the existing pocket/trap anchors.
-	# The Vortex draft has wider transparent margins, which visually shrinks the
-	# table while gameplay objects remain at their original coordinates.
-	board_texture = load("res://assets/boards/board-purple-v1.webp") as Texture2D
+	# The Vortex asset is tightly cropped to the table silhouette so its visible
+	# rails stay aligned with the existing pocket and trap anchors.
+	board_texture = load("res://assets/boards/board-vortex-v1.webp") as Texture2D
 	board_theme_textures = [
 		board_texture,
 		load("res://assets/boards/board-ice.webp") as Texture2D,
@@ -2205,11 +2204,11 @@ func draw_scoreboards() -> void:
 	# The blue and purple displays baked into the board art are covered by these
 	# live panels. Their colors follow each player's selected lifebuoy.
 	var centers := [
-		board_rect.position + Vector2(board_rect.size.x * 0.289, board_rect.size.y * 0.052),
-		board_rect.position + Vector2(board_rect.size.x * 0.683, board_rect.size.y * 0.052)
+		board_rect.position + Vector2(board_rect.size.x * 0.276, board_rect.size.y * 0.050),
+		board_rect.position + Vector2(board_rect.size.x * 0.720, board_rect.size.y * 0.050)
 	]
 	var colors := [RING_COLORS[team_ring_color_index(0)], RING_COLORS[team_ring_color_index(1)]]
-	var panel_size := Vector2(board_rect.size.x * 0.075, board_rect.size.y * 0.060)
+	var panel_size := Vector2(board_rect.size.x * 0.096, board_rect.size.y * 0.056)
 	var corner := maxf(5.0, board_rect.size.y * 0.012)
 	var shared_rings := teams_share_ring_color()
 	for team in 2:
