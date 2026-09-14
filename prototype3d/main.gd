@@ -660,13 +660,18 @@ func _make_hovercraft(title: String, color: Color, position: Vector3) -> Charact
 	collision.shape = shape
 	body.add_child(collision)
 	var model_paths := {
-		"Elephant": "res://models/combatants/elephant_vanguard.obj",
+		"Elephant": "res://models/combatants/meshy_elephant/elephant_vanguard.obj",
 		"ElephantAlly": "res://models/combatants/elephant_guardian.obj",
 		"Monkey": "res://models/combatants/monkey_raider.obj",
 		"MonkeyTwo": "res://models/combatants/monkey_brute.obj"
 	}
 	var combatant_model := _environment_mesh(model_paths[title])
 	combatant_model.name = "CombatantModel"
+	if title == "Elephant":
+		# Meshy assets use normalized model-space units; scale and lift the
+		# optimized mesh while keeping the existing lightweight collider.
+		combatant_model.scale = Vector3.ONE * 2.05
+		combatant_model.position.y = 0.62
 	body.add_child(combatant_model)
 	var team_marker := MeshInstance3D.new()
 	var marker_mesh := CylinderMesh.new()
