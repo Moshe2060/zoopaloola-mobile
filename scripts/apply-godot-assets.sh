@@ -40,6 +40,9 @@ cp "$ROOT/rubber_launcher/wrap-sequence.svg" "$PROJECT/assets/rubber_launcher/wr
 cp "$ROOT/rubber_trap/rubber-ball.png" "$PROJECT/assets/rubber_trap/"
 cp "$ROOT"/rubber_trap/hands/pose-*.png "$PROJECT/assets/rubber_trap/hands/"
 
+mkdir -p "$PROJECT/assets/abyss_bloom"
+cp "$ROOT/assets/abyss_bloom/abyss-bloom.png" "$PROJECT/assets/abyss_bloom/abyss-bloom.png"
+
 mkdir -p "$PROJECT/assets/press_trap"
 cp "$ROOT/assets/press_trap/industrial-press.svg" "$PROJECT/assets/press_trap/industrial-press.svg"
 
