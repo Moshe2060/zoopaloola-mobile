@@ -46,6 +46,10 @@ mkdir -p "$PROJECT/assets/abyss_bloom"
 cp "$ROOT/assets/abyss_bloom/abyss-bloom.png" "$PROJECT/assets/abyss_bloom/abyss-bloom.png"
 cp "$ROOT/assets/abyss_bloom/abyss-bloom-clean-v3.webp" "$PROJECT/assets/abyss_bloom/abyss-bloom-clean-v3.webp"
 
+mkdir -p "$PROJECT/assets/gravity_trap"
+cp "$ROOT/assets/gravity_trap/gravity-base-v1.png" "$PROJECT/assets/gravity_trap/gravity-base-v1.png"
+cp "$ROOT/assets/gravity_trap/gravity-head-v1.png" "$PROJECT/assets/gravity_trap/gravity-head-v1.png"
+
 mkdir -p "$PROJECT/assets/press_trap"
 cp "$ROOT/assets/press_trap/industrial-press.svg" "$PROJECT/assets/press_trap/industrial-press.svg"
 

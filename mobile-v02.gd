@@ -51,6 +51,7 @@ const RUBBER_CAPTURE_TIME := TRAP_CAPTURE_TIME
 const RUBBER_FALL_TIME := TRAP_FALL_TIME
 const RUBBER_EFFECT_DURATION := RUBBER_CAPTURE_TIME + RUBBER_FALL_TIME
 const ABYSS_EFFECT_DURATION := 2.65
+const GRAVITY_EFFECT_DURATION := 2.65
 const WATER_FLOAT_TIME := 5.8
 const WATER_DRIFT_DELAY := 1.8
 const ANIMAL_NAMES := ["ELEPHANT", "ZEBRA", "MONKEY", "HIPPO", "RHINO", "GIRAFFE", "TIGER"]
@@ -283,6 +284,8 @@ var rubber_hand_textures: Array[Texture2D] = []
 var rubber_launcher_texture: Texture2D
 var rubber_wrap_texture: Texture2D
 var abyss_bloom_texture: Texture2D
+var gravity_base_texture: Texture2D
+var gravity_head_texture: Texture2D
 var press_machine_texture: Texture2D
 var fire_launcher_texture: Texture2D
 var hammer_texture: Texture2D
@@ -947,6 +950,8 @@ func _ready() -> void:
 	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
 	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
 	abyss_bloom_texture = load("res://assets/abyss_bloom/abyss-bloom-clean-v3.webp") as Texture2D
+	gravity_base_texture = load("res://assets/gravity_trap/gravity-base-v1.png") as Texture2D
+	gravity_head_texture = load("res://assets/gravity_trap/gravity-head-v1.png") as Texture2D
 	press_machine_texture = load("res://assets/press_trap/industrial-press.svg") as Texture2D
 	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
 	hammer_texture = load("res://assets/hammer_trap/mechanical-hammer-v2.svg") as Texture2D
@@ -1223,7 +1228,7 @@ func update_effects(delta: float) -> void:
 		if active_effects[i].hole == RUBBER_TRAP_HOLE:
 			duration = ABYSS_EFFECT_DURATION
 		elif active_effects[i].hole == PRESS_TRAP_HOLE:
-			duration = PRESS_EFFECT_DURATION
+			duration = GRAVITY_EFFECT_DURATION
 		elif active_effects[i].hole == ICE_TRAP_HOLE:
 			duration = ICE_EFFECT_DURATION
 		elif active_effects[i].hole == FIRE_TRAP_HOLE:
@@ -1235,7 +1240,7 @@ func update_effects(delta: float) -> void:
 		if active_effects[i].elapsed >= duration:
 			# Abyss Bloom consumes the piece inside the hole. Unlike the old
 			# rubber weapon, it never throws or respawns the piece in the water.
-			if active_effects[i].hole != RUBBER_TRAP_HOLE:
+			if active_effects[i].hole not in [RUBBER_TRAP_HOLE, PRESS_TRAP_HOLE]:
 				spawn_water_floater(active_effects[i])
 			active_effects.remove_at(i)
 
@@ -1791,7 +1796,7 @@ func _draw() -> void:
 		draw_texture_rect(active_board_texture, board_rect, false)
 	draw_scoreboards()
 	draw_abyss_bloom_idle()
-	draw_press_weapons_idle()
+	draw_gravity_weapons_idle()
 	draw_electric_weapons_idle()
 	draw_ice_weapons_idle()
 	draw_fire_weapons_idle()
@@ -1813,7 +1818,7 @@ func _draw() -> void:
 		if effect.hole == RUBBER_TRAP_HOLE:
 			draw_abyss_bloom_trap(effect)
 		elif effect.hole == PRESS_TRAP_HOLE:
-			draw_press_trap(effect)
+			draw_gravity_trap(effect)
 		elif effect.hole == ICE_TRAP_HOLE:
 			draw_ice_trap(effect)
 		elif effect.hole == FIRE_TRAP_HOLE:
@@ -2363,6 +2368,113 @@ func trap_ball_position(hole: int, base: Vector2) -> Vector2:
 
 func trap_ball_radius(hole: int, base: float) -> float:
 	return base * trap_ball_scales[hole]
+
+func gravity_weapon_points() -> Dictionary:
+	var hole := board_to_screen(SCORING_HOLE_CENTERS[PRESS_TRAP_HOLE])
+	var scale_y := board_rect.size.y / 600.0
+	# Both bearings sit on the straight left rail, above and below the opening.
+	# They never occupy a corner and leave the funnel itself completely open.
+	return {
+		"hole": hole,
+		"entry": board_to_screen(entry_trigger_center(PRESS_TRAP_HOLE)),
+		"upper": hole + Vector2(2.0, -52.0) * scale_y,
+		"lower": hole + Vector2(2.0, 52.0) * scale_y
+	}
+
+func draw_gravity_base(anchor: Vector2, size: float) -> void:
+	if gravity_base_texture == null:
+		return
+	var source := gravity_base_texture.get_size()
+	var factor := size / maxf(1.0, source.y)
+	var draw_size := source * factor
+	# The long plate follows the vertical rail and never rotates with the head.
+	draw_set_transform(anchor, PI * 0.5, Vector2.ONE)
+	draw_texture_rect(gravity_base_texture, Rect2(-draw_size * 0.5, draw_size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func draw_gravity_head(anchor: Vector2, target: Vector2, size: float, activation: float, rest_angle: float) -> Vector2:
+	if gravity_head_texture == null:
+		return anchor
+	var source := gravity_head_texture.get_size()
+	var factor := size / maxf(1.0, source.y)
+	var draw_size := source * factor
+	var target_angle := (target - anchor).angle()
+	var angle := lerp_angle(rest_angle, target_angle, activation)
+	# The generated sprite points right. Its bearing is near 29% of its width;
+	# anchoring there makes the illustrated head rotate on the fixed socket.
+	var pivot := Vector2(source.x * 0.29, source.y * 0.50) * factor
+	draw_set_transform(anchor, angle, Vector2.ONE)
+	draw_texture_rect(gravity_head_texture, Rect2(-pivot, draw_size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	return anchor + Vector2(cos(angle), sin(angle)) * (source.x * 0.67 * factor)
+
+func draw_gravity_pair(activation: float, target: Vector2, pulse: float = 0.0) -> Dictionary:
+	var points := gravity_weapon_points()
+	var scale_y := board_rect.size.y / 600.0
+	var base_size := 29.0 * scale_y
+	var head_size := (31.0 + pulse * 1.5) * scale_y
+	draw_gravity_base(points.upper, base_size)
+	draw_gravity_base(points.lower, base_size)
+	# At rest both muzzles lie along the rail. On activation they pivot inward
+	# until both aim at the captured piece and pocket entrance.
+	var upper_tip := draw_gravity_head(points.upper, target, head_size, activation, PI * 0.5)
+	var lower_tip := draw_gravity_head(points.lower, target, head_size, activation, -PI * 0.5)
+	return {"upper_tip": upper_tip, "lower_tip": lower_tip}
+
+func gravity_trap_is_active() -> bool:
+	for effect in active_effects:
+		if effect.hole == PRESS_TRAP_HOLE:
+			return true
+	return false
+
+func draw_gravity_weapons_idle() -> void:
+	if customizer_open or gravity_trap_is_active():
+		return
+	var points := gravity_weapon_points()
+	var pulse := (sin(float(Time.get_ticks_msec()) * 0.004) + 1.0) * 0.5
+	draw_gravity_pair(0.0, points.entry, pulse * 0.22)
+
+func draw_gravity_stream(origin: Vector2, target: Vector2, power: float, phase: float) -> void:
+	if power <= 0.001:
+		return
+	var delta := target - origin
+	var normal := Vector2(-delta.y, delta.x).normalized()
+	var points := PackedVector2Array()
+	for i in 15:
+		var u := float(i) / 14.0
+		var taper := sin(u * PI)
+		var wave := sin(u * TAU * 2.0 + phase) * 3.2 * taper * power
+		points.append(origin.lerp(target, u) + normal * wave)
+	draw_polyline(points, Color(0.38, 0.10, 0.82, 0.34 * power), 7.0 * power, true)
+	draw_polyline(points, Color(0.78, 0.42, 1.0, 0.90 * power), maxf(1.2, 2.5 * power), true)
+
+func draw_gravity_trap(effect: Dictionary) -> void:
+	var elapsed: float = effect.elapsed
+	var progress := clampf(elapsed / GRAVITY_EFFECT_DURATION, 0.0, 1.0)
+	var scale_y := board_rect.size.y / 600.0
+	var points := gravity_weapon_points()
+	var rotate_in := smooth_step(progress / 0.18)
+	var rotate_out := smooth_step((progress - 0.82) / 0.18)
+	var activation := rotate_in * (1.0 - rotate_out)
+	var consume := smooth_step((progress - 0.16) / 0.62)
+	var ball_center: Vector2 = points.entry.lerp(points.hole, consume * consume)
+	var tips := draw_gravity_pair(activation, ball_center, activation)
+
+	var stream_power := smooth_step(progress / 0.20) * (1.0 - smooth_step((progress - 0.76) / 0.18))
+	draw_gravity_stream(tips.upper_tip, ball_center, stream_power, elapsed * 8.0)
+	draw_gravity_stream(tips.lower_tip, ball_center, stream_power, elapsed * 8.0 + PI)
+
+	for ring_index in 3:
+		var ring_radius := (20.0 - consume * 12.0 + float(ring_index) * 6.0) * scale_y
+		var ring_alpha := stream_power * (0.54 - float(ring_index) * 0.10)
+		draw_arc(ball_center, ring_radius, elapsed * 3.0 + float(ring_index), elapsed * 3.0 + float(ring_index) + PI * 1.35, 24, Color(0.64, 0.26, 1.0, ring_alpha), maxf(1.2, 2.2 * scale_y), true)
+
+	if consume < 0.985:
+		var radius := trap_ball_radius(PRESS_TRAP_HOLE, GAME_BALL_VISUAL_RADIUS * board_scale) * (1.0 - consume * 0.90)
+		draw_rubber_game_ball(ball_center, radius, effect.team, effect.piece, 1.0 - smooth_step((consume - 0.80) / 0.18))
+	if progress > 0.70:
+		var collapse := smooth_step((progress - 0.70) / 0.22)
+		draw_circle(points.hole, (12.0 * (1.0 - collapse) + 1.5) * scale_y, Color(0.76, 0.36, 1.0, (1.0 - collapse) * 0.70))
 
 func press_point(x: float, y: float) -> Vector2:
 	return board_rect.position + Vector2(x / 1276.0 * board_rect.size.x, y / 600.0 * board_rect.size.y)
