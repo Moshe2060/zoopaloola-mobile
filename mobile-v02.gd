@@ -950,8 +950,8 @@ func _ready() -> void:
 	rubber_launcher_texture = load("res://assets/rubber_launcher/launcher.svg") as Texture2D
 	rubber_wrap_texture = load("res://assets/rubber_launcher/wrap-sequence.svg") as Texture2D
 	abyss_bloom_texture = load("res://assets/abyss_bloom/abyss-bloom-clean-v3.webp") as Texture2D
-	gravity_base_texture = load("res://assets/gravity_trap/gravity-base-v1.png") as Texture2D
-	gravity_head_texture = load("res://assets/gravity_trap/gravity-head-v1.png") as Texture2D
+	gravity_base_texture = load("res://assets/gravity_trap/gravity-base-v1.webp") as Texture2D
+	gravity_head_texture = load("res://assets/gravity_trap/gravity-head-v1.webp") as Texture2D
 	press_machine_texture = load("res://assets/press_trap/industrial-press.svg") as Texture2D
 	fire_launcher_texture = load("res://assets/fire_trap/flamethrower-v2.svg") as Texture2D
 	hammer_texture = load("res://assets/hammer_trap/mechanical-hammer-v2.svg") as Texture2D
